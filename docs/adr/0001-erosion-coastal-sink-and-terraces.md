@@ -18572,3 +18572,58 @@ B2 ≥ 1 km² and B2 → A_c (within 1 m for three). **The COL rises**:
 half; P-B0 and P-C refuted; B1–B3 unscored. The reviewer's: A's range narrowly refuted, its σ refuted
 in sign, its spurs and R8 held; B0 refuted; C's barrage count held but by a floor; C's 4th refuted.
 **Gated, off, nothing promoted.**
+
+## Finding 128 — the confluence clause removes every canyon but fails its concavity control; the path-based directions are read; our D8-LTD fails its first reproduction on a tie, then reproduces the source once the tie is honoured
+
+**Units**: 1 cell = 48.8 m (domain); heights in metres. Benches: `tests/f126_coast.rs`, Finding 128's
+section. Report, reading and raw outputs: `docs/reports/c1_continental_buoyancy/f128_confluence_path/`.
+One clause and one method were built, **both gated and off; nothing promoted**; mur ↔ mer and bruit ↔
+pied ON everywhere. Finding 127 was committed (`0ae6243`); the guard reads 6 / 6; this round's code is
+bit-neutral when off (`a8d2d538d692c2f0`). The references (Orlandini et al. 2003 and 2014, Paik 2008)
+are in `docs/refs`, not committed.
+
+**B — the reading** (`reading_path_based.md`, with pages).
+- **D8-LTD's only parameter is the dampening λ** ([O03] eqs. (1)–(2), p. 1-3). λ = 1 is advocated, and
+  [O14] is parameter-free (p. 528): λ = 1 is the method, not a PROXY.
+- **LTD is chosen for its analytical basis** ([O14] Theorem 3.1, Lemma 3.3 |δ⁺| ≤ h; LAD excluded by
+  Remark 3.8), not for "flats".
+- **Paik 2008**: (a) no basis for λ, answered by [O14]; (b) asymmetry and false confluences on a cone,
+  NOT answered.
+- **`FlowConfig::dinf`'s history is in commit `4f47495`, not in the ADR.** It was D∞ on flats, for the
+  routing. It re-quantised to the primary neighbour, which LTD cannot do. Its Garbrecht–Martz flat
+  gradient is cardinal, which LTD would inherit. Hence LTD's flats fall back to `compute_flow`'s
+  pointer, counted.
+
+**C0 — the implementation against the source, FIRST run FAILS: the code.** `ValleyConstruction::
+ltd_directions` (the skeleton only); `ltd_directions()` with a Kahn `accumulate_cells()`. Permanent
+test `the_ltd_tree_follows_a_planar_slope_off_the_lattice` (a plane 14° off north: D8 14° off, LTD
+< 1.5°).
+- On the declared 1:4 plane (30², 60²), the LTD / D8 MAE ratio is 1.42 / 1.25 against [0.2, 0.9], with
+  137 / 490 LTD confluences.
+- The declared slope is exactly degenerate: with tan r = ¼ the cumulative deviation ties EXACTLY every
+  fourth step, and f32 rounding broke [O14] eq. (5)'s "≤" cell by cell. Neighbouring paths fell out of
+  phase and merged.
+- **With the tie honoured** (within 1e-4 cell, to the cardinal), run 2 PASSES and reproduces [O03]'s
+  ABSOLUTE λ = 1 values at 30²: MAE 0.215 against ≈ 0.22, RMSE 0.258 against ≈ 0.25, ME −0.191 against
+  ≈ −0.21.
+- **By the addendum's rule, C and D did not run this round.** The fixed implementation is ready.
+
+**A — the confluence clause (`ValleyConstruction::trunk_band`).** On any primitive's floor band, the
+LINE with the largest drained area lays the cell from its nearest covering sample: not a minimum, and
+never within one line. Permanent test `the_confluence_clause_lets_the_trunk_lay_its_band`; its
+negative control is the tributary damming the trunk.
+- **Canyons 4 → 0 on B2 → A_c and 3 → 0 on B2 (A_c) + B1 + foot.** Lakes return to the témoin's 25;
+  coast, σ and the R8s barely move.
+- **Canyon 13 was a confluence dam**: 52 cells down its témoin path, +246 m, removed.
+- **Canyon 3's instrument is repaired**: its recorded `Lake::outlet` is not in its lake. The lowest
+  exit's receiver gives a col +10.6 m over the témoin, and the canyon is gone.
+- **The cols of 7 and 14 stay +91 / +112 m** above the témoin, but are no longer sills.
+- **Finding 121's control FAILS on concavity.** On 70 897 trunk ≥ 10 km² cells the median slope ratio is
+  1.000, and |Δz| p90 falls 43 → 32 m, but θ (S ∝ A^−θ) goes 0.350 → 0.402 (+14.9 %). The clause moves
+  388 470 cells, 90 097 of them within 3 cells of a line's head.
+- **⇒ PROVED for the canyons; its trap control fails.** Kept off. A narrower form (downstream of the
+  junction only) is named.
+
+**Predictions.** Mine: P0 and P-B1/B2/B4 held, P-B3 half; P-A1, P-A2 and P-C0 refuted; P-A3 half; C
+and D unscored. The reviewer's: canyons → 0 and "13 a confluence" held; cols ±5 m refuted; concavity
+refuted; LTD held with its reasons refuted or half; C and D unscored. **Gated, off, nothing promoted.**

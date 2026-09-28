@@ -135,6 +135,26 @@ pub struct ValleyConstruction {
     /// continuous angle. **PROXY** (`flat_slope`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skeleton_trace: Option<SkeletonTrace>,
+    /// **ADR Finding 128-A — the confluence clause.** `false` = Findings 121–127: every cell is laid
+    /// from its NEAREST sample, with a minimum across different lines only among the 8 neighbours'
+    /// samples. At a confluence a tributary's sample can then be nearer to a trunk-floor cell than
+    /// the trunk's own, and its higher floor dams the trunk (Finding 127-C: col +164 / +374 m). `true`:
+    /// on the FLOOR BAND of a primitive (within `W/2` of one of its samples), the LINE with the largest
+    /// drained area covering the cell lays it, from ITS nearest covering sample. The trunk wins its
+    /// band. **Not a minimum** (Finding 121 refuted the minimum of the cones, which flattens the long
+    /// profile), and never within one line (a line's own downstream sample never takes over its
+    /// upstream band). DECISION.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub trunk_band: bool,
+    /// **ADR Finding 128-C — the skeleton's directions by D8-LTD** (Orlandini et al. 2003 with λ = 1,
+    /// the parameter-free form of Orlandini, Moretti & Gavioli 2014). `false` = the D8 of
+    /// `compute_flow`. `true`: every land cell of the breached input takes one of the two D8 pointers
+    /// of its steepest Tarboton facet, whichever keeps the CUMULATIVE transverse deviation along its
+    /// path the smallest. The deviation is inherited from the donor with the largest area. Where no
+    /// facet descends strictly (a flat), the pointer is `compute_flow`'s and the deviation is reset,
+    /// declared and counted. **The skeleton only**: the hydrology is never routed on it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ltd_directions: bool,
 }
 
 /// ADR Finding 127-B — the interpolant whose gradient the tracé descends.
@@ -243,6 +263,8 @@ impl ValleyConstruction {
             wall_sea_floor_m: None,
             smooth_w: None,
             skeleton_trace: None,
+            trunk_band: false,
+            ltd_directions: false,
         }
     }
 
@@ -284,6 +306,12 @@ pub struct Skeleton {
     pub polylines: Vec<Vec<(f32, f32, f32, f32)>>,
     /// ADR Finding 127-B — what the off-grid tracé did (`None` when it is off).
     pub trace_stats: Option<TraceStats>,
+    /// The D8 pointer of every cell the skeleton was built on (`compute_flow`'s, or D8-LTD's under
+    /// Finding 128-C); `DIR_NONE` at a base.
+    pub direction: Vec<u8>,
+    /// ADR Finding 128-C — land cells where D8-LTD found no strictly descending facet and fell back on
+    /// `compute_flow`'s pointer (0 when LTD is off).
+    pub ltd_flat_cells: usize,
 }
 
 impl Skeleton {
@@ -331,8 +359,19 @@ pub fn skeleton(
         },
     );
     let land: Vec<bool> = bf.data.iter().map(|&v| v > C1_SEA_LEVEL_NORM).collect();
-    let area_km2: Vec<f32> = flow.accumulation.data.iter().map(|&a| a * cell_km2).collect();
-    let dir = &flow.direction;
+    // ADR Finding 128-C -- the skeleton's own directions (D8, or D8-LTD on the same breached surface)
+    let (direction, accumulation, ltd_flat_cells) = if vc.ltd_directions {
+        let zm: Vec<f32> = bf.data.iter().map(|&v| c1_altitude_norm_to_metres(v, ss)).collect();
+        let sink: Vec<bool> = land.iter().map(|&l| !l).collect();
+        let (d, flats) = ltd_directions(&zm, &sink, &flow.direction, w, h, cell_m);
+        let acc = accumulate_cells(&d, &sink, w, h);
+        (d, acc, flats)
+    } else {
+        (flow.direction, flow.accumulation.data, 0)
+    };
+    let area_km2: Vec<f32> = accumulation.iter().map(|&a| a * cell_km2).collect();
+    drop(accumulation);
+    let dir = &direction;
     // ADR Finding 122-B -- the closed depressions and their spill levels: a priority flood seeded
     // on the OPEN OCEAN only, so an inland below-sea basin and a held lake both rise to their col.
     let spill: Option<Vec<f32>> = vc.basin_base.then(|| ocean_flood(&bf));
@@ -488,7 +527,148 @@ pub fn skeleton(
         trunk,
         polylines,
         trace_stats,
+        direction,
+        ltd_flat_cells,
     }
+}
+
+/// ADR Finding 128-C — D8-LTD pointers (Orlandini et al. 2003 §2, with λ = 1; Orlandini, Moretti &
+/// Gavioli 2014 eqs. (1)–(6)) on the surface `zm` (metres, torus), `sink` cells taking no pointer.
+///
+/// Cells are processed in descending elevation ([O03] §2.2). For each one:
+/// - its theoretical direction is Tarboton's steepest facet (the continuous angle `r` from the facet's
+///   cardinal toward its diagonal pointer, clamped to the facet);
+/// - each candidate step `q` (the cardinal, or the diagonal) has the signed transverse deviation
+///   `q × t` from that direction;
+/// - the pointer kept is the one whose CUMULATIVE deviation (the inherited one + its own) is the
+///   smaller in absolute value.
+///
+/// The inherited deviation is the one conveyed by the donor with the largest area. A candidate that
+/// is not strictly lower is refused. With no strictly descending facet, the cell takes `fallback`'s
+/// pointer and conveys a zero deviation; those cells are counted (the second return). Ties go to the
+/// cardinal, as [O14] eq. (5) does.
+pub fn ltd_directions(
+    zm: &[f32],
+    sink: &[bool],
+    fallback: &[u8],
+    w: usize,
+    h: usize,
+    cell_m: f32,
+) -> (Vec<u8>, usize) {
+    use std::f32::consts::{FRAC_PI_4, SQRT_2};
+    let n = w * h;
+    let nb = |c: usize, k: usize| -> usize {
+        let x = ((c % w) as i32 + D8_DX[k]).rem_euclid(w as i32) as usize;
+        let y = ((c / w) as i32 + D8_DY[k]).rem_euclid(h as i32) as usize;
+        y * w + x
+    };
+    // the eight facets: (cardinal pointer, diagonal pointer) in D8 order (even = cardinal)
+    const FACETS: [(usize, usize); 8] = [(0, 1), (0, 7), (2, 1), (2, 3), (4, 3), (4, 5), (6, 5), (6, 7)];
+    let mut order: Vec<u32> = (0..n as u32).filter(|&c| !sink[c as usize]).collect();
+    order.sort_by(|&a, &b| zm[b as usize].total_cmp(&zm[a as usize]).then(a.cmp(&b)));
+    let mut dir = vec![DIR_NONE; n];
+    let mut area = vec![1f32; n];
+    let mut best_area = vec![0f32; n];
+    let mut best_dev = vec![0f32; n];
+    let mut flats = 0usize;
+    for &c in &order {
+        let c = c as usize;
+        let e0 = zm[c];
+        // Tarboton's steepest facet
+        let mut best: Option<(f32, usize, usize, f32)> = None; // (slope, cardinal, diagonal, r)
+        for &(kc, kd) in &FACETS {
+            let (e1, e2) = (zm[nb(c, kc)], zm[nb(c, kd)]);
+            let (s1, s2) = ((e0 - e1) / cell_m, (e1 - e2) / cell_m);
+            let r = s2.atan2(s1);
+            let (r, s) = if r < 0.0 {
+                (0.0, s1)
+            } else if r > FRAC_PI_4 {
+                (FRAC_PI_4, (e0 - e2) / (SQRT_2 * cell_m))
+            } else {
+                (r, (s1 * s1 + s2 * s2).sqrt())
+            };
+            if s > 0.0 && best.is_none_or(|b| s > b.0) {
+                best = Some((s, kc, kd, r));
+            }
+        }
+        let inherited = best_dev[c];
+        let chosen = best.and_then(|(_, kc, kd, r)| {
+            let (q1, q2) = ((D8_DX[kc] as f32, D8_DY[kc] as f32), (D8_DX[kd] as f32, D8_DY[kd] as f32));
+            // the theoretical direction: from the cardinal toward the diagonal side by r
+            let p = (q2.0 - q1.0, q2.1 - q1.1);
+            let t = (r.cos() * q1.0 + r.sin() * p.0, r.cos() * q1.1 + r.sin() * p.1);
+            let cross = |q: (f32, f32)| q.0 * t.1 - q.1 * t.0;
+            let (c1, c2) = (inherited + cross(q1), inherited + cross(q2));
+            let (n1, n2) = (nb(c, kc), nb(c, kd));
+            let ok = |m: usize| sink[m] || zm[m] < e0;
+            // ADR Finding 128-C0 -- [O14] eq. (5)'s "≤" gives an EXACT tie to the cardinal. Rounding
+            // must not break it cell by cell (a slope of 1:4 ties at every fourth step, and f32 noise
+            // then dephased neighbouring paths into 137 confluences on a 30² plane): ties within
+            // 1e-4 cell go to the cardinal.
+            const TIE: f32 = 1e-4;
+            let cardinal = c1.abs() <= c2.abs() + TIE;
+            let first = if cardinal { (kc, n1, c1) } else { (kd, n2, c2) };
+            let second = if cardinal { (kd, n2, c2) } else { (kc, n1, c1) };
+            if ok(first.1) {
+                Some(first)
+            } else if ok(second.1) {
+                Some(second)
+            } else {
+                None
+            }
+        });
+        let (k, r, conveyed) = match chosen {
+            Some((k, m, dev)) => (k as u8, m, dev),
+            None => {
+                flats += 1;
+                let k = fallback[c];
+                if k == DIR_NONE {
+                    continue;
+                }
+                (k, nb(c, k as usize), 0.0)
+            }
+        };
+        dir[c] = k;
+        if area[c] > best_area[r] {
+            best_area[r] = area[c];
+            best_dev[r] = conveyed;
+        }
+        area[r] += area[c];
+    }
+    (dir, flats)
+}
+
+/// Drained area in CELLS along `dir` (each cell counts 1), by Kahn's order on the receiver graph;
+/// `sink` cells receive but do not pass on.
+pub fn accumulate_cells(dir: &[u8], sink: &[bool], w: usize, h: usize) -> Vec<f32> {
+    let n = w * h;
+    let recv = |c: usize| -> Option<usize> {
+        let k = dir[c];
+        if k == DIR_NONE || sink[c] {
+            return None;
+        }
+        let x = ((c % w) as i32 + D8_DX[k as usize]).rem_euclid(w as i32) as usize;
+        let y = ((c / w) as i32 + D8_DY[k as usize]).rem_euclid(h as i32) as usize;
+        Some(y * w + x)
+    };
+    let mut indeg = vec![0u32; n];
+    for c in 0..n {
+        if let Some(r) = recv(c) {
+            indeg[r] += 1;
+        }
+    }
+    let mut acc = vec![1f32; n];
+    let mut stack: Vec<usize> = (0..n).filter(|&c| indeg[c] == 0).collect();
+    while let Some(c) = stack.pop() {
+        if let Some(r) = recv(c) {
+            acc[r] += acc[c];
+            indeg[r] -= 1;
+            if indeg[r] == 0 {
+                stack.push(r);
+            }
+        }
+    }
+    acc
 }
 
 /// A trunk line's samples: its D8 cells UNWRAPPED along the torus (cell centres at +0.5), each with
@@ -1095,6 +1275,38 @@ pub fn carve(
             }
         }
     }
+    // ADR Finding 128-A -- the confluence clause. Per cell of any primitive's FLOOR BAND: the line
+    // with the largest covering half-width (the largest drained area, W being monotone in A) and, of
+    // THAT line, the nearest covering sample.
+    let band: Option<(Vec<u32>, Vec<f32>)> = vc.trunk_band.then(|| {
+        let mut b_line = vec![u32::MAX; n];
+        let mut b_hw = vec![0f32; n];
+        let mut b_smp = vec![u32::MAX; n];
+        let mut b_d = vec![f32::INFINITY; n];
+        for (i, &(sx, sy, _zf, hw)) in src.iter().enumerate() {
+            let r = hw / sk.cell_m;
+            let li = line_of[i];
+            for yy in (sy - r).floor() as i64..=(sy + r).ceil() as i64 {
+                for xx in (sx - r).floor() as i64..=(sx + r).ceil() as i64 {
+                    let d = ((xx as f32 + 0.5 - sx).powi(2) + (yy as f32 + 0.5 - sy).powi(2)).sqrt() * sk.cell_m;
+                    if d > hw {
+                        continue;
+                    }
+                    let c = yy.rem_euclid(h as i64) as usize * w + xx.rem_euclid(w as i64) as usize;
+                    if b_line[c] == li {
+                        b_hw[c] = b_hw[c].max(hw);
+                        if d < b_d[c] {
+                            b_d[c] = d;
+                            b_smp[c] = i as u32;
+                        }
+                    } else if b_line[c] == u32::MAX || hw > b_hw[c] {
+                        (b_line[c], b_hw[c], b_smp[c], b_d[c]) = (li, hw, i as u32, d);
+                    }
+                }
+            }
+        }
+        (b_smp, b_hw)
+    });
     let trend: Option<Vec<f32>> = vc.wall_profile.filter(|p| p.detail_gain != 0.0).map(|p| {
         let r = (p.detail_radius_m / sk.cell_m).round().max(1.0) as i64;
         box_blur_torus(&zfield, w, h, r)
@@ -1104,19 +1316,28 @@ pub fn carve(
     let mut carved = vec![false; n];
     let mut floor = vec![false; n];
     for c in 0..n {
-        if who[c] == u32::MAX {
+        // ADR Finding 128-A -- a LARGER line's floor band takes the cell from a smaller line's sample
+        let banded = band.as_ref().and_then(|(smp, bhw)| {
+            let s = smp[c];
+            let wins = s != u32::MAX
+                && (who[c] == u32::MAX
+                    || (line_of[s as usize] != line_of[who[c] as usize] && bhw[c] > src[who[c] as usize].3));
+            wins.then_some(s as usize)
+        });
+        if who[c] == u32::MAX && banded.is_none() {
             continue;
         }
-        let me = who[c] as usize;
+        let me = banded.unwrap_or(who[c] as usize);
         let (x, y) = ((c % w) as i32, (c / w) as i32);
         let (_, mut v, mut on_floor, mut u_sel) = geo(me, c);
-        // continuity across the line where two DIFFERENT valleys meet
+        // continuity across the line where two DIFFERENT valleys meet (not where the clause decided:
+        // the larger line lays its band, with no minimum)
         for dy in -1i32..=1 {
             for dx in -1i32..=1 {
                 let nb = (y + dy).rem_euclid(h as i32) as usize * w
                     + (x + dx).rem_euclid(w as i32) as usize;
                 let o = who[nb];
-                if o != u32::MAX && line_of[o as usize] != line_of[me] {
+                if banded.is_none() && o != u32::MAX && line_of[o as usize] != line_of[me] {
                     let (_, vv, f, uu) = geo(o as usize, c);
                     if vv < v {
                         v = vv;
@@ -1413,6 +1634,150 @@ mod tests {
         assert_eq!(st.same_receiver, st.segments, "every trace must reach its receiver: {st:?}");
         let at = chord_angles(&tk);
         assert!(dev(&at) < 8.0, "the tracé must leave the lattice ({:.1}°)", dev(&at));
+    }
+
+    /// A hand-made skeleton on a flat 500 m field, 64² at 50 m. A TRUNK along y = 32.5 (half-width 100 m,
+    /// floor 100 → 131 m upstream) and a TRIBUTARY down x = 30.5 into it (half-width 25 m, floor 300 m at
+    /// its source → 140 m at the trunk's axis), whose last samples lie INSIDE the trunk's floor band.
+    fn confluence() -> (GridF32, Skeleton, SteinSteinParams) {
+        let ss = SteinSteinParams::default();
+        let n = 64usize;
+        let f = GridF32 { width: n, height: n, data: vec![c1_metres_to_altitude_norm(500.0, &ss); n * n] };
+        let trunk: Vec<(f32, f32, f32, f32)> = (0..119).map(|i| {
+            let x = 2.5 + 0.5 * i as f32;
+            (x, 32.5, 100.0 + 0.5 * (61.5 - x), 100.0)
+        }).collect();
+        let trib: Vec<(f32, f32, f32, f32)> = (0..61).map(|i| {
+            let y = 2.5 + 0.5 * i as f32;
+            (30.5, y, 300.0 - 160.0 * (y - 2.5) / 30.0, 25.0)
+        }).collect();
+        let sk = Skeleton {
+            width: n,
+            height: n,
+            cell_m: 50.0,
+            area_km2: vec![0.0; n * n],
+            chi_m: vec![0.0; n * n],
+            base_alt_m: vec![0.0; n * n],
+            trunk: vec![false; n * n],
+            polylines: vec![trunk, trib],
+            trace_stats: None,
+            direction: vec![DIR_NONE; n * n],
+            ltd_flat_cells: 0,
+        };
+        (f, sk, ss)
+    }
+
+    /// ADR Finding 128-A, rule 13 — the confluence clause lets the trunk lay its whole floor band. Negative
+    /// control FIRST: without it, the tributary's nearer samples lay some trunk-band cells ABOVE the trunk's
+    /// floor (a dam). With it, every trunk-band cell lies at the trunk's own floor, cells away from the
+    /// junction are bit-identical, and the tributary's own floor upstream is untouched.
+    #[test]
+    fn the_confluence_clause_lets_the_trunk_lay_its_band() {
+        let (f, sk, ss) = confluence();
+        let mut vc = ValleyConstruction::f121(0.02, None);
+        vc.wall_deg = 28.0;
+        let (free, _) = carve(&f, &sk, &vc, &ss);
+        let (held, mh) = carve(&f, &sk, &ValleyConstruction { trunk_band: true, ..vc }, &ss);
+        let m = |g: &GridF32, k: usize| c1_altitude_norm_to_metres(g.data[k], &ss);
+        let trunk_floor = |x: usize| 100.0 + 0.5 * (61.5 - (x as f32 + 0.5));
+        let in_band = |x: usize, y: usize| ((y as f32 + 0.5) - 32.5).abs() * 50.0 <= 100.0 && (3..61).contains(&x);
+        let mut dammed = 0;
+        for y in 0..64 {
+            for x in 0..64 {
+                if in_band(x, y) && m(&free, y * 64 + x) > trunk_floor(x) + 1.0 {
+                    dammed += 1;
+                }
+            }
+        }
+        assert!(dammed > 0, "negative control: without the clause the tributary must dam the trunk ({dammed})");
+        for y in 0..64 {
+            for x in 0..64 {
+                let k = y * 64 + x;
+                if in_band(x, y) {
+                    assert!(m(&held, k) <= trunk_floor(x) + 0.3, "({x},{y}) {} m above the trunk's floor", m(&held, k));
+                    assert!(mh.floor[k], "({x},{y}) must be the trunk's floor");
+                }
+                if (x as i32 - 30).abs() > 4 || y < 20 {
+                    assert_eq!(held.data[k], free.data[k], "({x},{y}) moved away from the junction");
+                }
+                assert!(held.data[k] <= f.data[k], "({x},{y}) raised");
+            }
+        }
+    }
+
+    /// ADR Finding 128-C, rule 13 — D8-LTD follows a planar slope off the lattice. On a plane whose
+    /// slope points 14.04° off north (a 1:4 lateral:longitudinal gradient, Paik 2008's plane) every D8
+    /// path runs due north, 14° off (the negative control). LTD paths' start-to-end direction stays
+    /// within 1.5° of the slope, and each cell has exactly one pointer.
+    #[test]
+    fn the_ltd_tree_follows_a_planar_slope_off_the_lattice() {
+        let n = 80usize;
+        let th = (0.25f32).atan(); // 14.04° off the north axis
+        let zm: Vec<f32> = (0..n * n)
+            .map(|k| {
+                let (x, y) = ((k % n) as f32, (k / n) as f32);
+                // descending toward north (−y) and slightly toward +x
+                1000.0 + (y * th.cos() - x * th.sin()) * 10.0
+            })
+            .collect();
+        let sink: Vec<bool> = (0..n * n).map(|k| {
+            let (x, y) = (k % n, k / n);
+            x == 0 || y == 0 || x == n - 1 || y == n - 1
+        }).collect();
+        // the D8 fallback / reference: the steepest of the eight neighbours
+        let d8: Vec<u8> = (0..n * n)
+            .map(|c| {
+                if sink[c] {
+                    return DIR_NONE;
+                }
+                let (x, y) = ((c % n) as i32, (c / n) as i32);
+                let mut best = (DIR_NONE, 0f32);
+                for k in 0..8 {
+                    let m = (y + D8_DY[k]) as usize * n + (x + D8_DX[k]) as usize;
+                    let s = (zm[c] - zm[m]) / if k % 2 == 1 { 1.414 } else { 1.0 };
+                    if s > best.1 {
+                        best = (k as u8, s);
+                    }
+                }
+                best.0
+            })
+            .collect();
+        let (ltd, flats) = ltd_directions(&zm, &sink, &d8, n, n, 10.0);
+        assert_eq!(flats, 0, "a plane has no flat");
+        let heading = |dir: &[u8], c0: usize| -> Option<f32> {
+            let mut c = c0;
+            let mut steps = 0;
+            while !sink[c] && steps < 400 {
+                let k = dir[c] as usize;
+                c = ((c / n) as i32 + D8_DY[k]) as usize * n + ((c % n) as i32 + D8_DX[k]) as usize;
+                steps += 1;
+            }
+            let (dx, dy) = ((c % n) as f32 - (c0 % n) as f32, (c0 / n) as f32 - (c / n) as f32);
+            (steps >= 40).then(|| dx.atan2(dy).to_degrees())
+        };
+        let mean_dev = |dir: &[u8]| {
+            let v: Vec<f32> = (0..n * n)
+                .filter(|&c| c / n > 60 && !sink[c])
+                .filter_map(|c| heading(dir, c))
+                .map(|a| (a - th.to_degrees()).abs())
+                .collect();
+            assert!(v.len() > 100, "the paths must be long ({})", v.len());
+            v.iter().sum::<f32>() / v.len() as f32
+        };
+        let (dev8, devl) = (mean_dev(&d8), mean_dev(&ltd));
+        assert!(dev8 > 10.0, "negative control: D8 must run on its lattice ({dev8:.2}°)");
+        assert!(devl < 1.5, "D8-LTD must follow the slope ({devl:.2}°)");
+        let acc = accumulate_cells(&ltd, &sink, n, n);
+        let land_total = (0..n * n).filter(|&c| !sink[c]).count() as f32;
+        let into_sinks: f32 = (0..n * n)
+            .filter(|&c| !sink[c])
+            .filter(|&c| {
+                let k = ltd[c] as usize;
+                sink[((c / n) as i32 + D8_DY[k]) as usize * n + ((c % n) as i32 + D8_DX[k]) as usize]
+            })
+            .map(|c| acc[c])
+            .sum();
+        assert_eq!(into_sinks, land_total, "every land cell drains exactly once (one pointer each)");
     }
 
     /// ADR Finding 122-B, rule 13 — with `basin_base`, no constructed floor upstream of an inland

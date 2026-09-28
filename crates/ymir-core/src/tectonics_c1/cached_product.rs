@@ -882,7 +882,15 @@ mod tests {
         let tect = tectonic_key(7, 32, &init, &run, &closures);
         let vc = ValleyConstruction::new(F121_AGE_K, Some(0.1));
         let js = serde_json::to_value(vc).expect("serialisable");
-        for f in ["wall_profile", "width_age_gamma", "wall_sea_floor_m", "smooth_w", "skeleton_trace"] {
+        for f in [
+            "wall_profile",
+            "width_age_gamma",
+            "wall_sea_floor_m",
+            "smooth_w",
+            "skeleton_trace",
+            "trunk_band",
+            "ltd_directions",
+        ] {
             assert!(js.get(f).is_none(), "the gated-off `{f}` is serialised: {js}");
         }
         // ADR Finding 127 -- a gated field NESTED in the profile is skipped as well, so the key of

@@ -2179,3 +2179,428 @@ fn f127_c() {
     }
     eprintln!("\n==========  end Finding 127-C . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
 }
+
+// ════════════════════════════════ Finding 128 ════════════════════════════════
+//
+// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored f128_c0 --nocapture
+
+/// ADR Finding 128-C0 — the implementation checked against the source BEFORE any calibration: Orlandini
+/// et al. 2003's planar slope (relative drainage-area error εA, their Fig. 3a–c) and Paik 2008's plane
+/// (cumulative lateral deviation, his Table 1), with the geometry declared in `reading_path_based.md`
+/// §7: a 1:4 lateral:longitudinal plane (the TDD 14.04° off the cardinal axis), 30² and 60², sink cells
+/// around it. Theoretical areas: the analytic strip of each cell's drainage lines, integrated on 8 × 8
+/// sub-points per cell.
+#[test]
+#[ignore]
+fn f128_c0() {
+    use ymir_core::tectonics_c1::valley_construction::{accumulate_cells, ltd_directions};
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    eprintln!("\n==========  Finding 128-C0 . D8-LTD against Orlandini 2003 and Paik 2008 (the planes)  ==========");
+    let th = 0.25f32.atan();
+    let t = (th.sin(), -th.cos()); // downslope: toward +x and north (−y)
+    // DIAGNOSTIC (added after the first run failed; the geometry is unchanged): the same plane without the
+    // 1 000 m offset, i.e. a smaller f32 rounding in the facet slopes. 1:4 makes EXACT ties in the
+    // cumulative deviation (N N N NE, a tie at the second step), which rounding then breaks cell by cell.
+    for (nin, offset) in [(30usize, 1000.0f32), (60, 1000.0), (30, 0.0), (60, 0.0)] {
+        let n = nin + 2;
+        let zm: Vec<f32> = (0..n * n)
+            .map(|k| {
+                let (x, y) = ((k % n) as f32, (k / n) as f32);
+                offset + (y * th.cos() - x * th.sin()) * 10.0
+            })
+            .collect();
+        let sink: Vec<bool> = (0..n * n).map(|k| {
+            let (x, y) = (k % n, k / n);
+            x == 0 || y == 0 || x == n - 1 || y == n - 1
+        }).collect();
+        let step = |c: usize, k: u8| ((c / n) as i32 + D8_DY[k as usize]) as usize * n + ((c % n) as i32 + D8_DX[k as usize]) as usize;
+        let d8: Vec<u8> = (0..n * n)
+            .map(|c| {
+                if sink[c] {
+                    return DIR_NONE;
+                }
+                let mut best = (DIR_NONE, 0f32);
+                for k in 0..8u8 {
+                    let m = step(c, k);
+                    let s = (zm[c] - zm[m]) / if k % 2 == 1 { std::f32::consts::SQRT_2 } else { 1.0 };
+                    if s > best.1 {
+                        best = (k, s);
+                    }
+                }
+                best.0
+            })
+            .collect();
+        let (ltd, flats) = ltd_directions(&zm, &sink, &d8, n, n, 10.0);
+        // theoretical areas (cells): every sub-point's exact drainage line, the cells it crosses
+        let sub = 8usize;
+        let mut at = vec![0f64; n * n];
+        for c in (0..n * n).filter(|&c| !sink[c]) {
+            for sy in 0..sub {
+                for sx in 0..sub {
+                    let (mut px, mut py) = (
+                        (c % n) as f32 + (sx as f32 + 0.5) / sub as f32,
+                        (c / n) as f32 + (sy as f32 + 0.5) / sub as f32,
+                    );
+                    let mut last = usize::MAX;
+                    loop {
+                        if px < 1.0 || py < 1.0 || px >= (n - 1) as f32 || py >= (n - 1) as f32 {
+                            break;
+                        }
+                        let cc = py as usize * n + px as usize;
+                        if cc != last {
+                            at[cc] += 1.0 / (sub * sub) as f64;
+                            last = cc;
+                        }
+                        px += 0.02 * t.0;
+                        py += 0.02 * t.1;
+                    }
+                }
+            }
+        }
+        let errs = |dir: &[u8]| -> (f64, f64, f64) {
+            let acc = accumulate_cells(dir, &sink, n, n);
+            let e: Vec<f64> = (0..n * n).filter(|&c| !sink[c]).map(|c| (acc[c] as f64 - at[c]) / at[c]).collect();
+            let k = e.len() as f64;
+            (e.iter().sum::<f64>() / k, e.iter().map(|v| v.abs()).sum::<f64>() / k, (e.iter().map(|v| v * v).sum::<f64>() / k).sqrt())
+        };
+        // Paik's cumulative lateral deviation: every downstream cell's distance to the start cell's exact line
+        let lateral = |dir: &[u8]| -> f64 {
+            let mut tot = 0f64;
+            for c0 in (0..n * n).filter(|&c| !sink[c]) {
+                let (x0, y0) = ((c0 % n) as f32 + 0.5, (c0 / n) as f32 + 0.5);
+                let mut c = c0;
+                while !sink[c] {
+                    c = step(c, dir[c]);
+                    let (x, y) = ((c % n) as f32 + 0.5, (c / n) as f32 + 0.5);
+                    tot += ((x - x0) * t.1 - (y - y0) * t.0).abs() as f64;
+                }
+            }
+            tot
+        };
+        let (e8, el) = (errs(&d8), errs(&ltd));
+        let (l8, ll) = (lateral(&d8), lateral(&ltd));
+        let (rmae, rrmse, rlat) = (el.1 / e8.1, el.2 / e8.2, ll / l8);
+        let confl = |dir: &[u8]| {
+            let mut indeg = vec![0u8; n * n];
+            for c in (0..n * n).filter(|&c| !sink[c]) {
+                let r = step(c, dir[c]);
+                if !sink[r] {
+                    indeg[r] = indeg[r].saturating_add(1);
+                }
+            }
+            indeg.iter().filter(|&&d| d >= 2).count()
+        };
+        eprintln!(
+            "\n   plane {nin}² (1:4, TDD 14.04° off north), z offset {offset} m · LTD flat fallbacks {flats} · confluences (cells with ≥ 2 donors): D8 {} · LTD {}",
+            confl(&d8),
+            confl(&ltd)
+        );
+        eprintln!("      D8    : ME {:+.3} · MAE {:.3} · RMSE {:.3} · Paik's cumulative lateral deviation {:.0} cells", e8.0, e8.1, e8.2, l8);
+        eprintln!("      D8-LTD: ME {:+.3} · MAE {:.3} · RMSE {:.3} · Paik's cumulative lateral deviation {:.0} cells", el.0, el.1, el.2, ll);
+        eprintln!(
+            "      ratios LTD / D8: MAE **{rmae:.3}** (paper ≈ 0.44, pass [0.2, 0.9]) · RMSE **{rrmse:.3}** (≈ 0.13, [0.05, 0.4]) · lateral **{rlat:.3}** (Paik 0.04, [0.01, 0.15]) → {}",
+            if (0.2..=0.9).contains(&rmae) && (0.05..=0.4).contains(&rrmse) && (0.01..=0.15).contains(&rlat) { "**PASS**" } else { "**FAIL**" }
+        );
+    }
+    eprintln!("\n==========  end Finding 128-C0  ==========\n");
+}
+
+/// ADR Finding 128-A — the confluence clause (`ValleyConstruction::trunk_band`). mur ↔ mer and bruit ↔
+/// pied are ON everywhere. Worlds: the témoin; B2 → A_c without and with the clause; B2 at 1 km² with
+/// it; B2 (A_c) + B1 + the foot clause with it. Read: the canyons and their true cols (7 and 14 at the
+/// cells Finding 127 found); Finding 121's trap (the trunk floors' slope and concavity against the
+/// témoin, the source cones); canyon 13's dam (the témoin's drainage path walked under the clause);
+/// canyon 3's instrument, repaired (the lowest exit of its lake on the assembly's flow).
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored f128_a --nocapture
+#[test]
+#[ignore]
+fn f128_a() {
+    use std::collections::HashMap;
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    let mm = |g: &GridF32, k: usize| c1_altitude_norm_to_metres(g.data[k], &ss);
+    let n2m = c1_altitude_norm_to_metres(1.0, &ss) - c1_altitude_norm_to_metres(0.0, &ss);
+    let cell_km2 = CELL_KM * CELL_KM;
+    eprintln!("\n==========  Finding 128-A . the confluence clause (mur ↔ mer and bruit ↔ pied ON)  ==========");
+    let pre = build_field_seed(Knobs::no_incision(), PSEED);
+    let (w, h) = (pre.width, pre.height);
+    let n = w * h;
+    let fill_pre = {
+        let cl = c1_climate_placed(&pre, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+        let dc = DrainageClimate { precip_internal: &cl.precipitation, temperature: &cl.temperature };
+        fill_field_m(&pre, &dcfg(), &ss, &dc, DOMAIN_KM).0
+    };
+    let prof = WallProfile { foot_quiet: Some(0.5), ..WallProfile::f124() };
+    let base = ValleyConstruction { wall_sea_floor_m: Some(0.5), ..ValleyConstruction::new(F121_AGE_K, Some(0.1)) };
+    let ac = ValleyConstruction { a_min_km2: 0.1, ..base };
+    let at = |x: usize, y: usize| y * w + x;
+    let fixed: [(&str, usize); 4] = [
+        ("canyon 7's floor (4588,3240)", at(4588, 3240)),
+        ("canyon 7's col (4551,3280)", at(4551, 3280)),
+        ("canyon 14's floor (1835,4562)", at(1835, 4562)),
+        ("canyon 14's col (1805,4580)", at(1805, 4580)),
+    ];
+    let recv = |dir: &[u8], c: usize| -> Option<usize> {
+        let d = dir[c];
+        if d == DIR_NONE {
+            return None;
+        }
+        let nx = ((c % w) as i32 + D8_DX[d as usize]).rem_euclid(w as i32) as usize;
+        let ny = ((c / w) as i32 + D8_DY[d as usize]).rem_euclid(h as i32) as usize;
+        Some(ny * w + nx)
+    };
+    struct Read {
+        g: GridF32,
+        bre: GridF32,
+        lake_map: Vec<u32>,
+        levels: HashMap<u32, (f32, usize)>,
+        dir: Vec<u8>,
+        canyons: Vec<(u32, f32, usize)>,
+    }
+    let worlds: [(&str, ValleyConstruction); 5] = [
+        ("témoin C2/10 col", base),
+        ("B2 → A_c (no clause)", ac),
+        ("B2 → A_c + CONFLUENCE CLAUSE", ValleyConstruction { trunk_band: true, ..ac }),
+        ("B2 ≥ 1 km² + CONFLUENCE CLAUSE", ValleyConstruction { a_min_km2: 1.0, trunk_band: true, ..base }),
+        (
+            "B2 (A_c) + B1 + foot + CONFLUENCE CLAUSE",
+            ValleyConstruction { a_min_km2: 0.1, wall_profile: Some(prof), trunk_band: true, ..base },
+        ),
+    ];
+    let near = 2.0 / CELL_KM;
+    let mut keep: HashMap<&str, Read> = HashMap::new();
+    let mut g_t: Option<GridF32> = None;
+    let mut summary = Vec::new();
+    for (label, vc) in worlds {
+        let t = Instant::now();
+        let g = build_field_seed(Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) }, PSEED);
+        let secs = t.elapsed().as_secs_f64();
+        eprintln!("\n────────── {label} · build {secs:.0} s ──────────");
+        let sk = skeleton(&pre, &vc, &ss, DOMAIN_KM);
+        let (_, mk) = carve(&pre, &sk, &vc, &ss);
+        let cls = classes(&pre, &sk, &mk);
+        let sea: Vec<bool> = (0..n).map(|k| g.data[k] <= SEA).collect();
+        let dsea = dist_from(&sea, w, h);
+        let cw: Vec<bool> = (0..n).map(|k| mk.carved[k] && !mk.floor[k] && g.data[k] > SEA && dsea[k] <= 3).collect();
+        let dwall = dist_from(&cw, w, h);
+        drop((sea, dsea, cw));
+        let co = coast(&g, &ss, &dwall, near);
+        let nn = co.near.iter().filter(|&&b| b).count();
+        let rn = nn as f32 / co.l_near_km.max(1e-6);
+        let sig = sigma_p50(&g, &ss);
+        let r8w = r8_terrain(&g, &cls, 16);
+        let r8t = r8_terrain(g_t.as_ref().unwrap_or(&g), &cls, 16);
+        eprintln!(
+            "   COAST {} spurs · near a coastal wall **{rn:.4} /km** · σ p50 **{sig:.3} m** · R8 terrain {r8w:.4} (témoin on the same classes {r8t:.4})",
+            co.mids.len()
+        );
+        let dd = c1_drainage_windowed(&g, None, &dcfg(), &ss, DOMAIN_KM);
+        let bre = breach_monotone(&g, &dd.flow.filled, &dd.lake_map, SEA, w, h);
+        let cl_e = c1_climate_placed(&g, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+        let dc_e = DrainageClimate { precip_internal: &cl_e.precipitation, temperature: &cl_e.temperature };
+        let (fill_del, _) = fill_field_m(&g, &dcfg(), &ss, &dc_e, DOMAIN_KM);
+        set_dump(true);
+        let _cr = f95_criteria(&g, &bre, &pre, DELIVERED_P50_M, &ss, &dcfg(), cell_km2, n2m, w, h);
+        set_dump(false);
+        let mut canyons = Vec::new();
+        for b in take_bodies() {
+            let floor = *b.cells.iter().min_by(|&&a, &&c| g.data[a].total_cmp(&g.data[c])).expect("body");
+            let dfill = fill_del[floor] - fill_pre[floor];
+            if over_dug_depression(dfill, b.rim) {
+                eprintln!(
+                    "   OVER-DUG body {} · {:.2} km² (domain) · floor ({},{}) · Δfill {dfill:.1} m · class {}",
+                    b.id,
+                    b.km2,
+                    floor % w,
+                    floor / w,
+                    CLS_NAME.get(cls[floor] as usize).copied().unwrap_or("sea")
+                );
+                canyons.push((b.id, b.km2, floor));
+            }
+        }
+        eprintln!("   over-dug bodies: {}", canyons.len());
+        drop(fill_del);
+        let cl_b = c1_climate_placed(&bre, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+        let dc_b = DrainageClimate { precip_internal: &cl_b.precipitation, temperature: &cl_b.temperature };
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assemble_hd_drainage(&bre, &dc_b, Some(dd), &dcfg(), &ss, DOMAIN_KM, GEO_RATIO, None, false).drainage
+        }));
+        let mut row = format!(
+            "{label:<42} over-dug {} · spurs near {rn:.4}/km · σ {sig:.3} m · R8 terr {r8w:.4}",
+            canyons.len()
+        );
+        let heights: Vec<String> = fixed.iter().map(|(nm, k)| format!("{nm} {:.1} m", mm(&g, *k))).collect();
+        eprintln!("   heights: {}", heights.join(" · "));
+        match res {
+            Ok(dr) => {
+                let segs = &dr.rivers.segments;
+                let wall: Vec<bool> = (0..n).map(|k| mk.carved[k] && !mk.floor[k]).collect();
+                let wc: Vec<usize> = (0..segs.len())
+                    .filter(|&i| dr.segment_kind[i] == SegmentKind::Watercourse && segs[i].points.len() >= 2)
+                    .collect();
+                let teeth = wc
+                    .iter()
+                    .filter(|&&i| {
+                        let p = &segs[i].points;
+                        p.iter().filter(|&&(x, y)| wall[y as usize * w + x as usize]).count() as f32 >= 0.8 * p.len() as f32
+                    })
+                    .count();
+                let pts: Vec<&[(u32, u32)]> = wc.iter().map(|&i| own(&segs[i])).collect();
+                eprintln!("   teeth {teeth} · R8 network (chord 8) {:.4} · Finding 38 holds", r8_chords(&pts, 8));
+                row += &format!(" · teeth {teeth} · R8 net {:.4}", r8_chords(&pts, 8));
+                if label.starts_with("témoin") || label.starts_with("B2 → A_c") {
+                    let levels = dr
+                        .lakes
+                        .iter()
+                        .map(|l| (l.base.id, (l.level_m, l.base.outlet.1 as usize * w + l.base.outlet.0 as usize)))
+                        .collect();
+                    keep.insert(label, Read { g: g.clone(), bre: bre.clone(), lake_map: dr.lake_map.clone(), levels, dir: dr.flow.direction.clone(), canyons: canyons.clone() });
+                }
+            }
+            Err(e) => {
+                let msg = e.downcast_ref::<String>().cloned().or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default();
+                eprintln!("   ⛔ the HD assembly PANICKED: {}", msg.lines().next().unwrap_or(""));
+                row += " · ⛔ Finding 38";
+            }
+        }
+        row += &format!(" · build {secs:.0} s");
+        summary.push(row);
+        if g_t.is_none() {
+            g_t = Some(g);
+        }
+    }
+    // ── Finding 121's trap: the trunk floors under the clause against the témoin (same trunk cells) ──
+    eprintln!("\n   ── Finding 121's trap ──");
+    let sk_t = skeleton(&pre, &base, &ss, DOMAIN_KM);
+    let (tm, a0, a1) = (&keep["témoin C2/10 col"], &keep["B2 → A_c (no clause)"], &keep["B2 → A_c + CONFLUENCE CLAUSE"]);
+    let trunk_cells: Vec<usize> = (0..n).filter(|&k| sk_t.trunk[k] && sk_t.area_km2[k] >= 10.0 && pre.data[k] > SEA).collect();
+    for (label, r) in [("B2 → A_c (no clause)", a0), ("B2 → A_c + CLAUSE", a1)] {
+        let (mut dz, mut ratio) = (Vec::new(), Vec::new());
+        let (mut lt, mut lw) = (Vec::new(), Vec::new());
+        for &k in &trunk_cells {
+            let Some(rc) = recv(&sk_t.direction, k) else { continue };
+            if !sk_t.trunk[rc] {
+                continue;
+            }
+            let dist = CELL_KM * 1000.0 * if (k % w != rc % w) && (k / w != rc / w) { std::f32::consts::SQRT_2 } else { 1.0 };
+            let (st, sw) = ((mm(&tm.g, k) - mm(&tm.g, rc)) / dist, (mm(&r.g, k) - mm(&r.g, rc)) / dist);
+            dz.push((mm(&r.g, k) - mm(&tm.g, k)).abs());
+            if st > 1e-4 && sw > 1e-4 {
+                ratio.push(sw / st);
+                let la = sk_t.area_km2[k].ln();
+                lt.push((la, st.ln()));
+                lw.push((la, sw.ln()));
+            }
+        }
+        dz.sort_by(f32::total_cmp);
+        ratio.sort_by(f32::total_cmp);
+        let q = |v: &[f32], p: f32| if v.is_empty() { f32::NAN } else { v[((v.len() - 1) as f32 * p) as usize] };
+        let theta = |v: &[(f32, f32)]| -> f32 {
+            let k = v.len() as f32;
+            let (mx, my) = (v.iter().map(|a| a.0).sum::<f32>() / k, v.iter().map(|a| a.1).sum::<f32>() / k);
+            let (sxy, sxx) = (v.iter().map(|a| (a.0 - mx) * (a.1 - my)).sum::<f32>(), v.iter().map(|a| (a.0 - mx).powi(2)).sum::<f32>());
+            -sxy / sxx
+        };
+        eprintln!(
+            "   {label:<22} on {} trunk ≥ 10 km² cells: |Δz| vs the témoin p50 {:.2} / p90 {:.2} m · slope ratio (world / témoin) p50 {:.3} · concavity θ (S ∝ A^−θ) témoin {:.3} → world {:.3}",
+            trunk_cells.len(),
+            q(&dz, 0.5),
+            q(&dz, 0.9),
+            q(&ratio, 0.5),
+            theta(&lt),
+            theta(&lw)
+        );
+    }
+    // the source cones: what the clause moves, and how much of it lies near a line's head
+    let sk_ac = skeleton(&pre, &ac, &ss, DOMAIN_KM);
+    let (c_free, _) = carve(&pre, &sk_ac, &ac, &ss);
+    let (c_band, mkb) = carve(&pre, &sk_ac, &ValleyConstruction { trunk_band: true, ..ac }, &ss);
+    let moved: Vec<usize> = (0..n).filter(|&k| c_free.data[k] != c_band.data[k]).collect();
+    let mut head = vec![false; n];
+    for l in &sk_ac.polylines {
+        let (x, y) = ((l[0].0.floor() as i64).rem_euclid(w as i64) as usize, (l[0].1.floor() as i64).rem_euclid(h as i64) as usize);
+        head[y * w + x] = true;
+    }
+    let dhead = dist_from(&head, w, h);
+    let near_head = moved.iter().filter(|&&k| dhead[k] <= 3).count();
+    let raised = moved.iter().filter(|&&k| c_band.data[k] > c_free.data[k]).count();
+    eprintln!(
+        "   the clause moves {} cells at the construction (on PRE, B2 → A_c): {} raised (a dam removed / a trunk floor laid higher than a smaller line's cone), {} lowered · {} of them within 3 cells of a line's head (the source cones) · all on a floor band: {}",
+        moved.len(),
+        raised,
+        moved.len() - raised,
+        near_head,
+        moved.iter().all(|&k| mkb.floor[k])
+    );
+    drop((c_free, c_band, mkb, head, dhead));
+    // ── canyon 13's dam: the témoin's drainage path from its floor, walked under the clause ──
+    eprintln!("\n   ── canyon 13 (floor (2281,4563)) and canyon 3 ──");
+    let f13 = at(2281, 4563);
+    let in_a1 = a1.canyons.iter().any(|&(_, _, fl)| {
+        let (dx, dy) = ((fl % w) as i64 - 2281, (fl / w) as i64 - 4563);
+        dx * dx + dy * dy <= 400
+    });
+    eprintln!("   canyon 13 {} under the clause", if in_a1 { "PERSISTS" } else { "is GONE" });
+    for (label, r) in [("B2 → A_c (no clause)", a0), ("B2 → A_c + CLAUSE", a1)] {
+        let lid = r.lake_map[f13];
+        let level = r.levels.get(&lid).map_or(f32::NAN, |v| v.0);
+        let mut c = f13;
+        let mut dam: Option<(usize, usize, f32)> = None;
+        for step in 0..20_000 {
+            let Some(nx) = recv(&tm.dir, c) else { break };
+            c = nx;
+            if tm.g.data[c] <= SEA {
+                break;
+            }
+            if lid != 0 && r.lake_map[c] != lid && mm(&r.bre, c) > level + 0.01 {
+                dam = Some((c, step, mm(&r.bre, c)));
+                break;
+            }
+        }
+        match dam {
+            Some((c, step, z)) => eprintln!(
+                "   {label}: lake {lid} at {level:.1} m · the témoin's path is DAMMED at ({},{}), {step} cells down, at {z:.1} m (témoin {:.1} m)",
+                c % w,
+                c / w,
+                mm(&tm.bre, c)
+            ),
+            None => eprintln!("   {label}: lake {lid} (level {level:.1} m) · no dam on the témoin's path above the lake level"),
+        }
+    }
+    // canyon 3's instrument, repaired: the lowest EXIT of its lake on the assembly's own flow
+    for (label, r) in [("B2 → A_c (no clause)", a0), ("B2 → A_c + CLAUSE", a1)] {
+        let f3 = at(3892, 2310);
+        let lid = r.lake_map[f3];
+        if lid == 0 {
+            eprintln!("   {label}: canyon 3's floor carries no lake");
+            continue;
+        }
+        let exits: Vec<(usize, usize)> = (0..n)
+            .filter(|&k| r.lake_map[k] == lid)
+            .filter_map(|k| recv(&r.dir, k).filter(|&rc| r.lake_map[rc] != lid).map(|rc| (k, rc)))
+            .collect();
+        let best = exits.iter().min_by(|a, b| r.bre.data[a.1].total_cmp(&r.bre.data[b.1]));
+        let recorded = r.levels.get(&lid).map(|v| v.1);
+        match best {
+            Some(&(_, col)) => eprintln!(
+                "   {label}: lake {lid} · {} exits on the assembly's flow · the lowest exit's receiver = the col ({},{}) at {:.1} m (témoin {:.1} m) · recorded Lake::outlet {} (in the lake: {})",
+                exits.len(),
+                col % w,
+                col / w,
+                mm(&r.bre, col),
+                mm(&tm.bre, col),
+                recorded.map_or("none".to_string(), |k| format!("({},{})", k % w, k / w)),
+                recorded.is_some_and(|k| r.lake_map[k] == lid)
+            ),
+            None => eprintln!("   {label}: lake {lid} has no exit on the assembly's flow (a closed lake) · recorded outlet in the lake: {}", recorded.is_some_and(|k| r.lake_map[k] == lid)),
+        }
+    }
+    eprintln!("\n   ── summary ──");
+    for s in summary {
+        eprintln!("   {s}");
+    }
+    eprintln!("\n==========  end Finding 128-A . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+

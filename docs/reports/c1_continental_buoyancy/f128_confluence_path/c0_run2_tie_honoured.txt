@@ -1,0 +1,19 @@
+==========  Finding 128-C0 . D8-LTD against Orlandini 2003 and Paik 2008 (the planes)  ==========
+   plane 30² (1:4, TDD 14.04° off north), z offset 1000 m · LTD flat fallbacks 0 · confluences (cells with ≥ 2 donors): D8 0 · LTD 18
+      D8    : ME +0.029 · MAE 0.361 · RMSE 0.983 · Paik's cumulative lateral deviation 36089 cells
+      D8-LTD: ME -0.191 · MAE 0.215 · RMSE 0.258 · Paik's cumulative lateral deviation 4178 cells
+      ratios LTD / D8: MAE **0.595** (paper ≈ 0.44, pass [0.2, 0.9]) · RMSE **0.262** (≈ 0.13, [0.05, 0.4]) · lateral **0.116** (Paik 0.04, [0.01, 0.15]) → **PASS**
+   plane 60² (1:4, TDD 14.04° off north), z offset 1000 m · LTD flat fallbacks 0 · confluences (cells with ≥ 2 donors): D8 0 · LTD 240
+      D8    : ME +0.088 · MAE 0.431 · RMSE 1.515 · Paik's cumulative lateral deviation 550362 cells
+      D8-LTD: ME -0.194 · MAE 0.299 · RMSE 0.403 · Paik's cumulative lateral deviation 40066 cells
+      ratios LTD / D8: MAE **0.695** (paper ≈ 0.44, pass [0.2, 0.9]) · RMSE **0.266** (≈ 0.13, [0.05, 0.4]) · lateral **0.073** (Paik 0.04, [0.01, 0.15]) → **PASS**
+   plane 30² (1:4, TDD 14.04° off north), z offset 0 m · LTD flat fallbacks 0 · confluences (cells with ≥ 2 donors): D8 0 · LTD 18
+      D8    : ME +0.029 · MAE 0.361 · RMSE 0.983 · Paik's cumulative lateral deviation 36089 cells
+      D8-LTD: ME -0.191 · MAE 0.215 · RMSE 0.258 · Paik's cumulative lateral deviation 4178 cells
+      ratios LTD / D8: MAE **0.595** (paper ≈ 0.44, pass [0.2, 0.9]) · RMSE **0.262** (≈ 0.13, [0.05, 0.4]) · lateral **0.116** (Paik 0.04, [0.01, 0.15]) → **PASS**
+   plane 60² (1:4, TDD 14.04° off north), z offset 0 m · LTD flat fallbacks 0 · confluences (cells with ≥ 2 donors): D8 0 · LTD 74
+      D8    : ME +0.088 · MAE 0.431 · RMSE 1.515 · Paik's cumulative lateral deviation 550362 cells
+      D8-LTD: ME -0.194 · MAE 0.224 · RMSE 0.268 · Paik's cumulative lateral deviation 32409 cells
+      ratios LTD / D8: MAE **0.520** (paper ≈ 0.44, pass [0.2, 0.9]) · RMSE **0.177** (≈ 0.13, [0.05, 0.4]) · lateral **0.059** (Paik 0.04, [0.01, 0.15]) → **PASS**
+==========  end Finding 128-C0  ==========
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 1.75s
