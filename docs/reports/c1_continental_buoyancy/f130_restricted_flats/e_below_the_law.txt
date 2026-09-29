@@ -1,0 +1,9 @@
+==========  Finding 130-E . the trunk cells below their law (measured only)  ==========
+   ALL trunk ≥ 10 km² cells (the base rate)     70904 cells · under a lake after drainage **6258** (8.8 %) · ≤ 100 m above the sea 23318 (32.9 %) · LOW PLAIN (and slope ≤ 0.01) **7999** (11.3 %) · coastal (≤ 2 km) 7736 (10.9 %)
+      D8 distance to the base p10 / p50 / p90 2.3 / 16.9 / 42.2 km (domain) · altitude above the sea p10 / p50 / p90 31 / 170 / 484 m · drained area p10 / p50 / p90 12 / 29 / 247 km²
+   the UNCARVED cells below their law           22775 cells · under a lake after drainage **6258** (27.5 %) · ≤ 100 m above the sea 10669 (46.8 %) · LOW PLAIN (and slope ≤ 0.01) **3081** (13.5 %) · coastal (≤ 2 km) 4021 (17.7 %)
+      D8 distance to the base p10 / p50 / p90 1.3 / 10.1 / 27.4 km (domain) · altitude above the sea p10 / p50 / p90 20 / 108 / 374 m · drained area p10 / p50 / p90 13 / 38 / 343 km²
+   the law above the field on them: p10 / p50 / p90 20.7 / 128.2 / 343.4 m
+==========  end Finding 130-E . 193.9 s  ==========
+test f130_e ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 26 filtered out; finished in 194.03s

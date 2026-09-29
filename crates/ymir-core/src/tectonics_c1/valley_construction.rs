@@ -155,6 +155,14 @@ pub struct ValleyConstruction {
     /// declared and counted. **The skeleton only**: the hydrology is never routed on it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ltd_directions: bool,
+    /// **ADR Finding 130-A2 — the confluence clause RESTRICTED to downstream of the junction.** Only
+    /// with [`Self::trunk_band`]. A larger line takes a smaller line's cell only when the larger line's
+    /// nearest covering sample lies AT OR DOWNSTREAM OF the point where the smaller line's downstream
+    /// chain of lines joins the larger line ([`Skeleton::line_parent`]); where that chain never meets
+    /// the larger line, there is no junction and no takeover. A cell no sample owns keeps the full
+    /// clause's rule. `false` = Finding 128's full clause. DECISION, gated.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub trunk_band_downstream: bool,
 }
 
 /// ADR Finding 127-B — the interpolant whose gradient the tracé descends.
@@ -265,6 +273,7 @@ impl ValleyConstruction {
             skeleton_trace: None,
             trunk_band: false,
             ltd_directions: false,
+            trunk_band_downstream: false,
         }
     }
 
@@ -312,6 +321,11 @@ pub struct Skeleton {
     /// ADR Finding 128-C — land cells where D8-LTD found no strictly descending facet and fell back on
     /// `compute_flow`'s pointer (0 when LTD is off).
     pub ltd_flat_cells: usize,
+    /// ADR Finding 130-A — per polyline, the line it ends on and the index, in THAT line's polyline, of
+    /// the junction (the parent's sample laid from the cell the line ends on). A line traced from a
+    /// head stops on the first cell an earlier line already owns, so its last cell IS the junction.
+    /// `None`: the line ends at the sea or a base, or the skeleton is traced off-grid (Finding 127-B).
+    pub line_parent: Vec<Option<(u32, u32)>>,
 }
 
 impl Skeleton {
@@ -479,6 +493,8 @@ pub fn skeleton(
     }
     let mut visited = vec![false; n];
     let mut raw_lines: Vec<Vec<usize>> = Vec::new();
+    // ADR Finding 130-A -- the line (index in `raw_lines`) and position that own each visited cell
+    let mut owner: Vec<(u32, u32)> = vec![(u32::MAX, 0); n];
     for head in 0..n {
         if !trunk[head] || donors[head] != 0 || visited[head] {
             continue;
@@ -491,6 +507,7 @@ pub fn skeleton(
                 break; // a junction: the line ends ON the parent's cell
             }
             visited[c] = true;
+            owner[c] = (raw_lines.len() as u32, line.len() as u32 - 1);
             match recv(dir, c, w, h) {
                 Some(r) if trunk[r] => c = r,
                 _ => break,
@@ -500,21 +517,34 @@ pub fn skeleton(
             raw_lines.push(line);
         }
     }
-    let (polylines, trace_stats) = match vc.skeleton_trace {
-        None => (
-            raw_lines
+    let (polylines, trace_stats, line_parent) = match vc.skeleton_trace {
+        None => {
+            let (polylines, dense_at): (Vec<_>, Vec<_>) = raw_lines
                 .iter()
                 .map(|line| {
                     let pts = line_samples(line, w, h, &base, &chi, &area_km2, vc);
-                    densify(smooth_positions(pts, line, &area_km2, vc, cell_m))
+                    let sm = smooth_positions(pts, line, &area_km2, vc, cell_m);
+                    let at = densify_index(&sm);
+                    (densify(sm), at)
                 })
-                .collect(),
-            None,
-        ),
+                .unzip();
+            // ADR Finding 130-A -- each line's parent and the junction's index in the parent's polyline
+            let line_parent = raw_lines
+                .iter()
+                .enumerate()
+                .map(|(li, line)| {
+                    let (pl, pos) = owner[*line.last().expect("len >= 2")];
+                    (pl != u32::MAX && pl as usize != li)
+                        .then(|| (pl, dense_at[pl as usize][pos as usize] as u32))
+                })
+                .collect();
+            (polylines, None, line_parent)
+        }
         Some(tr) => {
             let (p, st) =
                 traced_polylines(&raw_lines, field, ss, cell_m, &base, &chi, &area_km2, vc, tr);
-            (p, Some(st))
+            let np = p.len();
+            (p, Some(st), vec![None; np])
         }
     };
     Skeleton {
@@ -529,6 +559,7 @@ pub fn skeleton(
         trace_stats,
         direction,
         ltd_flat_cells,
+        line_parent,
     }
 }
 
@@ -581,7 +612,26 @@ pub fn ltd_directions_stats(
     h: usize,
     cell_m: f32,
 ) -> (Vec<u8>, LtdStats) {
+    ltd_directions_masked(zm, sink, None, fallback, w, h, cell_m)
+}
+
+/// ADR Finding 130 — [`ltd_directions_stats`] on any elevation type (`f32` gives the same pointers
+/// bit for bit: differences are taken exactly in `f64`, then rounded to `f32` as before), with an
+/// optional `active` mask: a cell outside it is never processed and never a receiver (a CLOSED
+/// boundary, Orlandini et al. 2003's synthetic valley; B), and `f64` elevations carry a flat
+/// resolution too fine for `f32` (P).
+pub fn ltd_directions_masked<T: Copy + Into<f64>>(
+    z: &[T],
+    sink: &[bool],
+    active: Option<&[bool]>,
+    fallback: &[u8],
+    w: usize,
+    h: usize,
+    cell_m: f32,
+) -> (Vec<u8>, LtdStats) {
     use std::f32::consts::{FRAC_PI_4, SQRT_2};
+    let zm = |k: usize| -> f64 { z[k].into() };
+    let on = |k: usize| active.is_none_or(|a| a[k]);
     let n = w * h;
     let nb = |c: usize, k: usize| -> usize {
         let x = ((c % w) as i32 + D8_DX[k]).rem_euclid(w as i32) as usize;
@@ -590,8 +640,8 @@ pub fn ltd_directions_stats(
     };
     // the eight facets: (cardinal pointer, diagonal pointer) in D8 order (even = cardinal)
     const FACETS: [(usize, usize); 8] = [(0, 1), (0, 7), (2, 1), (2, 3), (4, 3), (4, 5), (6, 5), (6, 7)];
-    let mut order: Vec<u32> = (0..n as u32).filter(|&c| !sink[c as usize]).collect();
-    order.sort_by(|&a, &b| zm[b as usize].total_cmp(&zm[a as usize]).then(a.cmp(&b)));
+    let mut order: Vec<u32> = (0..n as u32).filter(|&c| !sink[c as usize] && on(c as usize)).collect();
+    order.sort_by(|&a, &b| zm(b as usize).total_cmp(&zm(a as usize)).then(a.cmp(&b)));
     let mut dir = vec![DIR_NONE; n];
     let mut area = vec![1f32; n];
     let mut best_area = vec![0f32; n];
@@ -600,17 +650,17 @@ pub fn ltd_directions_stats(
     let (mut exact_ties, mut ties, mut tie_cells) = (0usize, 0usize, Vec::new());
     for &c in &order {
         let c = c as usize;
-        let e0 = zm[c];
+        let e0 = zm(c);
         // Tarboton's steepest facet
         let mut best: Option<(f32, usize, usize, f32)> = None; // (slope, cardinal, diagonal, r)
         for &(kc, kd) in &FACETS {
-            let (e1, e2) = (zm[nb(c, kc)], zm[nb(c, kd)]);
-            let (s1, s2) = ((e0 - e1) / cell_m, (e1 - e2) / cell_m);
+            let (e1, e2) = (zm(nb(c, kc)), zm(nb(c, kd)));
+            let (s1, s2) = (((e0 - e1) as f32) / cell_m, ((e1 - e2) as f32) / cell_m);
             let r = s2.atan2(s1);
             let (r, s) = if r < 0.0 {
                 (0.0, s1)
             } else if r > FRAC_PI_4 {
-                (FRAC_PI_4, (e0 - e2) / (SQRT_2 * cell_m))
+                (FRAC_PI_4, ((e0 - e2) as f32) / (SQRT_2 * cell_m))
             } else {
                 (r, (s1 * s1 + s2 * s2).sqrt())
             };
@@ -627,7 +677,7 @@ pub fn ltd_directions_stats(
             let cross = |q: (f32, f32)| q.0 * t.1 - q.1 * t.0;
             let (c1, c2) = (inherited + cross(q1), inherited + cross(q2));
             let (n1, n2) = (nb(c, kc), nb(c, kd));
-            let ok = |m: usize| sink[m] || zm[m] < e0;
+            let ok = |m: usize| on(m) && (sink[m] || zm(m) < e0);
             // ADR Finding 128-C0 -- [O14] eq. (5)'s "≤" gives an EXACT tie to the cardinal. Rounding
             // must not break it cell by cell (a slope of 1:4 ties at every fourth step, and f32 noise
             // then dephased neighbouring paths into 137 confluences on a 30² plane): ties within
@@ -747,6 +797,23 @@ fn line_samples(
         pts.push((x, y, zf, 0.5 * vc.width_m(area_km2[c])));
     }
     pts
+}
+
+/// ADR Finding 130-A — the index, in [`densify`]'s output, of each input sample (same step rule).
+fn densify_index(sm: &[(f32, f32, f32, f32)]) -> Vec<usize> {
+    let mut at = Vec::with_capacity(sm.len());
+    let mut k = 0usize;
+    for i in 0..sm.len() {
+        at.push(k);
+        k += 1;
+        if i + 1 < sm.len() {
+            let (a, b) = (sm[i], sm[i + 1]);
+            let len = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
+            let steps = (len / 0.5).ceil() as usize;
+            k += steps.saturating_sub(1);
+        }
+    }
+    at
 }
 
 /// Densify a polyline to ≤ 0.5 cell between samples (linear in position, floor and width).
@@ -1244,6 +1311,28 @@ pub fn carve(
     vc: &ValleyConstruction,
     ss: &SteinSteinParams,
 ) -> (GridF32, CarveMasks) {
+    let (out, masks, _) = carve_diag(field, sk, vc, ss);
+    (out, masks)
+}
+
+/// ADR Finding 130-A0 — what [`carve`] decided, per cell (diagnostic, benches only).
+pub struct CarveDiag {
+    /// The nearest sample (index over every polyline, in order) that reached the cell; `u32::MAX` if none.
+    pub who: Vec<u32>,
+    /// Under the confluence clause: the sample that laid the cell when a larger line took it.
+    pub banded: Option<Vec<u32>>,
+    /// The polyline of each sample, and the sample's index within its polyline.
+    pub line_of: Vec<u32>,
+    pub pos_of: Vec<u32>,
+}
+
+/// [`carve`], with what it decided per cell ([`CarveDiag`]). Byte-identical output.
+pub fn carve_diag(
+    field: &GridF32,
+    sk: &Skeleton,
+    vc: &ValleyConstruction,
+    ss: &SteinSteinParams,
+) -> (GridF32, CarveMasks, CarveDiag) {
     let (w, h) = (sk.width, sk.height);
     assert_eq!((field.width, field.height), (w, h), "skeleton and field sizes differ");
     let n = w * h;
@@ -1251,12 +1340,26 @@ pub fn carve(
     let zfield: Vec<f32> = field.data.iter().map(|&v| c1_altitude_norm_to_metres(v, ss)).collect();
     let mut src: Vec<(f32, f32, f32, f32)> = Vec::new();
     let mut line_of: Vec<u32> = Vec::new();
+    let mut pos_of: Vec<u32> = Vec::new();
     for (li, l) in sk.polylines.iter().enumerate() {
-        for &p in l {
+        for (pi, &p) in l.iter().enumerate() {
             src.push(p);
             line_of.push(li as u32);
+            pos_of.push(pi as u32);
         }
     }
+    // ADR Finding 130-A2 -- the junction index on `big` of `small`'s downstream chain of lines
+    let junction_on = |small: u32, big: u32| -> Option<u32> {
+        let mut l = small;
+        for _ in 0..sk.polylines.len() {
+            match sk.line_parent.get(l as usize).copied().flatten() {
+                Some((p, j)) if p == big => return Some(j),
+                Some((p, _)) => l = p,
+                None => return None,
+            }
+        }
+        None
+    };
     // (distance m, cone value m, on the floor?, u = distance beyond the floor edge m)
     let foot = vc.wall_profile.map_or(0.0, |p| p.foot_m.max(0.0));
     let geo = |s: usize, c: usize| -> (f32, f32, bool, f32) {
@@ -1356,17 +1459,26 @@ pub fn carve(
     let mut out = field.clone();
     let mut carved = vec![false; n];
     let mut floor = vec![false; n];
+    let mut banded_by: Option<Vec<u32>> = band.as_ref().map(|_| vec![u32::MAX; n]);
     for c in 0..n {
         // ADR Finding 128-A -- a LARGER line's floor band takes the cell from a smaller line's sample
         let banded = band.as_ref().and_then(|(smp, bhw)| {
             let s = smp[c];
             let wins = s != u32::MAX
                 && (who[c] == u32::MAX
-                    || (line_of[s as usize] != line_of[who[c] as usize] && bhw[c] > src[who[c] as usize].3));
+                    || (line_of[s as usize] != line_of[who[c] as usize]
+                        && bhw[c] > src[who[c] as usize].3
+                        // ADR Finding 130-A2 -- only at or downstream of the junction
+                        && (!vc.trunk_band_downstream
+                            || junction_on(line_of[who[c] as usize], line_of[s as usize])
+                                .is_some_and(|j| pos_of[s as usize] >= j))));
             wins.then_some(s as usize)
         });
         if who[c] == u32::MAX && banded.is_none() {
             continue;
+        }
+        if let (Some(b), Some(s)) = (banded_by.as_mut(), banded) {
+            b[c] = s as u32;
         }
         let me = banded.unwrap_or(who[c] as usize);
         let (x, y) = ((c % w) as i32, (c / w) as i32);
@@ -1416,7 +1528,7 @@ pub fn carve(
             }
         }
     }
-    (out, CarveMasks { carved, floor })
+    (out, CarveMasks { carved, floor }, CarveDiag { who, banded: banded_by, line_of, pos_of })
 }
 
 #[cfg(test)]
@@ -1704,6 +1816,8 @@ mod tests {
             trace_stats: None,
             direction: vec![DIR_NONE; n * n],
             ltd_flat_cells: 0,
+            // the tributary (line 1) ends on the trunk's sample at x = 30.5 (index 56)
+            line_parent: vec![None, Some((0, 56))],
         };
         (f, sk, ss)
     }
@@ -1743,6 +1857,44 @@ mod tests {
                 }
                 assert!(held.data[k] <= f.data[k], "({x},{y}) raised");
             }
+        }
+    }
+
+    /// ADR Finding 130-A2, rule 13 — the RESTRICTED clause takes a smaller line's band cells only at or
+    /// downstream of the junction. Negative control FIRST: the full clause re-lays cells whose nearest
+    /// trunk sample lies UPSTREAM of the tributary's junction (index 56). Restricted: those cells are
+    /// bit-identical to the construction without any clause; the ones at or downstream of the junction
+    /// are laid exactly as by the full clause.
+    #[test]
+    fn the_restricted_clause_takes_the_band_only_downstream_of_the_junction() {
+        let (f, sk, ss) = confluence();
+        let mut vc = ValleyConstruction::f121(0.02, None);
+        vc.wall_deg = 28.0;
+        let (free, _) = carve(&f, &sk, &vc, &ss);
+        let (full, _, df) = carve_diag(&f, &sk, &ValleyConstruction { trunk_band: true, ..vc }, &ss);
+        let restricted = ValleyConstruction { trunk_band: true, trunk_band_downstream: true, ..vc };
+        let (rest, _) = carve(&f, &sk, &restricted, &ss);
+        let taken = df.banded.expect("the clause is on");
+        let (mut upstream_moved, mut upstream, mut downstream) = (0, 0, 0);
+        for k in 0..64 * 64 {
+            let s = taken[k];
+            // a trunk (line 0) sample took the cell from the tributary (line 1)
+            if s == u32::MAX || df.line_of[s as usize] != 0 || df.who[k] == u32::MAX || df.line_of[df.who[k] as usize] != 1 {
+                continue;
+            }
+            if df.pos_of[s as usize] < 56 {
+                upstream += 1;
+                upstream_moved += (full.data[k] != free.data[k]) as usize;
+                assert_eq!(rest.data[k], free.data[k], "cell {k}: upstream of the junction the restricted clause acted");
+            } else {
+                downstream += 1;
+                assert_eq!(rest.data[k], full.data[k], "cell {k}: downstream the restricted clause is not the full one");
+            }
+        }
+        assert!(upstream_moved > 0, "negative control: the full clause must re-lay cells upstream of the junction ({upstream})");
+        assert!(downstream > 0, "the fixture must have band cells downstream of the junction");
+        for k in 0..64 * 64 {
+            assert!(rest.data[k] <= f.data[k], "cell {k} raised above the field");
         }
     }
 

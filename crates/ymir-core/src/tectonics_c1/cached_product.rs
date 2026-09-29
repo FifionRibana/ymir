@@ -890,6 +890,7 @@ mod tests {
             "skeleton_trace",
             "trunk_band",
             "ltd_directions",
+            "trunk_band_downstream",
         ] {
             assert!(js.get(f).is_none(), "the gated-off `{f}` is serialised: {js}");
         }

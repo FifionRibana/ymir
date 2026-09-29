@@ -1,0 +1,18 @@
+==========  Finding 130-A0/A1/A2 . the restricted clause, on the trunks (carve on S1)  ==========
+   témoin C2/10 col                         raised > 1 m above the law **82** · θ laid **0.493** [95 % 0.492, 0.495] (46885 links)
+   ── B2 → A_c ──
+   A1 · no clause (the floor)               raised > 1 m above the law **86** · θ laid **0.493** [95 % 0.491, 0.496] (43699 links)
+   A1 · the FULL clause (Finding 128)       raised > 1 m above the law **1295** · θ laid **0.469** [95 % 0.464, 0.473] (43491 links)
+   A2 · the RESTRICTED clause               raised > 1 m above the law **86** · θ laid **0.485** [95 % 0.482, 0.488] (43288 links)
+   ── A0: the full clause's own raised cells (> 1 m above their law with it, ≤ 1 m without): 1252 ──
+      laid by a larger line's sample 1252 · not laid by the clause (a neighbour moved them) 0 · no owner 0 · the owner's chain never meets the larger line (NO junction) **4** · with a junction 1248
+      of those with a junction: UPSTREAM **1247** (99.9 %) · at or downstream **1** (0.1 %) · within 1 W of the junction 1246 (99.8 %)
+      distance to the junction along the larger line: p10 / p50 / p90 19 / 24 / 72 m = 0.05 / 0.10 / 0.24 W
+      the laying sample's floor − the junction's floor: p10 / p50 / p90 +2.3 / +4.3 / +8.5 m · higher than the junction 1247 (99.9 %) · the laying floor − the cell's own law p10 / p50 / p90 +1.4 / +3.2 / +7.5 m
+   ── B2 (A_c) + B1 + foot ──
+   A1 · no clause (the floor)               raised > 1 m above the law **66** · θ laid **0.492** [95 % 0.489, 0.495] (43716 links)
+   A1 · the FULL clause (Finding 128)       raised > 1 m above the law **1278** · θ laid **0.468** [95 % 0.464, 0.472] (43511 links)
+   A2 · the RESTRICTED clause               raised > 1 m above the law **67** · θ laid **0.484** [95 % 0.480, 0.487] (43306 links)
+==========  end Finding 130-A0/A1/A2 (law) . 386.6 s  ==========
+test f130_a01 ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 386.69s

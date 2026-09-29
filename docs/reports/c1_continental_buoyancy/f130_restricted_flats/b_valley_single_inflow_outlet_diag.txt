@@ -1,0 +1,23 @@
+==========  Finding 130-B-DIAG . the single-inflow outlet, [O03]'s parabolic valley as its figures define it  ==========
+   q = 0.2440 (DECLARED)
+      B0 · our D8 against Fig. 2h: 625 / 625 pointers identical · LTD flat fallbacks 0
+      D8    : ME -0.028 · MAE **0.452** · RMSE **0.951**   ([O03] −0.038 / 0.566 / 2.043) · traced areas: -0.023 / 0.451 / 0.958
+      D8-LTD: ME -0.234 · MAE **0.267** · RMSE **0.314**   ([O03] −0.261 / 0.282 / 0.330) · traced areas: -0.231 / 0.265 / 0.312
+      ratios LTD / D8 (reported, not a gate): MAE 0.591 (paper 0.498) · RMSE 0.330 (paper 0.162)
+      LTD's diagonals against Fig. 2l: ours 262 · the figure's 252 · the same cell and direction 204
+      (diagnostic, not a gate) the D8 criterion would read **FAIL** · LTD **NOT JUDGED (B1 failed)**
+   q = 0.2205 (sensitivity)
+      B0 · our D8 against Fig. 2h: 625 / 625 pointers identical · LTD flat fallbacks 0
+      D8    : ME -0.052 · MAE **0.449** · RMSE **0.889**   ([O03] −0.038 / 0.566 / 2.043) · traced areas: -0.049 / 0.448 / 0.892
+      D8-LTD: ME -0.231 · MAE **0.272** · RMSE **0.318**   ([O03] −0.261 / 0.282 / 0.330) · traced areas: -0.228 / 0.270 / 0.317
+      ratios LTD / D8 (reported, not a gate): MAE 0.606 (paper 0.498) · RMSE 0.357 (paper 0.162)
+      LTD's diagonals against Fig. 2l: ours 254 · the figure's 252 · the same cell and direction 252
+   q = 0.2670 (sensitivity)
+      B0 · our D8 against Fig. 2h: 625 / 625 pointers identical · LTD flat fallbacks 0
+      D8    : ME -0.005 · MAE **0.456** · RMSE **1.012**   ([O03] −0.038 / 0.566 / 2.043) · traced areas: -0.002 / 0.456 / 1.016
+      D8-LTD: ME -0.199 · MAE **0.247** · RMSE **0.298**   ([O03] −0.261 / 0.282 / 0.330) · traced areas: -0.197 / 0.246 / 0.297
+      ratios LTD / D8 (reported, not a gate): MAE 0.542 (paper 0.498) · RMSE 0.294 (paper 0.162)
+      LTD's diagonals against Fig. 2l: ours 208 · the figure's 252 · the same cell and direction 148
+==========  end Finding 130-B  ==========
+test f130_b_diag ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 2.47s

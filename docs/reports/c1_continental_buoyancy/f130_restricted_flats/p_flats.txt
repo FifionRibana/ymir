@@ -1,0 +1,12 @@
+==========  Finding 130-P . the flats of the field the skeleton reads  ==========
+   684893 flat land cells (6.046 % of 11327660; Finding 129: 684 893) · `compute_flow` re-filled 0 cells of the breached field
+   exclusive classes: rounding ties of the metres conversion 0 (0.0 %) · pre-incision lake footprints 684790 (100.0 %) · cells the breach changed 85 (0.0 %) · coastal (≤ 976 m of the sea) 0 (0.0 %) · other 18 (0.0 %)
+   in `resolve_flats`' flat set (Garbrecht-Martz, on compute_flow's filled): 684893 (100.0 %) · their `compute_flow` pointer CARDINAL 137539 (20.1 %)
+   36 flats (connected equal-elevation sets of `resolve_flats`), 684893 cells
+   the reference (LTD f64 on filled, no increment): flat fallbacks **684893** (6.046 % of 11327660 land) · flat cells by the elevation 684893
+   P1 (the Garbrecht-Martz gradient in the elevation): flat fallbacks **0** (0.0000 % of land; C's condition < 0.1 %)
+   on the 684893 former flats: CARDINAL pointers, reference 137539 (20.1 %) → P1 666441 (97.3 %)
+   control on the 10642767 non-flat land cells: steepest facet UNCHANGED 10639689 (99.9711 %) · LTD pointer UNCHANGED 10638394 (99.959 %) · of them adjacent to a flat 21572
+==========  end Finding 130-P . 110.3 s  ==========
+test f130_p ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 24 filtered out; finished in 110.43s

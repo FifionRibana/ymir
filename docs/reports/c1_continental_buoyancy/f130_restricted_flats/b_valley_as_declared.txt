@@ -1,0 +1,23 @@
+==========  Finding 130-B . [O03]'s parabolic valley as its figures define it  ==========
+   q = 0.2440 (DECLARED)
+      B0 · our D8 against Fig. 2h: 623 / 625 pointers identical · LTD flat fallbacks 0
+      D8    : ME -0.030 · MAE **0.453** · RMSE **0.952**   ([O03] −0.038 / 0.566 / 2.043) · traced areas: -0.025 / 0.453 / 0.959
+      D8-LTD: ME -0.234 · MAE **0.267** · RMSE **0.314**   ([O03] −0.261 / 0.282 / 0.330) · traced areas: -0.231 / 0.264 / 0.312
+      ratios LTD / D8 (reported, not a gate): MAE 0.589 (paper 0.498) · RMSE 0.330 (paper 0.162)
+      LTD's diagonals against Fig. 2l: ours 263 · the figure's 252 · the same cell and direction 204
+      → B1 (D8) **FAIL** · B2 (LTD, absolute) **NOT JUDGED (B1 failed)**
+   q = 0.2205 (sensitivity)
+      B0 · our D8 against Fig. 2h: 623 / 625 pointers identical · LTD flat fallbacks 0
+      D8    : ME -0.054 · MAE **0.450** · RMSE **0.890**   ([O03] −0.038 / 0.566 / 2.043) · traced areas: -0.051 / 0.449 / 0.893
+      D8-LTD: ME -0.231 · MAE **0.272** · RMSE **0.318**   ([O03] −0.261 / 0.282 / 0.330) · traced areas: -0.229 / 0.270 / 0.317
+      ratios LTD / D8 (reported, not a gate): MAE 0.604 (paper 0.498) · RMSE 0.357 (paper 0.162)
+      LTD's diagonals against Fig. 2l: ours 256 · the figure's 252 · the same cell and direction 252
+   q = 0.2670 (sensitivity)
+      B0 · our D8 against Fig. 2h: 623 / 625 pointers identical · LTD flat fallbacks 0
+      D8    : ME -0.007 · MAE **0.457** · RMSE **1.012**   ([O03] −0.038 / 0.566 / 2.043) · traced areas: -0.004 / 0.457 / 1.017
+      D8-LTD: ME -0.199 · MAE **0.247** · RMSE **0.298**   ([O03] −0.261 / 0.282 / 0.330) · traced areas: -0.198 / 0.246 / 0.297
+      ratios LTD / D8 (reported, not a gate): MAE 0.540 (paper 0.498) · RMSE 0.294 (paper 0.162)
+      LTD's diagonals against Fig. 2l: ours 209 · the figure's 252 · the same cell and direction 148
+==========  end Finding 130-B  ==========
+test f130_b ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 2.38s

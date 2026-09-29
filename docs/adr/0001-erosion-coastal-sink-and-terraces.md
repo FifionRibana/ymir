@@ -18694,3 +18694,82 @@ four.**
 - The reviewer's: A's (i) values, its "the clause restores" and its cone sign and size refuted; "in the
   band", "not Finding 121's flattening" and "A2 not triggered" held; B1 and B2 refuted; C and D unscored.
 - **Gated, off, nothing promoted.**
+
+## Finding 130 — the restricted clause returns the raised cells to the floor but not θ to its CI, and brings every canyon back; the parabolic valley's own D8 tree does not give its D8 errors; the skeleton's flats are the lakes', and resolving them makes LTD cardinal
+
+**Units**: 1 cell = 48.8 m (domain); heights in metres. Benches: `tests/f126_coast.rs`, Finding 130's section.
+Report and raw outputs: `docs/reports/c1_continental_buoyancy/f130_restricted_flats/`.
+- **Nothing promoted, no clause activated.**
+- Finding 129 was committed (`a35f67b`); the guard reads 6 / 6.
+- New gated code, bit-neutral when off: `trunk_band_downstream`, `Skeleton::line_parent`, `carve_diag`,
+  `ltd_directions_masked` (the `f32` path bit-identical), `flow::flat_resolution`.
+- Permanent test `the_restricted_clause_takes_the_band_only_downstream_of_the_junction`, with its negative
+  control.
+- **Greps**:
+  - the repository's flat resolution is `resolve_flats` (Garbrecht–Martz, `flow.rs:581`) with
+    `FlatPerturbation` (first in Finding 87);
+  - "Finding 79 C": NOTHING FOUND by name (its section C / C-bis is the deposition class, L9229).
+
+**A0 — the full clause's raised cells are the tributaries' last cells.** Of 1 252 cells:
+- 99.9 % lie UPSTREAM of their line's junction with the larger line, at p50 24 m = 0.10 W;
+- they are laid from the larger line's first sample above the junction, +4.3 m (p50) above the junction's
+  floor;
+- 4 have no junction.
+
+**A1/A2 — the restricted clause (takeover only at or downstream of the junction).** θ laid, with an i.i.d.
+link bootstrap (a lower bound):
+
+| | no clause | full | **restricted** |
+|---|---|---|---|
+| raised > 1 m | 86 | 1 295 | **86** |
+| θ laid | 0.493 [0.491, 0.496] | 0.469 [0.464, 0.473] | **0.485** [0.482, 0.488] |
+| canyons | 4 | 0 | **4** |
+
+- **On B2 → A_c** the restricted clause brings back the same four canyons, the cols 7 / 14 and 13's dam at
+  the no-clause heights (787.5 / 493.7 / 546.2 m), and 33 lakes.
+- **On B2 + B1 + foot**: 67 raised; θ 0.484, against 0.492 [0.489, 0.495]; 3 canyons.
+- **The pre-written table has no row for "floor, outside the CI, canyons > 0".**
+- **The dams and the deformation are the SAME cells.** That is why the restriction does nothing useful, and
+  why neither form of the clause passes.
+- Named, not built: lay those cells from the junction's floor, not from the nearest covering sample.
+
+**B — [O03]'s parabolic valley, as its figures define it.** The text gives no equation, dimensions or
+spacing (§3.1, p. TNN 1-3). The vector figures give:
+- a 25 × 25 grid;
+- D8's 625 pointers, which bound q = a/s to (0.2195, 0.268); q = 0.244 was declared;
+- the Fig. 3j–l markers: D8 −0.038 / 0.566 / 2.043, LTD −0.261 / 0.282 / 0.330.
+
+The results:
+- **B0 fails on MY outlet** (diagonal inflow; 623 / 625).
+- **B1 fails** (D8 MAE 0.453, RMSE 0.952). **B stops, LTD is not judged, C does not run.**
+- **Diagnostic** (declared, not a gate): with a one-inflow outlet, D8 reproduces Fig. 2h's 625 pointers and
+  its errors do not move (0.452 / 0.951).
+  - The paper's own D8 tree does not give its D8 errors. The difference lies in its theoretical areas, which
+    it does not publish.
+  - LTD's absolute errors (0.267 / 0.314) fall inside the paper's tolerance: seen, not used.
+
+**P — the skeleton's flats.**
+- **P0**:
+  - all 684 893 flat cells (6.05 %) lie on the pre-incision lakes' filled surfaces (36 flats);
+  - all are in `resolve_flats`' set, which resolves D8's POINTER, never the elevation LTD reads;
+  - that pointer is cardinal on 20.1 % only; Finding 129's "cardinal fallback" was wrong.
+- **P1** (the Garbrecht–Martz gradient laid into the elevation, per flat, on the skeleton's field only):
+  - the fallbacks fall to 0, and the non-flat cells keep their facet (99.971 %) and pointer (99.959 %);
+  - but LTD goes CARDINAL on 97.3 % of the former flats: the BFS distance field's gradient is the lattice.
+  - Named, not treated.
+
+**E — the trunk cells below their law (measured only).**
+- 27.5 % are under a lake after drainage, against a base rate of 8.8 %; they are every trunk cell under a
+  lake.
+- The rest are lower, larger reaches: 10 km from the base at p50, against 17 km; 108 m high, against 170 m.
+- Only 13.5 % are low plains.
+- The law passes 128 m (p50) above the terrain there.
+
+**Predictions.**
+- Mine: P0, P-B0 held; P-A0, P-A1, P-A2, P-B1, P-P0, P-P1, P-E half; P-Bdiag refuted; C not run.
+- The reviewer's:
+  - A0 held; A2's floor held, its CI, canyons and row refuted;
+  - B refuted on D8;
+  - P0 half; P1 held;
+  - E refuted.
+- **Gated, off, nothing promoted.**

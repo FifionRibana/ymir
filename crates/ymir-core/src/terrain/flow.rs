@@ -585,6 +585,18 @@ fn resolve_flats(
     w: usize,
     h: usize,
 ) -> Vec<f64> {
+    flat_resolution(filled, is_ocean, perturb, w, h).1
+}
+
+/// ADR Finding 130-P — [`resolve_flats`] with the flat cells it classified (`needs`): the same
+/// Garbrecht-Martz gradient, exposed so a bench can read the skeleton's flats on it.
+pub fn flat_resolution(
+    filled: &GridF32,
+    is_ocean: &[bool],
+    perturb: Option<&FlatPerturbation>,
+    w: usize,
+    h: usize,
+) -> (Vec<bool>, Vec<f64>) {
     use std::collections::VecDeque;
     let n = w * h;
     let f = &filled.data;
@@ -703,7 +715,7 @@ fn resolve_flats(
             flat_grad[c] = g;
         }
     }
-    flat_grad
+    (needs, flat_grad)
 }
 
 /// The propagation order that ANY downstream accumulation over [`FlowResult::direction`]
