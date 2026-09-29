@@ -1,0 +1,15 @@
+==========  Finding 131-P . do the lakes' flats touch what is constructed?  ==========
+   684790 flat lake cells patched · pointers changed there: LTD 528863 · arbitrary 505065
+   ── témoin C2/10 col ── (no patch: outside-hash f226695d8b07ed13)
+   identity (the control)           against no patch: cells changed OUTSIDE the lake footprints **0** · inside 0 · outside-hash f226695d8b07ed13 · distance of the outside changes to a lake p50 / p90 / max NaN / NaN / NaN m
+   LTD on the lakes' flats          against the identity: cells changed OUTSIDE the lake footprints **1173648** · inside 291694 · outside-hash e964748626783584 · distance of the outside changes to a lake p50 / p90 / max 6396 / 12842 / 20068 m
+   arbitrary on the lakes' flats    against the identity: cells changed OUTSIDE the lake footprints **1164314** · inside 299876 · outside-hash 8ac10b007c2a2862 · distance of the outside changes to a lake p50 / p90 / max 6396 / 12842 / 20068 m
+   (618 s)
+   ── B2 → A_c ── (no patch: outside-hash fa1581225b149676)
+   identity (the control)           against no patch: cells changed OUTSIDE the lake footprints **0** · inside 0 · outside-hash fa1581225b149676 · distance of the outside changes to a lake p50 / p90 / max NaN / NaN / NaN m
+   LTD on the lakes' flats          against the identity: cells changed OUTSIDE the lake footprints **2692389** · inside 369305 · outside-hash b9e1699d7f0f7259 · distance of the outside changes to a lake p50 / p90 / max 5615 / 12061 / 20020 m
+   arbitrary on the lakes' flats    against the identity: cells changed OUTSIDE the lake footprints **2681363** · inside 369346 · outside-hash acc829bebca48de3 · distance of the outside changes to a lake p50 / p90 / max 5615 / 12061 / 20020 m
+   (736 s)
+==========  end Finding 131-P . 1431.1 s  ==========
+test f131_p ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 1431.09s

@@ -18773,3 +18773,76 @@ The results:
   - P0 half; P1 held;
   - E refuted.
 - **Gated, off, nothing promoted.**
+
+## Finding 131 — the concordant confluence keeps the law, but not canyon 14, and it flattens the mouths and the sources; LTD beats D8 on every analytic path but makes 894 false confluences on a cone where D8 makes none; the lakes' flats set χ for every catchment above them
+
+**Units**: 1 cell = 48.8 m (domain); W = the larger line's width at the junction; B in cell units. Benches:
+`tests/f126_coast.rs`, Finding 131's section. Report and raw outputs:
+`docs/reports/c1_continental_buoyancy/f131_concordant_analytic/`.
+- **Nothing promoted, no clause activated.** No number of Orlandini et al. is used.
+- Finding 130 was committed (`595e7b6`); the guard reads 6 / 6.
+- New gated code, bit-neutral when off: `trunk_band_concordant`, and `skeleton_patched` (a diagnostic hook).
+- Permanent test `the_concordant_clause_lays_the_tributary_at_the_junction_floor`, with its negative
+  control.
+- **Greps**: Playfair, accordant, concordant, replat, specific catchment area, r/2 and Costa-Cabral: NOTHING
+  FOUND.
+
+**B — three analytic surfaces, our own references.**
+- The surfaces:
+  - a plane;
+  - a divergent cone (exact a = r/2);
+  - a curved valley z = 0.02 x² + y (exact lines, exact a in closed form, checked on a traced tube to 0.005).
+- The gate was declared after the D8 references: LTD must beat D8's path angle at chords 16 and 32 on all
+  three, and make no more false confluences on the cone than D8 (0).
+- **The angles pass everywhere**, at chords 16 / 32:
+  - plane 0.13 / 0.05° against 14.04°;
+  - cone 2.49 / 3.02° against 11.3°;
+  - curve 1.36 / 0.84° against 7.1 / 7.4°.
+- **B FAILS on the cone: 894 false confluences against 0.** The cone's specific-area MAE is also worse
+  (0.720 against 0.443). This is Paik 2008's critique, confirmed.
+- LTD's specific-area MAE is 3.6× smaller on the plane and 1.9× smaller on the curve.
+- Finding 128's C0 reproduces to the digit. **C did not run.**
+
+**A — the concordant confluence** (Playfair 1802). Finding 130-A0's cells, upstream of the junction on the
+larger line's band, are laid at the larger line's floor AT the junction: 204 781 cells at 30 768 junctions,
+0 others.
+
+| | B2 → A_c | B2 + B1 + foot |
+|---|---|---|
+| raised > 1 m (no clause / concordant) | 86 / **50** | 66 / **32** |
+| θ laid (no-clause CI / concordant) | [0.491, 0.496] / **0.496** | [0.489, 0.495] / **0.494** |
+| canyons | **1** (14) | **1** (14) |
+| replat at the junctions (concordant / the same cells without) | **58 %** / 17 % | **53 %** / 13 % |
+| R8 terrain within 2 W (none / concordant) | 0.0308 / 0.0312 | 0.0292 / **0.0362** |
+
+- **The clause passes θ, and fails the canyons, the replat and the terrain R8.** The raised count misses the
+  band on the favourable side.
+- **Finding 121's trap returns at the sources**: 1 219 touched lines' head slope falls from p50 0.091 to
+  0.000.
+- Canyon 13's dam falls 546 → 331 m; the network R8 around the junctions falls 10–14 %.
+- **Not adoptable; gated and off.** The verdict is left to the round's criteria, none forced.
+
+**P — the lakes' flats act on the construction, through χ.**
+- The pointers of the 684 790 flat lake cells were replaced, by LTD's or by an arbitrary acyclic choice.
+  The identity patch changes 0 cells.
+- The replacement moves **1.17 M** cells of the témoin's construction outside the lake footprints (2.69 M on
+  B2 → A_c), up to 20 km away.
+- **98.2 % of them are upstream of a lake with a changed skeleton χ**, with no base change; |Δz| p50 6.3 m,
+  p90 14.8 m.
+- χ is integrated down the D8 path across each (breached, hence not closed) lake, so the path's length over
+  the flat sets every upstream floor. Named, not treated.
+
+**Predictions.**
+- Mine: P0, P-B1 and P-where held; P-A3, P-B2, P-B3 and P-P half; P-A1, P-A2 and P-A4 refuted; the B gate's
+  failure held.
+- The reviewer's:
+  - A's θ held; its canyons, cols, replat degree, network R8 and "fails only on the replat" refuted;
+  - B's plane and asymmetry held; its cone MAE and confluences refuted;
+  - P refuted.
+- **Added at the Finding 132 go-ahead (2026-09-29).** The reviewer's reading at Finding 130 ("P probably without
+  object: the construction does not touch a lake's bed") is **refuted**: it looked at z inside the lake, while the
+  mechanism acts on χ upstream of it.
+- **B, restated**: the gate failed on the cone; LTD is not adopted for the skeleton; C is blocked. The gate is not
+  rewritten after the failure (rule 15): the cone was in it because the dome, the source cones and the volcanoes
+  are in our world.
+- **Gated, off, nothing promoted.**

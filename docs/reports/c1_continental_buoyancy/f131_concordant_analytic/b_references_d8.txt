@@ -1,0 +1,12 @@
+==========  Finding 131-B . D8 (the references) on three analytic surfaces  ==========
+   the curve's closed-form a against a traced tube: (0.3, 5): closed 200.640 · tube 200.643 · (5, 10): closed 127.475 · tube 127.479 · (-12, 30): closed 41.596 · tube 41.598 · (20, 2): closed 16.008 · tube 16.008 · (-28, 50): closed 2.681 · tube 2.681
+   ── plane 60² (14.04° off the axis) ──
+      D8      specific area: MAE **0.354** · RMSE **1.800** (3600 cells) · path angle by chord 1: 14.04° (p90 14.0°, 3540) · 8: 14.04° (p90 14.0°, 3120) · 16: 14.04° (p90 14.0°, 2640) · 32: 14.04° (p90 14.0°, 1680)
+   ── cone r ≤ 48 (divergent) ──
+      D8      specific area: MAE **0.443** · RMSE **0.525** (6912 cells) · path angle by chord 1: 11.25° (p90 20.2°, 6852) · 8: 11.29° (p90 20.2°, 4636) · 16: 11.33° (p90 20.2°, 2636) · 32: 11.29° (p90 20.0°, 404)
+               FALSE confluences (≥ 2 donors) **0** · sector asymmetry (CV over 16 sectors of the outer ring) **0.215**
+   ── curve z = 0.02 x² + y (60²) ──
+      D8      specific area: MAE **0.631** · RMSE **1.858** (3600 cells) · path angle by chord 1: 9.53° (p90 18.9°, 3540) · 8: 7.87° (p90 14.4°, 3120) · 16: 7.07° (p90 14.1°, 2640) · 32: 7.40° (p90 12.1°, 1680)
+==========  end Finding 131-B  ==========
+test f131_b ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 27 filtered out; finished in 0.01s

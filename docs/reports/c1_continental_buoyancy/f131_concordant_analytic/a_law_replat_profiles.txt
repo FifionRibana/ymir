@@ -1,0 +1,23 @@
+==========  Finding 131-A . the concordant confluence, on the trunks (carve on S1)  ==========
+   ── B2 → A_c ──
+   no clause (the reference)          raised > 1 m **86** · θ laid **0.493** [0.491, 0.496] (43699)
+   the full clause (the reference)    raised > 1 m **1295** · θ laid **0.469** [0.464, 0.473] (43491)
+   the CONCORDANT clause              raised > 1 m **50** · θ laid **0.496** [0.493, 0.499] (41902)
+   the clause's cells 204781 at 30768 junctions · cells changed OUTSIDE them 0 (must be 0)
+   REPLAT: junctions with >= 1 flat clause cell **17836** (58.0 %) against the same cells without the clause 5289 (17.2 %) · flat clause cells 132062 against 8494 · replat length p50 / p90 / max 1.20 / 9.54 / 93.47 W
+   the tributaries' floor over their last 2 W: concordant p10 / p50 / p90 0.0012 / 0.1075 / 0.2031 (≤ 1e-4: 9.2 %) · without the clause 0.0326 / 0.1186 / 0.2031 (≤ 1e-4: 1.2 %)
+   source cones touched 1219 of 103075 lines · head → 10th-cell slope mean 0.0871 → 0.0071 · p50 0.0911 → 0.0000 · reversed BY the clause 140 · halved 733
+   ── B2 (A_c) + B1 + foot ──
+   no clause (the reference)          raised > 1 m **66** · θ laid **0.492** [0.489, 0.495] (43716)
+   the full clause (the reference)    raised > 1 m **1278** · θ laid **0.468** [0.464, 0.472] (43511)
+   the CONCORDANT clause              raised > 1 m **32** · θ laid **0.494** [0.491, 0.498] (41917)
+   the clause's cells 208287 at 30893 junctions · cells changed OUTSIDE them 0 (must be 0)
+   REPLAT: junctions with >= 1 flat clause cell **16358** (53.0 %) against the same cells without the clause 4071 (13.2 %) · flat clause cells 131038 against 6651 · replat length p50 / p90 / max 1.30 / 10.97 / 93.47 W
+   the tributaries' floor over their last 2 W: concordant p10 / p50 / p90 0.0060 / 0.0872 / 0.1763 (≤ 1e-4: 6.9 %) · without the clause 0.0304 / 0.0965 / 0.1766 (≤ 1e-4: 1.4 %)
+   source cones touched 1273 of 103075 lines · head → 10th-cell slope mean 0.0829 → 0.0116 · p50 0.0856 → 0.0000 · reversed BY the clause 147 · halved 755
+   ── the round's criteria on the construction (canyons and R8 around the junctions: f131_a_worlds) ──
+   B2 → A_c: raised at the floor NO (50 vs 86 ± 20) · θ in the no-clause CI YES (0.496 in [0.491, 0.496]) · replat not up NO (17836 vs 5289 junctions)
+   B2 (A_c) + B1 + foot: raised at the floor NO (32 vs 66 ± 20) · θ in the no-clause CI YES (0.494 in [0.489, 0.495]) · replat not up NO (16358 vs 4071 junctions)
+==========  end Finding 131-A (law) . 364.6 s  ==========
+test f131_a_law ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 30 filtered out; finished in 364.79s

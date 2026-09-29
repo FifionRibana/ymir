@@ -1,0 +1,19 @@
+==========  Finding 131-B . D8 and D8-LTD on three analytic surfaces  ==========
+   the curve's closed-form a against a traced tube: (0.3, 5): closed 200.640 · tube 200.643 · (5, 10): closed 127.475 · tube 127.479 · (-12, 30): closed 41.596 · tube 41.598 · (20, 2): closed 16.008 · tube 16.008 · (-28, 50): closed 2.681 · tube 2.681
+   (plane 60² (14.04° off the axis): LTD flat fallbacks 0)
+   ── plane 60² (14.04° off the axis) ──
+      D8      specific area: MAE **0.354** · RMSE **1.800** (3600 cells) · path angle by chord 1: 14.04° (p90 14.0°, 3540) · 8: 14.04° (p90 14.0°, 3120) · 16: 14.04° (p90 14.0°, 2640) · 32: 14.04° (p90 14.0°, 1680)
+      D8-LTD  specific area: MAE **0.097** · RMSE **0.224** (3600 cells) · path angle by chord 1: 18.14° (p90 31.0°, 3525) · 8: 0.28° (p90 0.0°, 3016) · 16: 0.13° (p90 0.0°, 2464) · 32: 0.05° (p90 0.0°, 1456)
+   (cone r ≤ 48 (divergent): LTD flat fallbacks 0)
+   ── cone r ≤ 48 (divergent) ──
+      D8      specific area: MAE **0.443** · RMSE **0.525** (6912 cells) · path angle by chord 1: 11.25° (p90 20.2°, 6852) · 8: 11.29° (p90 20.2°, 4636) · 16: 11.33° (p90 20.2°, 2636) · 32: 11.29° (p90 20.0°, 404)
+               FALSE confluences (≥ 2 donors) **0** · sector asymmetry (CV over 16 sectors of the outer ring) **0.215** (the exact a on the same ring: 0.024)
+      D8-LTD  specific area: MAE **0.720** · RMSE **0.809** (6912 cells) · path angle by chord 1: 15.94° (p90 32.7°, 6850) · 8: 3.47° (p90 7.1°, 4768) · 16: 2.49° (p90 5.1°, 2857) · 32: 3.02° (p90 6.2°, 483)
+               FALSE confluences (≥ 2 donors) **894** · sector asymmetry (CV over 16 sectors of the outer ring) **0.191** (the exact a on the same ring: 0.024)
+   (curve z = 0.02 x² + y (60²): LTD flat fallbacks 0)
+   ── curve z = 0.02 x² + y (60²) ──
+      D8      specific area: MAE **0.631** · RMSE **1.858** (3600 cells) · path angle by chord 1: 9.53° (p90 18.9°, 3540) · 8: 7.87° (p90 14.4°, 3120) · 16: 7.07° (p90 14.1°, 2640) · 32: 7.40° (p90 12.1°, 1680)
+      D8-LTD  specific area: MAE **0.336** · RMSE **0.440** (3600 cells) · path angle by chord 1: 11.87° (p90 27.9°, 3540) · 8: 2.41° (p90 5.0°, 3120) · 16: 1.36° (p90 2.5°, 2640) · 32: 0.84° (p90 1.7°, 1680)
+==========  end Finding 131-B  ==========
+test f131_b ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 27 filtered out; finished in 0.01s

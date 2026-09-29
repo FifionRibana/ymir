@@ -163,6 +163,13 @@ pub struct ValleyConstruction {
     /// clause's rule. `false` = Finding 128's full clause. DECISION, gated.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub trunk_band_downstream: bool,
+    /// **ADR Finding 131-A — the CONCORDANT confluence** (Playfair 1802: a tributary joins the trunk at the
+    /// level of the trunk's bed). Only with [`Self::trunk_band`]. The cells Finding 130-A0 located — on a
+    /// larger line's floor band, UPSTREAM of the junction of the smaller line (their owner) with it — are
+    /// laid at the floor of the larger line AT THE JUNCTION, instead of from its nearest covering sample.
+    /// No other cell changes: every other takeover of the clause is off. `false` = off. DECISION, gated.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub trunk_band_concordant: bool,
 }
 
 /// ADR Finding 127-B — the interpolant whose gradient the tracé descends.
@@ -274,6 +281,7 @@ impl ValleyConstruction {
             trunk_band: false,
             ltd_directions: false,
             trunk_band_downstream: false,
+            trunk_band_concordant: false,
         }
     }
 
@@ -355,14 +363,31 @@ pub fn skeleton(
     ss: &SteinSteinParams,
     domain_km: f32,
 ) -> Skeleton {
+    skeleton_patched(field, vc, ss, domain_km, None)
+}
+
+/// ADR Finding 131-P — the pointers the skeleton will stand on, handed to a bench before the areas are
+/// accumulated: `(breached field, the pre-drainage's lake map, &mut pointers)`. The areas are then recounted
+/// on the patched pointers. Diagnostic only; `None` is [`skeleton`], byte-identical.
+pub type SkeletonPatch<'a> = &'a dyn Fn(&GridF32, &[u32], &mut Vec<u8>);
+
+/// [`skeleton`] with an optional [`SkeletonPatch`].
+pub fn skeleton_patched(
+    field: &GridF32,
+    vc: &ValleyConstruction,
+    ss: &SteinSteinParams,
+    domain_km: f32,
+    patch: Option<SkeletonPatch>,
+) -> Skeleton {
     let (w, h) = (field.width, field.height);
     let n = w * h;
     let cell_m = domain_km * 1000.0 / w as f32;
     let cell_km2 = (cell_m / 1000.0) * (cell_m / 1000.0);
     let dcfg = C1DrainageConfig::default();
-    let bf = {
+    let (bf, lake_map) = {
         let pre = c1_drainage_windowed(field, None, &dcfg, ss, domain_km);
-        breach_monotone(field, &pre.flow.filled, &pre.lake_map, C1_SEA_LEVEL_NORM, w, h)
+        let bf = breach_monotone(field, &pre.flow.filled, &pre.lake_map, C1_SEA_LEVEL_NORM, w, h);
+        (bf, patch.map(|_| pre.lake_map))
     };
     let flow = compute_flow(
         &bf,
@@ -382,6 +407,17 @@ pub fn skeleton(
         (d, acc, flats)
     } else {
         (flow.direction, flow.accumulation.data, 0)
+    };
+    // ADR Finding 131-P -- a bench's patch of the pointers, the areas recounted on them
+    let (direction, accumulation) = match patch {
+        Some(f) => {
+            let mut d = direction;
+            f(&bf, lake_map.as_deref().expect("kept for the patch"), &mut d);
+            let sink: Vec<bool> = land.iter().map(|&l| !l).collect();
+            let acc = accumulate_cells(&d, &sink, w, h);
+            (d, acc)
+        }
+        None => (direction, accumulation),
     };
     let area_km2: Vec<f32> = accumulation.iter().map(|&a| a * cell_km2).collect();
     drop(accumulation);
@@ -1348,6 +1384,12 @@ pub fn carve_diag(
             pos_of.push(pi as u32);
         }
     }
+    let mut line_start: Vec<usize> = Vec::with_capacity(sk.polylines.len());
+    let mut acc_len = 0usize;
+    for l in &sk.polylines {
+        line_start.push(acc_len);
+        acc_len += l.len();
+    }
     // ADR Finding 130-A2 -- the junction index on `big` of `small`'s downstream chain of lines
     let junction_on = |small: u32, big: u32| -> Option<u32> {
         let mut l = small;
@@ -1474,6 +1516,21 @@ pub fn carve_diag(
                                 .is_some_and(|j| pos_of[s as usize] >= j))));
             wins.then_some(s as usize)
         });
+        // ADR Finding 131-A -- the concordant confluence: only A0's cells (upstream of the owner's junction
+        // with the larger line), laid at the larger line's floor AT the junction; no other takeover
+        let (banded, concordant_floor) = match (banded, vc.trunk_band_concordant) {
+            (Some(s), true) => {
+                let o = who[c];
+                let j = if o == u32::MAX { None } else { junction_on(line_of[o as usize], line_of[s]) };
+                match j {
+                    Some(j) if pos_of[s] < j => {
+                        (Some(s), Some(src[line_start[line_of[s] as usize] + j as usize].2))
+                    }
+                    _ => (None, None),
+                }
+            }
+            (b, _) => (b, None),
+        };
         if who[c] == u32::MAX && banded.is_none() {
             continue;
         }
@@ -1483,6 +1540,9 @@ pub fn carve_diag(
         let me = banded.unwrap_or(who[c] as usize);
         let (x, y) = ((c % w) as i32, (c / w) as i32);
         let (_, mut v, mut on_floor, mut u_sel) = geo(me, c);
+        if let Some(zj) = concordant_floor {
+            (v, on_floor, u_sel) = (zj, true, 0.0);
+        }
         // continuity across the line where two DIFFERENT valleys meet (not where the clause decided:
         // the larger line lays its band, with no minimum)
         for dy in -1i32..=1 {
@@ -1896,6 +1956,44 @@ mod tests {
         for k in 0..64 * 64 {
             assert!(rest.data[k] <= f.data[k], "cell {k} raised above the field");
         }
+    }
+
+    /// ADR Finding 131-A, rule 13 — the CONCORDANT confluence lays the tributary's cells in the trunk's band,
+    /// upstream of the junction, at the trunk's floor AT the junction (115.5 m, x = 30.5). Negative control
+    /// FIRST: without any clause some of them dam the trunk; the full clause lays them higher than the
+    /// junction's floor (from samples upstream). Concordant: every one of them at the junction's floor, and
+    /// every other cell bit-identical to the construction without a clause.
+    #[test]
+    fn the_concordant_clause_lays_the_tributary_at_the_junction_floor() {
+        let (f, sk, ss) = confluence();
+        let mut vc = ValleyConstruction::f121(0.02, None);
+        vc.wall_deg = 28.0;
+        let m = |g: &GridF32, k: usize| c1_altitude_norm_to_metres(g.data[k], &ss);
+        let (free, _) = carve(&f, &sk, &vc, &ss);
+        let (full, _, df) = carve_diag(&f, &sk, &ValleyConstruction { trunk_band: true, ..vc }, &ss);
+        let (conc, mc) = carve(&f, &sk, &ValleyConstruction { trunk_band: true, trunk_band_concordant: true, ..vc }, &ss);
+        let zj = 100.0 + 0.5 * (61.5 - 30.5);
+        let taken = df.banded.expect("the clause is on");
+        let (mut a0, mut dammed, mut full_higher) = (0, 0, 0);
+        for k in 0..64 * 64 {
+            let s = taken[k];
+            let a0_cell = s != u32::MAX
+                && df.line_of[s as usize] == 0
+                && df.who[k] != u32::MAX
+                && df.line_of[df.who[k] as usize] == 1
+                && df.pos_of[s as usize] < 56;
+            if a0_cell {
+                a0 += 1;
+                dammed += (m(&free, k) > zj + 1.0) as usize;
+                full_higher += (m(&full, k) > zj + 0.2) as usize;
+                assert!((m(&conc, k) - zj).abs() < 0.2, "cell {k}: {} m, not the junction's floor {zj}", m(&conc, k));
+                assert!(mc.floor[k], "cell {k} must be a floor cell");
+            } else {
+                assert_eq!(conc.data[k], free.data[k], "cell {k}: outside A0's cells the concordant clause acted");
+            }
+        }
+        assert!(a0 > 0 && dammed > 0, "negative control: A0's cells exist ({a0}) and some dam the trunk without a clause ({dammed})");
+        assert!(full_higher > 0, "negative control: the full clause lays some of them above the junction's floor ({full_higher})");
     }
 
     /// ADR Finding 128-C, rule 13 — D8-LTD follows a planar slope off the lattice. On a plane whose

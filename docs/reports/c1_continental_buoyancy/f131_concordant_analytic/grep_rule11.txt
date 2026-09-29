@@ -1,0 +1,23 @@
+ADR Playfair: NOTHING FOUND
+ADR accordant: NOTHING FOUND
+ADR concordant: NOTHING FOUND
+ADR junction floor / fond de la jonction: 1 hits · first L18734 [## Finding 130 — the restricted clause returns the raised ce] :: - Named, not built: lay those cells from the junction's floor, not from the nearest covering sample.
+ADR confluence: 36 hits · first L110 [## Finding 3 — Droplet erosion cannot make a dendritic netwo] :: | f | droplets/cell | net % | pit-fraction | maxStrahler | confluences |
+ADR replat: NOTHING FOUND
+ADR analytic / analytique: 4 hits · first L3211 [## Finding 42 — the "network fragments with resolution" anom] :: analytic continent (ocean, then a 100 km ramp to a 2000 m plateau over a 400 km domain) the
+ADR cone / cône: 22 hits · first L119 [## Finding 3 — Droplet erosion cannot make a dendritic netwo] :: cone at production parameters, surface roughness barely changed (0.00005 → 0.00006):
+ADR specific catchment / aire spécifique: NOTHING FOUND
+ADR r/2: NOTHING FOUND
+ADR Costa-Cabral: NOTHING FOUND
+ADR distance_field: 1 hits · first L18758 [## Finding 130 — the restricted clause returns the raised ce] ::   - but LTD goes CARDINAL on 97.3 % of the former flats: the BFS distance field's gradient is the lattice.
+ADR euclid: 1 hits · first L18199 [## Finding 124-P3 — the export told four lies: every tributa] :: **Length** is the length of the max-area path: Euclidean steps on the torus, the confluence cell
+ADR Finding 111: 7 hits · first L7040 [## Finding 63 — the closed-form ceiling FAILS by 27 %, and t] :: > Finding 111's D8 signature is real and 12× the isotropic floor. It means the OWNER is elsewhere,
+ADR Finding 113: 3 hits · first L17629 [## Finding 113 — the snap is refuted by Finding 15, the path] :: ## Finding 113 — the snap is refuted by Finding 15, the path smoothing does nothing, and rule 18 finds the river comb IS the ageing
+ADR Finding 121: 13 hits · first L17945 [## Finding 120 — the valley construction, read before it is ] :: ≥ 100 km²) and the construction stands on it (Finding 121). By band (ON, full tree), R8 of the
+ADR Finding 130: 2 hits · first L18698 [## Finding 130 — the restricted clause returns the raised ce] :: ## Finding 130 — the restricted clause returns the raised cells to the floor but not θ to its CI, and brings every canyon back; the parabolic valley's
+CODE Playfair: 0 hits · NOTHING FOUND
+CODE accordant: 0 hits · NOTHING FOUND
+CODE concordant: 0 hits · NOTHING FOUND
+CODE basin_base: 19 hits · first crates/ymir-core/src/tectonics_c1/valley_construction.rs:92:    #[serde(default = "basin_base_default")]
+CODE distance_field: 23 hits · first crates/ymir-core/src/tectonics_c1/closures/davis_suppe/mod.rs:42://!    Dijkstra (`distance_field::wedge_distance_intra_plate`)
+CODE euclid: 405 hits · first crates/ymir-core/src/grid.rs:373:                    let sx = (x as i32 + ki as i32 - radius as i32).rem_euclid(self.width as i32)
