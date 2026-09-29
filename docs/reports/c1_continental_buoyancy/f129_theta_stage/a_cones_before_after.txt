@@ -1,0 +1,9 @@
+==========  Finding 129-A . the source cones, before / after separated  ==========
+   103075 lines on the A_c skeleton · ≥ 11 cells with a moved cell among the first 4: 3956 (Finding 129-A's census: 3 953 on S2) · < 11 cells: 21514, of them touched 5388
+   the touched lines, head → 10th cell: reversed WITH the clause 200 (Finding 129-A: 200 on S2) = already reversed without it 291 (still reversed 133) + REVERSED BY the clause **67** · FLATTENED below half BY the clause **341** · steepened above × 1.5 291
+   the head cell's Δz (clause − none): p10 -3.6 / p50 +0.0 / p90 +61.2 m · on a floor band under the clause 2429 (61.4 %) · of the heads it reverses: Δz p50 +0.0 m, lowered 16
+   the touched lines' head → 10th-cell slope: MEAN 0.1017 → 0.1127 m/m (+10.8 %) · p50 0.1174 → 0.1122 · p25 0.0500 → 0.0407
+   the short touched lines' head Δz: p10 -10.2 / p50 +0.0 / p90 +1.7 m
+==========  end Finding 129-A (cones) . 323.7 s  ==========
+test f129_a_cones ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 19 filtered out; finished in 323.88s

@@ -1,0 +1,9 @@
+==========  Finding 129-B1 . D8-LTD on the reserved case, Orlandini 2003's parabolic valley  ==========
+   parabolic valley 30² · LTD flat fallbacks 0
+      D8    : ME -0.227 · MAE 0.647 · RMSE 1.092   ([O03] Fig. 3j–l at λ 0: ME ≈ 0.0, MAE ≈ 0.57, RMSE ≈ 2.1)
+      D8-LTD: ME -0.283 · MAE **0.368** · RMSE **0.440**   ([O03] at λ 1: ME ≈ −0.26, MAE ≈ 0.29, RMSE ≈ 0.35)
+      ratios LTD / D8: MAE **0.569** (paper ≈ 0.51) · RMSE **0.403** (≈ 0.17) → **FAIL**
+test f129_b1 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 17 filtered out; finished in 0.48s
+

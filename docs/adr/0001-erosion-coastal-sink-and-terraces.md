@@ -18627,3 +18627,70 @@ negative control is the tributary damming the trunk.
 **Predictions.** Mine: P0 and P-B1/B2/B4 held, P-B3 half; P-A1, P-A2 and P-C0 refuted; P-A3 half; C
 and D unscored. The reviewer's: canyons → 0 and "13 a confluence" held; cols ±5 m refuted; concavity
 refuted; LTD held with its reasons refuted or half; C and D unscored. **Gated, off, nothing promoted.**
+
+## Finding 129 — the construction lays its law exactly where it cuts, and the confluence clause bends it there; the source cones are moved both ways (A2 not triggered); our D8-LTD misses the reserved case on one ratio, so C and D stop
+
+**Units**: 1 cell = 48.8 m (domain); heights in metres; θ of S ∝ A^−θ. Benches: `tests/f126_coast.rs`,
+Finding 129's section. Report and raw outputs: `docs/reports/c1_continental_buoyancy/f129_theta_stage/`.
+- **Nothing built for production, nothing promoted.** The confluence clause stays gated and off; its
+  activation is the author's.
+- Finding 128 was committed (`5effc92`). The guard reads 6 / 6.
+- mur ↔ mer is ON. These are Finding 128's planar-wall B2 → A_c worlds, so bruit ↔ pied has nothing to
+  act on.
+- **Greps (11/11b/11c)**:
+  - "source cone": NOTHING FOUND;
+  - concavity and slope-area first appear in Finding 128;
+  - Finding 121's trap is L17966: "a minimum over every cone flattened the long profile".
+
+**A — θ by stage.** The instrument, declared first: slope-area OLS over the S1 skeleton's trunk
+≥ 10 km² cells, single D8 links, S > 10⁻⁴.
+- **The references, measured first:**
+  - **the instrument on the law itself** (z = base + k·χ on the skeleton): **0.500**;
+  - Harel 2016: 0.51 ± 0.12 (χ-integral);
+  - S1 = PRE: 0.274 (the same field on land: no droplet pass ships, `upscale.rs:410`);
+  - delivered: 0.259; A1+B2: 0.300.
+- **The stages**, as (i) as built / (ii) + breach / (iii) + the light pass, which is the world:
+  - témoin: 0.338 / 0.369 / 0.351;
+  - B2 → A_c without the clause: 0.335 / 0.367 / 0.364;
+  - with it: **0.317** / 0.346 / **0.401**.
+  - Finding 128's paired form reproduces to the digit (0.346 → 0.366, 0.350 → 0.402).
+- **Where the construction cuts, it lays its law.** Its links lowered at both ends read **0.493**, in
+  every no-clause world.
+- **(i)'s 0.338 is a mixture.** 32.1 % of the trunk ≥ 10 km² cells lie BELOW their law, and `min(field,
+  V)` keeps the field there (θ 0.161). Named, not treated.
+- **The clause bends the laid floor, 0.493 → 0.469.**
+  - It raises 1 209 more trunk cells > 1 m above their own law. By its definition, all of them are on a
+    larger line's floor band; their position relative to the junction is NOT measured.
+  - On the links within ±1 m of the law at both ends, θ is unchanged (0.485 → 0.483).
+- **By the pre-written reading, the clause DEFORMS the law.** The no-clause floor is at 0.5 and the
+  clause moves it away. Harel's band is reached only at (iii), by the light pass on the clause's field
+  (0.346 → 0.401), which the reading discounts.
+- **The source cones.**
+  - 90 069 moved cells lie within 3 cells of a head: 61 % raised, p90 +13.9 m, 92 % on the larger line's
+    band.
+  - On the 3 956 touched lines (3.8 %), the mean head slope RISES 10.8 %, the median falls 4.4 % and p25
+    falls 19 %.
+  - The clause reverses 67 heads, 51 of them by raising the reach below, and un-reverses 158. It halves
+    341 lines and steepens 291.
+  - **Finding 121's flattening is not systematic. A2 is NOT triggered**, on my reading of a trigger that
+    was not quantified in advance.
+  - The measured deformation is on the trunks, not on the cones.
+
+**B1 — the reserved case ([O03]'s parabolic valley, declared first): FAIL, by 0.003 on one criterion of
+four.**
+- LTD passes on its own errors (MAE 0.368, RMSE 0.440) and on the MAE ratio (0.569).
+- It fails on the RMSE ratio: 0.403 against ≤ 0.40. Our D8 RMSE is 1.09 against the paper's ≈ 2.1.
+- No second geometry was tried. **C and D do not run; no C gate was declared (rule 15).**
+
+**B2 — the ties on the real pre-incision.**
+- D8's exact ties are 0.054 % in f32 and 0.135 % after the u16 export.
+- LTD's tie rule decides **0.012 %** of its choices, uniformly across the slope quartiles.
+- **6.05 % of land cells are flat fallbacks** (`compute_flow`'s cardinal Garbrecht–Martz pointer): the
+  lattice any LTD skeleton would inherit.
+
+**Predictions.**
+- Mine: P0 and P-A0a held; P-A0b, P-A1, P-A2, P-A3 and P-B2 half; P-A3b and P-B1 refuted; C and D
+  unscored.
+- The reviewer's: A's (i) values, its "the clause restores" and its cone sign and size refuted; "in the
+  band", "not Finding 121's flattening" and "A2 not triggered" held; B1 and B2 refuted; C and D unscored.
+- **Gated, off, nothing promoted.**

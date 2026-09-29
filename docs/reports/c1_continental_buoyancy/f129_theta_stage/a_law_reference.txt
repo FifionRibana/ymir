@@ -1,0 +1,15 @@
+==========  Finding 129-A . the law measured, and where the as-built construction leaves it  ==========
+   the instrument ON THE LAW (z = base + k·χ on the S1 skeleton, k = 0.07183): θ **0.500** (70720 cells; S > 0: 0.500, 70720) · 70720 trunk links · links across two bases 0
+   the input S1 on the same cells: θ 0.274 (58791)
+   témoin C2/10 col       as built (carve on S1) θ **0.338** (65802) · the law independent of a_min: true · 246 s
+      70904 trunk cells: as built − law p10 -192.2 / p25 -46.8 / p50 -0.0 / p75 +0.0 / p90 +0.0 m · above the law by > 1 m 82 (0.1 %) · below by > 1 m 23937 (33.8 %) · UNCARVED (min kept the field) 22776 (32.1 %), of them the field below its law 22775
+      θ on all the links 0.338 (65802; = theta_sa) · on the links lowered at both ends **0.493** (46885) · on the others **0.161** (18917) · on the links within ±1 m of the law at both ends **0.497** (45593)
+   B2 → A_c, no clause    as built (carve on S1) θ **0.335** (62620) · the law independent of a_min: true · 283 s
+      70904 trunk cells: as built − law p10 -192.2 / p25 -46.8 / p50 -0.2 / p75 +0.0 / p90 +0.0 m · above the law by > 1 m 86 (0.1 %) · below by > 1 m 26608 (37.5 %) · UNCARVED (min kept the field) 22778 (32.1 %), of them the field below its law 22777
+      θ on all the links 0.335 (62620; = theta_sa) · on the links lowered at both ends **0.493** (43699) · on the others **0.161** (18921) · on the links within ±1 m of the law at both ends **0.485** (39443)
+   B2 → A_c + CLAUSE      as built (carve on S1) θ **0.317** (62430) · the law independent of a_min: true · 258 s
+      70904 trunk cells: as built − law p10 -192.2 / p25 -46.9 / p50 -0.0 / p75 +0.0 / p90 +0.0 m · above the law by > 1 m 1295 (1.8 %) · below by > 1 m 26528 (37.4 %) · UNCARVED (min kept the field) 22794 (32.1 %), of them the field below its law 22775
+      θ on all the links 0.317 (62430; = theta_sa) · on the links lowered at both ends **0.469** (43491) · on the others **0.161** (18939) · on the links within ±1 m of the law at both ends **0.483** (38860)
+==========  end Finding 129-A (law) . 1033.9 s  ==========
+test f129_a_law ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 1033.98s

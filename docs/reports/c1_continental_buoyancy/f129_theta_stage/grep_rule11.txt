@@ -1,0 +1,16 @@
+ADR 0001, rule 11/11b/11c: identifiers, values, typographic variants; the earliest hit is the one read.
+concavit: 3 hits · first L18576 [## Finding 128 — the confluence clause removes every canyo] :: ## Finding 128 — the confluence clause removes every canyon but fails its concavity control; the path-based directions are read; our D8-LTD 
+θ / theta: 31 hits · first L23 [(preamble)] ::   `A≥A_c`), θ=0, droplets off, **UNCOUPLED vertical scale** (do NOT couple
+slope-area / pente-aire: 1 hits · first L18622 [## Finding 128 — the confluence clause removes every canyo] ::   1.000, and |Δz| p90 falls 43 → 32 m, but θ (S ∝ A^−θ) goes 0.350 → 0.402 (+14.9 %). The clause moves
+χ / chi: 73 hits · first L3906 [## Finding 44 — STRUCTURAL GAP: the model has no explicit ] :: > 96's χ floor passed all of them and was refuted by **one look at one 1024² tile**. A texture
+Harel: 7 hits · first L12469 [## Finding 89 — Finding 44 was IMPLEMENTED; what blocks th] :: | B6 | duration | expressed in years through a pinned `K` | **Whipple & Tucker 1999 Table 2 p. 17,666; Harel 2016; Stock & Montgomery via `s
+cône / cone: 13 hits · first L119 [## Finding 3 — Droplet erosion cannot make a dendritic net] :: cone at production parameters, surface roughness barely changed (0.00005 → 0.00006):
+source cone: NOTHING FOUND
+Finding 121: 10 hits · first L17945 [## Finding 120 — the valley construction, read before it i] :: ≥ 100 km²) and the construction stands on it (Finding 121). By band (ON, full tree), R8 of the
+Finding 128: 2 hits · first L18576 [## Finding 128 — the confluence clause removes every canyo] :: ## Finding 128 — the confluence clause removes every canyon but fails its concavity control; the path-based directions are read; our D8-LTD 
+égalité / tie: 33 hits · first L733 [## Finding 15 — The river "offset" was a metric artifact; ] ::    tie-breaks). `argmaxⱼ slopeⱼᵖ = argmaxⱼ slopeⱼ` — the dominant MFD path IS the D8 line, so
+quantif / u16: 67 hits · first L340 [## Finding 4 — Terraces are an EROSION-DEPOSITION artifact] :: - u16 quantisation REFUTED: 0.1–0.14 m/unit, vs observed jumps of 100s of m.
+Paik: 2 hits · first L18582 [## Finding 128 — the confluence clause removes every canyo] :: bit-neutral when off (`a8d2d538d692c2f0`). The references (Orlandini et al. 2003 and 2014, Paik 2008)
+false confluence: 1 hits · first L18590 [## Finding 128 — the confluence clause removes every canyo] :: - **Paik 2008**: (a) no basis for λ, answered by [O14]; (b) asymmetry and false confluences on a cone,
+dôme / dome: 1 hits · first L18490 [## Finding 126 — the −1.00 m is the bathymetry's clamp and] :: - **D1**: on isotropic synthetics (random-direction plane waves on a draining dome, terrain R8 ≤ 0.025,
+asymétrie / asymmetr: 10 hits · first L294 [## Finding 5 — FBM shrinks to a symmetry-breaking seed; wi] ::   roughness-asymmetry (grad vs contour, ±8 cells) at ~0.83 (pre-incision ~0.80).

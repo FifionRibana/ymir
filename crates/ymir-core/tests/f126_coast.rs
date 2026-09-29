@@ -2604,3 +2604,762 @@ fn f128_a() {
     eprintln!("\n==========  end Finding 128-A . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
 }
 
+
+// ════════════════════════════════ Finding 129 ════════════════════════════════
+
+/// ADR Finding 129-B1 — the reserved case: [O03]'s PARABOLIC VALLEY (Fig. 2d, Fig. 3j–l), which was not
+/// used to find the tie bug. The geometry is declared in `f129_predictions.md` before the run: 30² interior
+/// cells, the flow along +x to the east edge, z = (n − x) + (y − yc)²/30 (cell units, metres per cell),
+/// sink cells around it. Theoretical areas come from the exact descent lines of 8 × 8 sub-points per cell.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored f129_b1 --nocapture
+#[test]
+#[ignore]
+fn f129_b1() {
+    use ymir_core::tectonics_c1::valley_construction::{accumulate_cells, ltd_directions};
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    eprintln!("\n==========  Finding 129-B1 . D8-LTD on the reserved case, Orlandini 2003's parabolic valley  ==========");
+    let n = 32usize;
+    let yc = n as f32 / 2.0;
+    let zf = |x: f32, y: f32| (n as f32 - x) + (y - yc) * (y - yc) / 30.0;
+    let zm: Vec<f32> = (0..n * n).map(|k| zf((k % n) as f32 + 0.5, (k / n) as f32 + 0.5) * 10.0).collect();
+    let sink: Vec<bool> = (0..n * n).map(|k| {
+        let (x, y) = (k % n, k / n);
+        x == 0 || y == 0 || x == n - 1 || y == n - 1
+    }).collect();
+    let step = |c: usize, k: u8| ((c / n) as i32 + D8_DY[k as usize]) as usize * n + ((c % n) as i32 + D8_DX[k as usize]) as usize;
+    let d8: Vec<u8> = (0..n * n)
+        .map(|c| {
+            if sink[c] {
+                return DIR_NONE;
+            }
+            let mut best = (DIR_NONE, 0f32);
+            for k in 0..8u8 {
+                let s = (zm[c] - zm[step(c, k)]) / if k % 2 == 1 { std::f32::consts::SQRT_2 } else { 1.0 };
+                if s > best.1 {
+                    best = (k, s);
+                }
+            }
+            best.0
+        })
+        .collect();
+    let (ltd, flats) = ltd_directions(&zm, &sink, &d8, n, n, 10.0);
+    // the exact descent direction: −∇z = (1, −2 (y − yc) / 30), in cell units
+    let sub = 8usize;
+    let mut at = vec![0f64; n * n];
+    for c in (0..n * n).filter(|&c| !sink[c]) {
+        for sy in 0..sub {
+            for sx in 0..sub {
+                let (mut px, mut py) = ((c % n) as f32 + (sx as f32 + 0.5) / sub as f32, (c / n) as f32 + (sy as f32 + 0.5) / sub as f32);
+                let mut last = usize::MAX;
+                loop {
+                    if px < 1.0 || py < 1.0 || px >= (n - 1) as f32 || py >= (n - 1) as f32 {
+                        break;
+                    }
+                    let cc = py as usize * n + px as usize;
+                    if cc != last {
+                        at[cc] += 1.0 / (sub * sub) as f64;
+                        last = cc;
+                    }
+                    let (gx, gy) = (1.0f32, -2.0 * (py - yc) / 30.0);
+                    let g = (gx * gx + gy * gy).sqrt();
+                    px += 0.02 * gx / g;
+                    py += 0.02 * gy / g;
+                }
+            }
+        }
+    }
+    let errs = |dir: &[u8]| -> (f64, f64, f64) {
+        let acc = accumulate_cells(dir, &sink, n, n);
+        let e: Vec<f64> = (0..n * n).filter(|&c| !sink[c]).map(|c| (acc[c] as f64 - at[c]) / at[c]).collect();
+        let k = e.len() as f64;
+        (e.iter().sum::<f64>() / k, e.iter().map(|v| v.abs()).sum::<f64>() / k, (e.iter().map(|v| v * v).sum::<f64>() / k).sqrt())
+    };
+    let (e8, el) = (errs(&d8), errs(&ltd));
+    let (rmae, rrmse) = (el.1 / e8.1, el.2 / e8.2);
+    let pass = (0.19..=0.39).contains(&el.1) && (0.20..=0.60).contains(&el.2) && (0.3..=0.8).contains(&rmae) && (0.08..=0.40).contains(&rrmse);
+    eprintln!("   parabolic valley 30² · LTD flat fallbacks {flats}");
+    eprintln!("      D8    : ME {:+.3} · MAE {:.3} · RMSE {:.3}   ([O03] Fig. 3j–l at λ 0: ME ≈ 0.0, MAE ≈ 0.57, RMSE ≈ 2.1)", e8.0, e8.1, e8.2);
+    eprintln!("      D8-LTD: ME {:+.3} · MAE **{:.3}** · RMSE **{:.3}**   ([O03] at λ 1: ME ≈ −0.26, MAE ≈ 0.29, RMSE ≈ 0.35)", el.0, el.1, el.2);
+    eprintln!("      ratios LTD / D8: MAE **{rmae:.3}** (paper ≈ 0.51) · RMSE **{rrmse:.3}** (≈ 0.17) → **{}**", if pass { "PASS" } else { "FAIL" });
+}
+
+/// ADR Finding 129-B2 — the ties on the REAL pre-incision (S1 breached, the surface the skeleton reads):
+/// the D8 ties (the two steepest of the eight neighbours' slopes equal, in f32 and after the u16
+/// export's quantisation), and the D8-LTD choices the tie rule decides. Where: by local slope quartile.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored f129_b2 --nocapture
+#[test]
+#[ignore]
+fn f129_b2() {
+    use ymir_core::tectonics_c1::drainage::C1_SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::valley_construction::ltd_directions_stats;
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, FlowConfig, compute_flow};
+    let ss = SteinSteinParams::default();
+    eprintln!("\n==========  Finding 129-B2 . the ties on the real pre-incision  ==========");
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let (w, h) = (s1.width, s1.height);
+    let n = w * h;
+    let dc = C1DrainageConfig::default();
+    let d = c1_drainage_windowed(&s1, None, &dc, &ss, DOMAIN_KM);
+    let bf = breach_monotone(&s1, &d.flow.filled, &d.lake_map, C1_SEA_LEVEL_NORM, w, h);
+    drop(d);
+    let flow = compute_flow(&bf, &FlowConfig { sea_level: C1_SEA_LEVEL_NORM, flat_perturbation: dc.flat_perturbation.clone(), dinf: dc.dinf });
+    let zm: Vec<f32> = bf.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect();
+    let sink: Vec<bool> = bf.data.iter().map(|&v| v <= C1_SEA_LEVEL_NORM).collect();
+    let land = sink.iter().filter(|&&s| !s).count();
+    let cell_m = CELL_KM * 1000.0;
+    let nb = |c: usize, k: usize| ((c / w) as i32 + D8_DY[k]).rem_euclid(h as i32) as usize * w + ((c % w) as i32 + D8_DX[k]).rem_euclid(w as i32) as usize;
+    // D8 ties and the local slope (the steepest), on a height field
+    let d8_ties = |z: &[f32]| -> (usize, usize, Vec<f32>) {
+        let mut exact = 0usize;
+        let mut rel = 0usize;
+        let mut smax = vec![0f32; n];
+        for c in (0..n).filter(|&c| !sink[c]) {
+            let mut s: Vec<f32> = (0..8).map(|k| (z[c] - z[nb(c, k)]) / if k % 2 == 1 { std::f32::consts::SQRT_2 } else { 1.0 }).collect();
+            s.sort_by(|a, b| b.total_cmp(a));
+            smax[c] = s[0] / cell_m;
+            if s[0] > 0.0 {
+                if s[0] == s[1] {
+                    exact += 1;
+                }
+                if (s[0] - s[1]).abs() <= 1e-6 * s[0].abs() {
+                    rel += 1;
+                }
+            }
+        }
+        (exact, rel, smax)
+    };
+    let (ex, rel, smax) = d8_ties(&zm);
+    let hl = ymir_core::export::height::metric_height_u16(&bf, &ss);
+    let zq: Vec<f32> = hl.codes.iter().map(|&c| hl.min_m + (c as f32 / 65535.0) * (hl.max_m - hl.min_m)).collect();
+    let (exq, relq, _) = d8_ties(&zq);
+    eprintln!(
+        "   D8 on {land} land cells: exact ties (f32) {ex} ({:.4} %) · within 1e-6 relative {rel} ({:.4} %) · after the u16 quantisation ({:.3} m / code): exact {exq} ({:.3} %) · within 1e-6 {relq} ({:.3} %)",
+        100.0 * ex as f32 / land as f32,
+        100.0 * rel as f32 / land as f32,
+        (hl.max_m - hl.min_m) / 65535.0,
+        100.0 * exq as f32 / land as f32,
+        100.0 * relq as f32 / land as f32
+    );
+    let (_, st) = ltd_directions_stats(&zm, &sink, &flow.direction, w, h, cell_m);
+    eprintln!(
+        "   D8-LTD: {} land cells · flat fallbacks {} ({:.3} %) · the tie rule decides {} choices ({:.3} %) · of them exact in f32 {}",
+        land,
+        st.flats,
+        100.0 * st.flats as f32 / land as f32,
+        st.ties,
+        100.0 * st.ties as f32 / land as f32,
+        st.exact_ties
+    );
+    // where: the local slope quartiles of land
+    let mut sl: Vec<f32> = (0..n).filter(|&c| !sink[c]).map(|c| smax[c]).collect();
+    sl.sort_by(f32::total_cmp);
+    let q = |p: f32| sl[((sl.len() - 1) as f32 * p) as usize];
+    let (q1, q2, q3) = (q(0.25), q(0.5), q(0.75));
+    let mut bins = [0usize; 4];
+    for &c in &st.tie_cells {
+        let s = smax[c as usize];
+        bins[if s <= q1 { 0 } else if s <= q2 { 1 } else if s <= q3 { 2 } else { 3 }] += 1;
+    }
+    let t = st.tie_cells.len().max(1) as f32;
+    eprintln!(
+        "   where the LTD ties sit, by local slope quartile of land (Q1 ≤ {q1:.4} · Q2 ≤ {q2:.4} · Q3 ≤ {q3:.4} m/m): {:.1} % / {:.1} % / {:.1} % / {:.1} %",
+        100.0 * bins[0] as f32 / t,
+        100.0 * bins[1] as f32 / t,
+        100.0 * bins[2] as f32 / t,
+        100.0 * bins[3] as f32 / t
+    );
+}
+
+/// Slope-area θ: −slope of ln S on ln A over the skeleton's trunk ≥ `a_min` km² cells, S = the field's
+/// drop to the cell's D8 receiver on that skeleton over the link length, cells with S > `smin`.
+fn theta_sa(z: &[f32], sk: &Skeleton, a_min: f32, smin: f32) -> (f32, usize) {
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let (w, h) = (sk.width, sk.height);
+    let mut v: Vec<(f64, f64)> = Vec::new();
+    for k in 0..w * h {
+        if !sk.trunk[k] || sk.area_km2[k] < a_min {
+            continue;
+        }
+        let d = sk.direction[k];
+        if d == DIR_NONE {
+            continue;
+        }
+        let r = ((k / w) as i32 + D8_DY[d as usize]).rem_euclid(h as i32) as usize * w
+            + ((k % w) as i32 + D8_DX[d as usize]).rem_euclid(w as i32) as usize;
+        if !sk.trunk[r] {
+            continue;
+        }
+        let dist = sk.cell_m * if d % 2 == 1 { std::f32::consts::SQRT_2 } else { 1.0 };
+        let s = (z[k] - z[r]) / dist;
+        if s > smin {
+            v.push(((sk.area_km2[k] as f64).ln(), (s as f64).ln()));
+        }
+    }
+    let k = v.len() as f64;
+    let (mx, my) = (v.iter().map(|a| a.0).sum::<f64>() / k, v.iter().map(|a| a.1).sum::<f64>() / k);
+    let sxy: f64 = v.iter().map(|a| (a.0 - mx) * (a.1 - my)).sum();
+    let sxx: f64 = v.iter().map(|a| (a.0 - mx).powi(2)).sum();
+    ((-sxy / sxx) as f32, v.len())
+}
+
+/// [`theta_sa`] on two fields over the SAME cells: those with S > `smin` in both (Finding 128's form).
+fn theta_sa_paired(za: &[f32], zb: &[f32], sk: &Skeleton, a_min: f32, smin: f32) -> (f32, f32) {
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let (w, h) = (sk.width, sk.height);
+    let (mut va, mut vb): (Vec<(f64, f64)>, Vec<(f64, f64)>) = (Vec::new(), Vec::new());
+    for k in 0..w * h {
+        if !sk.trunk[k] || sk.area_km2[k] < a_min || sk.direction[k] == DIR_NONE {
+            continue;
+        }
+        let d = sk.direction[k] as usize;
+        let r = ((k / w) as i32 + D8_DY[d]).rem_euclid(h as i32) as usize * w + ((k % w) as i32 + D8_DX[d]).rem_euclid(w as i32) as usize;
+        if !sk.trunk[r] {
+            continue;
+        }
+        let dist = sk.cell_m * if d % 2 == 1 { std::f32::consts::SQRT_2 } else { 1.0 };
+        let (sa, sb) = ((za[k] - za[r]) / dist, (zb[k] - zb[r]) / dist);
+        if sa > smin && sb > smin {
+            let la = (sk.area_km2[k] as f64).ln();
+            va.push((la, (sa as f64).ln()));
+            vb.push((la, (sb as f64).ln()));
+        }
+    }
+    let fit = |v: &[(f64, f64)]| -> f32 {
+        let k = v.len() as f64;
+        let (mx, my) = (v.iter().map(|a| a.0).sum::<f64>() / k, v.iter().map(|a| a.1).sum::<f64>() / k);
+        let sxy: f64 = v.iter().map(|a| (a.0 - mx) * (a.1 - my)).sum();
+        let sxx: f64 = v.iter().map(|a| (a.0 - mx).powi(2)).sum();
+        (-sxy / sxx) as f32
+    };
+    (fit(&va), fit(&vb))
+}
+
+/// ADR Finding 129-A — θ by STAGE, which decides whether the confluence clause corrupts or restores the
+/// construction's law (θ = 0.5 on its own D8 path), and what the clause does to the source cones.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored f129_a --nocapture
+#[test]
+#[ignore]
+fn f129_a() {
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    eprintln!("\n==========  Finding 129-A . θ by stage, and the source cones  ==========");
+    let metres = |g: &GridF32| -> Vec<f32> { g.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect() };
+    let breach = |g: &GridF32| -> GridF32 {
+        let d = c1_drainage_windowed(g, None, &dcfg(), &ss, DOMAIN_KM);
+        breach_monotone(g, &d.flow.filled, &d.lake_map, SEA, g.width, g.height)
+    };
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let (w, h) = (s1.width, s1.height);
+    let n = w * h;
+    let base = ValleyConstruction { wall_sea_floor_m: Some(0.5), ..ValleyConstruction::new(F121_AGE_K, Some(0.1)) };
+    let sk = skeleton(&s1, &base, &ss, DOMAIN_KM); // trunk ≥ 10 km² cells are the same D8 cells at every a_min
+    let pre = build_field_seed(Knobs::no_incision(), PSEED);
+    let sk_pre = skeleton(&pre, &base, &ss, DOMAIN_KM);
+    let th = |z: &[f32]| theta_sa(z, &sk, 10.0, 1e-4);
+    // ── the references first ──
+    eprintln!("\n   ── references (the same instrument: slope-area over the S1 skeleton's trunk ≥ 10 km² cells, S > 1e-4) ──");
+    eprintln!("      the construction's own law: θ = 0.500 (z = base + k·χ, χ = ∫ (A0/A)^0.5 dx)");
+    eprintln!("      Harel et al. 2016: ⟨m/n⟩ = 0.51 ± 0.12 (PDF p. 23; 0.51 ± 0.14 at p. 36), by the χ-integral method");
+    let (t, k) = th(&metres(&s1));
+    eprintln!("      S1, the construction's input: θ **{t:.3}** ({k} cells)");
+    let (t, k) = th(&metres(&pre));
+    eprintln!("      PRE (no incision, bathymetry; production ships no droplet pass, upscale.rs:410): θ **{t:.3}** ({k} cells)");
+    for (label, kn) in [("the delivered (livré)", Knobs::passes(2)), ("A1+B2", Knobs { slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) })] {
+        let g = build_field_seed(kn, PSEED);
+        let (t, k) = th(&metres(&g));
+        eprintln!("      {label}: θ **{t:.3}** ({k} cells)");
+    }
+    // ── the stages ──
+    eprintln!("\n   ── the stages (mur ↔ mer ON; planar walls, so bruit ↔ pied has nothing to act on) ──");
+    let worlds: [(&str, ValleyConstruction); 3] = [
+        ("témoin C2/10 col", base),
+        ("B2 → A_c, no clause", ValleyConstruction { a_min_km2: 0.1, ..base }),
+        ("B2 → A_c + CLAUSE", ValleyConstruction { a_min_km2: 0.1, trunk_band: true, ..base }),
+    ];
+    let mut s2s: Vec<GridF32> = Vec::new();
+    let mut finals: Vec<GridF32> = Vec::new();
+    for (label, vc) in worlds {
+        let t = Instant::now();
+        let s2 = build_field_seed(Knobs { valley: Some(vc), no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+        let (t1, k1) = th(&metres(&s2));
+        let (t2, k2) = th(&metres(&breach(&s2)));
+        let s3 = build_field_seed(Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+        let (t3, k3) = th(&metres(&s3));
+        drop(s3);
+        let g = build_field_seed(Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) }, PSEED);
+        let (t4, k4) = th(&metres(&g));
+        eprintln!(
+            "   {label:<22} (i) as built **{t1:.3}** ({k1}) · (ii) + drainage/breach **{t2:.3}** ({k2}) · (iii-a) + the light pass **{t3:.3}** ({k3}) · (iii-b) the world **{t4:.3}** ({k4}) · {:.0} s",
+            t.elapsed().as_secs_f64()
+        );
+        s2s.push(s2);
+        finals.push(g);
+    }
+    // Finding 128's own paired form, for continuity: the PRE skeleton, cells with S > 1e-4 in BOTH worlds
+    let (zt, za0, za1) = (metres(&finals[0]), metres(&finals[1]), metres(&finals[2]));
+    let (p0t, p0w) = theta_sa_paired(&zt, &za0, &sk_pre, 10.0, 1e-4);
+    let (p1t, p1w) = theta_sa_paired(&zt, &za1, &sk_pre, 10.0, 1e-4);
+    eprintln!(
+        "   Finding 128's paired form (PRE skeleton, S > 1e-4 in both): témoin {p0t:.3} → no clause {p0w:.3} · témoin {p1t:.3} → clause {p1w:.3} (F128 read 0.346 → 0.366 and 0.350 → 0.402)"
+    );
+    drop((zt, za0, za1));
+    // ── the source cones: what the clause moves at the construction (the pipeline's own S2) ──
+    eprintln!("\n   ── the source cones ──");
+    let (z0, z1) = (metres(&s2s[1]), metres(&s2s[2]));
+    let sk_ac = skeleton(&s1, &ValleyConstruction { a_min_km2: 0.1, ..base }, &ss, DOMAIN_KM);
+    let (_, mk1) = carve(&s1, &sk_ac, &ValleyConstruction { a_min_km2: 0.1, trunk_band: true, ..base }, &ss);
+    let mut head = vec![false; n];
+    let mut heads: Vec<usize> = Vec::new();
+    for (li, l) in sk_ac.polylines.iter().enumerate() {
+        let (x, y) = ((l[0].0.floor() as i64).rem_euclid(w as i64) as usize, (l[0].1.floor() as i64).rem_euclid(h as i64) as usize);
+        head[y * w + x] = true;
+        heads.push(li);
+    }
+    let dhead = dist_from(&head, w, h);
+    let moved: Vec<usize> = (0..n).filter(|&k| s2s[1].data[k] != s2s[2].data[k]).collect();
+    let near: Vec<usize> = moved.iter().copied().filter(|&k| dhead[k] <= 3).collect();
+    let mut dz: Vec<f32> = near.iter().map(|&k| z1[k] - z0[k]).collect();
+    dz.sort_by(f32::total_cmp);
+    let q = |v: &[f32], p: f32| if v.is_empty() { f32::NAN } else { v[((v.len() - 1) as f32 * p) as usize] };
+    let raised = dz.iter().filter(|&&d| d > 0.0).count();
+    let on_floor = near.iter().filter(|&&k| mk1.floor[k]).count();
+    let uncarved = near.iter().filter(|&&k| !mk1.carved[k]).count();
+    eprintln!(
+        "   the clause moves {} cells (the pipeline's S2, B2 → A_c) · {} within 3 cells of a line's head · of those: RAISED {raised} / lowered {} · Δz p10 {:+.1} / p50 {:+.1} / p90 {:+.1} m · on the larger line's FLOOR band {on_floor} · left UNCARVED {uncarved} · on a wall {}",
+        moved.len(),
+        near.len(),
+        near.len() - raised,
+        q(&dz, 0.1),
+        q(&dz, 0.5),
+        q(&dz, 0.9),
+        near.len() - on_floor - uncarved
+    );
+    // the touched cones' profiles: the first 10 cells of each line whose head region moved
+    let mut moved_mask = vec![false; n];
+    for &k in &moved {
+        moved_mask[k] = true;
+    }
+    let (mut touched, mut flatter, mut reversed) = (0usize, 0usize, 0usize);
+    let (mut s_before, mut s_after) = (Vec::new(), Vec::new());
+    for l in &sk_ac.polylines {
+        let cells: Vec<usize> = l
+            .iter()
+            .map(|p| ((p.1.floor() as i64).rem_euclid(h as i64) as usize) * w + (p.0.floor() as i64).rem_euclid(w as i64) as usize)
+            .fold(Vec::new(), |mut acc, c| {
+                if acc.last() != Some(&c) {
+                    acc.push(c);
+                }
+                acc
+            });
+        if cells.len() < 11 || !cells[..4].iter().any(|&c| moved_mask[c]) {
+            continue;
+        }
+        touched += 1;
+        let (a, b) = (cells[0], cells[10]);
+        let len = 10.0 * CELL_KM * 1000.0;
+        let (sb, sa) = ((z0[a] - z0[b]) / len, (z1[a] - z1[b]) / len);
+        s_before.push(sb);
+        s_after.push(sa);
+        if sa < 0.5 * sb {
+            flatter += 1;
+        }
+        if sa < 0.0 {
+            reversed += 1;
+        }
+    }
+    s_before.sort_by(f32::total_cmp);
+    s_after.sort_by(f32::total_cmp);
+    eprintln!(
+        "   touched source cones (a line whose first 4 cells moved): {touched} of {} lines · the head-to-10th-cell slope p50 {:.4} → {:.4} m/m · FLATTENED below half {flatter} · REVERSED (a pit at the head) {reversed}",
+        sk_ac.polylines.len(),
+        q(&s_before, 0.5),
+        q(&s_after, 0.5)
+    );
+    eprintln!("\n==========  end Finding 129-A . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+
+/// A continuous steepest-descent trace (bicubic on `zm`), half a cell per step, from `(x, y)` for
+/// `len` cells of arclength or until the sea / a flat / the step budget.
+fn free_trace(zm: &[f32], w: usize, h: usize, cell_m: f32, sea_m: f32, x: f32, y: f32, len: f32) -> Vec<(f32, f32)> {
+    use ymir_core::tectonics_c1::valley_construction::{TraceInterp, interp_grad};
+    let mut p = (x, y);
+    let mut out = vec![p];
+    let mut arc = 0f32;
+    let budget = (4.0 * len / 0.5) as usize + 8;
+    for _ in 0..budget {
+        if arc >= len {
+            break;
+        }
+        let (z, gx, gy) = interp_grad(zm, w, h, cell_m, TraceInterp::Bicubic, p.0.rem_euclid(w as f32), p.1.rem_euclid(h as f32));
+        let g = (gx * gx + gy * gy).sqrt();
+        if z <= sea_m || g < 1e-3 {
+            break;
+        }
+        p = (p.0 - 0.5 * gx / g, p.1 - 0.5 * gy / g);
+        out.push(p);
+        arc += 0.5;
+    }
+    out
+}
+
+/// R8 of a set of polylines' chords of `k` cells of arclength: (R8, chord count).
+fn chords_r8_len(polys: &[Vec<(f32, f32)>], k: f32) -> (f32, usize) {
+    let (mut c8, mut s8, mut m) = (0f64, 0f64, 0usize);
+    for l in polys {
+        let (mut i0, mut arc0, mut arc) = (0usize, 0f32, 0f32);
+        for i in 1..l.len() {
+            arc += ((l[i].0 - l[i - 1].0).powi(2) + (l[i].1 - l[i - 1].1).powi(2)).sqrt();
+            if arc - arc0 >= k - 1e-3 {
+                let t = ((l[i].1 - l[i0].1) as f64).atan2((l[i].0 - l[i0].0) as f64);
+                c8 += (8.0 * t).cos();
+                s8 += (8.0 * t).sin();
+                m += 1;
+                i0 = i;
+                arc0 = arc;
+            }
+        }
+    }
+    (if m < 40 { f32::NAN } else { ((c8 * c8 + s8 * s8).sqrt() / m as f64) as f32 }, m)
+}
+
+/// The 1–3 km² prefixes of a skeleton's lines, as cell-centre chains (the raw D8 or LTD path cells).
+fn branch_paths(sk: &Skeleton) -> Vec<Vec<(f32, f32)>> {
+    let (w, h) = (sk.width, sk.height);
+    sk.polylines
+        .iter()
+        .map(|l| {
+            l.iter()
+                .filter(|p| (p.0.fract() - 0.5).abs() < 1e-4 && (p.1.fract() - 0.5).abs() < 1e-4)
+                .take_while(|p| {
+                    let c = ((p.1.floor() as i64).rem_euclid(h as i64) as usize) * w + (p.0.floor() as i64).rem_euclid(w as i64) as usize;
+                    sk.area_km2[c] < 3.0
+                })
+                .map(|p| (p.0, p.1))
+                .collect::<Vec<_>>()
+        })
+        .filter(|v| v.len() >= 2)
+        .collect()
+}
+
+/// The concentration (Finding 112) and the cone (Paik 2008) of a pointer tree on a synthetic: one
+/// receiver per land cell, the largest drained area (km²), the outlets (all and ≥ 1 km²), the confluences
+/// (land cells with ≥ 2 donors), and the sector asymmetry around the dome's centre (coefficient of
+/// variation of the drained area leaving through each of 16 azimuth sectors).
+fn tree_row(dir: &[u8], area_km2: &[f32], sink: &[bool], w: usize, h: usize) -> String {
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let n = w * h;
+    let recv = |c: usize| -> Option<usize> {
+        let d = dir[c];
+        (d != DIR_NONE).then(|| ((c / w) as i32 + D8_DY[d as usize]).rem_euclid(h as i32) as usize * w + ((c % w) as i32 + D8_DX[d as usize]).rem_euclid(w as i32) as usize)
+    };
+    let land: Vec<usize> = (0..n).filter(|&c| !sink[c]).collect();
+    let one = land.iter().filter(|&&c| recv(c).is_some()).count();
+    let mut indeg = vec![0u8; n];
+    let mut sector = [0f64; 16];
+    let (cx, cy) = (w as f32 / 2.0, h as f32 / 2.0);
+    let (mut outlets, mut big) = (0usize, 0usize);
+    for &c in &land {
+        if let Some(r) = recv(c) {
+            if sink[r] {
+                outlets += 1;
+                if area_km2[c] >= 1.0 {
+                    big += 1;
+                }
+                let az = ((c / w) as f32 + 0.5 - cy).atan2((c % w) as f32 + 0.5 - cx);
+                let s = (((az + std::f32::consts::PI) / std::f32::consts::TAU * 16.0) as usize).min(15);
+                sector[s] += area_km2[c] as f64;
+            } else {
+                indeg[r] = indeg[r].saturating_add(1);
+            }
+        }
+    }
+    let confl = land.iter().filter(|&&c| indeg[c] >= 2).count();
+    let mean = sector.iter().sum::<f64>() / 16.0;
+    let cv = (sector.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / 16.0).sqrt() / mean.max(1e-9);
+    let amax = land.iter().map(|&c| area_km2[c]).fold(0f32, f32::max);
+    format!(
+        "one receiver on {one}/{} land cells · largest {amax:.1} km² · outlets {outlets} (≥ 1 km²: {big}) · confluences {confl} · sector asymmetry CV {cv:.3}",
+        land.len()
+    )
+}
+
+/// ADR Finding 129-C, the REFERENCES only (rule 15: the gate is written after them): on Finding 126's
+/// isotropic synthetics and on the pure dome (ρ = 0, Paik's cone), the D8 tree (the high reference) and
+/// the free continuous trace from the same 1–3 km² heads (the low reference), R8 by chord {1, 8, 16, 32}
+/// cells, with the D8 tree's concentration and cone rows.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored f129_c_refs --nocapture
+#[test]
+#[ignore]
+fn f129_c_refs() {
+    use ymir_core::tectonics_c1::production_upscale::c1_metres_to_altitude_norm;
+    let ss = SteinSteinParams::default();
+    eprintln!("\n==========  Finding 129-C . the references (D8, the free trace), the pure dome  ==========");
+    let ns = 2048usize;
+    let cell_m = CELL_KM * 1000.0;
+    let dom_s = ns as f32 * CELL_KM;
+    let b2 = ValleyConstruction { a_min_km2: 1.0, smooth_m: 0.0, ..ValleyConstruction::new(F121_AGE_K, Some(0.1)) };
+    let sea_m = c1_altitude_norm_to_metres(SEA, &ss);
+    for rho in [0.0f32, 0.1, 0.3, 1.0, 3.0] {
+        let zm0 = synth_dome(ns, cell_m, rho, 0x9E37_79B9_7F4A_7C15);
+        let g = GridF32 { width: ns, height: ns, data: zm0.iter().map(|&m| c1_metres_to_altitude_norm(m, &ss)).collect() };
+        let d = c1_drainage_windowed(&g, None, &C1DrainageConfig::default(), &ss, dom_s);
+        let bf = breach_monotone(&g, &d.flow.filled, &d.lake_map, SEA, ns, ns);
+        let zm: Vec<f32> = bf.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect();
+        let sink: Vec<bool> = bf.data.iter().map(|&v| v <= SEA).collect();
+        let sk = skeleton(&g, &b2, &ss, dom_s);
+        let paths = branch_paths(&sk);
+        let d8r: Vec<String> = [1f32, 8.0, 16.0, 32.0].iter().map(|&k| { let (r, m) = chords_r8_len(&paths, k); format!("c{k:.0} **{r:.3}** ({m})") }).collect();
+        let free: Vec<Vec<(f32, f32)>> = paths
+            .iter()
+            .map(|p| {
+                let len: f32 = p.windows(2).map(|q| ((q[1].0 - q[0].0).powi(2) + (q[1].1 - q[0].1).powi(2)).sqrt()).sum();
+                free_trace(&zm, ns, ns, cell_m, sea_m, p[0].0, p[0].1, len.max(8.0))
+            })
+            .collect();
+        let frr: Vec<String> = [1f32, 8.0, 16.0, 32.0].iter().map(|&k| { let (r, m) = chords_r8_len(&free, k); format!("c{k:.0} **{r:.3}** ({m})") }).collect();
+        eprintln!("\n   ρ = {rho}{} · {} branches (1–3 km²)", if rho == 0.0 { " (the PURE dome, Paik's cone)" } else { "" }, paths.len());
+        eprintln!("      HIGH ref, the D8 tree   : {}", d8r.join(" · "));
+        eprintln!("      LOW ref, the free trace : {}", frr.join(" · "));
+        eprintln!("      the D8 tree: {}", tree_row(&sk.direction, &sk.area_km2, &sink, ns, ns));
+    }
+}
+
+/// ADR Finding 129-A — the law's reference MEASURED (rule 15): the same slope-area instrument on the
+/// construction's own law, `z = base + k·χ` on the S1 skeleton, then WHERE the as-built construction
+/// (`carve` on S1, the pipeline's own call) leaves that law on the trunk ≥ 10 km² cells.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored f129_a_law --nocapture
+#[test]
+#[ignore]
+fn f129_a_law() {
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    eprintln!("\n==========  Finding 129-A . the law measured, and where the as-built construction leaves it  ==========");
+    let metres = |g: &GridF32| -> Vec<f32> { g.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect() };
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let (w, h) = (s1.width, s1.height);
+    let n = w * h;
+    let zs1 = metres(&s1);
+    let base = ValleyConstruction { wall_sea_floor_m: Some(0.5), ..ValleyConstruction::new(F121_AGE_K, Some(0.1)) };
+    let sk = skeleton(&s1, &base, &ss, DOMAIN_KM);
+    let law: Vec<f32> = (0..n).map(|k| if sk.chi_m[k].is_finite() { sk.floor_m(k, base.age_k) } else { f32::NAN }).collect();
+    let recv = |k: usize| -> Option<usize> {
+        let d = sk.direction[k];
+        (d != DIR_NONE).then(|| {
+            ((k / w) as i32 + D8_DY[d as usize]).rem_euclid(h as i32) as usize * w
+                + ((k % w) as i32 + D8_DX[d as usize]).rem_euclid(w as i32) as usize
+        })
+    };
+    // the trunk links the instrument reads
+    let links: Vec<(usize, usize)> = (0..n)
+        .filter(|&k| sk.trunk[k] && sk.area_km2[k] >= 10.0)
+        .filter_map(|k| recv(k).filter(|&r| sk.trunk[r]).map(|r| (k, r)))
+        .collect();
+    let base_jumps = links.iter().filter(|&&(k, r)| sk.base_alt_m[k] != sk.base_alt_m[r]).count();
+    let (t, c) = theta_sa(&law, &sk, 10.0, 1e-4);
+    let (tl, cl) = theta_sa(&law, &sk, 10.0, f32::MIN_POSITIVE);
+    eprintln!(
+        "   the instrument ON THE LAW (z = base + k·χ on the S1 skeleton, k = {:.5}): θ **{t:.3}** ({c} cells; S > 0: {tl:.3}, {cl}) · {} trunk links · links across two bases {base_jumps}",
+        base.age_k,
+        links.len()
+    );
+    let (t, c) = theta_sa(&zs1, &sk, 10.0, 1e-4);
+    eprintln!("   the input S1 on the same cells: θ {t:.3} ({c})");
+    let q = |v: &mut Vec<f32>, p: f32| -> f32 {
+        if v.is_empty() {
+            return f32::NAN;
+        }
+        v.sort_by(f32::total_cmp);
+        v[((v.len() - 1) as f32 * p) as usize]
+    };
+    let worlds: [(&str, ValleyConstruction); 3] = [
+        ("témoin C2/10 col", base),
+        ("B2 → A_c, no clause", ValleyConstruction { a_min_km2: 0.1, ..base }),
+        ("B2 → A_c + CLAUSE", ValleyConstruction { a_min_km2: 0.1, trunk_band: true, ..base }),
+    ];
+    for (label, vc) in worlds {
+        let t = Instant::now();
+        let skv = skeleton(&s1, &vc, &ss, DOMAIN_KM);
+        // the law does not depend on a_min: the same D8 tree, areas, bases and χ
+        let same = (0..n).all(|k| skv.chi_m[k].to_bits() == sk.chi_m[k].to_bits() && skv.base_alt_m[k].to_bits() == sk.base_alt_m[k].to_bits());
+        let (built, mk) = carve(&s1, &skv, &vc, &ss);
+        drop(skv);
+        let zb = metres(&built);
+        drop(built);
+        let (tb, cb) = theta_sa(&zb, &sk, 10.0, 1e-4);
+        // where: the trunk cells, as built against their own law
+        let cells: Vec<usize> = (0..n).filter(|&k| sk.trunk[k] && sk.area_km2[k] >= 10.0).collect();
+        let mut dz: Vec<f32> = cells.iter().map(|&k| zb[k] - law[k]).collect();
+        let uncarved = cells.iter().filter(|&&k| !mk.carved[k]).count();
+        let unc_below = cells.iter().filter(|&&k| !mk.carved[k] && zs1[k] < law[k]).count();
+        let above1 = dz.iter().filter(|&&d| d > 1.0).count();
+        let below1 = dz.iter().filter(|&&d| d < -1.0).count();
+        let (p10, p25, p50, p75, p90) = (q(&mut dz, 0.1), q(&mut dz, 0.25), q(&mut dz, 0.5), q(&mut dz, 0.75), q(&mut dz, 0.9));
+        // θ on a partition of the SAME links (the instrument of `theta_sa`, restricted by a filter)
+        let theta_on = |keep: &dyn Fn(usize, usize) -> bool| -> (f32, usize) {
+            let v: Vec<(f64, f64)> = links
+                .iter()
+                .filter(|&&(k, r)| keep(k, r))
+                .filter_map(|&(k, r)| {
+                    let diag = (k % w != r % w) && (k / w != r / w);
+                    let s = (zb[k] - zb[r]) / (sk.cell_m * if diag { std::f32::consts::SQRT_2 } else { 1.0 });
+                    (s > 1e-4).then(|| ((sk.area_km2[k] as f64).ln(), (s as f64).ln()))
+                })
+                .collect();
+            let m = v.len() as f64;
+            let (mx, my) = (v.iter().map(|a| a.0).sum::<f64>() / m, v.iter().map(|a| a.1).sum::<f64>() / m);
+            let sxy: f64 = v.iter().map(|a| (a.0 - mx) * (a.1 - my)).sum();
+            let sxx: f64 = v.iter().map(|a| (a.0 - mx).powi(2)).sum();
+            ((-sxy / sxx) as f32, v.len())
+        };
+        let (tall, call) = theta_on(&|_, _| true);
+        let (tc, cc) = theta_on(&|k, r| mk.carved[k] && mk.carved[r]);
+        let (tu, cu) = theta_on(&|k, r| !(mk.carved[k] && mk.carved[r]));
+        let (ta, ca) = theta_on(&|k, r| (zb[k] - law[k]).abs() <= 1.0 && (zb[r] - law[r]).abs() <= 1.0);
+        eprintln!(
+            "   {label:<22} as built (carve on S1) θ **{tb:.3}** ({cb}) · the law independent of a_min: {same} · {:.0} s",
+            t.elapsed().as_secs_f64()
+        );
+        eprintln!(
+            "      {} trunk cells: as built − law p10 {p10:+.1} / p25 {p25:+.1} / p50 {p50:+.1} / p75 {p75:+.1} / p90 {p90:+.1} m · above the law by > 1 m {above1} ({:.1} %) · below by > 1 m {below1} ({:.1} %) · UNCARVED (min kept the field) {uncarved} ({:.1} %), of them the field below its law {unc_below}",
+            cells.len(),
+            100.0 * above1 as f32 / cells.len() as f32,
+            100.0 * below1 as f32 / cells.len() as f32,
+            100.0 * uncarved as f32 / cells.len() as f32
+        );
+        eprintln!(
+            "      θ on all the links {tall:.3} ({call}; = theta_sa) · on the links lowered at both ends **{tc:.3}** ({cc}) · on the others **{tu:.3}** ({cu}) · on the links within ±1 m of the law at both ends **{ta:.3}** ({ca})"
+        );
+    }
+    eprintln!("\n==========  end Finding 129-A (law) . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+
+/// ADR Finding 129-A — the source cones, BEFORE / AFTER separated: which heads the confluence clause
+/// itself reverses or flattens (a head already reversed without the clause is not the clause's), and
+/// the short lines Finding 129-A's census left out (< 11 cells). `carve` on S1, the pipeline's own
+/// call (the pipeline's S2 adds only the active rims).
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored f129_a_cones --nocapture
+#[test]
+#[ignore]
+fn f129_a_cones() {
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    eprintln!("\n==========  Finding 129-A . the source cones, before / after separated  ==========");
+    let metres = |g: &GridF32| -> Vec<f32> { g.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect() };
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let (w, h) = (s1.width, s1.height);
+    let n = w * h;
+    let base = ValleyConstruction { wall_sea_floor_m: Some(0.5), ..ValleyConstruction::new(F121_AGE_K, Some(0.1)) };
+    let v0 = ValleyConstruction { a_min_km2: 0.1, ..base };
+    let v1 = ValleyConstruction { a_min_km2: 0.1, trunk_band: true, ..base };
+    let sk = skeleton(&s1, &v0, &ss, DOMAIN_KM);
+    let (b0, _) = carve(&s1, &sk, &v0, &ss);
+    let (b1, m1) = carve(&s1, &sk, &v1, &ss);
+    let moved: Vec<bool> = (0..n).map(|k| b0.data[k] != b1.data[k]).collect();
+    let (z0, z1) = (metres(&b0), metres(&b1));
+    drop((b0, b1));
+    let q = |v: &mut Vec<f32>, p: f32| -> f32 {
+        if v.is_empty() {
+            return f32::NAN;
+        }
+        v.sort_by(f32::total_cmp);
+        v[((v.len() - 1) as f32 * p) as usize]
+    };
+    let (mut short_all, mut short_touched, mut touched) = (0usize, 0usize, 0usize);
+    let (mut rev_before, mut rev_still, mut rev_by, mut flat_by, mut steep_by, mut rev_all) = (0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
+    let (mut head_dz, mut head_dz_rev) = (Vec::new(), Vec::new());
+    let (mut head_on_floor, mut rev_by_head_lowered) = (0usize, 0usize);
+    let mut short_head_dz = Vec::new();
+    let (mut slope_b, mut slope_a) = (Vec::new(), Vec::new());
+    let len_m = 10.0 * CELL_KM * 1000.0; // Finding 129-A's census: head → 10th cell over 10 cells
+    for l in &sk.polylines {
+        let cells: Vec<usize> = l
+            .iter()
+            .map(|p| ((p.1.floor() as i64).rem_euclid(h as i64) as usize) * w + (p.0.floor() as i64).rem_euclid(w as i64) as usize)
+            .fold(Vec::new(), |mut acc, c| {
+                if acc.last() != Some(&c) {
+                    acc.push(c);
+                }
+                acc
+            });
+        let hit = cells.iter().take(4).any(|&c| moved[c]);
+        if cells.len() < 11 {
+            short_all += 1;
+            if hit {
+                short_touched += 1;
+                short_head_dz.push(z1[cells[0]] - z0[cells[0]]);
+            }
+            continue;
+        }
+        if !hit {
+            continue;
+        }
+        touched += 1;
+        let (a, b) = (cells[0], cells[10]);
+        let (sb, sa) = (z0[a] - z0[b], z1[a] - z1[b]); // drops over the same 10 cells, m
+        slope_b.push(sb / len_m);
+        slope_a.push(sa / len_m);
+        let dz = z1[a] - z0[a];
+        head_dz.push(dz);
+        if m1.floor[a] {
+            head_on_floor += 1;
+        }
+        if sa < 0.0 {
+            rev_all += 1;
+        }
+        if sb < 0.0 {
+            rev_before += 1;
+            if sa < 0.0 {
+                rev_still += 1;
+            }
+        } else if sa < 0.0 {
+            rev_by += 1;
+            head_dz_rev.push(dz);
+            if dz < 0.0 {
+                rev_by_head_lowered += 1;
+            }
+        } else if sb > 0.0 && sa < 0.5 * sb {
+            flat_by += 1;
+        } else if sa > 1.5 * sb {
+            steep_by += 1;
+        }
+    }
+    eprintln!(
+        "   {} lines on the A_c skeleton · ≥ 11 cells with a moved cell among the first 4: {touched} (Finding 129-A's census: 3 953 on S2) · < 11 cells: {short_all}, of them touched {short_touched}",
+        sk.polylines.len()
+    );
+    eprintln!(
+        "   the touched lines, head → 10th cell: reversed WITH the clause {rev_all} (Finding 129-A: 200 on S2) = already reversed without it {rev_before} (still reversed {rev_still}) + REVERSED BY the clause **{rev_by}** · FLATTENED below half BY the clause **{flat_by}** · steepened above × 1.5 {steep_by}"
+    );
+    eprintln!(
+        "   the head cell's Δz (clause − none): p10 {:+.1} / p50 {:+.1} / p90 {:+.1} m · on a floor band under the clause {head_on_floor} ({:.1} %) · of the heads it reverses: Δz p50 {:+.1} m, lowered {rev_by_head_lowered}",
+        q(&mut head_dz, 0.1),
+        q(&mut head_dz, 0.5),
+        q(&mut head_dz, 0.9),
+        100.0 * head_on_floor as f32 / touched.max(1) as f32,
+        q(&mut head_dz_rev, 0.5)
+    );
+    let mean = |v: &[f32]| v.iter().map(|&x| x as f64).sum::<f64>() / v.len().max(1) as f64;
+    let (mb, ma) = (mean(&slope_b), mean(&slope_a));
+    eprintln!(
+        "   the touched lines' head → 10th-cell slope: MEAN {mb:.4} → {ma:.4} m/m ({:+.1} %) · p50 {:.4} → {:.4} · p25 {:.4} → {:.4}",
+        100.0 * (ma / mb - 1.0),
+        q(&mut slope_b, 0.5),
+        q(&mut slope_a, 0.5),
+        q(&mut slope_b, 0.25),
+        q(&mut slope_a, 0.25)
+    );
+    eprintln!(
+        "   the short touched lines' head Δz: p10 {:+.1} / p50 {:+.1} / p90 {:+.1} m",
+        q(&mut short_head_dz, 0.1),
+        q(&mut short_head_dz, 0.5),
+        q(&mut short_head_dz, 0.9)
+    );
+    eprintln!("\n==========  end Finding 129-A (cones) . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}

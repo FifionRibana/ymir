@@ -555,6 +555,32 @@ pub fn ltd_directions(
     h: usize,
     cell_m: f32,
 ) -> (Vec<u8>, usize) {
+    let (dir, st) = ltd_directions_stats(zm, sink, fallback, w, h, cell_m);
+    (dir, st.flats)
+}
+
+/// ADR Finding 129-B2 — what D8-LTD's choices rested on.
+#[derive(Clone, Debug, Default)]
+pub struct LtdStats {
+    /// Land cells with no strictly descending facet (the fallback pointer).
+    pub flats: usize,
+    /// Choices where the two cumulative deviations tie EXACTLY in f32 (`|c1| == |c2|`).
+    pub exact_ties: usize,
+    /// Choices the tie rule decided: `||c1| − |c2|| ≤ TIE` (exact ties included).
+    pub ties: usize,
+    /// The cells of `ties`, for locating them.
+    pub tie_cells: Vec<u32>,
+}
+
+/// [`ltd_directions`], with what its choices rested on (Finding 129-B2).
+pub fn ltd_directions_stats(
+    zm: &[f32],
+    sink: &[bool],
+    fallback: &[u8],
+    w: usize,
+    h: usize,
+    cell_m: f32,
+) -> (Vec<u8>, LtdStats) {
     use std::f32::consts::{FRAC_PI_4, SQRT_2};
     let n = w * h;
     let nb = |c: usize, k: usize| -> usize {
@@ -571,6 +597,7 @@ pub fn ltd_directions(
     let mut best_area = vec![0f32; n];
     let mut best_dev = vec![0f32; n];
     let mut flats = 0usize;
+    let (mut exact_ties, mut ties, mut tie_cells) = (0usize, 0usize, Vec::new());
     for &c in &order {
         let c = c as usize;
         let e0 = zm[c];
@@ -607,15 +634,29 @@ pub fn ltd_directions(
             // 1e-4 cell go to the cardinal.
             const TIE: f32 = 1e-4;
             let cardinal = c1.abs() <= c2.abs() + TIE;
+            // ADR Finding 129-B2 -- whether the tie rule decided (and whether the tie was exact)
+            let tie = (c1.abs() - c2.abs()).abs() <= TIE;
+            let exact = c1.abs() == c2.abs();
             let first = if cardinal { (kc, n1, c1) } else { (kd, n2, c2) };
             let second = if cardinal { (kd, n2, c2) } else { (kc, n1, c1) };
-            if ok(first.1) {
+            let pick = if ok(first.1) {
                 Some(first)
             } else if ok(second.1) {
                 Some(second)
             } else {
                 None
+            };
+            pick.map(|p| (p, tie, exact))
+        });
+        let chosen = chosen.map(|(p, tie, exact)| {
+            if tie {
+                ties += 1;
+                tie_cells.push(c as u32);
             }
+            if exact {
+                exact_ties += 1;
+            }
+            p
         });
         let (k, r, conveyed) = match chosen {
             Some((k, m, dev)) => (k as u8, m, dev),
@@ -635,7 +676,7 @@ pub fn ltd_directions(
         }
         area[r] += area[c];
     }
-    (dir, flats)
+    (dir, LtdStats { flats, exact_ties, ties, tie_cells })
 }
 
 /// Drained area in CELLS along `dir` (each cell counts 1), by Kahn's order on the receiver graph;

@@ -1,0 +1,19 @@
+==========  Finding 129-A . θ by stage, and the source cones  ==========
+   ── references (the same instrument: slope-area over the S1 skeleton's trunk ≥ 10 km² cells, S > 1e-4) ──
+      the construction's own law: θ = 0.500 (z = base + k·χ, χ = ∫ (A0/A)^0.5 dx)
+      Harel et al. 2016: ⟨m/n⟩ = 0.51 ± 0.12 (PDF p. 23; 0.51 ± 0.14 at p. 36), by the χ-integral method
+      S1, the construction's input: θ **0.274** (58791 cells)
+      PRE (no incision, bathymetry; production ships no droplet pass, upscale.rs:410): θ **0.274** (58791 cells)
+      the delivered (livré): θ **0.259** (46276 cells)
+      A1+B2: θ **0.300** (50107 cells)
+   ── the stages (mur ↔ mer ON; planar walls, so bruit ↔ pied has nothing to act on) ──
+   témoin C2/10 col       (i) as built **0.338** (65802) · (ii) + drainage/breach **0.369** (63054) · (iii-a) + the light pass **0.351** (62950) · (iii-b) the world **0.351** (62950) · 9276 s
+   B2 → A_c, no clause    (i) as built **0.335** (62621) · (ii) + drainage/breach **0.367** (59870) · (iii-a) + the light pass **0.364** (59257) · (iii-b) the world **0.364** (59257) · 1134 s
+   B2 → A_c + CLAUSE      (i) as built **0.317** (62430) · (ii) + drainage/breach **0.346** (59666) · (iii-a) + the light pass **0.401** (61031) · (iii-b) the world **0.401** (61031) · 965 s
+   Finding 128's paired form (PRE skeleton, S > 1e-4 in both): témoin 0.346 → no clause 0.366 · témoin 0.350 → clause 0.402 (F128 read 0.346 → 0.366 and 0.350 → 0.402)
+   ── the source cones ──
+   the clause moves 388282 cells (the pipeline's S2, B2 → A_c) · 90069 within 3 cells of a line's head · of those: RAISED 55185 / lowered 34884 · Δz p10 -51.2 / p50 +0.5 / p90 +13.9 m · on the larger line's FLOOR band 82895 · left UNCARVED 7163 · on a wall 11
+   touched source cones (a line whose first 4 cells moved): 3953 of 103075 lines · the head-to-10th-cell slope p50 0.1178 → 0.1124 m/m · FLATTENED below half 539 · REVERSED (a pit at the head) 200
+==========  end Finding 129-A . 12012.0 s  ==========
+test f129_a ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 17 filtered out; finished in 12012.28s

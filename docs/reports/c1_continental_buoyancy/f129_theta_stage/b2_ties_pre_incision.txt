@@ -1,0 +1,9 @@
+==========  Finding 129-B2 . the ties on the real pre-incision  ==========
+test f129_b2 has been running for over 60 seconds
+   D8 on 11327660 land cells: exact ties (f32) 6124 (0.0541 %) · within 1e-6 relative 6152 (0.0543 %) · after the u16 quantisation (0.115 m / code): exact 15316 (0.135 %) · within 1e-6 15321 (0.135 %)
+   D8-LTD: 11327660 land cells · flat fallbacks 684893 (6.046 %) · the tie rule decides 1407 choices (0.012 %) · of them exact in f32 77
+   where the LTD ties sit, by local slope quartile of land (Q1 ≤ 0.0398 · Q2 ≤ 0.0877 · Q3 ≤ 0.1611 m/m): 23.1 % / 26.0 % / 26.2 % / 24.7 %
+test f129_b2 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 17 filtered out; finished in 86.06s
+
