@@ -1,0 +1,76 @@
+==========  Finding 132-P . the lakes' flats, a hidden parameter  ==========
+   684790 flat lake cells · pointers differing between the two arbitrary resolutions: 508804
+   ── témoin C2/10 col ──
+   the control (identity patch against no patch): 0 cells changed
+   arbitrary A vs B         OUTSIDE the lakes: **1150588** cells · |Δz| p50 2.64 / **p90 14.45** / max 742.8 m · farthest from a lake 20020 m
+   LTD vs arbitrary A       OUTSIDE the lakes: **1169908** cells · |Δz| p50 17.77 / **p90 31.80** / max 738.3 m · farthest from a lake 20068 m
+   LTD vs arbitrary B       OUTSIDE the lakes: **1174714** cells · |Δz| p50 20.60 / **p90 32.18** / max 955.2 m · farthest from a lake 20068 m
+   P2 — the lakes whose flats move the construction (A vs B), against this world's lakes (25 final lakes):
+      pre-lake        1 · 60332 flat cells · 179821 construction cells moved (p90 |Δz| 30.9 m, farthest 19141 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake        5 · 21991 flat cells · 122761 construction cells moved (p90 |Δz| 5.1 m, farthest 19482 m) · **PRESENT** as final lake 1000011 (100 % of its flats): 494.3 km², depth 460.3 m, level 459.3 m, Unresolved, a_eq inf km²
+      pre-lake       16 · 57659 flat cells · 116155 construction cells moved (p90 |Δz| 0.7 m, farthest 18799 m) · **PRESENT** as final lake 6 (56 % of its flats): 76.8 km², depth 139.8 m, level 154.2 m, Exorheic, a_eq inf km²
+      pre-lake       23 · 30630 flat cells · 95752 construction cells moved (p90 |Δz| 12.9 m, farthest 11475 m) · **ABSENT** (under any final lake 10 %, water class 2 0 %)
+      pre-lake        2 · 24256 flat cells · 93977 construction cells moved (p90 |Δz| 31.0 m, farthest 12891 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake        6 · 3791 flat cells · 86533 construction cells moved (p90 |Δz| 5.1 m, farthest 16406 m) · **PRESENT** as final lake 1000011 (100 % of its flats): 494.3 km², depth 460.3 m, level 459.3 m, Unresolved, a_eq inf km²
+      pre-lake       12 · 2241 flat cells · 72502 construction cells moved (p90 |Δz| 3.1 m, farthest 13965 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake        3 · 82993 flat cells · 57112 construction cells moved (p90 |Δz| 36.4 m, farthest 16699 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake       13 · 75242 flat cells · 56968 construction cells moved (p90 |Δz| 14.5 m, farthest 9717 m) · **ABSENT** (under any final lake 18 %, water class 2 0 %)
+      pre-lake       10 · 120426 flat cells · 54510 construction cells moved (p90 |Δz| 58.6 m, farthest 9619 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake       15 · 4796 flat cells · 52208 construction cells moved (p90 |Δz| 4.9 m, farthest 10645 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake       18 · 9753 flat cells · 29304 construction cells moved (p90 |Δz| 2.0 m, farthest 11377 m) · **PRESENT** as final lake 7 (50 % of its flats): 11.7 km², depth 55.5 m, level 140.4 m, Exorheic, a_eq inf km²
+      pre-lake        7 · 3683 flat cells · 27540 construction cells moved (p90 |Δz| 9.6 m, farthest 10889 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake       14 · 3439 flat cells · 18037 construction cells moved (p90 |Δz| 101.1 m, farthest 7422 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake       20 · 2387 flat cells · 16972 construction cells moved (p90 |Δz| 0.5 m, farthest 11621 m) · **PRESENT** as final lake 1000017 (100 % of its flats): 338.3 km², depth 269.8 m, level 268.8 m, Exorheic, a_eq inf km²
+      pre-lake        8 · 2168 flat cells · 12115 construction cells moved (p90 |Δz| 155.8 m, farthest 4834 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake       21 · 2553 flat cells · 10630 construction cells moved (p90 |Δz| 5.0 m, farthest 7715 m) · **ABSENT** (under any final lake 20 %, water class 2 0 %)
+      pre-lake       11 · 36596 flat cells · 8035 construction cells moved (p90 |Δz| 67.3 m, farthest 1318 m) · **ABSENT** (under any final lake 33 %, water class 2 0 %)
+      pre-lake        9 · 5708 flat cells · 7635 construction cells moved (p90 |Δz| 9.1 m, farthest 4932 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake        4 · 20723 flat cells · 5628 construction cells moved (p90 |Δz| 7.2 m, farthest 7715 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake       22 · 3148 flat cells · 2539 construction cells moved (p90 |Δz| 1.5 m, farthest 5127 m) · **PRESENT** as final lake 1000014 (100 % of its flats): 629.0 km², depth 50.3 m, level 49.3 m, Exorheic, a_eq inf km²
+      pre-lake       19 · 35829 flat cells · 2173 construction cells moved (p90 |Δz| 18.0 m, farthest 5273 m) · **PRESENT** as final lake 1000017 (100 % of its flats): 338.3 km², depth 269.8 m, level 268.8 m, Exorheic, a_eq inf km²
+      pre-lake       24 · 16004 flat cells · 1255 construction cells moved (p90 |Δz| 2.8 m, farthest 3516 m) · **PRESENT** as final lake 11 (97 % of its flats): 37.1 km², depth 111.7 m, level 133.8 m, Exorheic, a_eq inf km²
+   P2: 23 lakes move the construction · PRESENT **8** · ABSENT **15** · changed cells attributed to no lake 20426
+   zone P: 1441952 cells (2.1 % of the grid)
+   (1834 s)
+   ── B2 → A_c ──
+   the control (identity patch against no patch): 0 cells changed
+   arbitrary A vs B         OUTSIDE the lakes: **2645323** cells · |Δz| p50 3.84 / **p90 32.14** / max 727.5 m · farthest from a lake 20020 m
+   LTD vs arbitrary A       OUTSIDE the lakes: **2669793** cells · |Δz| p50 20.06 / **p90 47.31** / max 766.1 m · farthest from a lake 20020 m
+   LTD vs arbitrary B       OUTSIDE the lakes: **2667589** cells · |Δz| p50 20.60 / **p90 47.46** / max 766.8 m · farthest from a lake 20020 m
+   P2 — the lakes whose flats move the construction (A vs B), against this world's lakes (33 final lakes):
+      pre-lake        1 · 60332 flat cells · 296345 construction cells moved (p90 |Δz| 32.1 m, farthest 19775 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake        5 · 21991 flat cells · 263016 construction cells moved (p90 |Δz| 5.1 m, farthest 20020 m) · **PRESENT** as final lake 1000010 (100 % of its flats): 482.7 km², depth 460.3 m, level 459.3 m, Unresolved, a_eq inf km²
+      pre-lake       16 · 57659 flat cells · 242873 construction cells moved (p90 |Δz| 11.5 m, farthest 19922 m) · **PRESENT** as final lake 16 (56 % of its flats): 76.7 km², depth 139.8 m, level 154.2 m, Exorheic, a_eq inf km²
+      pre-lake       23 · 30630 flat cells · 227303 construction cells moved (p90 |Δz| 23.5 m, farthest 14453 m) · **ABSENT** (under any final lake 10 %, water class 2 0 %)
+      pre-lake       10 · 120426 flat cells · 214381 construction cells moved (p90 |Δz| 82.4 m, farthest 12598 m) · **ABSENT** (under any final lake 1 %, water class 2 0 %)
+      pre-lake        3 · 82993 flat cells · 161085 construction cells moved (p90 |Δz| 57.5 m, farthest 17139 m) · **ABSENT** (under any final lake 6 %, water class 2 0 %)
+      pre-lake        2 · 24256 flat cells · 160062 construction cells moved (p90 |Δz| 81.4 m, farthest 17578 m) · **ABSENT** (under any final lake 38 %, water class 2 0 %)
+      pre-lake       13 · 75242 flat cells · 158107 construction cells moved (p90 |Δz| 39.8 m, farthest 9717 m) · **ABSENT** (under any final lake 24 %, water class 2 0 %)
+      pre-lake       15 · 4796 flat cells · 144431 construction cells moved (p90 |Δz| 4.9 m, farthest 15088 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake        6 · 3791 flat cells · 118603 construction cells moved (p90 |Δz| 19.1 m, farthest 17676 m) · **PRESENT** as final lake 1000010 (100 % of its flats): 482.7 km², depth 460.3 m, level 459.3 m, Unresolved, a_eq inf km²
+      pre-lake       12 · 2241 flat cells · 117698 construction cells moved (p90 |Δz| 5.5 m, farthest 16992 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake       18 · 9753 flat cells · 103051 construction cells moved (p90 |Δz| 4.7 m, farthest 11670 m) · **ABSENT** (under any final lake 50 %, water class 2 0 %)
+      pre-lake        7 · 3683 flat cells · 94739 construction cells moved (p90 |Δz| 14.5 m, farthest 17236 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake        9 · 5708 flat cells · 45970 construction cells moved (p90 |Δz| 30.6 m, farthest 8350 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake       20 · 2387 flat cells · 43604 construction cells moved (p90 |Δz| 0.5 m, farthest 13721 m) · **PRESENT** as final lake 1000016 (100 % of its flats): 336.7 km², depth 269.8 m, level 268.8 m, Exorheic, a_eq inf km²
+      pre-lake       21 · 2553 flat cells · 40309 construction cells moved (p90 |Δz| 24.2 m, farthest 12012 m) · **ABSENT** (under any final lake 20 %, water class 2 0 %)
+      pre-lake        4 · 20723 flat cells · 36501 construction cells moved (p90 |Δz| 10.5 m, farthest 12402 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake       14 · 3439 flat cells · 29387 construction cells moved (p90 |Δz| 68.5 m, farthest 7422 m) · **PRESENT** as final lake 14 (100 % of its flats): 42.0 km², depth 358.7 m, level 493.7 m, Exorheic, a_eq inf km²
+      pre-lake        8 · 2168 flat cells · 29051 construction cells moved (p90 |Δz| 24.2 m, farthest 7227 m) · **ABSENT** (under any final lake 0 %, water class 2 0 %)
+      pre-lake       11 · 36596 flat cells · 28344 construction cells moved (p90 |Δz| 57.7 m, farthest 4980 m) · **ABSENT** (under any final lake 33 %, water class 2 0 %)
+      pre-lake       19 · 35829 flat cells · 23893 construction cells moved (p90 |Δz| 48.7 m, farthest 7959 m) · **PRESENT** as final lake 1000016 (100 % of its flats): 336.7 km², depth 269.8 m, level 268.8 m, Exorheic, a_eq inf km²
+      pre-lake       22 · 3148 flat cells · 17992 construction cells moved (p90 |Δz| 17.6 m, farthest 7959 m) · **PRESENT** as final lake 1000013 (100 % of its flats): 626.1 km², depth 50.3 m, level 49.3 m, Exorheic, a_eq inf km²
+      pre-lake       24 · 16004 flat cells · 12603 construction cells moved (p90 |Δz| 21.7 m, farthest 8203 m) · **PRESENT** as final lake 21 (97 % of its flats): 37.1 km², depth 111.7 m, level 133.8 m, Exorheic, a_eq inf km²
+      pre-lake       25 · 45031 flat cells · 3607 construction cells moved (p90 |Δz| 28.1 m, farthest 4346 m) · **PRESENT** as final lake 1000018 (100 % of its flats): 374.0 km², depth 615.3 m, level 614.3 m, Exorheic, a_eq inf km²
+      pre-lake       17 · 13411 flat cells · 592 construction cells moved (p90 |Δz| 6.9 m, farthest 6348 m) · **PRESENT** as final lake 1000015 (100 % of its flats): 495.0 km², depth 116.3 m, level 115.3 m, Exorheic, a_eq inf km²
+   P2: 25 lakes move the construction · PRESENT **10** · ABSENT **15** · changed cells attributed to no lake 31776
+   zone P: 3001152 cells (4.5 % of the grid)
+   P3: the concordant clause's junctions IN the zone **15358 of 30768** (49.9 %)
+      col 7 (4551,3280): IN the zone · |Δz(A,B)| 3.45 m · its D8 path enters pre-lake 5
+      col 14 (1805,4580): outside · |Δz(A,B)| 0.00 m · its D8 path enters pre-lake 0
+      canyon 14's floor (1835,4562): outside · |Δz(A,B)| 0.00 m · its D8 path enters pre-lake 0
+      13's dam cell (2315,4614): IN the zone · |Δz(A,B)| 0.68 m · its D8 path enters pre-lake 16
+   (1999 s)
+==========  end Finding 132-P . 4003.0 s  ==========
+test f132_p ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 32 filtered out; finished in 4003.09s

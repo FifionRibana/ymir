@@ -1,0 +1,17 @@
+==========  Finding 132-P4 . where the residual is born  ==========
+   pointers differing between A and B: outside the lakes 0 · inside 508804 · residual cells (χ or base differs, outside the lakes) 911112
+   42 distinct origins · paths without an origin 0
+      origin IN an input lake                              origins 15 · residual cells behind them 759717
+      other                                                origins 3 · residual cells behind them 149032
+      origin drains INTO an input lake (its lake entry)    origins 24 · residual cells behind them 2363
+      (4401,3623) behind 376615 · χ A/B 346.2 / 346.2 · base A/B 459.3 / 459.3 · lake 5 · receiver (4402,3624) lake 5 χ 344.5 · pointer A/B 3 / 3
+      (4709,3609) behind 114573 · χ A/B 897.8 / 897.8 · base A/B 459.3 / 459.3 · lake 6 · receiver (4708,3610) lake 6 χ 893.6 · pointer A/B 5 / 5
+      (1496,5405) behind 84381 · χ A/B 326.0 / 326.0 · base A/B 49.3 / 49.3 · lake 0 · receiver (1496,5404) lake 0 χ 323.7 · pointer A/B 0 / 0
+      (1838,5221) behind 71595 · χ A/B 279.8 / 280.6 · base A/B 268.8 / 268.8 · lake 19 · receiver (1839,5221) lake 19 χ 276.4 · pointer A/B 2 / 2
+      (2130,5239) behind 64505 · χ A/B 956.7 / 956.7 · base A/B 268.8 / 268.8 · lake 0 · receiver (2129,5239) lake 0 χ 952.9 · pointer A/B 6 / 6
+      (3502,4950) behind 62291 · χ A/B 942.0 / 1097.9 · base A/B 115.3 / 115.3 · lake 17 · receiver (3502,4951) lake 17 χ 938.4 · pointer A/B 4 / 2
+      (2952,5890) behind 58262 · χ A/B 826.2 / 977.5 · base A/B 614.9 / 614.9 · lake 25 · receiver (2951,5890) lake 25 χ 823.1 · pointer A/B 6 / 6
+      (1840,5222) behind 50479 · χ A/B 281.7 / 282.7 · base A/B 268.8 / 268.8 · lake 19 · receiver (1839,5221) lake 19 χ 276.4 · pointer A/B 7 / 0
+==========  end Finding 132-P4 (where)  ==========
+test f132_p4_where ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 36 filtered out; finished in 306.57s

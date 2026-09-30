@@ -1,0 +1,19 @@
+==========  Finding 132-A . the concordant clause, by population (rule 16)  ==========
+   ── B2 → A_c (construction) ──
+   junctions: (i) tributary head outside the band 26717 · (ii) head in the band 4051
+   population (i) — the clause on it alone: raised > 1 m **64** · θ laid **0.496** [0.493, 0.499] (42088) · replat 15321 of 26717 junctions (57.3 %) against 4427 without (16.6 %) · replat length p50 1.14 W · junctions in zone P 13056 (48.9 %)
+   population (ii) — the clause on it alone: raised > 1 m **72** · θ laid **0.493** [0.491, 0.496] (43484) · replat 3003 of 4051 junctions (74.1 %) against 862 without (21.3 %) · replat length p50 1.50 W · junctions in zone P 2302 (56.8 %)
+   ── B2 (A_c) + B1 + foot (construction) ──
+   junctions: (i) tributary head outside the band 26776 · (ii) head in the band 4117
+   population (i) — the clause on it alone: raised > 1 m **46** · θ laid **0.494** [0.491, 0.497] (42107) · replat 14003 of 26776 junctions (52.3 %) against 3346 without (12.5 %) · replat length p50 1.24 W · junctions in zone P 13042 (48.7 %)
+   population (ii) — the clause on it alone: raised > 1 m **52** · θ laid **0.492** [0.489, 0.495] (43497) · replat 2795 of 4117 junctions (67.9 %) against 725 without (17.6 %) · replat length p50 1.68 W · junctions in zone P 2328 (56.5 %)
+   ── the pipeline worlds (light pass + A1+B2) ──
+   B2 → A_c · no clause   · (i) R8 terrain **0.0310** network **0.2264** · (ii) R8 terrain **0.0415** network **0.2796**
+   B2 → A_c · CONCORDANT  · (i) R8 terrain **0.0310** network **0.2077** · (ii) R8 terrain **0.0416** network **0.2323**
+      canyon 14: lake 7 at 374.7 m · the témoin's path is DAMMED at (1807,4580), 28 cells down, at 384.0 m (témoin 120.1 m) · a clause cell: YES, population (i) · in zone P: out
+   B2 (A_c) + B1 + foot · no clause   · (i) R8 terrain **0.0268** network **0.2219** · (ii) R8 terrain **0.0312** network **0.2724**
+   B2 (A_c) + B1 + foot · CONCORDANT  · (i) R8 terrain **0.0342** network **0.1905** · (ii) R8 terrain **0.0408** network **0.2169**
+      canyon 14: lake 8 at 434.8 m · the témoin's path is DAMMED at (1807,4580), 28 cells down, at 447.1 m (témoin 120.1 m) · a clause cell: YES, population (i) · in zone P: out
+==========  end Finding 132-A . 1594.6 s  ==========
+test f132_a ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 35 filtered out; finished in 1594.84s

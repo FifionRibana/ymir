@@ -170,6 +170,27 @@ pub struct ValleyConstruction {
     /// No other cell changes: every other takeover of the clause is off. `false` = off. DECISION, gated.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub trunk_band_concordant: bool,
+    /// **ADR Finding 132-P4 — "a present lake is a base level".** The author's decision (2026-09-29): *« Un lac
+    /// présent est un niveau de base pour les rivières qui s'y jettent ; un lac vidé ne l'est plus. »* The base
+    /// follows the lake's existence, not the breach's state (`breach_monotone` conditions the drainage, it does
+    /// not empty a lake). With `Some`, a χ path that enters a lake's footprint stops there: the lake's cells take
+    /// χ = 0 and base = the lake's surface (its col), and every cell upstream integrates χ from the lake with that
+    /// base. `None` = off (a breached lake passes χ through, Findings 122-131), byte-identical. Which lakes count
+    /// as present is [`LakeBase`]'s choice — see there for the circularity it names. DECISION, gated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lake_base: Option<LakeBase>,
+}
+
+/// ADR Finding 132-P4 — which lakes are "present" when the construction integrates χ.
+///
+/// ⚠️ **A circularity, named.** The lakes of the world's `lakes.json` exist only AFTER the construction and the
+/// light pass (the HD assembly reads the delivered field). When χ integrates, the only lakes known are the
+/// construction INPUT's pre-drainage lakes. The fixed point (a second pass on a first pass's lakes) needs a lake
+/// set from outside this config and is not built.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LakeBase {
+    /// Every lake of the construction input's pre-drainage (`c1_drainage_windowed`'s `lake_map`) is present.
+    InputLakes,
 }
 
 /// ADR Finding 127-B — the interpolant whose gradient the tracé descends.
@@ -282,6 +303,7 @@ impl ValleyConstruction {
             ltd_directions: false,
             trunk_band_downstream: false,
             trunk_band_concordant: false,
+            lake_base: None,
         }
     }
 
@@ -384,10 +406,23 @@ pub fn skeleton_patched(
     let cell_m = domain_km * 1000.0 / w as f32;
     let cell_km2 = (cell_m / 1000.0) * (cell_m / 1000.0);
     let dcfg = C1DrainageConfig::default();
-    let (bf, lake_map) = {
+    let (bf, lake_map, lake_level) = {
         let pre = c1_drainage_windowed(field, None, &dcfg, ss, domain_km);
         let bf = breach_monotone(field, &pre.flow.filled, &pre.lake_map, C1_SEA_LEVEL_NORM, w, h);
-        (bf, patch.map(|_| pre.lake_map))
+        // ADR Finding 132-P4 -- the input's lakes and their surface (m), kept only when asked for
+        let level: Option<Vec<f32>> = vc.lake_base.map(|_| {
+            (0..n)
+                .map(|k| {
+                    if pre.lake_map[k] != 0 {
+                        c1_altitude_norm_to_metres(pre.flow.filled.data[k], ss)
+                    } else {
+                        f32::NAN
+                    }
+                })
+                .collect()
+        });
+        let keep = patch.is_some() || vc.lake_base.is_some();
+        (bf, keep.then_some(pre.lake_map), level)
     };
     let flow = compute_flow(
         &bf,
@@ -450,6 +485,16 @@ pub fn skeleton_patched(
             if !chi[c].is_nan() {
                 b = base[c];
                 x = chi[c];
+                break;
+            }
+            // ADR Finding 132-P4 -- a present lake is a base level: χ stops at its footprint
+            if let (Some(lm), Some(lv)) = (lake_map.as_deref(), lake_level.as_deref())
+                && lm[c] != 0
+            {
+                b = lv[c];
+                x = 0.0;
+                chi[c] = 0.0;
+                base[c] = b;
                 break;
             }
             // ADR Finding 122-B -- inside a closed depression: walk to its col; the base is the
@@ -1994,6 +2039,42 @@ mod tests {
         }
         assert!(a0 > 0 && dammed > 0, "negative control: A0's cells exist ({a0}) and some dam the trunk without a clause ({dammed})");
         assert!(full_higher > 0, "negative control: the full clause lays some of them above the junction's floor ({full_higher})");
+    }
+
+    /// ADR Finding 132-P4, rule 13 — a present lake is the base level of its catchment. A plane falls 4 m per cell
+    /// to the sea on 128² cells of 400 m; a bowl 150 m deep (a closed depression above the 5 km² lake floor) is set in it. Negative control FIRST: without the field, the breached bowl
+    /// passes χ through, so a cell upstream takes the SEA's base. With it, that cell's base is the lake's surface
+    /// and its χ counts from the lake only; a cell downstream of the lake keeps its base and χ bit for bit.
+    #[test]
+    fn a_present_lake_is_the_base_level_of_its_catchment() {
+        let ss = SteinSteinParams::default();
+        let n = 128usize;
+        let z_m = |x: f32, y: f32| -> f32 {
+            if y >= 120.0 {
+                return -50.0;
+            }
+            let d = ((x - 64.0).powi(2) + (y - 50.0).powi(2)).sqrt();
+            let bowl = if d < 12.0 { 150.0 * (1.0 - (d / 12.0).powi(2)) } else { 0.0 };
+            5.0 + 4.0 * (120.0 - y) - bowl
+        };
+        let f = GridF32 {
+            width: n,
+            height: n,
+            data: (0..n * n).map(|k| c1_metres_to_altitude_norm(z_m((k % n) as f32 + 0.5, (k / n) as f32 + 0.5), &ss)).collect(),
+        };
+        let vc = ValleyConstruction::new(F121_AGE_K, None);
+        let off = skeleton(&f, &vc, &ss, 51.2);
+        let on = skeleton(&f, &ValleyConstruction { lake_base: Some(LakeBase::InputLakes), ..vc }, &ss, 51.2);
+        let (up, down) = (20 * n + 64, 100 * n + 64);
+        assert!(
+            (off.base_alt_m[up] - vc.base_m).abs() < 1e-3,
+            "negative control: without the field the upstream cell takes the sea's base ({} m)",
+            off.base_alt_m[up]
+        );
+        assert!(on.base_alt_m[up] > 150.0, "with the field its base is the lake's surface, not the sea ({} m)", on.base_alt_m[up]);
+        assert!(on.chi_m[up] < off.chi_m[up], "its χ counts from the lake only ({} vs {})", on.chi_m[up], off.chi_m[up]);
+        assert_eq!(on.base_alt_m[down].to_bits(), off.base_alt_m[down].to_bits(), "downstream of the lake nothing moves");
+        assert_eq!(on.chi_m[down].to_bits(), off.chi_m[down].to_bits(), "downstream of the lake nothing moves");
     }
 
     /// ADR Finding 128-C, rule 13 — D8-LTD follows a planar slope off the lattice. On a plane whose

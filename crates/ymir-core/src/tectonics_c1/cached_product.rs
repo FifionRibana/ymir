@@ -892,6 +892,7 @@ mod tests {
             "ltd_directions",
             "trunk_band_downstream",
             "trunk_band_concordant",
+            "lake_base",
         ] {
             assert!(js.get(f).is_none(), "the gated-off `{f}` is serialised: {js}");
         }

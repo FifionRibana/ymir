@@ -1,0 +1,14 @@
+==========  Finding 132-P4 . the remedy test: lake = base level, two arbitrary flats  ==========
+   ── témoin C2/10 col ──
+   OFF                      control 0 · A vs B OUTSIDE the lakes **1150588** cells (upstream of a lake 1130162, attributed to no lake 20426) · |Δz| p50 2.64 / p90 14.45 / max 742.8 m · inside the lakes 291364
+   ON (lake = base level)   control 0 · A vs B OUTSIDE the lakes **235602** cells (upstream of a lake 228230, attributed to no lake 7372) · |Δz| p50 3.45 / p90 5.14 / max 631.2 m · inside the lakes 7108
+      the residual: χ differs 218555 · drained area differs 4 · trunk membership differs 3 · distance to a lake p50 / p90 / max 7812 / 14111 / 19482 m
+   (1321 s)
+   ── B2 → A_c ──
+   OFF                      control 0 · A vs B OUTSIDE the lakes **2645323** cells (upstream of a lake 2613547, attributed to no lake 31776) · |Δz| p50 3.84 / p90 32.14 / max 727.5 m · inside the lakes 355829
+   ON (lake = base level)   control 0 · A vs B OUTSIDE the lakes **481607** cells (upstream of a lake 477919, attributed to no lake 3688) · |Δz| p50 3.45 / p90 11.72 / max 1115.5 m · inside the lakes 6474
+      the residual: χ differs 460908 · drained area differs 5 · trunk membership differs 1 · distance to a lake p50 / p90 / max 7129 / 13330 / 20020 m
+   (1378 s)
+==========  end Finding 132-P4 (remedy) . 2781.1 s  ==========
+test f132_p4_remedy ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 35 filtered out; finished in 2781.10s

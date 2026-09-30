@@ -270,6 +270,9 @@ struct WorkspaceState {
     /// ADR Finding 124-5 (E) -- W(k)'s γ, index into {0, 0.5, 1}: `W = a₀·(k/k₀)^γ·A^0.3`. γ = 0 is
     /// the ungated width (`None`, the bench's digest). PROXY.
     valley_width_gamma: usize,
+    /// ADR Finding 132-P4 -- "Lac = niveau de base": a present lake (the construction input's pre-drainage
+    /// lakes, `LakeBase::InputLakes`) stops χ at its shore. Off = `None`, the guarded digests.
+    valley_lake_base: bool,
     /// EXPERIMENTAL (ADR 0001, Finding 11): MFD incision — dendritic valleys, no solver.
     mfd: bool,
     mfd_p: f32,
@@ -407,6 +410,7 @@ impl Default for WorkspaceState {
             valley_mode: 0,     // ADR Finding 121 -- off ships
             valley_age: 1,      // k × 1
             valley_width_gamma: 0, // ADR Finding 124-5 -- γ 0: the width ignores the age
+            valley_lake_base: false, // ADR Finding 132-P4 -- off ships
             cross_rill_d: 0.40,
             mfd: true,
             mfd_p: 2.0,
@@ -962,6 +966,10 @@ fn left_panel(
                                 .map(|vc| ValleyConstruction {
                                     width_age_gamma: [None, Some(0.5), Some(1.0)]
                                         [ws.valley_width_gamma.min(2)],
+                                    // ADR Finding 132-P4 -- off stays `None` (the guarded digest)
+                                    lake_base: ws.valley_lake_base.then_some(
+                                        ymir_core::tectonics_c1::valley_construction::LakeBase::InputLakes,
+                                    ),
                                     ..vc
                                 })
                             },
@@ -1215,6 +1223,19 @@ fn left_panel(
                                             ws.valley_width_gamma = i;
                                         }
                                     });
+                                    ui.checkbox(
+                                        &mut ws.valley_lake_base,
+                                        egui::RichText::new("Lac = niveau de base (F132)").color(DIM2).size(11.0),
+                                    )
+                                    .on_hover_text(
+                                        "ADR Finding 132-P4 — décision de l'auteur (2026-09-29) : « Un lac                                          présent est un niveau de base pour les rivières qui s'y jettent ;                                          un lac vidé ne l'est plus. »
+
+                                         χ s'arrête au rivage de chaque lac : l'amont compte χ depuis le lac,                                          avec pour base la surface du lac (son col).
+
+                                         ⚠ Circularité : les lacs de lakes.json n'existent qu'après la                                          construction. « Présent » = les lacs du pré-drainage du champ d'ENTRÉE                                          de la construction (LakeBase::InputLakes). Le point fixe n'est pas                                          construit.
+
+                                         ⚠ Aucun banc ne garde cet état : le badge dira « non gardé ».                                          RIEN N'EST PROMU.",
+                                    );
                                 }
                                 ui.checkbox(
                                     &mut ws.cross_rill,

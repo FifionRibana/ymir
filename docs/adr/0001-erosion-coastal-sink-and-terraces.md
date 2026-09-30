@@ -18846,3 +18846,83 @@ larger line's band, are laid at the larger line's floor AT the junction: 204 781
   rewritten after the failure (rule 15): the cone was in it because the dome, the source cones and the volcanoes
   are in our world.
 - **Gated, off, nothing promoted.**
+
+## Finding 132 — a present lake is a base level: the hidden parameter measured, the author's decision built (gated), its residual located in the closed-depression walk
+
+**The author's decision (2026-09-29), recorded as given:** « Un lac présent est un niveau de base pour les
+rivières qui s'y jettent ; un lac vidé ne l'est plus. » The base follows the lake's existence, not the state of
+the breach: `breach_monotone` conditions the drainage, it does not empty a lake.
+
+**Units**: 1 cell = 48.8 m (domain). Benches: `tests/f126_coast.rs`, `f132_*`. Report and raw outputs:
+`docs/reports/c1_continental_buoyancy/f132_lake_base_level/`.
+- **Nothing promoted.** Finding 131 was committed (`39d07dd`).
+- The guard reads 6 / 6, the hash `a8d2d538d692c2f0`, and the lib and check are green, before and after.
+- **Greps**: "lac présent / lake present": NOTHING FOUND.
+
+**0.5 — the circularity, named.**
+- `lakes.json` carries the pre-breach lakes of the DELIVERED field (`run_hd`: eroded → pre-breach drainage →
+  breach → climate → assembly).
+- When χ integrates, only the construction INPUT's pre-drainage lakes, and `basin_base`'s closed depressions
+  of the breached input, are known.
+- A "present" lake exists only after the construction.
+
+**P — the hidden parameter.**
+- **P1**: two arbitrary acyclic resolutions of the lakes' 684 790 flat cells move the témoin's construction on
+  **1.15 M** cells outside the lakes, p90 **14.45 m**, up to 20 km (B2 → A_c: 2.65 M, p90 32.1 m). The
+  identity patch gives 0.
+  - The effect is not LTD's own: the stop rule does not fire.
+- **P2**: of the 23 lakes involved (témoin), **8 are present** in the delivered world's lakes and 15 absent
+  (B2: 10 of 25).
+  - Every a_eq is infinite (a surplus balance); no absent lake is water class 2.
+  - The stop rule does not fire.
+- **P3**: 49.9 % of Finding 131's 30 768 junctions lie in zone P. Col 7 and 13's dam are in it; **col 14 and
+  canyon 14 are out**.
+
+**P4 — `ValleyConstruction::lake_base: Option<LakeBase>`, gated.**
+- The declared choice `LakeBase::InputLakes`: the input's pre-drainage lakes are present.
+- A χ path entering a lake stops there: base = the lake's surface, χ = 0.
+- Serde-skipped when `None` (the key test lists it). Permanent test
+  `a_present_lake_is_the_base_level_of_its_catchment`, with its negative control. A viz toggle "Lac = niveau
+  de base (F132)", not guarded.
+- **The remedy test fails to reach 0.** The outside cells go from 1.15 M → **235 602** (p90 14.45 → 5.14 m) on
+  the témoin, and 2.65 M → 481 607 on B2.
+- **Located, not corrected.**
+  - No pointer differs outside the lakes.
+  - The residual is born in lakes lying INSIDE the ocean flood's closed depressions: `basin_base`'s walk to
+    the col (Finding 122-B) pushes cells **without the lake test**, so those lakes carry χ ≠ 0 (bases 459.3,
+    268.8, 115.3, 614.9, 49.3 m = the below-sea basins' spills).
+  - 759 717 residual cells stand behind 15 such in-lake origins.
+- **Consistency**: 4 bases on lakes absent at the end, of 25. The 19 final lakes without a base are all
+  below-sea basins, and no land lake is present without a base.
+- **Rule 18, the témoin OFF / ON**:
+  - canyons 0 / 0; coast unchanged;
+  - θ (iii) 0.351 [0.344, 0.358] → **0.245** [0.236, 0.253];
+  - R8 terrain 0.0452 → 0.0395, R8 network 0.5613 → 0.5757;
+  - lakes 25 → **33** (+961 km²); relief p50 515.4 → **551.9 m (+7.1 %)**.
+- **Rule 14**: ON removes **648.5 km³ less upstream of the lakes** (14.5 km³ more), 253 km³ less inside them,
+  and ~3 km³ net elsewhere. The lake's base bounds the incision above it.
+
+**A — rule 16 on the concordant clause (read-only).**
+- The replat's excess is NOT on the head-in-band population (ii): 16.4 % of it, despite (ii)'s higher rate
+  (74 % against 57 %).
+- The terrain R8 around the junctions does not rise on B2 → A_c in either population, and rises alike on B1
+  (+28 % / +31 %).
+- **Canyon 14's dam is at (1807,4580)**, 28 cells down its témoin path. It is a clause cell of population (i),
+  outside zone P, in both families.
+
+**Predictions.**
+- Mine: 0.5 held; P-P1, P-P3, P-P4 and P-A half; P-P2 refuted.
+- The reviewer's:
+  - P1 held on the témoin; P2 refuted on the témoin (8), edge on B2 (10);
+  - P3 split;
+  - P4's "Δz = 0" refuted, its canyons held, its relief refuted, its "≥ 1 absent base" held;
+  - A refuted on both counts.
+- **Added at the Finding 133 go-ahead (2026-09-30).**
+  - **A**: the reviewer's Finding 131 hypothesis ("a failure of scope, not of principle") is **refuted**. Only
+    16.4 % of the replat comes from population (ii), and canyon 14 is a population-(i) clause cell outside
+    zone P. The concordance, as the clause lays it, deforms by principle. A stays gated and leaves the front.
+  - **The circularity**: `LakeBase::InputLakes` is an explicit choice, not the author's decision. It lays 4
+    bases of 25 on lakes emptied at the end. It is a declared PROXY; the fixed point is named, not built.
+  - **The residual**: `basin_base`'s walk to the col pushes cells without the lake test, while the main walk
+    applies it. The pattern is "one invariant, two paths, only one applies it".
+- **Gated, off, nothing promoted.**

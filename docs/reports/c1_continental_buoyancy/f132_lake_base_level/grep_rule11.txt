@@ -1,0 +1,19 @@
+ADR niveau de base local / local base level: 2 hits · first L355 [## Finding 4 — Terraces are an EROSION-DEPOSITION artifact, ] :: flat sheets that pool to local base levels bounded by contours (hence "concentric
+ADR base level: 57 hits · first L235 [## Finding 6 — Sculpting: A_c too large + no incision bound ] :: - **No incision bound (floors planed to base level).** Stream power ran on a static
+ADR basin_base: 4 hits · first L18015 [## Finding 122 — the "brush" lakes are constructed valleys d] :: **B — χ from the col** (`ValleyConstruction::basin_base`, gated): a priority flood seeded on the OPEN
+ADR z_base: 4 hits · first L14386 [## Finding 96 — χ is a valid PROFILE and an invalid FIELD, t] :: `χ(k) = χ(receiver) + (A₀/A)^{m/n}·dx`, χ = 0 at the sea, `z_χ = z_base + (U/K)^{1/n}·χ`, with
+ADR χ / chi: 80 hits · first L3906 [## Finding 44 — STRUCTURAL GAP: the model has no explicit TI] :: > 96's χ floor passed all of them and was refuted by **one look at one 1024² tile**. A texture
+ADR lac présent / lake present: NOTHING FOUND
+ADR a_eq: 66 hits · first L1105 [## Finding 29 — Exorheic below-sea basins with no outlet: th] :: **H2** — `below_sea_basin_lakes` declares exorheic from `a_eq ≥ a_spill` (drainage.rs:813 — inflow would
+ADR wc == 2: 38 hits · first L1575 [## Finding 38 — Fill each enclosed below-sea region as ONE w] :: STEP 1 (measured on the export, the real terrain — `below_sea_region_structure_export`): **24** `wc == 2`
+ADR breach: 248 hits · first L665 [## Finding 12 — MFD defects: K doesn't set valley shape; uph] ::   long profile read on REAL elevation), not staleness. Fixes: (i) a drainage CARVE / breach so
+ADR vidange: 7 hits · first L17692 [## Finding 114 — the threshold incision (H-2) computes exact] :: | lakes emptied by one pass | **0** |
+ADR drained: 21 hits · first L100 [## Finding 3 — Droplet erosion cannot make a dendritic netwo] :: production, ~11 % here). That measures **PITS, not channels** — a drained channel
+CODE local base level: 0 hits · NOTHING FOUND
+CODE local_base: 0 hits · NOTHING FOUND
+CODE basin_base: 19 hits · first crates/ymir-core/src/tectonics_c1/valley_construction.rs:92:    #[serde(default = "basin_base_default")]
+CODE z_base: 4 hits · first crates/ymir-core/src/erosion/stream_power.rs:582:/// The intended floor is the chi profile `z = z_base + (U/K)^(1/n)·chi`, which is the relief a
+CODE a_eq: 93 hits · first crates/ymir-core/src/export/height.rs:180:    fn extrema_equal_field_range() {
+CODE lake_present: 0 hits · NOTHING FOUND
+CODE present: 129 hits · first crates/ymir-core/src/bin/gen_bench_data.rs:4://! and serialises the Stokes linear-solve inputs at a representative
+CODE breach_monotone: 238 hits · first crates/ymir-core/src/cache.rs:69:/// Version of the relief-v3 BREACH conditioning (`breach_monotone` applied to the eroded
