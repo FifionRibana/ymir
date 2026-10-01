@@ -1,0 +1,24 @@
+
+warning: `ymir-viz` (bin "ymir-viz" test) generated 16 warnings (14 duplicates) (run `cargo fix --bin "ymir-viz" -p ymir-viz --tests` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 8.02s
+test result: ok. 590 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 2.07s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+==========  Finding 123/125 . the guard through run_hd, six states  ==========
+[HD] bench guard (f61ef23f4f4e9d94): Match { label: "livré · cadrage canonique (viz)" }
+   livré: Match { label: "livré · cadrage canonique (viz)" }
+[HD] bench guard (e05628c2eb1c1c22): Match { label: "A1+B2 · cadrage canonique (viz)" }
+   A1+B2: Match { label: "A1+B2 · cadrage canonique (viz)" }
+[HD] bench guard (e2a5b05da6eed1fb): Match { label: "C1 nue · cadrage canonique (viz)" }
+   C1 nue: Match { label: "C1 nue · cadrage canonique (viz)" }
+[HD] bench guard (cf1d4539c7afe588): Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" }
+test ui::workspace::f123_viz_guard::f123_viz_guard has been running for over 60 seconds
+   C2 /10 col (défaut): Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" }
+[HD] bench guard (70cf2dc92822681b): Match { label: "C2 /3 · cadrage canonique (viz)" }
+   C2 /3: Match { label: "C2 /3 · cadrage canonique (viz)" }
+[HD] bench guard (3552097350b238c8): Match { label: "C2 /10 niveau mer · cadrage canonique (viz)" }
+   C2 /10 niveau mer: Match { label: "C2 /10 niveau mer · cadrage canonique (viz)" }
+test ui::workspace::f123_viz_guard::f123_viz_guard ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 43 filtered out; finished in 105.33s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[exited with code 0]

@@ -1,0 +1,7 @@
+warning: `ymir-core` (test "f118_sill_flat") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 7.76s
+test result: ok. 591 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 1.99s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 30 passed; 0 failed; 15 ignored; 0 measured; 0 filtered out; finished in 1.18s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+guard 6/6 field AND lakes after the change: see lake_guard_and_identity.txt (f123_viz_guard)

@@ -7498,3 +7498,762 @@ fn f133_worlds() {
     let _ = q;
     eprintln!("\n==========  end Finding 133 (worlds) . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
 }
+
+/// ADR Finding 134-O — **the ocean moves.** The viz world (`new(k, Some(0.1))`, the guarded "C2 /10 col"), OFF vs
+/// ON extended, stage by stage (rule 12): construction (+ rims), + light pass, + droplet erosion, + bathymetry.
+/// The first stage where an OCEAN cell differs; the bathymetry's own mean depth on each world; the ratio
+/// z_ON / z_OFF on the sea cells against `m_OFF / m_ON`. Declared in `f134_declared.md` before the run.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored f134_ocean --nocapture
+#[test]
+#[ignore]
+fn f134_ocean() {
+    use ymir_core::tectonics_c1::valley_construction::LakeBase;
+    use ymir_core::terrain::bathymetry::BathymetryProfile;
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    let depth_per_norm = 2.0 * 1.13 * ss.depth_scale_m as f32;
+    let n2m = c1_altitude_norm_to_metres(1.0, &ss) - c1_altitude_norm_to_metres(0.0, &ss);
+    eprintln!("\n==========  Finding 134-O . the ocean moves (viz world, OFF / ON extended)  ==========");
+    eprintln!("   depth_per_norm {depth_per_norm:.3} m (the code's) · c1_altitude_norm_to_metres slope {n2m:.3} m");
+    let off = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let on = ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..off };
+    let knobs = |vc: ValleyConstruction, stage: usize| -> Knobs {
+        let b = Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) };
+        match stage {
+            0 => Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..b },
+            1 => Knobs { erosion_off: true, bathymetry_off: true, ..b },
+            2 => Knobs { bathymetry_off: true, ..b },
+            _ => b,
+        }
+    };
+    let names = ["(a) construction (+ rims)", "(b) + light pass", "(c) + droplet erosion (pre-bathymetry)", "(d) + bathymetry = the eroded world"];
+    let mean_depth = |g: &GridF32| -> (f64, u64) {
+        let (mut s, mut c) = (0f64, 0u64);
+        for &v in &g.data {
+            if v <= SEA {
+                s += ((SEA - v) * depth_per_norm) as f64;
+                c += 1;
+            }
+        }
+        (s / c as f64, c)
+    };
+    let mut pre: Option<(GridF32, GridF32)> = None;
+    let mut first_ocean: Option<&str> = None;
+    for (st, name) in names.iter().enumerate() {
+        let t = Instant::now();
+        let a = build_field_seed(knobs(off, st), PSEED);
+        let b = build_field_seed(knobs(on, st), PSEED);
+        let (w, h) = (a.width, a.height);
+        let n = w * h;
+        let wc = water_class(&a, SEA);
+        let (mut d_all, mut d_ocean, mut d_inland, mut d_land, mut flip) = (0usize, 0usize, 0usize, 0usize, 0usize);
+        for k in 0..n {
+            let sa = a.data[k] <= SEA;
+            let sb = b.data[k] <= SEA;
+            if sa != sb {
+                flip += 1;
+            }
+            if a.data[k].to_bits() == b.data[k].to_bits() {
+                continue;
+            }
+            d_all += 1;
+            if sa && sb {
+                if wc[k] == WATER_CLASS_OCEAN {
+                    d_ocean += 1;
+                } else {
+                    d_inland += 1;
+                }
+            } else {
+                d_land += 1;
+            }
+        }
+        let n_ocean = (0..n).filter(|&k| wc[k] == WATER_CLASS_OCEAN).count();
+        if d_ocean > 0 && first_ocean.is_none() {
+            first_ocean = Some(name);
+        }
+        eprintln!(
+            "   {name:<42} cells differing **{d_all}** · OCEAN cells (both sea, edge-connected) **{d_ocean}** of {n_ocean} · INLAND sea cells {d_inland} · land / flipped {d_land} · sea↔land flips {flip} ({:.0} s)",
+            t.elapsed().as_secs_f64()
+        );
+        if st == 2 {
+            let (ma, ca) = mean_depth(&a);
+            let (mb, cb) = mean_depth(&b);
+            // where the mean moved: cells sea in both with a different depth, and the membership flips
+            let (mut s_ocean, mut s_inland) = (0f64, 0f64);
+            for k in 0..n {
+                if a.data[k] <= SEA && b.data[k] <= SEA && a.data[k] != b.data[k] {
+                    let dd = ((a.data[k] - b.data[k]) * depth_per_norm) as f64; // depth ON − depth OFF
+                    if wc[k] == WATER_CLASS_OCEAN {
+                        s_ocean += dd;
+                    } else {
+                        s_inland += dd;
+                    }
+                }
+            }
+            eprintln!(
+                "   MEAN DEPTH (the bathymetry's own, over z ≤ sea at stage c): OFF **{ma:.4} m** over {ca} cells · ON **{mb:.4} m** over {cb} cells · m_OFF / m_ON **{:.7}** · Σ(depth ON − depth OFF) on OCEAN cells {:.3e} m, on INLAND sea cells {:.3e} m",
+                ma / mb,
+                s_ocean,
+                s_inland
+            );
+            pre = Some((a, b));
+        } else if st == 3 {
+            let (pa, pb) = pre.take().expect("stage c");
+            let p = BathymetryProfile::default();
+            let floor_depth = SEA * depth_per_norm;
+            let min_depth = p.shelf_min_depth_m.max(1.0);
+            let (ma, _) = mean_depth(&pa);
+            let (mb, _) = mean_depth(&pb);
+            let pred = (ma / mb) as f32;
+            let mut r: Vec<f32> = Vec::new();
+            let (mut c_eq, mut c_eq_ok, mut c_ne, mut c_ne_ok, mut clamp, mut ocean_n) = (0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
+            for k in 0..n {
+                if !(a.data[k] <= SEA && b.data[k] <= SEA) {
+                    continue;
+                }
+                let (za, zb) = (c1_altitude_norm_to_metres(a.data[k], &ss), c1_altitude_norm_to_metres(b.data[k], &ss));
+                if za == 0.0 {
+                    continue;
+                }
+                if wc[k] == WATER_CLASS_OCEAN {
+                    ocean_n += 1;
+                }
+                let rr = zb / za;
+                r.push(rr);
+                let (da, db) = ((SEA - a.data[k]) * depth_per_norm, (SEA - b.data[k]) * depth_per_norm);
+                let clamped = (da - min_depth).abs() < 1e-3 || (db - min_depth).abs() < 1e-3 || (da - floor_depth).abs() < 1e-3 || (db - floor_depth).abs() < 1e-3;
+                let ok = ((rr / pred) - 1.0).abs() <= 1e-5;
+                if clamped {
+                    clamp += 1;
+                } else if pa.data[k].to_bits() == pb.data[k].to_bits() {
+                    c_eq += 1;
+                    c_eq_ok += ok as usize;
+                } else {
+                    c_ne += 1;
+                    c_ne_ok += ok as usize;
+                }
+            }
+            let m = r.len();
+            let mut rs = r.clone();
+            rs.sort_by(f32::total_cmp);
+            let med = rs[m / 2];
+            let within = r.iter().filter(|&&x| (x - med).abs() <= 1e-3).count();
+            let q = |p: f64| rs[((m - 1) as f64 * p) as usize];
+            eprintln!(
+                "   RATIO z_ON / z_OFF on the {m} sea cells (both ≤ sea; {ocean_n} OCEAN): median **{med:.7}** · p0.1 {:.5} · p1 {:.5} · p99 {:.5} · p99.9 {:.5} · within 1e-3 of the median **{within} ({:.3} %)** · prediction m_OFF / m_ON {pred:.7}",
+                q(0.001),
+                q(0.01),
+                q(0.99),
+                q(0.999),
+                100.0 * within as f64 / m as f64
+            );
+            eprintln!(
+                "   ATTRIBUTION · pre-bathymetry depth c EQUAL: {c_eq} cells, of which **{c_eq_ok} ({:.3} %)** at the prediction within 1e-5 · c DIFFERENT: {c_ne} cells ({c_ne_ok} at the prediction) · clamped (shelf_min {min_depth:.1} m or floor {floor_depth:.1} m): {clamp}",
+                100.0 * c_eq_ok as f64 / c_eq.max(1) as f64
+            );
+        }
+    }
+    eprintln!("   FIRST STAGE where an OCEAN cell differs: **{}**", first_ocean.unwrap_or("none"));
+    eprintln!("\n==========  end Finding 134-O . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+
+/// ADR Finding 134-D — **F133v's p90 of 1 177 m upstream of lake 2**, and lakes 11 and 1 beside it, on the viz
+/// world reproduced by the bench's `run_hd` tail (`common::viz_hd_lakes_on`). Per lake: the field of Δz
+/// (conditioned = with the pre-breach lakes' surfaces, and the eroded field without water), its sign, and its
+/// split into the lake's ON footprint and the upstream cells (F133v's attribution), each into carved by the
+/// construction vs kept at the terrain; the lake's depth, level and col beside it; a map. Declared in
+/// `f134_declared.md` before the run. Maps to `F134_DIR` if set.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored f134_d --nocapture
+#[test]
+#[ignore]
+fn f134_d() {
+    use common::{build_world, viz_hd_lakes_on};
+    use ymir_core::tectonics_c1::drainage::C1_SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::valley_construction::{LakeBase, ocean_flood};
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    let cell_km2 = CELL_KM * CELL_KM;
+    eprintln!("\n==========  Finding 134-D . the Δz upstream of the based lakes 2, 11, 1 (viz world)  ==========");
+    let off = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let on = ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..off };
+    let kn = |vc: ValleyConstruction| Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) };
+    let metres = |g: &GridF32| -> Vec<f32> { g.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect() };
+    let (eo, co, lm_off, lakes_off, dir, gw) = {
+        let wd = build_world(kn(off), None, PSEED, None);
+        let v = viz_hd_lakes_on(&wd, kn(off), PSEED, 45.0, 40.0);
+        eprintln!("   OFF · lakes {} · lake key {}", v.drainage.lakes.len(), v.digest);
+        (metres(&wd.heightmap), metres(&v.conditioned), v.drainage.lake_map.clone(), v.drainage.lakes.clone(), v.drainage.flow.direction.clone(), wd.heightmap.width)
+    };
+    let (en, cn, lm_on, lakes_on) = {
+        let wd = build_world(kn(on), None, PSEED, None);
+        let v = viz_hd_lakes_on(&wd, kn(on), PSEED, 45.0, 40.0);
+        eprintln!("   ON  · lakes {} · lake key {}", v.drainage.lakes.len(), v.digest);
+        (metres(&wd.heightmap), metres(&v.conditioned), v.drainage.lake_map.clone(), v.drainage.lakes.clone())
+    };
+    let _ = lakes_off;
+    let n = eo.len();
+    let (w, h) = (gw, n / gw);
+    let changed_c = (0..n).filter(|&k| co[k] != cn[k]).count();
+    eprintln!("   conditioned cells differing OFF vs ON: **{changed_c}** (F133v: 44 268 342)");
+    // the construction input, the carve masks, the col
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let (_, mk_off) = carve(&s1, &skeleton(&s1, &off, &ss, DOMAIN_KM), &off, &ss);
+    let (_, mk_on) = carve(&s1, &skeleton(&s1, &on, &ss, DOMAIN_KM), &on, &ss);
+    let spill: Vec<f32> = {
+        let d = c1_drainage_windowed(&s1, None, &C1DrainageConfig::default(), &ss, DOMAIN_KM);
+        let bf = breach_monotone(&s1, &d.flow.filled, &d.lake_map, C1_SEA_LEVEL_NORM, w, h);
+        ocean_flood(&bf).iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect()
+    };
+    let zs1 = metres(&s1);
+    drop(s1);
+    // F133v's attribution: the OFF drainage's D8 path to the first ON final lake (no torus, as F133v)
+    let mut first = vec![u32::MAX; n];
+    let mut path = Vec::new();
+    for s in 0..n {
+        if first[s] != u32::MAX {
+            continue;
+        }
+        path.clear();
+        let mut c = s;
+        let v;
+        loop {
+            if first[c] != u32::MAX {
+                v = first[c];
+                break;
+            }
+            if lm_on[c] != 0 {
+                v = lm_on[c];
+                break;
+            }
+            path.push(c);
+            let d = dir[c];
+            if d == DIR_NONE {
+                v = 0;
+                break;
+            }
+            let (x, y) = ((c % w) as i32 + D8_DX[d as usize], (c / w) as i32 + D8_DY[d as usize]);
+            if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
+                v = 0;
+                break;
+            }
+            c = y as usize * w + x as usize;
+        }
+        for &p in &path {
+            first[p] = v;
+        }
+    }
+    let q = |v: &mut Vec<f32>, p: f32| -> f32 {
+        if v.is_empty() {
+            return f32::NAN;
+        }
+        v.sort_by(f32::total_cmp);
+        v[((v.len() - 1) as f32 * p) as usize]
+    };
+    let dir_out = std::env::var("F134_DIR").ok();
+    for (lid, centre) in [(2u32, (4019.0f64, 2839.0f64)), (11, (1429.0, 4287.0)), (1, (3491.0, 2500.0))] {
+        let cells: Vec<usize> = (0..n).filter(|&k| lm_on[k] == lid).collect();
+        let (cx, cy) = (
+            cells.iter().map(|&k| (k % w) as f64).sum::<f64>() / cells.len().max(1) as f64,
+            cells.iter().map(|&k| (k / w) as f64).sum::<f64>() / cells.len().max(1) as f64,
+        );
+        let l = lakes_on.iter().find(|l| l.base.id == lid).expect("ON lake");
+        let col = cells.iter().map(|&k| spill[k]).fold(f32::NEG_INFINITY, f32::max);
+        let mut zoff_in: Vec<f32> = cells.iter().map(|&k| co[k]).collect();
+        let mut zon_in: Vec<f32> = cells.iter().map(|&k| cn[k]).collect();
+        let mut zs1_in: Vec<f32> = cells.iter().map(|&k| zs1[k]).collect();
+        let in_off_lake = cells.iter().filter(|&&k| lm_off[k] != 0).count();
+        eprintln!(
+            "\n   ── lake {lid} · centre ({cx:.0}, {cy:.0}) (F133v ({:.0}, {:.0})) · {:?} · {:.1} km² · ON level **{:.1} m** · depth **{:.1} m** · col (ocean_flood spill on S1, max over the footprint) **{col:.1} m** · footprint under an OFF lake {in_off_lake} of {} · conditioned z in the footprint p50 OFF {:.1} / ON {:.1} m · S1 p50 {:.1} m",
+            centre.0,
+            centre.1,
+            l.lake_type,
+            l.area_km2,
+            l.level_m,
+            l.depth_m,
+            cells.len(),
+            q(&mut zoff_in, 0.5),
+            q(&mut zon_in, 0.5),
+            q(&mut zs1_in, 0.5)
+        );
+        for (fname, zo, zn) in [("CONDITIONED (pre-breach lakes at their surface)", &co, &cn), ("ERODED (pre-breach, no water)", &eo, &en)] {
+            eprintln!("      field {fname}:");
+            let groups: [(&str, &dyn Fn(usize) -> bool); 6] = [
+                ("footprint · carved", &|k| lm_on[k] == lid && (mk_off.carved[k] || mk_on.carved[k])),
+                ("footprint · kept at the terrain", &|k| lm_on[k] == lid && !(mk_off.carved[k] || mk_on.carved[k])),
+                ("upstream · carved (OFF and ON)", &|k| lm_on[k] == 0 && first[k] == lid && mk_off.carved[k] && mk_on.carved[k]),
+                ("upstream · carved OFF only", &|k| lm_on[k] == 0 && first[k] == lid && mk_off.carved[k] && !mk_on.carved[k]),
+                ("upstream · carved ON only", &|k| lm_on[k] == 0 && first[k] == lid && !mk_off.carved[k] && mk_on.carved[k]),
+                ("upstream · kept at the terrain", &|k| lm_on[k] == 0 && first[k] == lid && !mk_off.carved[k] && !mk_on.carved[k]),
+            ];
+            for (gname, sel) in groups {
+                let ks: Vec<usize> = (0..n).filter(|&k| sel(k)).collect();
+                let dz: Vec<f32> = ks.iter().map(|&k| zn[k] - zo[k]).filter(|&d| d != 0.0).collect();
+                let pos = dz.iter().filter(|&&d| d > 0.0).count();
+                let mut a: Vec<f32> = dz.iter().map(|d| d.abs()).collect();
+                let s: f64 = a.iter().map(|&d| d as f64 * cell_km2 as f64 * 1e-3).sum();
+                let in_off = ks.iter().filter(|&&k| lm_off[k] != 0 && zn[k] != zo[k]).count();
+                let (p50, p90) = (q(&mut a, 0.5), q(&mut a, 0.9));
+                eprintln!(
+                    "         {gname:<34} cells {:>7} · Δz ≠ 0 {:>7} · Δz > 0 **{:.1} %** · |Δz| p50 {p50:.1} / p90 **{p90:.1} m** · Σ|Δz|·A {s:.2} km³ · of the Δz ≠ 0, under an OFF lake {in_off}",
+                    ks.len(),
+                    dz.len(),
+                    100.0 * pos as f32 / dz.len().max(1) as f32
+                );
+            }
+            let mut up_all: Vec<f32> = (0..n).filter(|&k| lm_on[k] == 0 && first[k] == lid && zn[k] != zo[k]).map(|k| (zn[k] - zo[k]).abs()).collect();
+            let m = up_all.len();
+            eprintln!("         upstream, all (F133v's population): {m} cells with Δz ≠ 0 · p90 |Δz| **{:.1} m**", q(&mut up_all, 0.9));
+        }
+        // where the large upstream ones sit (conditioned)
+        let big: Vec<usize> = (0..n).filter(|&k| lm_on[k] == 0 && first[k] == lid && (cn[k] - co[k]).abs() > 500.0).collect();
+        if !big.is_empty() {
+            let mut d_lake: Vec<f32> = Vec::new();
+            for &k in &big {
+                let (x, y) = ((k % w) as f64, (k / w) as f64);
+                d_lake.push((((x - cx).powi(2) + (y - cy).powi(2)).sqrt() as f32) * CELL_KM);
+            }
+            let in_off = big.iter().filter(|&&k| lm_off[k] != 0).count();
+            let sea_off = big.iter().filter(|&&k| co[k] <= 0.0).count();
+            let sea_on = big.iter().filter(|&&k| cn[k] <= 0.0).count();
+            let mut zo_b: Vec<f32> = big.iter().map(|&k| co[k]).collect();
+            let mut zn_b: Vec<f32> = big.iter().map(|&k| cn[k]).collect();
+            let mut zs_b: Vec<f32> = big.iter().map(|&k| zs1[k]).collect();
+            eprintln!(
+                "      |Δz| > 500 m upstream (conditioned): {} cells · under an OFF lake {in_off} · z ≤ 0 OFF {sea_off} / ON {sea_on} · z OFF p50 {:.1} m · z ON p50 {:.1} m · S1 p50 {:.1} m · distance to the lake's centre p50 {:.1} km",
+                big.len(),
+                q(&mut zo_b, 0.5),
+                q(&mut zn_b, 0.5),
+                q(&mut zs_b, 0.5),
+                q(&mut d_lake, 0.5)
+            );
+        }
+        // the map: Δz conditioned, ON outline white, OFF lakes black
+        if let Some(d) = &dir_out {
+            let half = 307i64;
+            let side = (2 * half + 1) as u32;
+            let mut img = image::RgbImage::new(side, side);
+            for yy in 0..side as i64 {
+                for xx in 0..side as i64 {
+                    let (x, y) = (cx.round() as i64 - half + xx, cy.round() as i64 - half + yy);
+                    if x < 0 || y < 0 || x >= w as i64 || y >= h as i64 {
+                        continue;
+                    }
+                    let k = y as usize * w + x as usize;
+                    let dz = (cn[k] - co[k]).clamp(-1000.0, 1000.0) / 1000.0;
+                    let mut px = if dz >= 0.0 {
+                        [255, (255.0 * (1.0 - dz)) as u8, (255.0 * (1.0 - dz)) as u8]
+                    } else {
+                        [(255.0 * (1.0 + dz)) as u8, (255.0 * (1.0 + dz)) as u8, 255]
+                    };
+                    let edge = |lm: &[u32]| -> bool {
+                        lm[k] != 0 && [(1i64, 0i64), (-1, 0), (0, 1), (0, -1)].iter().any(|&(ox, oy)| {
+                            let (a, b) = (x + ox, y + oy);
+                            a >= 0 && b >= 0 && a < w as i64 && b < h as i64 && lm[b as usize * w + a as usize] != lm[k]
+                        })
+                    };
+                    if edge(&lm_off) {
+                        px = [0, 0, 0];
+                    }
+                    if edge(&lm_on) {
+                        px = if lm_on[k] == lid { [0, 160, 0] } else { [90, 90, 90] };
+                    }
+                    img.put_pixel(xx as u32, yy as u32, image::Rgb(px));
+                }
+            }
+            let p = std::path::Path::new(d).join(format!("d_lake{lid}_dz.png"));
+            img.save(&p).expect("png");
+            eprintln!("      map: {} (red Δz > 0, blue < 0, ±1000 m; lake {lid} outline green, other ON lakes grey, OFF lakes black)", p.display());
+        }
+    }
+    eprintln!("\n==========  end Finding 134-D . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+
+/// ADR Finding 134-T / U — on the benches' témoin (F133's world): θ on the carved links by population (upstream of
+/// a based lake, downstream, untouched) with its CI; the carved trunk cells more than 1 m off their law, located
+/// against the based shores; the trunk cells newly under their law in ON, located (distance to a based shore,
+/// law − terrain, the under-law run they sit in). Declared in `f134_declared.md` before the run.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored f134_tu --nocapture
+#[test]
+#[ignore]
+fn f134_tu() {
+    use ymir_core::tectonics_c1::drainage::C1_SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::valley_construction::{LakeBase, ocean_flood};
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    eprintln!("\n==========  Finding 134-T / U . θ by population, the off-law cells, the new under-law cells (témoin)  ==========");
+    let metres = |g: &GridF32| -> Vec<f32> { g.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect() };
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let (w, h) = (s1.width, s1.height);
+    let n = w * h;
+    let zs1 = metres(&s1);
+    let nb = |c: usize, k: usize| ((c / w) as i32 + D8_DY[k]).rem_euclid(h as i32) as usize * w + ((c % w) as i32 + D8_DX[k]).rem_euclid(w as i32) as usize;
+    let off = ValleyConstruction { wall_sea_floor_m: Some(0.5), ..ValleyConstruction::new(F121_AGE_K, Some(0.1)) };
+    let sk = skeleton(&s1, &off, &ss, DOMAIN_KM);
+    let t10 = |k: usize| sk.trunk[k] && sk.area_km2[k] >= 10.0;
+    let ntrunk = (0..n).filter(|&k| t10(k)).count();
+    let (lake, dep) = {
+        let d = c1_drainage_windowed(&s1, None, &C1DrainageConfig::default(), &ss, DOMAIN_KM);
+        let bf = breach_monotone(&s1, &d.flow.filled, &d.lake_map, C1_SEA_LEVEL_NORM, w, h);
+        let spill = ocean_flood(&bf);
+        let eps = 0.01 / c1_altitude_norm_to_metres(1.0, &ss).max(1.0);
+        let dep: Vec<bool> = (0..n).map(|k| bf.data[k] > C1_SEA_LEVEL_NORM && spill[k] > bf.data[k] + eps).collect();
+        (d.lake_map, dep)
+    };
+    let recv = |c: usize| -> Option<usize> {
+        let d = sk.direction[c];
+        if d == DIR_NONE || s1.data[c] <= SEA { None } else { Some(nb(c, d as usize)) }
+    };
+    // populations per based set: 1 upstream, 2 downstream, 3 untouched, 4 inside (upstream wins over downstream)
+    let pops = |ext: bool| -> (Vec<bool>, Vec<u8>) {
+        let based: Vec<bool> = (0..n).map(|k| lake[k] != 0 || (ext && dep[k])).collect();
+        let mut up = vec![0u8; n]; // 1 reaches the based set, 2 does not
+        let mut path = Vec::new();
+        for s in 0..n {
+            if up[s] != 0 {
+                continue;
+            }
+            path.clear();
+            let mut c = s;
+            let v;
+            loop {
+                if up[c] != 0 {
+                    v = up[c];
+                    break;
+                }
+                if based[c] && c != s {
+                    v = 1;
+                    break;
+                }
+                path.push(c);
+                match recv(c) {
+                    Some(r) => c = r,
+                    None => {
+                        v = 2;
+                        break;
+                    }
+                }
+            }
+            for &p in &path {
+                up[p] = v;
+            }
+        }
+        // downstream: Kahn over the skeleton's receivers
+        let mut indeg = vec![0u8; n];
+        for c in 0..n {
+            if let Some(r) = recv(c) {
+                indeg[r] = indeg[r].saturating_add(1);
+            }
+        }
+        let mut down = vec![false; n];
+        let mut stack: Vec<usize> = (0..n).filter(|&c| indeg[c] == 0).collect();
+        while let Some(c) = stack.pop() {
+            if let Some(r) = recv(c) {
+                if down[c] || based[c] {
+                    down[r] = true;
+                }
+                indeg[r] -= 1;
+                if indeg[r] == 0 {
+                    stack.push(r);
+                }
+            }
+        }
+        let pop: Vec<u8> = (0..n)
+            .map(|k| if based[k] { 4 } else if up[k] == 1 { 1 } else if down[k] { 2 } else { 3 })
+            .collect();
+        (based, pop)
+    };
+    let q = |v: &mut Vec<f32>, p: f32| -> f32 {
+        if v.is_empty() {
+            return f32::NAN;
+        }
+        v.sort_by(f32::total_cmp);
+        v[((v.len() - 1) as f32 * p) as usize]
+    };
+    const PNAME: [&str; 5] = ["", "upstream of a based lake", "downstream of a based lake", "untouched basins", "inside"];
+    let sets = [("F132 set (input lakes)", pops(false)), ("extended set (input lakes ∪ closed depressions)", pops(true))];
+    let dists: Vec<Vec<u16>> = sets.iter().map(|(_, (b, _))| dist_from(b, w, h)).collect();
+    for (si, (sname, (_, pop))) in sets.iter().enumerate() {
+        let cnt: Vec<usize> = (1..=4u8).map(|p| (0..n).filter(|&k| t10(k) && pop[k] == p).count()).collect();
+        eprintln!("   {sname}: trunk ≥ 10 km² cells by population: upstream {} · downstream {} · untouched {} · inside {} (of {ntrunk})", cnt[0], cnt[1], cnt[2], cnt[3]);
+        let _ = si;
+    }
+    let mut under_off: Vec<bool> = Vec::new();
+    for (label, lb) in [("OFF", None), ("ON F132 (InputLakes)", Some(LakeBase::InputLakes)), ("ON EXTENDED (InputLakesAndBasins)", Some(LakeBase::InputLakesAndBasins))] {
+        let t = Instant::now();
+        let vc = ValleyConstruction { lake_base: lb, ..off };
+        let skv = skeleton(&s1, &vc, &ss, DOMAIN_KM);
+        let (built, mk) = carve(&s1, &skv, &vc, &ss);
+        let zb = metres(&built);
+        drop(built);
+        let law: Vec<f32> = (0..n).map(|k| if skv.chi_m[k].is_finite() { skv.floor_m(k, vc.age_k) } else { f32::NAN }).collect();
+        drop(skv);
+        let (ta, la, ha, ma) = theta_laid_ci(&zb, &mk.carved, &sk);
+        eprintln!("\n   ── {label} ── θ on the carved links, all **{ta:.3}** [{la:.3}, {ha:.3}] ({ma} links) ({:.0} s)", t.elapsed().as_secs_f64());
+        // which based set reads this variant: F132 → set 0, extended → set 1, OFF → both
+        let which: Vec<usize> = match lb {
+            None => vec![0, 1],
+            Some(LakeBase::InputLakes) => vec![0],
+            Some(LakeBase::InputLakesAndBasins) => vec![1],
+        };
+        for &si in &which {
+            let (sname, (_, pop)) = &sets[si];
+            let mut row = Vec::new();
+            for p in 1..=3u8 {
+                let mask: Vec<bool> = (0..n).map(|k| mk.carved[k] && pop[k] == p).collect();
+                let (tp, lp, hp, mp) = theta_laid_ci(&zb, &mask, &sk);
+                row.push(format!("{} **{tp:.3}** [{lp:.3}, {hp:.3}] ({mp})", PNAME[p as usize]));
+            }
+            eprintln!("   T · θ by population ({sname}): {}", row.join(" · "));
+            // the carved trunk cells more than 1 m off their law
+            let dev: Vec<usize> = (0..n).filter(|&k| t10(k) && mk.carved[k] && law[k].is_finite() && (zb[k] - law[k]).abs() > 1.0).collect();
+            let above = dev.iter().filter(|&&k| zb[k] > law[k]).count();
+            let carved_t = (0..n).filter(|&k| t10(k) && mk.carved[k]).count();
+            let mut dkm: Vec<f32> = dev.iter().map(|&k| dists[si][k] as f32 * CELL_KM).collect();
+            let near2 = dkm.iter().filter(|&&d| d <= 2.0).count();
+            let by: Vec<String> = (1..=4u8).map(|p| format!("{} {}", PNAME[p as usize], dev.iter().filter(|&&k| pop[k] == p).count())).collect();
+            let mut off_m: Vec<f32> = dev.iter().map(|&k| (zb[k] - law[k]).abs()).collect();
+            eprintln!(
+                "   T · carved trunk cells > 1 m off their law: **{}** of {carved_t} carved trunk cells · above the law {above} · |z − law| p50 {:.1} / p90 {:.1} m · distance to a based shore p50 **{:.2} km** / p90 {:.2} km · within 2 km **{:.1} %** · by population: {}",
+                dev.len(),
+                q(&mut off_m, 0.5),
+                q(&mut off_m, 0.9),
+                q(&mut dkm, 0.5),
+                q(&mut dkm, 0.9),
+                100.0 * near2 as f32 / dev.len().max(1) as f32,
+                by.join(" · ")
+            );
+        }
+        // U
+        let under: Vec<bool> = (0..n).map(|k| t10(k) && !mk.carved[k] && law[k].is_finite() && zs1[k] < law[k]).collect();
+        let nu = under.iter().filter(|&&b| b).count();
+        eprintln!("   U · trunk cells uncarved under their law: **{nu}** ({:.1} % of {ntrunk})", 100.0 * nu as f32 / ntrunk as f32);
+        if lb.is_none() {
+            under_off = under;
+            continue;
+        }
+        let si = which[0];
+        let (based, pop) = (&sets[si].1.0, &sets[si].1.1);
+        let added: Vec<usize> = (0..n).filter(|&k| under[k] && !under_off[k]).collect();
+        let gone = (0..n).filter(|&k| !under[k] && under_off[k]).count();
+        let mut dkm: Vec<f32> = added.iter().map(|&k| dists[si][k] as f32 * CELL_KM).collect();
+        let near2 = dkm.iter().filter(|&&d| d <= 2.0).count();
+        let mut lt: Vec<f32> = added.iter().map(|&k| law[k] - zs1[k]).collect();
+        let by: Vec<String> = (1..=4u8).map(|p| format!("{} {}", PNAME[p as usize], added.iter().filter(|&&k| pop[k] == p).count())).collect();
+        // the under-law run each added cell sits in: walked downstream while under the law
+        let mut rem = vec![u32::MAX; n]; // remaining run length (cells) downstream, memoised
+        let mut end = vec![0u8; n]; // 1 based shore, 2 sea / no receiver, 3 leaves the law on the trunk
+        let mut stackp = Vec::new();
+        for &s in &added {
+            stackp.clear();
+            let mut c = s;
+            let mut base_len = 0u32;
+            let base_end: u8;
+            loop {
+                if rem[c] != u32::MAX {
+                    base_len = rem[c];
+                    base_end = end[c];
+                    break;
+                }
+                stackp.push(c);
+                match recv(c) {
+                    None => {
+                        base_end = 2;
+                        break;
+                    }
+                    Some(r) => {
+                        if based[r] {
+                            base_end = 1;
+                            break;
+                        }
+                        if !under[r] {
+                            base_end = 3;
+                            break;
+                        }
+                        c = r;
+                    }
+                }
+            }
+            for (i, &p) in stackp.iter().rev().enumerate() {
+                rem[p] = base_len + i as u32 + 1;
+                end[p] = base_end;
+            }
+        }
+        let mut run_km: Vec<f32> = added.iter().map(|&k| rem[k] as f32 * CELL_KM).collect();
+        let ends: Vec<String> = [(1u8, "at a based shore"), (2, "at the sea / no receiver"), (3, "on the trunk (leaves the law)")]
+            .iter()
+            .map(|&(e, nme)| format!("{nme} {:.1} %", 100.0 * added.iter().filter(|&&k| end[k] == e).count() as f32 / added.len().max(1) as f32))
+            .collect();
+        eprintln!(
+            "   U · NEW under-law cells vs OFF: **{}** (+{:.1} points; {gone} left the set) · distance to a based shore p50 **{:.2} km** / p90 {:.2} km · within 2 km **{:.1} %** · law − terrain p50 **{:.1} m** / p90 {:.1} m · by population: {} · their run downstream p50 {:.2} km / p90 {:.2} km, ending {}",
+            added.len(),
+            100.0 * added.len() as f32 / ntrunk as f32,
+            q(&mut dkm, 0.5),
+            q(&mut dkm, 0.9),
+            100.0 * near2 as f32 / added.len().max(1) as f32,
+            q(&mut lt, 0.5),
+            q(&mut lt, 0.9),
+            by.join(" · "),
+            q(&mut run_km, 0.5),
+            q(&mut run_km, 0.9),
+            ends.join(" · ")
+        );
+    }
+    eprintln!("\n==========  end Finding 134-T / U . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+
+/// ADR Finding 134-Δ — F133-F's residual (the témoin, extended lake base, A/B flat-pointer patches): its |Δz|
+/// p50 / p90 / max, overall and per F133-F class, and the sample `carve_diag` laid each cell from in A and in B
+/// (moved / same position other floor / none on one side). Declared in `f134_declared.md` before the run.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored f134_delta --nocapture
+#[test]
+#[ignore]
+fn f134_delta() {
+    use std::collections::HashMap;
+    use ymir_core::tectonics_c1::drainage::C1_SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::valley_construction::{LakeBase, carve_diag, ocean_flood, skeleton_patched};
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE, FlowConfig, compute_flow, flat_resolution};
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    eprintln!("\n==========  Finding 134-Δ . the residual's laying sample (témoin, extended)  ==========");
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let (w, h) = (s1.width, s1.height);
+    let n = w * h;
+    let dc = C1DrainageConfig::default();
+    let nb = |c: usize, k: usize| ((c / w) as i32 + D8_DY[k]).rem_euclid(h as i32) as usize * w + ((c % w) as i32 + D8_DX[k]).rem_euclid(w as i32) as usize;
+    let d = c1_drainage_windowed(&s1, None, &dc, &ss, DOMAIN_KM);
+    let bf = breach_monotone(&s1, &d.flow.filled, &d.lake_map, C1_SEA_LEVEL_NORM, w, h);
+    let lake = d.lake_map.clone();
+    drop(d);
+    let spill = ocean_flood(&bf);
+    let eps = 0.01 / c1_altitude_norm_to_metres(1.0, &ss).max(1.0);
+    let dep: Vec<bool> = (0..n).map(|k| bf.data[k] > C1_SEA_LEVEL_NORM && spill[k] > bf.data[k] + eps).collect();
+    let present: Vec<bool> = (0..n).map(|k| lake[k] != 0 || dep[k]).collect();
+    let flow = compute_flow(&bf, &FlowConfig { sea_level: C1_SEA_LEVEL_NORM, flat_perturbation: dc.flat_perturbation.clone(), dinf: dc.dinf });
+    let f = flow.filled.data.clone();
+    let is_ocean: Vec<bool> = f.iter().map(|&v| v <= C1_SEA_LEVEL_NORM).collect();
+    let (needs, g) = flat_resolution(&flow.filled, &is_ocean, dc.flat_perturbation.as_ref(), w, h);
+    let target: Vec<bool> = (0..n).map(|c| needs[c] && lake[c] != 0).collect();
+    let arbitrary = |seed: u64| -> Vec<u8> {
+        (0..n)
+            .map(|c| {
+                if !target[c] {
+                    return flow.direction[c];
+                }
+                let cand: Vec<u8> = (0..8u8)
+                    .filter(|&k| {
+                        let m = nb(c, k as usize);
+                        is_ocean[m] || f[m] < f[c] || (f[m] == f[c] && needs[m] && g[m] < g[c])
+                    })
+                    .collect();
+                if cand.is_empty() {
+                    return flow.direction[c];
+                }
+                let hsh = ((c as u64) ^ seed.wrapping_mul(0xD6E8_FEB8_6659_FD93)).wrapping_mul(0x9E37_79B9_7F4A_7C15).rotate_left(29);
+                cand[(hsh % cand.len() as u64) as usize]
+            })
+            .collect()
+    };
+    let (arb_a, arb_b) = (arbitrary(1), arbitrary(2));
+    drop((flow, f, g, needs));
+    let pa = |_: &GridF32, _: &[u32], dd: &mut Vec<u8>| {
+        for c in 0..n {
+            if target[c] {
+                dd[c] = arb_a[c];
+            }
+        }
+    };
+    let pb = |_: &GridF32, _: &[u32], dd: &mut Vec<u8>| {
+        for c in 0..n {
+            if target[c] {
+                dd[c] = arb_b[c];
+            }
+        }
+    };
+    let mm = |g: &GridF32, k: usize| c1_altitude_norm_to_metres(g.data[k], &ss);
+    let q = |v: &mut Vec<f32>, p: f32| -> f32 {
+        if v.is_empty() {
+            return f32::NAN;
+        }
+        v.sort_by(f32::total_cmp);
+        v[((v.len() - 1) as f32 * p) as usize]
+    };
+    let vc = ValleyConstruction {
+        lake_base: Some(LakeBase::InputLakesAndBasins),
+        wall_sea_floor_m: Some(0.5),
+        ..ValleyConstruction::new(F121_AGE_K, Some(0.1))
+    };
+    let ska = skeleton_patched(&s1, &vc, &ss, DOMAIN_KM, Some(&pa));
+    let skb = skeleton_patched(&s1, &vc, &ss, DOMAIN_KM, Some(&pb));
+    let (za, _, da) = carve_diag(&s1, &ska, &vc, &ss);
+    let (zb, _, db) = carve_diag(&s1, &skb, &vc, &ss);
+    let ch: Vec<usize> = (0..n).filter(|&k| !present[k] && za.data[k] != zb.data[k]).collect();
+    let mut all: Vec<f32> = ch.iter().map(|&k| (mm(&za, k) - mm(&zb, k)).abs()).collect();
+    eprintln!(
+        "   the residual: **{}** cells outside the present lakes (F133-F: 12 509) · |Δz| p50 **{:.2}** / p90 **{:.2}** / max **{:.1} m**",
+        ch.len(),
+        q(&mut all, 0.5),
+        q(&mut all, 0.9),
+        q(&mut all, 1.0)
+    );
+    let flat = |sk: &Skeleton| -> Vec<(f32, f32, f32, f32)> { sk.polylines.iter().flatten().copied().collect() };
+    let (sa, sb) = (flat(&ska), flat(&skb));
+    eprintln!("   polylines A {} ({} samples) · B {} ({} samples)", ska.polylines.len(), sa.len(), skb.polylines.len(), sb.len());
+    // F133-F's class (the origin walk) and the laying sample's class
+    let differs = |k: usize| ska.chi_m[k].to_bits() != skb.chi_m[k].to_bits() || ska.base_alt_m[k].to_bits() != skb.base_alt_m[k].to_bits();
+    let mut rows: HashMap<(String, &str), Vec<f32>> = HashMap::new();
+    for &s in &ch {
+        let mut c = s;
+        let (mut seen, mut last) = (false, None);
+        for _ in 0..n {
+            if differs(c) {
+                seen = true;
+                last = Some(c);
+            } else if seen {
+                break;
+            }
+            let dd = ska.direction[c];
+            if dd == DIR_NONE || s1.data[c] <= SEA {
+                break;
+            }
+            c = nb(c, dd as usize);
+        }
+        let f133 = if last.is_none() { "F133-F: no differing cell on its path" } else { "F133-F: an origin on its path" };
+        let (wa, wb) = (da.who[s], db.who[s]);
+        let smp = if wa == u32::MAX || wb == u32::MAX {
+            "no sample on one side".to_string()
+        } else {
+            let (pa_, pb_) = (sa[wa as usize], sb[wb as usize]);
+            let pos = pa_.0.to_bits() == pb_.0.to_bits() && pa_.1.to_bits() == pb_.1.to_bits();
+            let zf = pa_.2.to_bits() == pb_.2.to_bits();
+            let hw = pa_.3.to_bits() == pb_.3.to_bits();
+            match (pos, zf, hw) {
+                (false, _, _) => "the sample MOVED (another position)".to_string(),
+                (true, false, _) => "same position, another floor".to_string(),
+                (true, true, false) => "same position and floor, another width".to_string(),
+                (true, true, true) => "the same sample (position, floor, width)".to_string(),
+            }
+        };
+        rows.entry((smp, f133)).or_default().push((mm(&za, s) - mm(&zb, s)).abs());
+    }
+    let mut keys: Vec<_> = rows.keys().cloned().collect();
+    keys.sort();
+    for k in keys {
+        let v = rows.get_mut(&k).unwrap();
+        let c = v.len();
+        eprintln!(
+            "   {:<44} · {:<38} **{c}** cells · |Δz| p50 {:.2} / p90 {:.2} / max {:.1} m",
+            k.0,
+            k.1,
+            q(v, 0.5),
+            q(v, 0.9),
+            q(v, 1.0)
+        );
+    }
+    eprintln!("\n==========  end Finding 134-Δ . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}

@@ -1,0 +1,115 @@
+
+
+
+
+...
+
+    Finished `release` profile [optimized] target(s) in 35.26s
+     Running tests\f123_teeth.rs (target\release\deps\f123_teeth-69e128c345c3a1f4.exe)
+
+running 1 test
+
+test f134_lake_guard has been running for over 60 seconds
+   livré                      field f61ef23f4f4e9d94 = 14953e8337bcd394 · lakes key 200aa06dbef7ec05 · **60 lakes** (2 crater) · 9748c34f86566083/7a48cc29495fa016 (145 s)
+   A1+B2                      field e05628c2eb1c1c22 = b07eabbe4773016a · lakes key 7f0ffbbb243f8b00 · **38 lakes** (2 crater) · 34c84b66edebbd09/f1988d62cad54043 (140 s)
+   C1 nue                     field e2a5b05da6eed1fb = c876c200e92e0f60 · lakes key 25517c7bb3fc6462 · **27 lakes** (2 crater) · 45264dbdfffe003c/cd60158f739435b9 (222 s)
+   C2 /10 col (défaut)        field cf1d4539c7afe588 = a8d2d538d692c2f0 · lakes key 632404f9450ef9a5 · **26 lakes** (1 crater) · b7e502b2c1e126c3/9960d2b71e538692 (250 s)
+   C2 /3                      field 70cf2dc92822681b = c2eb1cb3b24ebccb · lakes key bfcfdf8bff0e26b6 · **26 lakes** (1 crater) · 4144d4ee828245f7/73ed1df1ce82d658 (249 s)
+   C2 /10 niveau mer          field 3552097350b238c8 = 35e1bc8123049d8c · lakes key 9f70222f95e39d13 · **24 lakes** (1 crater) · 91ee910f77b7a260/b4c59050a1882239 (207 s)
+   C2 /10 col, lake_base ON   field 834fa66b41d6e05d = a620a9aa0d5882a0 · lakes key 64e3c3fddfdf0dd4 · **34 lakes** (1 crater) · d7a888b0a90d795a/93e3bb468a9513a6 (259 s)
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core\data/bench_lake_hashes.json (6 entries)
+
+
+test f134_lake_guard ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 1472.80s
+
+[
+  {
+    "digest": "200aa06dbef7ec05",
+    "label": "livré · cadrage canonique (viz) · 45° / 40°",
+    "lakes_hash": "9748c34f86566083/7a48cc29495fa016",
+    "lakes": 60,
+    "latitude_deg": 45.0,
+    "span_deg": 40.0
+  },
+  {
+    "digest": "7f0ffbbb243f8b00",
+    "label": "A1+B2 · cadrage canonique (viz) · 45° / 40°",
+    "lakes_hash": "34c84b66edebbd09/f1988d62cad54043",
+    "lakes": 38,
+    "latitude_deg": 45.0,
+    "span_deg": 40.0
+  },
+  {
+    "digest": "25517c7bb3fc6462",
+    "label": "C1 nue · cadrage canonique (viz) · 45° / 40°",
+    "lakes_hash": "45264dbdfffe003c/cd60158f739435b9",
+    "lakes": 27,
+    "latitude_deg": 45.0,
+    "span_deg": 40.0
+  },
+  {
+    "digest": "632404f9450ef9a5",
+    "label": "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°",
+    "lakes_hash": "b7e502b2c1e126c3/9960d2b71e538692",
+    "lakes": 26,
+    "latitude_deg": 45.0,
+    "span_deg": 40.0
+  },
+  {
+    "digest": "bfcfdf8bff0e26b6",
+    "label": "C2 /3 · cadrage canonique (viz) · 45° / 40°",
+    "lakes_hash": "4144d4ee828245f7/73ed1df1ce82d658",
+    "lakes": 26,
+    "latitude_deg": 45.0,
+    "span_deg": 40.0
+  },
+  {
+    "digest": "9f70222f95e39d13",
+    "label": "C2 /10 niveau mer · cadrage canonique (viz) · 45° / 40°",
+    "lakes_hash": "91ee910f77b7a260/b4c59050a1882239",
+    "lakes": 24,
+    "latitude_deg": 45.0,
+    "span_deg": 40.0
+  }
+]
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+==========  Finding 123/125 . the guard through run_hd, six states  ==========
+[HD] bench guard (f61ef23f4f4e9d94): Match { label: "livré · cadrage canonique (viz)" }
+[HD] lake guard (200aa06dbef7ec05): Match { label: "livré · cadrage canonique (viz) · 45° / 40°" }
+   livré: field Match { label: "livré · cadrage canonique (viz)" } · lakes Match { label: "livré · cadrage canonique (viz) · 45° / 40°" }
+[HD] bench guard (e05628c2eb1c1c22): Match { label: "A1+B2 · cadrage canonique (viz)" }
+[HD] lake guard (7f0ffbbb243f8b00): Match { label: "A1+B2 · cadrage canonique (viz) · 45° / 40°" }
+   A1+B2: field Match { label: "A1+B2 · cadrage canonique (viz)" } · lakes Match { label: "A1+B2 · cadrage canonique (viz) · 45° / 40°" }
+[HD] bench guard (e2a5b05da6eed1fb): Match { label: "C1 nue · cadrage canonique (viz)" }
+[HD] lake guard (25517c7bb3fc6462): Match { label: "C1 nue · cadrage canonique (viz) · 45° / 40°" }
+   C1 nue: field Match { label: "C1 nue · cadrage canonique (viz)" } · lakes Match { label: "C1 nue · cadrage canonique (viz) · 45° / 40°" }
+[HD] bench guard (cf1d4539c7afe588): Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" }
+test ui::workspace::f123_viz_guard::f123_viz_guard has been running for over 60 seconds
+[HD] lake guard (632404f9450ef9a5): Match { label: "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°" }
+   C2 /10 col (défaut): field Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" } · lakes Match { label: "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°" }
+[HD] bench guard (70cf2dc92822681b): Match { label: "C2 /3 · cadrage canonique (viz)" }
+[HD] lake guard (bfcfdf8bff0e26b6): Match { label: "C2 /3 · cadrage canonique (viz) · 45° / 40°" }
+   C2 /3: field Match { label: "C2 /3 · cadrage canonique (viz)" } · lakes Match { label: "C2 /3 · cadrage canonique (viz) · 45° / 40°" }
+[HD] bench guard (3552097350b238c8): Match { label: "C2 /10 niveau mer · cadrage canonique (viz)" }
+[HD] lake guard (9f70222f95e39d13): Match { label: "C2 /10 niveau mer · cadrage canonique (viz) · 45° / 40°" }
+   C2 /10 niveau mer: field Match { label: "C2 /10 niveau mer · cadrage canonique (viz)" } · lakes Match { label: "C2 /10 niveau mer · cadrage canonique (viz) · 45° / 40°" }
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes = banc
+   C1 nue                 field = banc · lakes = banc
+   C2 /10 col (défaut)    field = banc · lakes = banc
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes = banc
+test ui::workspace::f123_viz_guard::f123_viz_guard ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 44 filtered out; finished in 110.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+[HD] lake guard (632404f9450ef9a5): Match { label: "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°" }
+   viz_lakes_OFF.txt: 26 lakes · b7e502b2c1e126c3/9960d2b71e538692 · field Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" } · lakes Match { label: "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°" }
+[HD] lake guard (64e3c3fddfdf0dd4): NoReference { viz: "d7a888b0a90d795a/93e3bb468a9513a6" }
+   viz_lakes_ON.txt: 34 lakes · d7a888b0a90d795a/93e3bb468a9513a6 · field NoReference { viz: "a620a9aa0d5882a0" } · lakes NoReference { viz: "d7a888b0a90d795a/93e3bb468a9513a6" }
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 44 filtered out; finished in 35.62s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[exited with code 0]

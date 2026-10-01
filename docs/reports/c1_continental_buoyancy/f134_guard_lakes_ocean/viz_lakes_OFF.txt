@@ -1,0 +1,27 @@
+# viz run_hd · lake guard Match { label: "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°" } · b7e502b2c1e126c3/9960d2b71e538692
+lake        3 Exorheic      level    280.03 m (438c046e) area    28.377 km² (41e3033c) cells    11902 mask 46401e416c8ccc60
+lake        4 Exorheic      level     96.40 m (42c0cb6d) area    32.759 km² (420308ec) cells    13740 mask 1cea3cb8b33d7833
+lake        6 Exorheic      level    154.20 m (431a32ff) area    76.787 km² (42999330) cells    32207 mask ac37f8ae45c01e38
+lake        7 Exorheic      level    140.41 m (430c68c7) area    11.735 km² (413bc268) cells     4922 mask 0435624b3f4e375a
+lake       11 Exorheic      level    133.77 m (4305c60e) area    37.103 km² (4214692a) cells    15562 mask 131a50199c9e1882
+lake       12 Exorheic      level     55.52 m (425e15d0) area     7.658 km² (40f50e60) cells     3212 mask 7188c1881e4a3d80
+lake  1000001 Exorheic      level    176.83 m (4330d57c) area     1.192 km² (3f989680) cells      500 mask b1971afcc744cae9
+lake  1000002 Endorheic     level     76.25 m (42988159) area   460.351 km² (43e62cde) cells   193085 mask 186d132b4fc3d8b3
+lake  1000003 Exorheic      level      1.31 m (3fa7c4d4) area     0.012 km² (3c435000) cells        5 mask 22663bd4f28c64b7
+lake  1000004 Exorheic      level      1.14 m (3f920b1c) area     0.005 km² (3b9c4000) cells        2 mask 357cede4cc45d092
+lake  1000005 Exorheic      level      0.97 m (3f78ceec) area     0.005 km² (3b9c4000) cells        2 mask 4305b073656b0d65
+lake  1000006 Exorheic      level      0.79 m (3f4a6d18) area     0.005 km² (3b9c4000) cells        2 mask 9974b8279ceca455
+lake  1000007 Exorheic      level      0.61 m (3f1c3768) area     0.005 km² (3b9c4000) cells        2 mask 78ee671658ea10cd
+lake  1000008 Endorheic     level     76.25 m (42988159) area    96.397 km² (42c0cb78) cells    40432 mask c63b1199f31a6b7e
+lake  1000009 Endorheic     level      0.44 m (3ee187f0) area     0.005 km² (3b9c4000) cells        2 mask 7d5325c9b4ecc435
+lake  1000010 Endorheic     level      0.44 m (3ee187f0) area    44.899 km² (42339890) cells    18832 mask b698ee859655785f
+lake  1000011 Unresolved    level    459.32 m (43e5a93f) area   494.325 km² (43f7299f) cells   207335 mask 478d6f3ae82d1211
+lake  1000012 Exorheic      level     22.01 m (41b0195f) area    10.703 km² (412b3de4) cells     4489 mask 9e409bda35abe7ad
+lake  1000013 Exorheic      level    110.22 m (42dc70c1) area   154.076 km² (431a135c) cells    64624 mask 257dee04a03f4d23
+lake  1000014 Exorheic      level     49.26 m (424506f0) area   628.955 km² (441d3d25) cells   263803 mask 8345f10d81e5694a
+lake  1000015 Exorheic      level      0.14 m (3e0aa110) area     0.005 km² (3b9c4000) cells        2 mask 66750fa40d2570fe
+lake  1000016 Exorheic      level    115.33 m (42e6a7be) area   500.801 km² (43fa667a) cells   210051 mask 5c543ae3225f0e37
+lake  1000017 Exorheic      level    268.79 m (4386658c) area   338.302 km² (43a9269d) cells   141894 mask f5b5aa644f591ab9
+lake  1000018 Exorheic      level    471.79 m (43ebe4af) area   184.002 km² (4338007e) cells    77176 mask a3ee2ced299a7fe3
+lake  1000019 Exorheic      level    614.92 m (4419bb1e) area   383.182 km² (43bf973e) cells   160718 mask 9af40b3ea91fd3a1
+lake  2000001 CraterAcidic  level   2104.92 m (45038eb2) area     1.192 km² (3f989680) cells      500 mask d935a267bd0b5c19

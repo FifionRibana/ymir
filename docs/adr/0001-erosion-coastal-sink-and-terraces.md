@@ -19009,3 +19009,114 @@ present at the construction stage: the lakes OFF's χ through them drained. The 
 **The author's direction, recorded as given:** « Je veux réduire la taille des lacs avec l'âge, car au départ ils
 étaient tous remplis à la hauteur d'équilibre, ce qui donnait des lacs énormes. » It is the entry criterion of the
 H-2 / age work, not opened in this round.
+
+## Finding 134 — the guard covers the lakes; the ocean moves by a tenth of a millimetre through the global mean depth; lake 2's 1 177 m is OFF's canyon through its col; the new under-law cells are the lake beds
+
+**Units**: 1 cell = 48.8 m (domain). Benches `f134_*` (f126_coast, f123_teeth) and `f134v_lake_listing` (viz).
+Report and raw outputs are in `docs/reports/c1_continental_buoyancy/f134_guard_lakes_ocean/`.
+
+**Two worlds, declared.**
+- The viz's "C2 /10 col" is `new(k, Some(0.1))`. O and D are measured on it.
+- The benches' témoin also carries `wall_sea_floor_m = 0.5` (F126-B), which the viz never sets. T, U and Δ are
+  measured on it, where F133's numbers were read.
+
+**0 — The guard covers the lakes.**
+- F133 was committed (`1a5f3ff`).
+- `bench_guard::check_lakes` is keyed by `hd_drainage_key`. It fingerprints the final lakes **after the C-2
+  crater pass**: FNV-1a over `lake_map` / over the list (id, type, level, area).
+- One climate is guarded (45° / 40°).
+- The viz shows a lake badge, and a lake Mismatch refuses numbers.
+- The permanent test has five negative controls (one cell, level, type, area, one lake fewer).
+- The crater mask and the crater-lake pass were **moved verbatim from `run_hd` to core**. `run_hd` and the
+  bench tail `common::viz_hd_lakes_on` now call the same functions.
+- **The identity holds lake by lake, OFF 26 / 26 and ON 34 / 34**, the crater lake included. The bench's and
+  `run_hd`'s listings are identical (id, type, level and area bits, the cells' hash).
+- Guard **6 / 6, field AND lakes**; hash `a8d2d538d692c2f0`; lib 590 → 591; check clean, before and after.
+
+**O — It is the normalisation, and it is a non-local stage (stop rule: no fix).**
+- `bathymetry.rs:188` takes `mean_depth` over every cell ≤ sea. It came in with `563198e`; its earliest ADR hit
+  is F124-P1.
+- With `texture = 1` the re-map is `depth = env(dist)·c/m`.
+- Stage by stage, OFF vs ON:
+  - the construction moves no ocean cell;
+  - **the light pass moves 69** (plus 46 inland, 3 flips);
+  - the bathymetry moves **39.66 M**.
+- The mean depth is 2 566.6381 → 2 566.6380 m.
+- The ratio z_ON / z_OFF has median 1.0000001 and **100 % of the cells within 10⁻³**. 99.993 % of the
+  unclamped cells with an unchanged pre-bathymetry depth sit at `m_OFF/m_ON` within 10⁻⁵.
+- The whole ocean moves by about **0.1 mm**, in the last bits of an f32. The author's decision stands: « Toute
+  modification des terres déplace l'océan entier. »
+
+**D — Lake 2's p90 of 1 177 m is upstream, on cells OFF carved.**
+- The field is the conditioned field, which carries the pre-breach lakes' surfaces.
+- 69 601 of the 88 142 cells are carved by OFF's construction (132 of 139 km³). Δz > 0 on 99–100 % of them.
+- OFF's floor in the footprint sits at p50 352 m, under a col at 1 339.6 m: **OFF's χ from the sea cut through
+  the col by ~1 km**. ON bases at the lake level, 1 292 m.
+- The upstream Δz (p50 1 171 m on cells carved in both) is ~3× the lake's depth (356 m). It is of the order of
+  the col above OFF's floor.
+- Lakes 11 and 1 have the same structure on a smaller scale (upstream carved p90 584 / 300 m; depths 329 /
+  182 m). No cell is carved by ON alone.
+
+**T — No population's θ moves.**
+- OFF → ON, upstream of a based lake: 0.492 → **0.492** (F132), 0.494 → **0.494** (extended).
+- Downstream: 0.500 → 0.500 (F132), 0.503 → 0.512 (extended). Untouched basins: 0.489 / 0.485, unchanged.
+- The pooled fall 0.493 → 0.436 / 0.439 therefore lies outside the populations: the 12 099 lake-bed links that
+  leave the carved set, the ~525 links inside or across the based set, and the pooling. The split between
+  these is named, not measured.
+- Carved trunk cells > 1 m off their law: 1 354 → 1 658 / 1 816. Half the added ones are inside the based set
+  (|z − law| p90 15 → ~320 m); upstream barely moves (384 → 385, 514 → 600).
+
+**U — The 17.5 points are the lake beds.**
+- 12 495 / 12 486 new under-law cells; **99.1 % lie INSIDE the based lakes** (distance to a shore 0, 99.6 %
+  within 2 km), with law − terrain p50 62 / p90 208 m.
+- Their law is the lake level above the bed.
+- They are neither delta-fill places nor long reaches with a law set too high: **F133-T's under-law share
+  counts the water body**, an artefact of the instrument.
+
+**Δ — The residual is laid from a moved sample.**
+- 12 509 cells, |Δz| p50 6.50 / p90 68.80 / max 631.2 m (non-blind).
+- **90.1 % are laid by a sample at another position in B**: 11 271 cells, p90 up to 107 m. 1 216 have no
+  sample on one side; 22 share the sample (cross-line minimum).
+- **The function is `carve_diag`'s nearest-source propagation** (`valley_construction.rs:1489–1524`, cone
+  `geo` `:1468–1488`), fed by `line_samples` in `skeleton`.
+- **It is Finding 127's "laid from the NEAREST sample", the same code**: identical line for line to `0ae6243`.
+
+**Predictions.**
+- Mine:
+  - P-D and P-Δ held.
+  - P-O half: the normalisation held, but the first ocean difference is at the light pass.
+  - P-T and P-U refuted.
+  - P-0.3 not judged (the protected breach and the crater pass were built together).
+  - Meta not held, as worded: *"Disagreements: P-0.3, P-D, P-U. At least two are wrong."* Only P-U is
+    wrong of those three; P-T is refuted too, but it was not one of them.
+- The reviewer's:
+  - O, identity and meta held.
+  - D refuted (upstream, not the footprint; p90 ≫ 100 m).
+  - T refuted upstream.
+  - U half (within 2 km held; median 62 m, not < 20).
+  - Δ half (same code held; p90 68.8 m, not < 2 m).
+- **Gated, off, nothing promoted.**
+
+**Closed and recorded (added at commit).**
+- **O is closed.** The 39.7 M ocean cells are float noise (~0.1 mm) propagated by the normalisation.
+  - **An architecture fact, recorded**: the bathymetry's mean depth includes the inland below-sea basins (every
+    cell ≤ sea), so a change inside a basin moves the whole ocean.
+- **T / U**: the law is not deformed. The fall of θ and the 17.5 points are the based lakes' beds, counted as
+  trunk. It is a **defect of the instrument**, not of the construction.
+- **D**: in OFF, the χ coming from the sea cuts the cols of lakes 1, 2 and 11 by ~1 km. Their whole upstream
+  network hangs from that cut. **The canyons instrument does not see it**: it looks at closed depressions, and
+  a cut col leaves none.
+- **The author's look (2026-10-02)**: « difficile à voir sur le viz (palette de couleur peu adaptée), mais
+  semble là dans les crops » (the maps `d_lake{1,2,11}_dz.png`).
+
+**Legend of the F134 Δz maps** (`d_lake{1,2,11}_dz.png`):
+- **Crop**: the lake's ON centroid ± 307 cells (615 × 615 cells = 30 km), north up, viz cell coordinates.
+- **Colour**: Δz = z_ON − z_OFF on the CONDITIONED field (the pre-breach lakes at their surface).
+  - Red: ON higher. Blue: ON lower. White: equal.
+  - Linear from 0 to ± 1 000 m, **saturated beyond ± 1 000 m** (full red / full blue).
+- **Outlines**, drawn where the lake id changes to a 4-neighbour:
+  - green: the ON lake the map is about;
+  - grey: the other ON lakes;
+  - black: the OFF lakes.
+
+  Where they coincide, ON is drawn over OFF.

@@ -725,7 +725,7 @@ fn draw_workspace(
         if is_new {
             ws.current = Some(result.clone());
             GUARD_REFUSES.store(
-                result.bench_guard.refuses_numbers(),
+                result.bench_guard.refuses_numbers() || result.lake_guard.refuses_numbers(),
                 std::sync::atomic::Ordering::Relaxed,
             );
             ws.river_map = Some(RiverCellMap::from_drainage(&result.drainage));
@@ -4263,6 +4263,25 @@ fn microscope_list(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
             ),
         };
         ui.label(egui::RichText::new(txt).color(col).size(10.5)).on_hover_text(tip);
+        // ADR Finding 134 — the lakes, guarded apart: the final lakes (after the crater pass) against
+        // the bench's, under the final drainage's key (field + drainage + climate). One climate is
+        // guarded, 45° / 40°.
+        let (txt, col) = match &hd.lake_guard {
+            GuardStatus::Match { .. } => ("lacs = banc".to_string(), C::from_rgb(0x5a, 0xc0, 0x7a)),
+            GuardStatus::Mismatch { bench, viz, .. } => (
+                format!("lacs ≠ banc (banc {bench}, viz {viz}) — nombres masqués"),
+                C::from_rgb(0xe0, 0x60, 0x50),
+            ),
+            GuardStatus::NoReference { .. } => (
+                "lacs non gardés — un seul climat gardé (45° / 40°)".to_string(),
+                C::from_rgb(0xd0, 0xb0, 0x50),
+            ),
+        };
+        ui.label(egui::RichText::new(txt).color(col).size(10.5)).on_hover_text(
+            "Les lacs finals (après la passe des lacs de cratère) comparés à ceux du banc, sous la \
+             clé du drainage final (champ + drainage + climat). Un seul climat est gardé: \
+             latitude 45°, étendue 40°.",
+        );
     }
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("MICROSCOPE").color(TEXT_BRIGHT).strong().size(11.5));
@@ -6200,7 +6219,11 @@ mod f123_viz_guard {
 
     const PSEED: u64 = 10_481_999_410_520_546_993;
 
-    fn run(label: &str, slope: Option<f32>, valley: Option<ValleyConstruction>) -> GuardStatus {
+    fn run(
+        label: &str,
+        slope: Option<f32>,
+        valley: Option<ValleyConstruction>,
+    ) -> (GuardStatus, GuardStatus) {
         let spec = C1RunSpec { seed: PSEED, ..C1RunSpec::default() };
         // the workspace's own literal (workspace.rs, the "Générer HD" handler), seed 1 auto-framed
         let params = HdParams {
@@ -6243,8 +6266,8 @@ mod f123_viz_guard {
         while let Ok(e) = rx.recv() {
             match e {
                 C1Event::HdCompleted { result, .. } => {
-                    eprintln!("   {label}: {:?}", result.bench_guard);
-                    return result.bench_guard.clone();
+                    eprintln!("   {label}: field {:?} · lakes {:?}", result.bench_guard, result.lake_guard);
+                    return (result.bench_guard.clone(), result.lake_guard.clone());
                 }
                 C1Event::HdFailed { error } => panic!("HD run failed: {error}"),
                 _ => {}
@@ -6273,11 +6296,14 @@ mod f123_viz_guard {
         for (label, slope, valley) in states {
             verdicts.push((label, run(label, slope, valley)));
         }
-        for (label, v) in &verdicts {
-            eprintln!("   {label:<22} {}", if matches!(v, GuardStatus::Match { .. }) { "= banc" } else { "≠ / non gardé" });
+        let say = |v: &GuardStatus| if matches!(v, GuardStatus::Match { .. }) { "= banc" } else { "≠ / non gardé" };
+        for (label, (f, l)) in &verdicts {
+            eprintln!("   {label:<22} field {} · lakes {}", say(f), say(l));
         }
-        for (label, v) in verdicts {
-            assert!(matches!(v, GuardStatus::Match { .. }), "{label}: {v:?}");
+        // ADR Finding 134 — six states, field AND lakes
+        for (label, (f, l)) in verdicts {
+            assert!(matches!(f, GuardStatus::Match { .. }), "{label} field: {f:?}");
+            assert!(matches!(l, GuardStatus::Match { .. }), "{label} lakes: {l:?}");
         }
     }
 }
@@ -6571,6 +6597,33 @@ mod f133v_bench {
             eprintln!("      active craters: {active}");
         }
     }
+
+    /// ADR Finding 134, item 0.3 — the viz path's lakes, lake by lake, OFF and ON (extended lake base),
+    /// in `bench_guard::lake_listing`'s format, written to `F134_LAKES_DIR`: the bench's
+    /// `f134_lake_guard` writes the same two files from its own assembly, and the identity is a diff.
+    ///
+    /// Run: F134_LAKES_DIR=<dir> cargo test -p ymir-viz --release f134v_lake_listing -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn f134v_lake_listing() {
+        use ymir_core::tectonics_c1::bench_guard::{lake_fingerprint, lake_listing};
+        let dir = std::env::var("F134_LAKES_DIR").expect("F134_LAKES_DIR");
+        let base = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+        for (name, vc) in [
+            ("viz_lakes_OFF.txt", base),
+            ("viz_lakes_ON.txt", ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..base }),
+        ] {
+            let r = run(vc);
+            let fp = lake_fingerprint(&r.drainage.lake_map, &r.drainage.lakes);
+            eprintln!("   {name}: {} lakes · {fp} · field {:?} · lakes {:?}", r.drainage.lakes.len(), r.bench_guard, r.lake_guard);
+            let mut txt = format!("# viz run_hd · lake guard {:?} · {fp}\n", r.lake_guard);
+            for l in lake_listing(&r.drainage.lake_map, &r.drainage.lakes) {
+                txt.push_str(&l);
+                txt.push('\n');
+            }
+            std::fs::write(std::path::Path::new(&dir).join(name), txt).expect("write listing");
+        }
+    }
 }
 
 /// ADR Finding 124-3 — the shipped aggregation's three gestures on a hand-built world (permanent,
@@ -6660,6 +6713,7 @@ mod f124_objects {
             sample_origin: [0.0, 0.0],
             sample_size: 1.0,
             bench_guard: ymir_core::tectonics_c1::bench_guard::GuardStatus::NoReference { viz: String::new() },
+            lake_guard: ymir_core::tectonics_c1::bench_guard::GuardStatus::NoReference { viz: String::new() },
             km_per_cell: 1.0,
         };
         let wcs = aggregate_watercourses(&hd, w as f32, 1.0);

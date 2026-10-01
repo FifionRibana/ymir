@@ -998,3 +998,96 @@ fn f123_identity_control() {
 "
     );
 }
+
+/// ADR Finding 134, item 0.2 / 0.3 — **the guard covers the lakes.** For the six states of the viz
+/// menu at the canonical framing, the HD tail is run as `run_hd` runs it ([`common::viz_hd_lakes_on`]:
+/// the protected breach, the placed climate 45° / 40°, the H-1 infiltration field, the assembly,
+/// the C-2 crater pass), the final lakes are fingerprinted under the final drainage's digest, and
+/// `data/bench_lake_hashes.json` is written. Each world's eroded field is asserted equal to the
+/// field guard's reference first (the lakes are guarded on the guarded world, or not at all).
+///
+/// Item 0.3: the lake-by-lake listing ([`lake_listing`]) of the default state (OFF) and of the
+/// extended lake base (ON) is written to `F134_LAKES_DIR` (if set), to be diffed against the viz's.
+///
+/// Run: cargo test -p ymir-core --release --test f123_teeth -- --ignored f134_lake_guard --nocapture
+#[test]
+#[ignore]
+fn f134_lake_guard() {
+    use common::{bench_eroded_digest, build_world, viz_hd_lakes_on};
+    use ymir_core::tectonics_c1::bench_guard::{
+        LakeGuardEntry, entries, field_hash, lake_fingerprint, lake_listing,
+    };
+    use ymir_core::tectonics_c1::valley_construction::LakeBase;
+    let t0 = Instant::now();
+    eprintln!("\n==========  Finding 134 . the lake guard (six states, 45° / 40°)  ==========");
+    let (lat, span) = (45.0f32, 40.0f32);
+    let k = F121_AGE_K;
+    let with_closure = |vc: ValleyConstruction| Knobs {
+        valley: Some(vc),
+        slope_floor_abs: Some(S_EQ),
+        origin: Some(VIZ_ORIGIN),
+        ..Knobs::passes(2)
+    };
+    let on_vc = ValleyConstruction {
+        lake_base: Some(LakeBase::InputLakesAndBasins),
+        ..ValleyConstruction::new(k, Some(0.1))
+    };
+    let at = |kn: Knobs| Knobs { origin: Some(VIZ_ORIGIN), ..kn };
+    let states: [(&str, Knobs, bool); 7] = [
+        ("livré", at(Knobs::passes(2)), true),
+        ("A1+B2", at(Knobs { slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) }), true),
+        ("C1 nue", at(Knobs { valley: Some(ValleyConstruction::new(k, None)), ..Knobs::passes(2) }), true),
+        ("C2 /10 col (défaut)", with_closure(ValleyConstruction::new(k, Some(0.1))), true),
+        ("C2 /3", with_closure(ValleyConstruction::new(k, Some(1.0 / 3.0))), true),
+        ("C2 /10 niveau mer", with_closure(ValleyConstruction::f121(k, Some(0.1))), true),
+        // item 0.3 only: the extended lake base, not a menu state (no field reference: NOT written)
+        ("C2 /10 col, lake_base ON", with_closure(on_vc), false),
+    ];
+    let fields = entries();
+    let dir = std::env::var("F134_LAKES_DIR").ok();
+    let mut out: Vec<LakeGuardEntry> = Vec::new();
+    for (label, kn, guarded) in states {
+        let t = Instant::now();
+        let digest = bench_eroded_digest(kn, PSEED);
+        let wd = build_world(kn, None, PSEED, None);
+        let fh = format!("{:016x}", field_hash(&wd.heightmap));
+        if guarded {
+            let e = fields.iter().find(|e| e.digest == digest).expect("the field guard has this state");
+            assert_eq!(e.field_hash, fh, "{label}: the world is not the field guard's");
+        }
+        let v = viz_hd_lakes_on(&wd, kn, PSEED, lat, span);
+        let fp = lake_fingerprint(&v.drainage.lake_map, &v.drainage.lakes);
+        let craters = v.drainage.lakes.iter().filter(|l| format!("{:?}", l.lake_type).starts_with("Crater")).count();
+        eprintln!(
+            "   {label:<26} field {digest} = {fh} · lakes key {} · **{} lakes** ({craters} crater) · {fp} ({:.0} s)",
+            v.digest,
+            v.drainage.lakes.len(),
+            t.elapsed().as_secs_f64()
+        );
+        if let Some(d) = &dir {
+            if label == "C2 /10 col (défaut)" || !guarded {
+                let name = if guarded { "bench_lakes_OFF.txt" } else { "bench_lakes_ON.txt" };
+                let mut txt = format!("# {label} · lakes key {} · {fp}\n", v.digest);
+                for l in lake_listing(&v.drainage.lake_map, &v.drainage.lakes) {
+                    txt.push_str(&l);
+                    txt.push('\n');
+                }
+                std::fs::write(std::path::Path::new(d).join(name), txt).expect("write listing");
+            }
+        }
+        if guarded {
+            out.push(LakeGuardEntry {
+                digest: v.digest,
+                label: format!("{label} · cadrage canonique (viz) · 45° / 40°"),
+                lakes_hash: fp,
+                lakes: v.drainage.lakes.len(),
+                latitude_deg: lat,
+                span_deg: span,
+            });
+        }
+    }
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("data/bench_lake_hashes.json");
+    std::fs::write(&path, serde_json::to_string_pretty(&out).expect("json") + "\n").expect("write");
+    eprintln!("   wrote {} ({} entries)", path.display(), out.len());
+    eprintln!("\n==========  end Finding 134 lake guard . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}

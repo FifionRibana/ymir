@@ -1,0 +1,24 @@
+...
+    Finished `release` profile [optimized] target(s) in 56.26s
+     Running tests\f126_coast.rs (target_f134\release\deps\f126_coast-78c90b7d7fab281b.exe)
+running 1 test
+   F132 set (input lakes): trunk ≥ 10 km² cells by population: upstream 14746 · downstream 4053 · untouched 31733 · inside 20372 (of 70904)
+   extended set (input lakes ∪ closed depressions): trunk ≥ 10 km² cells by population: upstream 25719 · downstream 893 · untouched 12793 · inside 31499 (of 70904)
+   ── OFF ── θ on the carved links, all **0.493** [0.492, 0.495] (46885 links) (118 s)
+   T · θ by population (F132 set (input lakes)): upstream of a based lake **0.492** [0.488, 0.496] (13538) · downstream of a based lake **0.500** [0.493, 0.507] (1694) · untouched basins **0.489** [0.485, 0.492] (19020)
+   T · carved trunk cells > 1 m off their law: **1354** of 48128 carved trunk cells · above the law 81 · |z − law| p50 3.2 / p90 14.9 m · distance to a based shore p50 **7.23 km** / p90 15.53 km · within 2 km **31.2 %** · by population: upstream of a based lake 384 · downstream of a based lake 0 · untouched basins 626 · inside 344
+   T · θ by population (extended set (input lakes ∪ closed depressions)): upstream of a based lake **0.494** [0.492, 0.497] (22222) · downstream of a based lake **0.503** [0.485, 0.522] (724) · untouched basins **0.485** [0.480, 0.490] (11313)
+   T · carved trunk cells > 1 m off their law: **1354** of 48128 carved trunk cells · above the law 81 · |z − law| p50 3.2 / p90 14.9 m · distance to a based shore p50 **2.78 km** / p90 12.94 km · within 2 km **41.5 %** · by population: upstream of a based lake 514 · downstream of a based lake 0 · untouched basins 496 · inside 344
+   U · trunk cells uncarved under their law: **22775** (32.1 % of 70904)
+   ── ON F132 (InputLakes) ── θ on the carved links, all **0.436** [0.427, 0.445] (34786 links) (118 s)
+   T · θ by population (F132 set (input lakes)): upstream of a based lake **0.492** [0.488, 0.496] (13548) · downstream of a based lake **0.500** [0.493, 0.507] (1694) · untouched basins **0.489** [0.486, 0.493] (19019)
+   T · carved trunk cells > 1 m off their law: **1658** of 35758 carved trunk cells · above the law 34 · |z − law| p50 11.9 / p90 324.7 m · distance to a based shore p50 **3.96 km** / p90 15.38 km · within 2 km **43.8 %** · by population: upstream of a based lake 385 · downstream of a based lake 0 · untouched basins 626 · inside 647
+   U · trunk cells uncarved under their law: **35146** (49.6 % of 70904)
+   U · NEW under-law cells vs OFF: **12495** (+17.6 points; 124 left the set) · distance to a based shore p50 **0.00 km** / p90 0.00 km · within 2 km **99.6 %** · law − terrain p50 **62.3 m** / p90 207.6 m · by population: upstream of a based lake 109 · downstream of a based lake 0 · untouched basins 1 · inside 12385 · their run downstream p50 0.05 km / p90 0.05 km, ending at a based shore 99.8 % · at the sea / no receiver 0.0 % · on the trunk (leaves the law) 0.2 %
+   ── ON EXTENDED (InputLakesAndBasins) ── θ on the carved links, all **0.439** [0.431, 0.446] (37473 links) (119 s)
+   T · θ by population (extended set (input lakes ∪ closed depressions)): upstream of a based lake **0.494** [0.492, 0.497] (24597) · downstream of a based lake **0.512** [0.496, 0.530] (871) · untouched basins **0.485** [0.480, 0.490] (11470)
+   T · carved trunk cells > 1 m off their law: **1816** of 38555 carved trunk cells · above the law 35 · |z − law| p50 10.0 / p90 313.7 m · distance to a based shore p50 **1.42 km** / p90 11.62 km · within 2 km **56.1 %** · by population: upstream of a based lake 600 · downstream of a based lake 1 · untouched basins 518 · inside 697
+   U · trunk cells uncarved under their law: **32348** (45.6 % of 70904)
+   U · NEW under-law cells vs OFF: **12486** (+17.6 points; 2913 left the set) · distance to a based shore p50 **0.00 km** / p90 0.00 km · within 2 km **99.6 %** · law − terrain p50 **62.4 m** / p90 207.7 m · by population: upstream of a based lake 110 · downstream of a based lake 0 · untouched basins 0 · inside 12376 · their run downstream p50 0.05 km / p90 0.05 km, ending at a based shore 99.8 % · at the sea / no receiver 0.0 % · on the trunk (leaves the law) 0.2 %
+test f134_tu ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 43 filtered out; finished in 584.40s

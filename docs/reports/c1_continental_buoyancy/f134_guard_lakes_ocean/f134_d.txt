@@ -1,0 +1,63 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.14s
+     Running tests\f126_coast.rs (target_f134\release\deps\f126_coast-78c90b7d7fab281b.exe)
+running 1 test
+   OFF · lakes 26 · lake key 632404f9450ef9a5
+   ON  · lakes 34 · lake key 64e3c3fddfdf0dd4
+   conditioned cells differing OFF vs ON: **42180409** (F133v: 44 268 342)
+   ── lake 2 · centre (4019, 2839) (F133v (4019, 2839)) · Exorheic · 35.5 km² · ON level **1292.0 m** · depth **356.3 m** · col (ocean_flood spill on S1, max over the footprint) **1339.6 m** · footprint under an OFF lake 0 of 14889 · conditioned z in the footprint p50 OFF 352.3 / ON 1292.0 m · S1 p50 1237.0 m
+      field CONDITIONED (pre-breach lakes at their surface):
+         footprint · carved                 cells   14735 · Δz ≠ 0   14735 · Δz > 0 **100.0 %** · |Δz| p50 942.0 / p90 **1107.9 m** · Σ|Δz|·A 30.46 km³ · of the Δz ≠ 0, under an OFF lake 0
+         footprint · kept at the terrain    cells     154 · Δz ≠ 0     154 · Δz > 0 **100.0 %** · |Δz| p50 236.4 / p90 **286.9 m** · Σ|Δz|·A 0.08 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved (OFF and ON)     cells   11882 · Δz ≠ 0   11882 · Δz > 0 **100.0 %** · |Δz| p50 1171.2 / p90 **1239.5 m** · Σ|Δz|·A 30.28 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved OFF only         cells   57719 · Δz ≠ 0   57719 · Δz > 0 **99.4 %** · |Δz| p50 796.3 / p90 **1181.9 m** · Σ|Δz|·A 102.11 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved ON only          cells       0 · Δz ≠ 0       0 · Δz > 0 **0.0 %** · |Δz| p50 NaN / p90 **NaN m** · Σ|Δz|·A -0.00 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · kept at the terrain     cells   35885 · Δz ≠ 0   18541 · Δz > 0 **90.8 %** · |Δz| p50 89.6 / p90 **409.0 m** · Σ|Δz|·A 6.72 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream, all (F133v's population): 88142 cells with Δz ≠ 0 · p90 |Δz| **1177.4 m**
+      field ERODED (pre-breach, no water):
+         footprint · carved                 cells   14735 · Δz ≠ 0   14735 · Δz > 0 **100.0 %** · |Δz| p50 860.7 / p90 **1086.8 m** · Σ|Δz|·A 27.71 km³ · of the Δz ≠ 0, under an OFF lake 0
+         footprint · kept at the terrain    cells     154 · Δz ≠ 0     122 · Δz > 0 **100.0 %** · |Δz| p50 0.3 / p90 **2.4 m** · Σ|Δz|·A 0.00 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved (OFF and ON)     cells   11882 · Δz ≠ 0   11882 · Δz > 0 **100.0 %** · |Δz| p50 1171.2 / p90 **1239.5 m** · Σ|Δz|·A 30.28 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved OFF only         cells   57719 · Δz ≠ 0   57719 · Δz > 0 **99.4 %** · |Δz| p50 796.3 / p90 **1181.9 m** · Σ|Δz|·A 102.11 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved ON only          cells       0 · Δz ≠ 0       0 · Δz > 0 **0.0 %** · |Δz| p50 NaN / p90 **NaN m** · Σ|Δz|·A -0.00 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · kept at the terrain     cells   35885 · Δz ≠ 0   18541 · Δz > 0 **90.8 %** · |Δz| p50 89.6 / p90 **409.0 m** · Σ|Δz|·A 6.72 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream, all (F133v's population): 88142 cells with Δz ≠ 0 · p90 |Δz| **1177.4 m**
+      map: D:/Personnel/Projects/ymir/docs/reports/c1_continental_buoyancy/f134_guard_lakes_ocean\d_lake2_dz.png (red Δz > 0, blue < 0, ±1000 m; lake 2 outline green, other ON lakes grey, OFF lakes black)
+   ── lake 11 · centre (1429, 4287) (F133v (1429, 4287)) · Exorheic · 163.0 km² · ON level **362.0 m** · depth **329.1 m** · col (ocean_flood spill on S1, max over the footprint) **390.5 m** · footprint under an OFF lake 13740 of 68378 · conditioned z in the footprint p50 OFF 170.3 / ON 362.0 m · S1 p50 214.0 m
+      field CONDITIONED (pre-breach lakes at their surface):
+         footprint · carved                 cells   15103 · Δz ≠ 0   15103 · Δz > 0 **100.0 %** · |Δz| p50 205.0 / p90 **259.2 m** · Σ|Δz|·A 6.72 km³ · of the Δz ≠ 0, under an OFF lake 2
+         footprint · kept at the terrain    cells   53275 · Δz ≠ 0   53275 · Δz > 0 **100.0 %** · |Δz| p50 186.1 / p90 **265.6 m** · Σ|Δz|·A 22.51 km³ · of the Δz ≠ 0, under an OFF lake 13738
+         upstream · carved (OFF and ON)     cells   69906 · Δz ≠ 0   69906 · Δz > 0 **99.9 %** · |Δz| p50 515.3 / p90 **583.5 m** · Σ|Δz|·A 66.34 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved OFF only         cells   67232 · Δz ≠ 0   67232 · Δz > 0 **98.7 %** · |Δz| p50 210.8 / p90 **501.7 m** · Σ|Δz|·A 39.71 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved ON only          cells       0 · Δz ≠ 0       0 · Δz > 0 **0.0 %** · |Δz| p50 NaN / p90 **NaN m** · Σ|Δz|·A -0.00 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · kept at the terrain     cells  186776 · Δz ≠ 0   82335 · Δz > 0 **82.8 %** · |Δz| p50 9.8 / p90 **73.3 m** · Σ|Δz|·A 5.03 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream, all (F133v's population): 219473 cells with Δz ≠ 0 · p90 |Δz| **549.1 m**
+      field ERODED (pre-breach, no water):
+         footprint · carved                 cells   15103 · Δz ≠ 0   15103 · Δz > 0 **100.0 %** · |Δz| p50 91.4 / p90 **193.5 m** · Σ|Δz|·A 3.57 km³ · of the Δz ≠ 0, under an OFF lake 2
+         footprint · kept at the terrain    cells   53275 · Δz ≠ 0   16829 · Δz > 0 **99.4 %** · |Δz| p50 10.2 / p90 **68.0 m** · Σ|Δz|·A 0.97 km³ · of the Δz ≠ 0, under an OFF lake 582
+         upstream · carved (OFF and ON)     cells   69906 · Δz ≠ 0   69906 · Δz > 0 **99.9 %** · |Δz| p50 515.3 / p90 **583.5 m** · Σ|Δz|·A 66.34 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved OFF only         cells   67232 · Δz ≠ 0   67232 · Δz > 0 **98.7 %** · |Δz| p50 210.8 / p90 **501.8 m** · Σ|Δz|·A 39.72 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved ON only          cells       0 · Δz ≠ 0       0 · Δz > 0 **0.0 %** · |Δz| p50 NaN / p90 **NaN m** · Σ|Δz|·A -0.00 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · kept at the terrain     cells  186776 · Δz ≠ 0   82335 · Δz > 0 **82.8 %** · |Δz| p50 9.8 / p90 **73.3 m** · Σ|Δz|·A 5.03 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream, all (F133v's population): 219473 cells with Δz ≠ 0 · p90 |Δz| **549.1 m**
+      map: D:/Personnel/Projects/ymir/docs/reports/c1_continental_buoyancy/f134_guard_lakes_ocean\d_lake11_dz.png (red Δz > 0, blue < 0, ±1000 m; lake 11 outline green, other ON lakes grey, OFF lakes black)
+   ── lake 1 · centre (3491, 2500) (F133v (3491, 2500)) · Exorheic · 132.8 km² · ON level **327.2 m** · depth **181.6 m** · col (ocean_flood spill on S1, max over the footprint) **350.8 m** · footprint under an OFF lake 0 of 55718 · conditioned z in the footprint p50 OFF 192.7 / ON 327.2 m · S1 p50 235.8 m
+      field CONDITIONED (pre-breach lakes at their surface):
+         footprint · carved                 cells   28662 · Δz ≠ 0   28662 · Δz > 0 **100.0 %** · |Δz| p50 221.8 / p90 **293.0 m** · Σ|Δz|·A 14.33 km³ · of the Δz ≠ 0, under an OFF lake 0
+         footprint · kept at the terrain    cells   27056 · Δz ≠ 0   27056 · Δz > 0 **100.0 %** · |Δz| p50 105.0 / p90 **140.6 m** · Σ|Δz|·A 6.32 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved (OFF and ON)     cells  154126 · Δz ≠ 0  154126 · Δz > 0 **99.7 %** · |Δz| p50 243.4 / p90 **299.6 m** · Σ|Δz|·A 100.30 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved OFF only         cells   63741 · Δz ≠ 0   63741 · Δz > 0 **96.1 %** · |Δz| p50 218.5 / p90 **1062.3 m** · Σ|Δz|·A 55.25 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved ON only          cells       0 · Δz ≠ 0       0 · Δz > 0 **0.0 %** · |Δz| p50 NaN / p90 **NaN m** · Σ|Δz|·A -0.00 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · kept at the terrain     cells  142410 · Δz ≠ 0   87828 · Δz > 0 **71.7 %** · |Δz| p50 17.8 / p90 **115.9 m** · Σ|Δz|·A 8.55 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream, all (F133v's population): 305695 cells with Δz ≠ 0 · p90 |Δz| **328.3 m**
+      field ERODED (pre-breach, no water):
+         footprint · carved                 cells   28662 · Δz ≠ 0   28662 · Δz > 0 **100.0 %** · |Δz| p50 137.6 / p90 **247.9 m** · Σ|Δz|·A 9.39 km³ · of the Δz ≠ 0, under an OFF lake 0
+         footprint · kept at the terrain    cells   27056 · Δz ≠ 0   11666 · Δz > 0 **99.6 %** · |Δz| p50 2.1 / p90 **55.3 m** · Σ|Δz|·A 0.50 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved (OFF and ON)     cells  154126 · Δz ≠ 0  154126 · Δz > 0 **99.7 %** · |Δz| p50 243.4 / p90 **299.6 m** · Σ|Δz|·A 100.30 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved OFF only         cells   63741 · Δz ≠ 0   63741 · Δz > 0 **96.1 %** · |Δz| p50 218.5 / p90 **1062.3 m** · Σ|Δz|·A 55.25 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · carved ON only          cells       0 · Δz ≠ 0       0 · Δz > 0 **0.0 %** · |Δz| p50 NaN / p90 **NaN m** · Σ|Δz|·A -0.00 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream · kept at the terrain     cells  142410 · Δz ≠ 0   87828 · Δz > 0 **71.8 %** · |Δz| p50 17.8 / p90 **115.8 m** · Σ|Δz|·A 8.55 km³ · of the Δz ≠ 0, under an OFF lake 0
+         upstream, all (F133v's population): 305695 cells with Δz ≠ 0 · p90 |Δz| **328.3 m**
+      map: D:/Personnel/Projects/ymir/docs/reports/c1_continental_buoyancy/f134_guard_lakes_ocean\d_lake1_dz.png (red Δz > 0, blue < 0, ±1000 m; lake 1 outline green, other ON lakes grey, OFF lakes black)
+test f134_d ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 43 filtered out; finished in 858.27s

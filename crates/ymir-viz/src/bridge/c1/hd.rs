@@ -312,6 +312,9 @@ pub struct HdResult {
     /// field at the same settings (the eroded cache digest). `Mismatch` ⇒ the UI refuses to show a
     /// number: a world that is not the measured one must not be read against its Finding.
     pub bench_guard: ymir_core::tectonics_c1::bench_guard::GuardStatus,
+    /// ADR Finding 134 -- the lake guard: the final lakes (after the C-2 crater pass) against the
+    /// bench's, under the final drainage's digest. One climate is guarded (45° / 40°).
+    pub lake_guard: ymir_core::tectonics_c1::bench_guard::GuardStatus,
     /// Physical km per HD cell (`sample_size · domain_km / width`) — for the basal-disc
     /// radius of the volcaniclastic overlay.
     pub km_per_cell: f32,
@@ -940,28 +943,11 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         // C-2: protect ACTIVE crater bowls from the breach so they survive as closed
         // depressions for the (climate-dependent) crater-lake stage. Climate-INDEPENDENT
         // (crater cells only), so it belongs in this cached, climate-free conditioning.
-        let crater_protect: Option<Vec<bool>> = if volc.enabled {
-            let mut m = vec![false; gw * gh];
-            for c in craters.iter().filter(|c| c.active) {
-                let (cx, cy, r) = (c.center_px.0, c.center_px.1, c.radius_px.max(1.0));
-                let (i0, i1) =
-                    ((cx - r).floor().max(0.0) as usize, ((cx + r).ceil() as usize).min(gw - 1));
-                let (j0, j1) =
-                    ((cy - r).floor().max(0.0) as usize, ((cy + r).ceil() as usize).min(gh - 1));
-                for j in j0..=j1 {
-                    for i in i0..=i1 {
-                        if ((i as f32 + 0.5 - cx).powi(2) + (j as f32 + 0.5 - cy).powi(2)).sqrt()
-                            <= r
-                        {
-                            m[j * gw + i] = true;
-                        }
-                    }
-                }
-            }
-            Some(m)
-        } else {
-            None
-        };
+        // ADR Finding 134 -- the mask is core's (`crater_protect_mask`), so the benches protect the
+        // SAME cells.
+        let crater_protect: Option<Vec<bool>> = volc.enabled.then(|| {
+            ymir_core::tectonics_c1::closures::volcanism::crater_protect_mask(&craters, gw, gh)
+        });
         let t_breach = Instant::now();
         let conditioned = match cached::<GridF32>(&cache_dir, "conditioned", &cond_key, || {
             let p = prebreach.as_ref().expect("prebreach is present on a conditioned MISS");
@@ -1131,32 +1117,30 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // water balance and adds them as CraterAcidic lakes. Done AFTER the drainage
     // invariant checks and BEFORE export/biomes (which read the updated lake_map).
     if volc.enabled {
-        use ymir_core::tectonics_c1::drainage::{DrainageClimate, runoff_accumulation};
-        use ymir_core::terrain::flow::{FlowConfig, compute_flow};
-        let (gw, gh) = (eroded.width, eroded.height);
-        let cell_km2 = (window_km / gw as f32).powi(2);
-        let flow = compute_flow(
-            &eroded,
-            &FlowConfig { sea_level: 0.5, flat_perturbation: None, dinf: false },
-        );
+        // ADR Finding 134 -- the pass is core's (`crater_lake_pass`), so the benches run it too.
         let dclim = DrainageClimate {
             precip_internal: &climate.precipitation,
             temperature: &climate.temperature,
         };
-        let runoff = runoff_accumulation(&eroded, &flow, &dclim, cell_km2, None, None, gw, gh);
-        let (held, dry) = ymir_core::tectonics_c1::closures::volcanism::detect_crater_lakes(
+        let (held, dry) = ymir_core::tectonics_c1::closures::volcanism::crater_lake_pass(
             &eroded,
-            &flow.filled,
-            &runoff,
-            &climate.temperature,
+            &dclim,
             &craters,
-            cell_km2,
+            window_km,
             &ss,
             &mut drainage.lakes,
             &mut drainage.lake_map,
         );
         eprintln!("[HD volcanism] crater lakes: {held} acidic | {dry} dry craters");
     }
+    // ADR Finding 134 -- the lake guard, AFTER the crater pass, keyed by the final drainage's digest
+    // (eroded key + drainage config + climate): the lakes rendered are the bench's, or say so.
+    let lake_guard = ymir_core::tectonics_c1::bench_guard::check_lakes(
+        &hd_dr_key.digest(),
+        &drainage.lake_map,
+        &drainage.lakes,
+    );
+    eprintln!("[HD] lake guard ({}): {lake_guard:?}", hd_dr_key.digest());
 
     // ── Phase 4: biomes (Whittaker classification). ──
     bail_if_cancelled!();
@@ -1260,6 +1244,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         sample_size: upscale.sample_size,
         km_per_cell,
         bench_guard,
+        lake_guard,
     });
     eprintln!(
         "[HD timing] run_hd TOTAL {:.1}s (render is separate, on the UI thread)",

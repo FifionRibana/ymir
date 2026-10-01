@@ -1,0 +1,15 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running tests\f126_coast.rs (target_f134\release\deps\f126_coast-78c90b7d7fab281b.exe)
+running 1 test
+   depth_per_norm 11300.000 m (the code's) · c1_altitude_norm_to_metres slope 11300.000 m
+   (a) construction (+ rims)                  cells differing **1940794** · OCEAN cells (both sea, edge-connected) **0** of 55400265 · INLAND sea cells 0 · land / flipped 1940794 · sea↔land flips 0 (260 s)
+   (b) + light pass                           cells differing **4407766** · OCEAN cells (both sea, edge-connected) **69** of 55399720 · INLAND sea cells 46 · land / flipped 4407651 · sea↔land flips 3 (329 s)
+   (c) + droplet erosion (pre-bathymetry)     cells differing **4407766** · OCEAN cells (both sea, edge-connected) **69** of 55399720 · INLAND sea cells 46 · land / flipped 4407651 · sea↔land flips 3 (329 s)
+   MEAN DEPTH (the bathymetry's own, over z ≤ sea at stage c): OFF **2566.6381 m** over 55780438 cells · ON **2566.6380 m** over 55780439 cells · m_OFF / m_ON **1.0000000** · Σ(depth ON − depth OFF) on OCEAN cells -5.725e-2 m, on INLAND sea cells 4.250e-1 m
+   (d) + bathymetry = the eroded world        cells differing **44067569** · OCEAN cells (both sea, edge-connected) **39659918** of 55399720 · INLAND sea cells 0 · land / flipped 4407651 · sea↔land flips 3 (331 s)
+   RATIO z_ON / z_OFF on the 55780437 sea cells (both ≤ sea; 55399720 OCEAN): median **1.0000001** · p0.1 1.00000 · p1 1.00000 · p99 1.00000 · p99.9 1.00000 · within 1e-3 of the median **55780437 (100.000 %)** · prediction m_OFF / m_ON 1.0000000
+   ATTRIBUTION · pre-bathymetry depth c EQUAL: 54665649 cells, of which **54661601 (99.993 %)** at the prediction within 1e-5 · c DIFFERENT: 0 cells (0 at the prediction) · clamped (shelf_min 1.0 m or floor 5650.0 m): 1114788
+   FIRST STAGE where an OCEAN cell differs: **(b) + light pass**
+test f134_ocean ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 43 filtered out; finished in 1250.33s

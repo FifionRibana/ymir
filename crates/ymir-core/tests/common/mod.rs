@@ -414,6 +414,12 @@ fn bench_cfg(
 /// ADR Finding 123 -- the eroded product's cache digest for `k` at `pseed`, computed exactly as the
 /// viz computes its own (`tectonic_key` → `eroded_key_full`), with the benches' tectonic run.
 pub fn bench_eroded_digest(k: Knobs, pseed: u64) -> String {
+    bench_eroded_key(k, pseed).digest()
+}
+
+/// ADR Finding 134 -- [`bench_eroded_digest`]'s key itself, so the lake guard can derive the final
+/// drainage's key from it exactly as the viz does (`hd_drainage_key(&ekey, ..)`).
+pub fn bench_eroded_key(k: Knobs, pseed: u64) -> ymir_core::cache::CacheKey {
     use ymir_core::tectonics_c1::cached_product::{eroded_key_full, tectonic_key};
     let ss = SteinSteinParams::default();
     let run_cfg = C1TimeLoopConfig {
@@ -429,7 +435,7 @@ pub fn bench_eroded_digest(k: Knobs, pseed: u64) -> String {
     let cfg = bench_cfg(k, None, None);
     let tkey =
         tectonic_key(pseed, 64, &Phase2InitParams::default(), &run_cfg, &C1Closures::default());
-    eroded_key_full(&tkey, &ss, &cfg, &volc).digest()
+    eroded_key_full(&tkey, &ss, &cfg, &volc)
 }
 
 fn build_field_inner(
@@ -438,6 +444,27 @@ fn build_field_inner(
     pseed: u64,
     a1_exempt: Option<std::sync::Arc<Vec<bool>>>,
 ) -> GridF32 {
+    build_world(k, floor, pseed, a1_exempt).heightmap
+}
+
+/// ADR Finding 134 -- a built world with what the HD tail needs beside the heightmap: the C-2
+/// craters (the crater pass and the breach protection) and the tectonic state, kinematics and
+/// upscale config (the H-1 infiltration field).
+pub struct World {
+    pub heightmap: GridF32,
+    pub craters: Vec<ymir_core::tectonics_c1::closures::volcanism::CraterRecord>,
+    pub state: ymir_core::tectonics_c1::state::C1State,
+    pub kin: PlateKinematics,
+    pub cfg: ymir_core::terrain::upscale::FbmUpscaleConfig,
+    pub volc: VolcanismConfig,
+}
+
+pub fn build_world(
+    k: Knobs,
+    floor: Option<std::sync::Arc<Vec<f32>>>,
+    pseed: u64,
+    a1_exempt: Option<std::sync::Arc<Vec<bool>>>,
+) -> World {
     let ss = SteinSteinParams::default();
     let run_cfg = C1TimeLoopConfig {
         rigid_continental_crust: true,
@@ -459,7 +486,7 @@ fn build_field_inner(
         place_edifices(&state, &kin, &seed, DOMAIN_KM, &volc)
     };
     let cfg = bench_cfg(k, floor, a1_exempt);
-    upscale_from_c1_with_progress(
+    let (up, craters) = upscale_from_c1_with_progress(
         &state,
         &run_cfg.iso_config,
         &ss,
@@ -470,9 +497,116 @@ fn build_field_inner(
         Some(&kin),
         &mut |_| {},
         &|| false,
+    );
+    World { heightmap: up.heightmap, craters, state, kin, cfg, volc }
+}
+
+/// ADR Finding 134 -- the viz's drainage config (`run_hd`): the benches' [`C1DrainageConfig`] plus
+/// the H-1 infiltration tunables the workspace sends (`InfiltrationConfig { enabled: true, .. }`).
+pub fn viz_dcfg() -> ymir_core::tectonics_c1::drainage::C1DrainageConfig {
+    let mut d = ymir_core::tectonics_c1::drainage::C1DrainageConfig::default();
+    d.thresholds.head_km2 = ymir_core::erosion::stream_power::RELIEF_V1_A_C_KM2;
+    d.thresholds.full_tree = false;
+    d.infiltration = Some(ymir_core::tectonics_c1::closures::infiltration::InfiltrationConfig {
+        enabled: true,
+        ..Default::default()
+    });
+    d
+}
+
+/// ADR Finding 134 -- the HD tail as the viz's `run_hd` runs it, on a bench world: pre-breach
+/// drainage, the breach WITH the active craters protected, the placed climate, the H-1 infiltration
+/// field, the final assembly, then the C-2 crater pass. Every step calls the function `run_hd`
+/// calls (the crater mask and pass were moved to core for this); only the caches are absent.
+pub struct VizLakes {
+    /// `hd_drainage_key(..).digest()`, the lake guard's key.
+    pub digest: String,
+    /// The conditioned (breached) field, `HdResult.eroded`.
+    pub conditioned: GridF32,
+    pub drainage: ymir_core::tectonics_c1::drainage::C1DrainageResult,
+}
+
+pub fn viz_hd_lakes(k: Knobs, pseed: u64, lat: f32, span: f32) -> VizLakes {
+    let w = build_world(k, None, pseed, None);
+    viz_hd_lakes_on(&w, k, pseed, lat, span)
+}
+
+pub fn viz_hd_lakes_on(wd: &World, k: Knobs, pseed: u64, lat: f32, span: f32) -> VizLakes {
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::tectonics_c1::cached_product::hd_drainage_key;
+    use ymir_core::climate::c1_climate_placed;
+    use ymir_core::tectonics_c1::closures::infiltration::build_hd_infiltration;
+    use ymir_core::tectonics_c1::closures::volcanism::{crater_lake_pass, crater_protect_mask};
+    use ymir_core::tectonics_c1::drainage::{DrainageClimate, c1_drainage_windowed};
+    use ymir_core::tectonics_c1::hd_assembly::assemble_hd_drainage;
+    use ymir_core::terrain::flow::breach_monotone_protected;
+    let ss = SteinSteinParams::default();
+    let dcfg = viz_dcfg();
+    let pp = PrecipParams::default();
+    let g = &wd.heightmap;
+    let (gw, gh) = (g.width, g.height);
+    let window_km = DOMAIN_KM;
+    let prebreach = c1_drainage_windowed(g, None, &dcfg, &ss, window_km);
+    let protect = wd.volc.enabled.then(|| crater_protect_mask(&wd.craters, gw, gh));
+    let conditioned = breach_monotone_protected(
+        g,
+        &prebreach.flow.filled,
+        &prebreach.lake_map,
+        0.5,
+        gw,
+        gh,
+        protect.as_deref(),
+    );
+    let climate = c1_climate_placed(&conditioned, &ss, lat, span, &pp, window_km);
+    let infil: Option<Vec<f32>> = dcfg.infiltration.as_ref().map(|ic| {
+        let edi = if wd.volc.enabled {
+            place_edifices(&wd.state, &wd.kin, &WorldSeed::new(pseed), wd.volc.domain_km, &wd.volc)
+        } else {
+            Vec::new()
+        };
+        let km_per_cell = wd.cfg.sample_size as f32 * DOMAIN_KM / gw as f32;
+        build_hd_infiltration(
+            &wd.state,
+            &wd.kin,
+            &wd.cfg.lithology,
+            &wd.cfg.fracture,
+            ic,
+            &edi,
+            gw,
+            gh,
+            wd.cfg.sample_origin,
+            wd.cfg.sample_size,
+            km_per_cell,
+        )
+    });
+    let dclim =
+        DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let mut drainage = assemble_hd_drainage(
+        &conditioned,
+        &dclim,
+        Some(prebreach),
+        &dcfg,
+        &ss,
+        window_km,
+        7.5,
+        infil.as_deref(),
+        false,
     )
-    .0
-    .heightmap
+    .drainage;
+    if wd.volc.enabled {
+        crater_lake_pass(
+            &conditioned,
+            &dclim,
+            &wd.craters,
+            window_km,
+            &ss,
+            &mut drainage.lakes,
+            &mut drainage.lake_map,
+        );
+    }
+    let ekey = bench_eroded_key(k, pseed);
+    let digest = hd_drainage_key(&ekey, &dcfg, &ss, lat, &pp, Some(span), 7.5, window_km).digest();
+    VizLakes { digest, conditioned, drainage }
 }
 
 pub fn pct(v: &[f32], p: f64) -> f32 {

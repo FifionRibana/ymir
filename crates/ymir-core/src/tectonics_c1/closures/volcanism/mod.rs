@@ -558,6 +558,64 @@ pub fn detect_crater_lakes(
     (held, dry)
 }
 
+/// ADR 0001 Finding 134 — the ACTIVE craters' bowls as a breach-protect mask (`true` = keep the
+/// cell at its height), so they survive the breach as closed depressions for [`crater_lake_pass`].
+/// Moved verbatim from the viz's `run_hd` so the benches protect the SAME cells: Finding 133's viz
+/// path listed one lake more than the bench assembly, the crater lake this mask keeps.
+pub fn crater_protect_mask(craters: &[CraterRecord], w: usize, h: usize) -> Vec<bool> {
+    let mut m = vec![false; w * h];
+    for c in craters.iter().filter(|c| c.active) {
+        let (cx, cy, r) = (c.center_px.0, c.center_px.1, c.radius_px.max(1.0));
+        let (i0, i1) = ((cx - r).floor().max(0.0) as usize, ((cx + r).ceil() as usize).min(w - 1));
+        let (j0, j1) = ((cy - r).floor().max(0.0) as usize, ((cy + r).ceil() as usize).min(h - 1));
+        for j in j0..=j1 {
+            for i in i0..=i1 {
+                if ((i as f32 + 0.5 - cx).powi(2) + (j as f32 + 0.5 - cy).powi(2)).sqrt() <= r {
+                    m[j * w + i] = true;
+                }
+            }
+        }
+    }
+    m
+}
+
+/// ADR 0001 Finding 134 — the C-2 crater-lake pass as the HD pipeline runs it, AFTER the drainage
+/// assembly: a plain flow on the conditioned field, the climate's runoff, then
+/// [`detect_crater_lakes`] adding the CraterAcidic lakes to `lakes` / `lake_map`. Moved verbatim
+/// from the viz's `run_hd` (Finding 133: the bench assembly lacked it, so every lake count of
+/// Findings 131–133 is one lake short of the author's world). Returns `(held, dry)`.
+#[allow(clippy::too_many_arguments)]
+pub fn crater_lake_pass(
+    conditioned: &GridF32,
+    climate: &crate::tectonics_c1::drainage::DrainageClimate<'_>,
+    craters: &[CraterRecord],
+    window_km: f32,
+    ss: &crate::tectonics_c1::closures::oceanic_bathymetry::SteinSteinParams,
+    lakes: &mut Vec<crate::tectonics_c1::drainage::C1Lake>,
+    lake_map: &mut [u32],
+) -> (usize, usize) {
+    use crate::tectonics_c1::drainage::runoff_accumulation;
+    use crate::terrain::flow::{FlowConfig, compute_flow};
+    let (gw, gh) = (conditioned.width, conditioned.height);
+    let cell_km2 = (window_km / gw as f32).powi(2);
+    let flow = compute_flow(
+        conditioned,
+        &FlowConfig { sea_level: 0.5, flat_perturbation: None, dinf: false },
+    );
+    let runoff = runoff_accumulation(conditioned, &flow, climate, cell_km2, None, None, gw, gh);
+    detect_crater_lakes(
+        conditioned,
+        &flow.filled,
+        &runoff,
+        climate.temperature,
+        craters,
+        cell_km2,
+        ss,
+        lakes,
+        lake_map,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

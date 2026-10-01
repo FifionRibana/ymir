@@ -1,0 +1,14 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running tests\f126_coast.rs (target_f134\release\deps\f126_coast-78c90b7d7fab281b.exe)
+running 1 test
+   the residual: **12509** cells outside the present lakes (F133-F: 12 509) · |Δz| p50 **6.50** / p90 **68.80** / max **631.2 m**
+   polylines A 623 (190283 samples) · B 633 (191039 samples)
+   no sample on one side                        · F133-F: an origin on its path          **213** cells · |Δz| p50 2.68 / p90 9.12 / max 20.9 m
+   no sample on one side                        · F133-F: no differing cell on its path  **1003** cells · |Δz| p50 4.63 / p90 27.11 / max 68.3 m
+   the same sample (position, floor, width)     · F133-F: an origin on its path          **1** cells · |Δz| p50 0.48 / p90 0.48 / max 0.5 m
+   the same sample (position, floor, width)     · F133-F: no differing cell on its path  **21** cells · |Δz| p50 2.48 / p90 8.11 / max 8.8 m
+   the sample MOVED (another position)          · F133-F: an origin on its path          **223** cells · |Δz| p50 1.30 / p90 13.00 / max 204.5 m
+   the sample MOVED (another position)          · F133-F: no differing cell on its path  **11048** cells · |Δz| p50 7.28 / p90 107.17 / max 631.2 m
+test f134_delta ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 43 filtered out; finished in 365.55s
