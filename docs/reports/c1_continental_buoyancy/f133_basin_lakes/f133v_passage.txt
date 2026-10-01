@@ -1,0 +1,8 @@
+[HD volcanism] crater lakes: 1 acidic | 6 dry craters
+   OFF: 26 lakes · by type {"Endorheic": 4, "Unresolved": 1, "Exorheic": 20, "CraterAcidic": 1}
+      crater lake 2000001 (CraterAcidic) · 1.19 km² · level 2104.9 m · centre (1728, 3520)
+      active craters: 7
+[HD volcanism] crater lakes: 1 acidic | 6 dry craters
+   ON extended: 34 lakes · by type {"Exorheic": 28, "Endorheic": 4, "Unresolved": 1, "CraterAcidic": 1}
+      crater lake 2000001 (CraterAcidic) · 1.19 km² · level 2104.9 m · centre (1728, 3520)
+      active craters: 7

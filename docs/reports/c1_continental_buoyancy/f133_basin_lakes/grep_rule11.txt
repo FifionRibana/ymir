@@ -1,0 +1,15 @@
+ADR bassin sous la mer / below sea / sub-sea / sous-marin: 380 hits · first L70 [## Finding 2 — The coastal deposition dump was the net-zero ] :: `sea_level`, after `coastal_deposition_range` (=12) sub-sea steps it **deposited its
+ADR cuvette: 36 hits · first L1248 [## Finding 33 — Inventory threshold too high, and basins fil] :: below-sea (class-2) cells — only the ~0 m SHORELINE, not the overflow rim. So a deep bowl (floor −20 m, rim
+ADR depression_floor: 7 hits · first L14333 [## Finding 96 — χ is a valid PROFILE and an invalid FIELD, t] :: A search round, **two seams added to production, both additive and inert by default** (`depression_floor: false`, `incision_floor: None` — byte-identi
+ADR basin_base: 7 hits · first L18015 [## Finding 122 — the "brush" lakes are constructed valleys d] :: **B — χ from the col** (`ValleyConstruction::basin_base`, gated): a priority flood seeded on the OPEN
+ADR marche au col / walk to col: 3 hits · first L1781 [## Finding 38 — Fill each enclosed below-sea region as ONE w] :: cool-wet catchment fills it to its col and spills a big discharge into B; B's own catchment is tiny, so on LOCAL
+ADR F122-B: 2 hits · first L18243 [## Finding 124-P2 — the col base is the definition] :: +174 m at p50 on the trunks that drain a basin (Finding 122-B: +48.8 / +174.4 / +458.8 m p10/p50/p90,
+ADR lake_base: 2 hits · first L18857 [## Finding 132 — a present lake is a base level: the hidden ] :: `docs/reports/c1_continental_buoyancy/f132_lake_base_level/`.
+ADR InputLakes: 2 hits · first L18882 [## Finding 132 — a present lake is a base level: the hidden ] :: - The declared choice `LakeBase::InputLakes`: the input's pre-drainage lakes are present.
+CODE below_sea: 54 hits in 5 files · first crates/ymir-core/src/cache.rs:77:/// spans `c1_drainage`, `below_sea_basin_lakes`, `clip_rivers_to_lakes`,
+CODE depression_floor: 12 hits in 3 files · first crates/ymir-core/src/erosion/stream_power.rs:205:    pub depression_floor: bool,
+CODE basin_base: 14 hits in 1 files · first crates/ymir-core/src/tectonics_c1/valley_construction.rs:92:    #[serde(default = "basin_base_default")]
+CODE lake_base: 6 hits in 2 files · first crates/ymir-core/src/tectonics_c1/cached_product.rs:895:            "lake_base",
+CODE InputLakes: 2 hits in 1 files · first crates/ymir-core/src/tectonics_c1/valley_construction.rs:193:    InputLakes,
+CODE ocean_flood: 2 hits in 1 files · first crates/ymir-core/src/tectonics_c1/valley_construction.rs:462:    let spill: Option<Vec<f32>> = vc.basin_base.then(|| ocean_flood(&bf));
+CODE chi: 21 hits in 2 files · first crates/ymir-core/src/erosion/stream_power.rs:210:    /// The DIFFERENTIAL form of ADR Finding 96's chi floor. Instead of an absolute height 

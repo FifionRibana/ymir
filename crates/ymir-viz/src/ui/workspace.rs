@@ -968,7 +968,8 @@ fn left_panel(
                                         [ws.valley_width_gamma.min(2)],
                                     // ADR Finding 132-P4 -- off stays `None` (the guarded digest)
                                     lake_base: ws.valley_lake_base.then_some(
-                                        ymir_core::tectonics_c1::valley_construction::LakeBase::InputLakes,
+                                        // ADR Finding 133 -- the extended variant (basin lakes are present lakes)
+                                        ymir_core::tectonics_c1::valley_construction::LakeBase::InputLakesAndBasins,
                                     ),
                                     ..vc
                                 })
@@ -1225,16 +1226,22 @@ fn left_panel(
                                     });
                                     ui.checkbox(
                                         &mut ws.valley_lake_base,
-                                        egui::RichText::new("Lac = niveau de base (F132)").color(DIM2).size(11.0),
+                                        egui::RichText::new("Lac = niveau de base (F133)").color(DIM2).size(11.0),
                                     )
                                     .on_hover_text(
-                                        "ADR Finding 132-P4 — décision de l'auteur (2026-09-29) : « Un lac                                          présent est un niveau de base pour les rivières qui s'y jettent ;                                          un lac vidé ne l'est plus. »
-
-                                         χ s'arrête au rivage de chaque lac : l'amont compte χ depuis le lac,                                          avec pour base la surface du lac (son col).
-
-                                         ⚠ Circularité : les lacs de lakes.json n'existent qu'après la                                          construction. « Présent » = les lacs du pré-drainage du champ d'ENTRÉE                                          de la construction (LakeBase::InputLakes). Le point fixe n'est pas                                          construit.
-
-                                         ⚠ Aucun banc ne garde cet état : le badge dira « non gardé ».                                          RIEN N'EST PROMU.",
+                                        "ADR Findings 132-P4 / 133-F — décisions de l'auteur.\n\n\
+                                         2026-09-29 : « Un lac présent est un niveau de base pour les rivières \
+                                         qui s'y jettent ; un lac vidé ne l'est plus. »\n\
+                                         2026-09-30 : « Les lacs des bassins sous la mer sont des lacs présents. »\n\n\
+                                         χ s'arrête au rivage de chaque lac présent : l'amont compte χ depuis le lac, \
+                                         avec pour base la surface du lac (son col).\n\n\
+                                         ⚠ Circularité : les lacs de lakes.json n'existent qu'après la \
+                                         construction. « Présent » = les lacs du pré-drainage du champ d'ENTRÉE \
+                                         de la construction et les dépressions fermées de la base au col, \
+                                         remplies à leur col (LakeBase::InputLakesAndBasins). Le point fixe \
+                                         n'est pas construit.\n\n\
+                                         ⚠ Aucun banc ne garde cet état : le badge dira « non gardé ». \
+                                         RIEN N'EST PROMU.",
                                     );
                                 }
                                 ui.checkbox(
@@ -6271,6 +6278,297 @@ mod f123_viz_guard {
         }
         for (label, v) in verdicts {
             assert!(matches!(v, GuardStatus::Match { .. }), "{label}: {v:?}");
+        }
+    }
+}
+
+/// ADR Finding 133 (visual validation) — a READ-ONLY bench on the viz's own path: `run_hd` itself (its protected
+/// breach, its climate, its drainage), OFF and ON (the extended `lake_base`), with `f123_viz_guard`'s literal. The
+/// lake counts, the new lakes' crops, the 3 based lakes with the largest upstream |Δz|, a control crop certified by
+/// zero changed cells, every lake per crop, and the badges. Declared before the run
+/// (`f133v_declared.md`). Test-only: no production code changes.
+///
+/// Run: cargo test -p ymir-viz --release f133v_viz_path -- --ignored --nocapture
+#[cfg(test)]
+mod f133v_bench {
+    use super::*;
+    use crate::bridge::c1::C1RunSpec;
+    use crate::bridge::c1::events::C1Event;
+    use crate::bridge::c1::hd::{HdParams, HdResult, run_hd};
+    use crossbeam_channel::bounded;
+    use std::collections::{HashMap, HashSet};
+    use std::sync::atomic::AtomicBool;
+    use ymir_core::tectonics_c1::closures::fracture::FractureConfig;
+    use ymir_core::tectonics_c1::closures::infiltration::InfiltrationConfig;
+    use ymir_core::tectonics_c1::closures::lithology::LithologyConfig;
+    use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
+    use ymir_core::tectonics_c1::closures::volcanism::VolcanismConfig;
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+    use ymir_core::tectonics_c1::valley_construction::{F121_AGE_K, LakeBase, ValleyConstruction};
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+
+    const PSEED: u64 = 10_481_999_410_520_546_993;
+
+    fn run(valley: ValleyConstruction) -> Arc<HdResult> {
+        let spec = C1RunSpec { seed: PSEED, ..C1RunSpec::default() };
+        // f123_viz_guard's literal (the workspace's own), for "C2 /10 col (défaut)"
+        let params = HdParams {
+            target_size: 8192,
+            latitude_deg: 45.0,
+            domain_km: 400.0,
+            manual_offset: Some([6.0 / 64.0, 37.0 / 64.0]),
+            stream_power: true,
+            closures: true,
+            cross_rill: false,
+            slope_floor_s_eq: Some(0.024),
+            valley_construction: Some(valley),
+            cross_rill_d: 0.40,
+            mfd: true,
+            mfd_p: 2.0,
+            base_level_m: None,
+            base_level_off: false,
+            geo_scale_ratio: 7.5,
+            latitude_span_deg: Some(40.0),
+            export_dir: None,
+            volcanism: Some(VolcanismConfig { enabled: true, ..Default::default() }),
+            lithology: Some(LithologyConfig {
+                enabled: true,
+                soft_multiplier: 10.0,
+                volcanic_multiplier: 3.0,
+                rift_age_threshold: 1.0,
+            }),
+            fracture: Some(FractureConfig { enabled: true, amplitude: 6.0, decay_km: 25.0, ..Default::default() }),
+            infiltration: Some(InfiltrationConfig { enabled: true, ..Default::default() }),
+            emit_tectonic_labels: false,
+        };
+        let (tx, rx) = bounded(256);
+        let cancel = Arc::new(AtomicBool::new(false));
+        std::thread::spawn(move || run_hd(&spec, &params, &tx, &cancel));
+        while let Ok(e) = rx.recv() {
+            match e {
+                C1Event::HdCompleted { result, .. } => return result,
+                C1Event::HdFailed { error } => panic!("HD run failed: {error}"),
+                _ => {}
+            }
+        }
+        panic!("the HD worker hung up")
+    }
+
+    #[test]
+    #[ignore]
+    fn f133v_viz_path() {
+        eprintln!("\n==========  F133 visual validation . the viz path (run_hd), OFF / ON extended  ==========");
+        let ss = SteinSteinParams::default();
+        let k = F121_AGE_K;
+        let base = ValleyConstruction::new(k, Some(0.1));
+        let off = run(base);
+        let on = run(ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..base });
+        let (w, h) = (off.width, off.height);
+        let n = w * h;
+        let cell_km = off.km_per_cell;
+        let cell_km2 = cell_km * cell_km;
+        let (lm_off, lm_on) = (&off.drainage.lake_map, &on.drainage.lake_map);
+        // 1 · counts, 4 · badges
+        eprintln!(
+            "   1 · lakes on the viz path: OFF **{}** · ON **{}** (the bench assembly: 25 / 33)",
+            off.drainage.lakes.len(),
+            on.drainage.lakes.len()
+        );
+        eprintln!("   4 · badges: OFF {:?} · ON {:?}", off.bench_guard, on.bench_guard);
+        let zo: Vec<f32> = off.eroded.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect();
+        let zn: Vec<f32> = on.eroded.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect();
+        let diff: Vec<bool> = (0..n).map(|i| off.eroded.data[i] != on.eroded.data[i]).collect();
+        eprintln!("   cells whose conditioned z differs OFF vs ON: {}", diff.iter().filter(|&&b| b).count());
+        let half = 307i64;
+        let crop = |cx: i64, cy: i64| -> (usize, usize, usize, usize) {
+            let (x0, x1) = ((cx - half).max(0) as usize, ((cx + half) as usize).min(w - 1));
+            let (y0, y1) = ((cy - half).max(0) as usize, ((cy + half) as usize).min(h - 1));
+            (x0, x1, y0, y1)
+        };
+        let lakes_in = |lm: &[u32], b: (usize, usize, usize, usize)| -> usize {
+            let mut s = HashSet::new();
+            for y in b.2..=b.3 {
+                for x in b.0..=b.1 {
+                    let l = lm[y * w + x];
+                    if l != 0 {
+                        s.insert(l);
+                    }
+                }
+            }
+            s.len()
+        };
+        let row = |name: String, cx: i64, cy: i64| {
+            let b = crop(cx, cy);
+            let ch = (b.2..=b.3).flat_map(|y| (b.0..=b.1).map(move |x| (x, y))).filter(|&(x, y)| diff[y * w + x]).count();
+            eprintln!(
+                "      {name:<40} centre ({cx}, {cy}) · crop x {}–{} · y {}–{} · lakes OFF **{}** · ON **{}** · cells with Δz ≠ 0: {ch}",
+                b.0,
+                b.1,
+                b.2,
+                b.3,
+                lakes_in(lm_off, b),
+                lakes_in(lm_on, b)
+            );
+        };
+        // 2(a) · the new lakes of ON
+        eprintln!("   2a · the lakes new in ON (< 50 % of their cells under any OFF lake):");
+        let mut cells_of: HashMap<u32, Vec<usize>> = HashMap::new();
+        for i in 0..n {
+            if lm_on[i] != 0 {
+                cells_of.entry(lm_on[i]).or_default().push(i);
+            }
+        }
+        let mut news: Vec<(u32, f64, f64, usize)> = Vec::new();
+        for (&id, cells) in &cells_of {
+            let under = cells.iter().filter(|&&i| lm_off[i] != 0).count();
+            if (under as f32) < 0.5 * cells.len() as f32 {
+                let cx = cells.iter().map(|&i| (i % w) as f64).sum::<f64>() / cells.len() as f64;
+                let cy = cells.iter().map(|&i| (i / w) as f64).sum::<f64>() / cells.len() as f64;
+                news.push((id, cx, cy, cells.len()));
+            }
+        }
+        news.sort_by(|a, b| a.0.cmp(&b.0));
+        for &(id, cx, cy, c) in &news {
+            row(format!("new lake {id} ({:.1} km²)", c as f32 * cell_km2), cx.round() as i64, cy.round() as i64);
+        }
+        // 2(b) · the based lakes with the largest upstream |Δz|: the OFF flow path to the first ON lake
+        let dir = &off.drainage.flow.direction;
+        let mut first = vec![u32::MAX; n];
+        let mut path = Vec::new();
+        for s in 0..n {
+            if first[s] != u32::MAX {
+                continue;
+            }
+            path.clear();
+            let mut c = s;
+            let v;
+            loop {
+                if first[c] != u32::MAX {
+                    v = first[c];
+                    break;
+                }
+                if lm_on[c] != 0 {
+                    v = lm_on[c];
+                    break;
+                }
+                path.push(c);
+                let d = dir[c];
+                if d == DIR_NONE {
+                    v = 0;
+                    break;
+                }
+                let (x, y) = ((c % w) as i32 + D8_DX[d as usize], (c / w) as i32 + D8_DY[d as usize]);
+                if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
+                    v = 0;
+                    break;
+                }
+                c = y as usize * w + x as usize;
+            }
+            for &p in &path {
+                first[p] = v;
+            }
+        }
+        let mut per: HashMap<u32, (f64, Vec<f32>)> = HashMap::new();
+        for i in 0..n {
+            if diff[i] && lm_on[i] == 0 && first[i] != 0 {
+                let dz = (zn[i] - zo[i]).abs();
+                let e = per.entry(first[i]).or_insert((0.0, Vec::new()));
+                e.0 += dz as f64 * cell_km2 as f64 * 1e-3;
+                e.1.push(dz);
+            }
+        }
+        let mut ranked: Vec<(u32, f64, f32, usize)> = per
+            .into_iter()
+            .map(|(id, (s, mut v))| {
+                v.sort_by(f32::total_cmp);
+                let p90 = v[((v.len() - 1) as f32 * 0.9) as usize];
+                (id, s, p90, v.len())
+            })
+            .collect();
+        ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
+        eprintln!("   2b · the based lakes (ON final lakes) with the largest upstream |Δz|, statistic Σ|Δz| × cell area:");
+        for &(id, s, p90, c) in ranked.iter().take(3) {
+            let cells = &cells_of[&id];
+            let cx = cells.iter().map(|&i| (i % w) as f64).sum::<f64>() / cells.len() as f64;
+            let cy = cells.iter().map(|&i| (i / w) as f64).sum::<f64>() / cells.len() as f64;
+            eprintln!("      lake {id}: Σ|Δz|·A **{s:.2} km³** over {c} upstream cells · p90 |Δz| {p90:.1} m");
+            row(format!("based lake {id}"), cx.round() as i64, cy.round() as i64);
+        }
+        // 2(c) · the control crop: zero changed cells, the most land
+        let sat = |f: &dyn Fn(usize) -> bool| -> Vec<u64> {
+            let mut s = vec![0u64; (w + 1) * (h + 1)];
+            for y in 0..h {
+                for x in 0..w {
+                    s[(y + 1) * (w + 1) + x + 1] =
+                        f(y * w + x) as u64 + s[y * (w + 1) + x + 1] + s[(y + 1) * (w + 1) + x] - s[y * (w + 1) + x];
+                }
+            }
+            s
+        };
+        let sd = sat(&|i| diff[i]);
+        let sl = sat(&|i| off.eroded.data[i] > 0.5);
+        let rect = |s: &[u64], x0: usize, y0: usize, x1: usize, y1: usize| {
+            s[(y1 + 1) * (w + 1) + x1 + 1] + s[y0 * (w + 1) + x0] - s[y0 * (w + 1) + x1 + 1] - s[(y1 + 1) * (w + 1) + x0]
+        };
+        let side = 615usize;
+        let mut best: Option<(u64, usize, usize)> = None;
+        for y0 in (0..h - side).step_by(64) {
+            for x0 in (0..w - side).step_by(64) {
+                let (x1, y1) = (x0 + side - 1, y0 + side - 1);
+                if rect(&sd, x0, y0, x1, y1) == 0 {
+                    let land = rect(&sl, x0, y0, x1, y1);
+                    if best.is_none_or(|b| land > b.0) {
+                        best = Some((land, x0, y0));
+                    }
+                }
+            }
+        }
+        match best {
+            Some((land, x0, y0)) => {
+                eprintln!(
+                    "   2c · the control crop: 0 changed cells (certified), land {:.0} % of the window",
+                    100.0 * land as f64 / (side * side) as f64
+                );
+                row("control (no Δz)".to_string(), (x0 + side / 2) as i64, (y0 + side / 2) as i64);
+            }
+            None => eprintln!("   2c · NO 615 × 615 window with zero changed cells"),
+        }
+        eprintln!("\n==========  end F133 visual validation  ==========\n");
+    }
+
+    /// The table of passage: the lakes the viz path lists beyond the bench assembly's count, by type.
+    ///
+    /// Run: cargo test -p ymir-viz --release f133v_passage -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn f133v_passage() {
+        use ymir_core::tectonics_c1::drainage::LakeType;
+        let base = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+        for (label, vc) in [("OFF", base), ("ON extended", ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..base })] {
+            let r = run(vc);
+            let w = r.width;
+            let mut by_type: HashMap<String, usize> = HashMap::new();
+            for l in &r.drainage.lakes {
+                *by_type.entry(format!("{:?}", l.lake_type)).or_insert(0) += 1;
+            }
+            eprintln!("   {label}: {} lakes · by type {:?}", r.drainage.lakes.len(), by_type);
+            for l in r.drainage.lakes.iter().filter(|l| matches!(l.lake_type, LakeType::CraterAcidic | LakeType::CraterNeutral)) {
+                let cells: Vec<usize> = (0..r.drainage.lake_map.len()).filter(|&i| r.drainage.lake_map[i] == l.base.id).collect();
+                let (cx, cy) = if cells.is_empty() {
+                    (f64::NAN, f64::NAN)
+                } else {
+                    (
+                        cells.iter().map(|&i| (i % w) as f64).sum::<f64>() / cells.len() as f64,
+                        cells.iter().map(|&i| (i / w) as f64).sum::<f64>() / cells.len() as f64,
+                    )
+                };
+                eprintln!(
+                    "      crater lake {} ({:?}) · {:.2} km² · level {:.1} m · centre ({cx:.0}, {cy:.0})",
+                    l.base.id, l.lake_type, l.area_km2, l.level_m
+                );
+            }
+            let active = r.volcanoes.iter().filter(|c| c.active).count();
+            eprintln!("      active craters: {active}");
         }
     }
 }

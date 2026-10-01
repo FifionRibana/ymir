@@ -1,0 +1,27 @@
+==========  Finding 133-F . the remedy test: basin lakes are present lakes  ==========
+   present lakes: input lakes 684811 cells ∪ basin_base closed depressions 1123938 cells
+   ── témoin C2/10 col ──
+   ON F132 (InputLakes)               control 0 · A vs B OUTSIDE the present lakes **235602** cells · |Δz| p50 3.45 / p90 5.14 / max 631.2 m · inside 7108
+   ON EXTENDED (InputLakesAndBasins)  control 0 · A vs B OUTSIDE the present lakes **12509** cells · |Δz| p50 6.50 / p90 68.80 / max 631.2 m · inside 6465
+      the residual: no differing cell on its path (laid by a moved sample)   12072
+      the residual: origin elsewhere                                         437
+      origin (3439,5895) behind 181 · lake 0 · dep false · χ A/B 2.9 / 2.6 · base A/B 200.5 / 200.5 · pointer A/B 3 / 3
+      origin (2206,3668) behind 104 · lake 0 · dep false · χ A/B 5.6 / 5.6 · base A/B 172.1 / 172.1 · pointer A/B 1 / 1
+      origin (1256,4196) behind 67 · lake 0 · dep false · χ A/B 5.7 / 5.6 · base A/B 390.4 / 390.4 · pointer A/B 3 / 3
+      origin (4136,4111) behind 66 · lake 0 · dep false · χ A/B 6.2 / 218.4 · base A/B 432.6 / 432.6 · pointer A/B 7 / 7
+      origin (4091,4047) behind 7 · lake 0 · dep false · χ A/B 218.4 / 10.7 · base A/B 527.2 / 527.2 · pointer A/B 5 / 5
+   (1052 s)
+   ── B2 → A_c ──
+   ON F132 (InputLakes)               control 0 · A vs B OUTSIDE the present lakes **481606** cells · |Δz| p50 3.45 / p90 11.72 / max 1115.5 m · inside 6475
+   ON EXTENDED (InputLakesAndBasins)  control 0 · A vs B OUTSIDE the present lakes **13899** cells · |Δz| p50 2.80 / p90 58.32 / max 1125.7 m · inside 6006
+      the residual: no differing cell on its path (laid by a moved sample)   12406
+      the residual: origin elsewhere                                         1493
+      origin (3439,5895) behind 730 · lake 0 · dep false · χ A/B 2.9 / 2.6 · base A/B 200.5 / 200.5 · pointer A/B 3 / 3
+      origin (1256,4196) behind 355 · lake 0 · dep false · χ A/B 5.7 / 5.6 · base A/B 390.4 / 390.4 · pointer A/B 3 / 3
+      origin (4136,4111) behind 193 · lake 0 · dep false · χ A/B 6.2 / 218.4 · base A/B 432.6 / 432.6 · pointer A/B 7 / 7
+      origin (2206,3668) behind 151 · lake 0 · dep false · χ A/B 5.6 / 5.6 · base A/B 172.1 / 172.1 · pointer A/B 1 / 1
+      origin (3195,5796) behind 28 · lake 0 · dep false · χ A/B 39.0 / 38.9 · base A/B 200.5 / 200.5 · pointer A/B 2 / 2
+   (1002 s)
+==========  end Finding 133-F (remedy) . 2178.7 s  ==========
+test f133_f_remedy ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 38 filtered out; finished in 2178.75s

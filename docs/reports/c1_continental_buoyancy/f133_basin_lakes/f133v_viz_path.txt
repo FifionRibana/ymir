@@ -1,0 +1,69 @@
+==========  F133 visual validation . the viz path (run_hd), OFF / ON extended  ==========
+[HD] SHIPPED relief-v3 config from production_hd_config (MFD p=2.0, C-3 litho ON, C-3b fracture ON)
+[HD] VALLEY CONSTRUCTION ON (ADR Finding 121): trunks A >= 10 km2, age k = 0.07183 (PROXY), W = 200 m at 10 km2, walls 28 deg, then ONE light pass at 0.100 x k_time
+[HD] AGE OF THE CONTINENT ON (ADR Finding 109): absolute slope floor S_eq = 0.024·A^(-1/2) + A1. Window {0.021, 0.024, 0.027} (Findings 106/108). Lakes, rivers and biomes are re-derived.
+[HD timing] coarse land report 0.2s
+[C1 land] seed 10481999410520546993 — 5 landmass(es); largest 160512 km² (15.3% of torus), wraps x=false y=false, bbox 608×592 km; coarse emerged 15.6%; roll (0,37) cells → offset [0.094,0.578]
+[HD] bench guard (cf1d4539c7afe588): Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" }
+[HD volcanism] 15 resolved crater records (7 active/acidic, 8 extinct)
+[HD timing] eroded HIT (0.4s)
+[HD] relief-v3 breach conditioning HIT (0.2s)
+[HD timing] climate HIT (0.5s)
+[HD] H-1 infiltration ON (f_cap 0.70, k_ref 2.7e-3 m/day)
+[HD timing] drainage HIT (4.0s)
+[HD volcanism] crater lakes: 1 acidic | 6 dry craters
+[HD timing] biomes (2.0s)
+[C1 land] post-FBM+erosion emerged fraction (window) = 16.9%
+[HD timing] run_hd TOTAL 16.2s (render is separate, on the UI thread)
+[HD] SHIPPED relief-v3 config from production_hd_config (MFD p=2.0, C-3 litho ON, C-3b fracture ON)
+[HD] VALLEY CONSTRUCTION ON (ADR Finding 121): trunks A >= 10 km2, age k = 0.07183 (PROXY), W = 200 m at 10 km2, walls 28 deg, then ONE light pass at 0.100 x k_time
+[HD] AGE OF THE CONTINENT ON (ADR Finding 109): absolute slope floor S_eq = 0.024·A^(-1/2) + A1. Window {0.021, 0.024, 0.027} (Findings 106/108). Lakes, rivers and biomes are re-derived.
+[HD timing] coarse land report 0.2s
+[C1 land] seed 10481999410520546993 — 5 landmass(es); largest 160512 km² (15.3% of torus), wraps x=false y=false, bbox 608×592 km; coarse emerged 15.6%; roll (0,37) cells → offset [0.094,0.578]
+[HD volcanism] edifices: 2 arc + 10 hotspot + 3 rift = 15 (domain 400 km)
+[HD] bench guard (834fa66b41d6e05d): NoReference { viz: "a620a9aa0d5882a0" }
+[HD volcanism] 15 resolved crater records (7 active/acidic, 8 extinct)
+[HD timing] eroded MISS (141.5s)
+[HD timing] prebreach drainage 11.1s
+[HD] relief-v3 breach conditioning MISS (45.6s)
+[HD timing] climate MISS (1.3s)
+[HD] H-1 infiltration ON (f_cap 0.70, k_ref 2.7e-3 m/day)
+[HD] H-1c surface water balance APPLIED: 21 → 21 lakes | 1449 → 1449 km² water (0 km² floor exposed) | 0 endorheic
+[HD] below-sea cleanup: 7 detected lake(s) submerged by a filled below-sea lake -> dropped
+[HD] below-sea basins: 19 lakes (15 exorheic, 4 endorheic); 15 spillways (6 -> sea, 9 chained)
+[HD] rivers clipped to lakes: 20621 -> 13462 segments (terminate at sinks)
+[HD] geographic scale ratio 7.50 -> hydrology signifies x56.2 area
+[HD] ADR Finding 86: 1 lake(s) claimed Exorheic with no outlet reach and are now Unresolved: [1000011]
+[HD timing] drainage MISS (31.6s)
+[HD volcanism] crater lakes: 1 acidic | 6 dry craters
+[HD timing] biomes (2.1s)
+[C1 land] post-FBM+erosion emerged fraction (window) = 16.9%
+[HD timing] run_hd TOTAL 242.7s (render is separate, on the UI thread)
+   1 · lakes on the viz path: OFF **26** · ON **34** (the bench assembly: 25 / 33)
+   4 · badges: OFF Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" } · ON NoReference { viz: "a620a9aa0d5882a0" }
+   cells whose conditioned z differs OFF vs ON: 44268342
+   2a · the lakes new in ON (< 50 % of their cells under any OFF lake):
+      new lake 1 (132.8 km²)                   centre (3491, 2500) · crop x 3184–3798 · y 2193–2807 · lakes OFF **0** · ON **1** · cells with Δz ≠ 0: 198226
+      new lake 2 (35.5 km²)                    centre (4019, 2839) · crop x 3712–4326 · y 2532–3146 · lakes OFF **0** · ON **2** · cells with Δz ≠ 0: 305223
+      new lake 3 (159.7 km²)                   centre (4124, 3096) · crop x 3817–4431 · y 2789–3403 · lakes OFF **0** · ON **2** · cells with Δz ≠ 0: 271278
+      new lake 4 (45.8 km²)                    centre (2220, 3584) · crop x 1913–2527 · y 3277–3891 · lakes OFF **7** · ON **9** · cells with Δz ≠ 0: 82772
+      new lake 7 (5.3 km²)                     centre (1906, 3697) · crop x 1599–2213 · y 3390–4004 · lakes OFF **1** · ON **3** · cells with Δz ≠ 0: 130034
+      new lake 8 (12.3 km²)                    centre (4060, 4008) · crop x 3753–4367 · y 3701–4315 · lakes OFF **3** · ON **4** · cells with Δz ≠ 0: 189167
+      new lake 9 (79.7 km²)                    centre (4331, 4107) · crop x 4024–4638 · y 3800–4414 · lakes OFF **4** · ON **5** · cells with Δz ≠ 0: 129053
+      new lake 10 (249.0 km²)                  centre (2951, 4213) · crop x 2644–3258 · y 3906–4520 · lakes OFF **0** · ON **1** · cells with Δz ≠ 0: 275562
+      new lake 11 (163.0 km²)                  centre (1429, 4287) · crop x 1122–1736 · y 3980–4594 · lakes OFF **1** · ON **1** · cells with Δz ≠ 0: 208717
+      new lake 12 (10.2 km²)                   centre (3468, 4693) · crop x 3161–3775 · y 4386–5000 · lakes OFF **3** · ON **3** · cells with Δz ≠ 0: 109537
+      new lake 19 (72.0 km²)                   centre (3342, 5798) · crop x 3035–3649 · y 5491–6105 · lakes OFF **2** · ON **2** · cells with Δz ≠ 0: 171536
+   2b · the based lakes (ON final lakes) with the largest upstream |Δz|, statistic Σ|Δz| × cell area:
+      lake 1: Σ|Δz|·A **164.09 km³** over 305695 upstream cells · p90 |Δz| 328.3 m
+      based lake 1                             centre (3491, 2500) · crop x 3184–3798 · y 2193–2807 · lakes OFF **0** · ON **1** · cells with Δz ≠ 0: 198226
+      lake 2: Σ|Δz|·A **139.11 km³** over 88142 upstream cells · p90 |Δz| 1177.4 m
+      based lake 2                             centre (4019, 2839) · crop x 3712–4326 · y 2532–3146 · lakes OFF **0** · ON **2** · cells with Δz ≠ 0: 305223
+      lake 11: Σ|Δz|·A **111.08 km³** over 219473 upstream cells · p90 |Δz| 549.1 m
+      based lake 11                            centre (1429, 4287) · crop x 1122–1736 · y 3980–4594 · lakes OFF **1** · ON **1** · cells with Δz ≠ 0: 208717
+   2c · NO 615 × 615 window with zero changed cells
+==========  end F133 visual validation  ==========
+test ui::workspace::f133v_bench::f133v_viz_path ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 42 filtered out; finished in 260.39s
+[HD] bench guard (cf1d4539c7afe588): Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" }
+[HD] bench guard (834fa66b41d6e05d): NoReference { viz: "a620a9aa0d5882a0" }

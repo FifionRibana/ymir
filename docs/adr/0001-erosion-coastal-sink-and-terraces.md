@@ -18926,3 +18926,86 @@ the breach: `breach_monotone` conditions the drainage, it does not empty a lake.
   - **The residual**: `basin_base`'s walk to the col pushes cells without the lake test, while the main walk
     applies it. The pattern is "one invariant, two paths, only one applies it".
 - **Gated, off, nothing promoted.**
+
+## Finding 133 — the basin lakes are present lakes: the F132 residual is 93 % theirs, the extended base closes 95 % of it; θ falls by mixture AND by the laid law; the new lakes are the input lakes themselves
+
+**The author's decision (2026-09-30), recorded as given:** « Les lacs des bassins sous la mer sont des lacs
+présents. » The rule of 2026-09-29 therefore applies without exception: a present lake is a base level for what
+flows into it, whatever the altitude of its bowl.
+
+**Units**: 1 cell = 48.8 m (domain). Benches: `tests/f126_coast.rs`, `f133_*`. Report and raw outputs:
+`docs/reports/c1_continental_buoyancy/f133_basin_lakes/`.
+- **Nothing promoted.** Finding 132 was committed (`1b2a519`).
+- The guard reads 6 / 6, the hash `a8d2d538d692c2f0`, and the lib and check are green, before and after.
+- **Greps**: "walk to the col" goes back to Finding 38 ("fill each enclosed below-sea region as ONE water body …
+  to its col").
+
+**0.5**: not two functions but two branches of `skeleton`'s χ walk.
+- The main walk applies the lake test; the `basin_base` col walk does not.
+- Siblings that read the walk's base and χ inherit it: `line_samples`, `traced_polylines`, `floor_m`.
+- A1 `depression_floor` holds every depression at its spill by construction.
+- The Finding 96 χ floor ignores lakes, and is dormant.
+
+**R.**
+- The témoin's totals fall back on 23 / 8 / 25 / 4 / 19.
+- The 7 input lakes inside a closed depression all lie under below-sea basins.
+- **R2**: 92.9 % of F132's 235 602 residual cells (96.6 % on B2 → A_c) have one of the unbased final lakes as
+  their source, chiefly 1000011 through input lakes 5 and 6. The stop rule does not fire.
+
+**F — `LakeBase::InputLakesAndBasins`, gated.**
+- A `basin_base` closed depression is a present lake filled to its col: χ stops at its shore (χ = 0, base = the
+  col) instead of walking to the col.
+- The level is the col. An endorheic basin's lower surface is circular: named, not built.
+- Permanent test `a_below_sea_basin_lake_stops_chi_at_its_shore`, with its negative control. `None` is
+  bit-identical. The viz toggle takes this variant.
+- **The remedy test**: 235 602 → **12 509** cells outside the present lakes (témoin; B2: 481 606 → 13 899), not 0.
+  - 12 072 cells are laid by a moved polyline sample, with no χ difference on their path.
+  - 437 are born downstream of multi-exit lakes (the same base, a different χ).
+  - Located, not corrected.
+- **Consistency**: 5 bases on absent lakes; **unbased final lakes 19 → 7** (four degenerate 0–1 km², and three
+  basin lakes larger at the end than their input depression).
+
+**T.** θ (iii) is 0.351 (OFF) → 0.245 (F132) → 0.243 (extended). **Both mixture and law.**
+- The trunk cells left under their law rise from 32.1 % to 49.6 % (45.6 % extended).
+- θ on the carved links falls 0.493 → 0.436 [0.427, 0.445] (0.439 extended): the lake base lifts lowland floors
+  out of the carved set.
+
+**L.** The 11 new lakes of the ON worlds (+8 net) are **all input lakes themselves** (5–249 km², 82–434 m deep),
+present at the construction stage: the lakes OFF's χ through them drained. The extended variant adds none.
+
+**E.**
+- ON F132 withholds **890.0 km³ = 16.7 %** of the témoin's 5 321.2 km³ removal (50.0 % of the removal in or
+  upstream of its present lakes).
+- The extended variant withholds 805.2 km³ = 15.1 %: it removes 70 km³ MORE upstream of the basins, where χ now
+  counts from the shore.
+- Cost: the construction stage is 120–133 s; a full second pass (the fixed point's unit) is 215–247 s.
+
+**The table (OFF / F132 / extended)**:
+- canyons 0 / 0 / 0; coast unchanged;
+- R8 terrain 0.0452 / 0.0395 / 0.0411;
+- lakes 25 / 33 / 33;
+- relief p50 515.4 / 551.9 / 546.6 m;
+- Δz between flat resolutions 1.15 M / 235 602 / 12 509 cells.
+
+**Predictions.**
+- Mine: 0.5, P-R1, P-R2 and P-L held; P-F and P-T half; P-E refuted.
+- The reviewer's: R2 and T's "+5 points" held; F, T's law, L and E refuted.
+- **Gated, off, nothing promoted.**
+
+**Concordance viz / bench (F133v, `ymir-viz` `f133v_*`, read-only on `run_hd`).**
+- The viz path lists **26 / 34** lakes against the bench assembly's 25 / 33. The difference is ONE lake, the crater
+  lake 2000001 (CraterAcidic, 1.19 km², level 2 104.9 m), added by `run_hd`'s C-2 crater pass
+  (`hd.rs:1128-1158`) after the drainage assembly, in both states.
+- Every lake count and lake area of Findings 131–133 is therefore an **assembly figure**: +1 lake and +1.19 km² in the
+  author's world. Canyons, θ, R8, relief, removal volumes and Δz are not concerned (the crater pass only adds a lake
+  to the drainage product).
+
+**The author's look (2026-09-30), viz toggle, extended variant.**
+- The gate holds ("oui") on the crops of lakes 1 and 11: the valley meets the lake at the lake's level (362 m for 11).
+- OFF, on crop 11, the lake has another shape and another level. Lakes 1 and 2 are absent OFF.
+- Non-regression: "pas l'impression" (no regression seen). The added lakes "ne me gênent pas".
+- Not covered: lake 2's gate, the eight other crops, Living Landz. **Not promotable as it stands.**
+
+**The author's direction, recorded as given:** « Je veux réduire la taille des lacs avec l'âge, car au départ ils
+étaient tous remplis à la hauteur d'équilibre, ce qui donnait des lacs énormes. » It is the entry criterion of the
+H-2 / age work, not opened in this round.

@@ -1,0 +1,110 @@
+==========  Finding 133-R . the reconciliation, one lake per row  ==========
+   ── témoin C2/10 col ──
+   input lake | OFF moves cells | PRESENT (OFF) | base | in a basin_base depression | its OFF final lake a below-sea basin | residual cells it sources
+        1 ( 60332 cells) |  179821 | no  (final 0) | yes |   0.0 % | no  | 0
+        2 ( 24256 cells) |   93977 | no  (final 0) | yes |   0.0 % | no  | 0
+        3 ( 82993 cells) |   57112 | no  (final 0) | yes |   0.0 % | no  | 0
+        4 ( 20726 cells) |    5628 | no  (final 0) | yes |   0.0 % | no  | 0
+        5 ( 21991 cells) |  122761 | YES (final 1000011) | yes | 100.0 % | YES | 110405
+        6 (  3791 cells) |   86533 | YES (final 1000011) | yes | 100.0 % | YES | 86533
+        7 (  3683 cells) |   27540 | no  (final 0) | yes |   0.0 % | no  | 0
+        8 (  2168 cells) |   12115 | no  (final 0) | yes |   0.0 % | no  | 0
+        9 (  5708 cells) |    7635 | no  (final 0) | yes |   0.0 % | no  | 0
+       10 (120426 cells) |   54510 | no  (final 0) | yes |   0.0 % | no  | 0
+       11 ( 36596 cells) |    8035 | no  (final 3) | yes |   0.0 % | no  | 0
+       12 (  2241 cells) |   72502 | no  (final 0) | yes |   0.0 % | no  | 0
+       13 ( 75242 cells) |   56968 | no  (final 4) | yes |   0.0 % | no  | 0
+       14 (  3439 cells) |   18037 | no  (final 0) | yes |   0.0 % | no  | 0
+       15 (  4796 cells) |   52208 | no  (final 0) | yes |   0.0 % | no  | 0
+       16 ( 57659 cells) |  116155 | YES (final 6) | yes |   0.0 % | no  | 0
+       17 ( 13411 cells) |       0 | YES (final 1000016) | yes | 100.0 % | YES | 0
+       18 (  9753 cells) |   29304 | YES (final 7) | yes |   0.0 % | no  | 0
+       19 ( 35832 cells) |    2173 | YES (final 1000017) | yes | 100.0 % | YES | 2173
+       20 (  2392 cells) |   16972 | YES (final 1000017) | yes | 100.0 % | YES | 0
+       21 (  2553 cells) |   10630 | no  (final 1000016) | yes |   0.0 % | YES | 0
+       22 (  3158 cells) |    2539 | YES (final 1000014) | yes | 100.0 % | YES | 0
+       23 ( 30630 cells) |   95752 | no  (final 12) | yes |   0.0 % | no  | 0
+       24 ( 16004 cells) |    1255 | YES (final 11) | yes |   0.0 % | no  | 0
+       25 ( 45031 cells) |       0 | YES (final 1000019) | yes | 100.0 % | YES | 0
+   final lake (ON, unbased) | area km² | below-sea basin | residual cells it sources (origin inside it)
+    1000001 |     1.2 | YES | 0
+    1000002 |   460.4 | YES | 0
+    1000003 |     0.0 | YES | 0
+    1000004 |     0.0 | YES | 0
+    1000005 |     0.0 | YES | 0
+    1000006 |     0.0 | YES | 0
+    1000007 |     0.0 | YES | 0
+    1000008 |    96.3 | YES | 0
+    1000009 |     0.0 | YES | 0
+    1000010 |    44.9 | YES | 0
+    1000011 |   494.3 | YES | 196938
+    1000012 |    10.7 | YES | 0
+    1000013 |   154.1 | YES | 0
+    1000014 |   629.0 | YES | 2774
+    1000015 |     0.0 | YES | 0
+    1000016 |   500.8 | YES | 0
+    1000017 |   338.3 | YES | 19145
+    1000018 |   184.0 | YES | 0
+    1000019 |   383.2 | YES | 0
+   TOTALS · input lakes 25 (bases 25) · moving χ under OFF 23 · of them PRESENT 8 · bases on a lake absent at the end (ON) 4 · unbased final lakes (ON) 19 · in a basin_base depression 7 · in a below-sea basin (OFF) 8 · OFF final lakes 25 / ON 33
+   R2 · residual (ON F132, A vs B, outside the input lakes) **235602** cells · source = one of the 19 unbased final lakes **218857** (**92.9 %**) · source elsewhere 528 · laid by a moved sample (no differing cell on the path) 16217
+   the rest, by the final lake containing the origin (0 = no lake): [(0, 528)]
+   (1404 s)
+   ── B2 → A_c ──
+   input lake | OFF moves cells | PRESENT (OFF) | base | in a basin_base depression | its OFF final lake a below-sea basin | residual cells it sources
+        1 ( 60332 cells) |  296345 | no  (final 0) | yes |   0.0 % | no  | 0
+        2 ( 24256 cells) |  160062 | no  (final 5) | yes |   0.0 % | no  | 0
+        3 ( 82993 cells) |  161085 | no  (final 6) | yes |   0.0 % | no  | 0
+        4 ( 20726 cells) |   36501 | no  (final 0) | yes |   0.0 % | no  | 0
+        5 ( 21991 cells) |  263016 | YES (final 1000010) | yes | 100.0 % | YES | 264848
+        6 (  3791 cells) |  118603 | YES (final 1000010) | yes | 100.0 % | YES | 118603
+        7 (  3683 cells) |   94739 | no  (final 0) | yes |   0.0 % | no  | 0
+        8 (  2168 cells) |   29051 | no  (final 0) | yes |   0.0 % | no  | 0
+        9 (  5708 cells) |   45970 | no  (final 0) | yes |   0.0 % | no  | 0
+       10 (120426 cells) |  214381 | no  (final 10) | yes |   0.0 % | no  | 0
+       11 ( 36596 cells) |   28344 | no  (final 11) | yes |   0.0 % | no  | 0
+       12 (  2241 cells) |  117698 | no  (final 0) | yes |   0.0 % | no  | 0
+       13 ( 75242 cells) |  158107 | no  (final 12) | yes |   0.0 % | no  | 0
+       14 (  3439 cells) |   29387 | YES (final 14) | yes |   0.0 % | no  | 0
+       15 (  4796 cells) |  144431 | no  (final 0) | yes |   0.0 % | no  | 0
+       16 ( 57659 cells) |  242873 | YES (final 16) | yes |   0.0 % | no  | 0
+       17 ( 13411 cells) |     592 | YES (final 1000015) | yes | 100.0 % | YES | 592
+       18 (  9753 cells) |  103051 | no  (final 17) | yes |   0.0 % | no  | 0
+       19 ( 35832 cells) |   23893 | YES (final 1000016) | yes | 100.0 % | YES | 23893
+       20 (  2392 cells) |   43604 | YES (final 1000016) | yes | 100.0 % | YES | 0
+       21 (  2553 cells) |   40309 | no  (final 1000015) | yes |   0.0 % | YES | 0
+       22 (  3158 cells) |   17992 | YES (final 1000013) | yes | 100.0 % | YES | 1
+       23 ( 30630 cells) |  227303 | no  (final 22) | yes |   0.0 % | no  | 0
+       24 ( 16004 cells) |   12603 | YES (final 21) | yes |   0.0 % | no  | 0
+       25 ( 45031 cells) |    3607 | YES (final 1000018) | yes | 100.0 % | YES | 2824
+   final lake (ON, unbased) | area km² | below-sea basin | residual cells it sources (origin inside it)
+          1 |     0.0 | no  | 0
+          3 |     6.3 | no  | 0
+          7 |    10.6 | no  | 0
+          8 |     6.3 | no  | 0
+         17 |    15.4 | no  | 0
+    1000001 |   458.6 | YES | 0
+    1000002 |     0.0 | YES | 0
+    1000003 |     0.0 | YES | 0
+    1000004 |     0.0 | YES | 0
+    1000005 |     0.0 | YES | 0
+    1000006 |     0.0 | YES | 0
+    1000007 |    95.0 | YES | 0
+    1000008 |     0.0 | YES | 0
+    1000009 |    44.9 | YES | 0
+    1000010 |   482.7 | YES | 383451
+    1000011 |    10.7 | YES | 0
+    1000012 |   152.5 | YES | 0
+    1000013 |   626.1 | YES | 12443
+    1000014 |     0.0 | YES | 0
+    1000015 |   495.1 | YES | 592
+    1000016 |   336.7 | YES | 66028
+    1000017 |   179.8 | YES | 0
+    1000018 |   374.7 | YES | 2824
+   TOTALS · input lakes 25 (bases 25) · moving χ under OFF 25 · of them PRESENT 10 · bases on a lake absent at the end (ON) 4 · unbased final lakes (ON) 23 · in a basin_base depression 7 · in a below-sea basin (OFF) 8 · OFF final lakes 33 / ON 37
+   R2 · residual (ON F132, A vs B, outside the input lakes) **481607** cells · source = one of the 23 unbased final lakes **465338** (**96.6 %**) · source elsewhere 1714 · laid by a moved sample (no differing cell on the path) 14555
+   the rest, by the final lake containing the origin (0 = no lake): [(0, 1714)]
+   (1181 s)
+==========  end Finding 133-R . 2869.0 s  ==========
+test f133_r ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 37 filtered out; finished in 2869.15s

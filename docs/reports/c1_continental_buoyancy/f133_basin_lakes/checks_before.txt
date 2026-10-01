@@ -1,0 +1,11 @@
+   livré                  = banc
+   A1+B2                  = banc
+   C1 nue                 = banc
+   C2 /10 col (défaut)    = banc
+   C2 /3                  = banc
+   C2 /10 niveau mer      = banc
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 41 filtered out; finished in 169.45s
+   C2 /10 col (défaut), fresh build: field hash a8d2d538d692c2f0 (reference a8d2d538d692c2f0)
+test result: ok. 589 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 2.90s
+lib exit 0
+check exit 0

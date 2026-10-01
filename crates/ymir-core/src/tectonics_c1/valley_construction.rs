@@ -191,6 +191,14 @@ pub struct ValleyConstruction {
 pub enum LakeBase {
     /// Every lake of the construction input's pre-drainage (`c1_drainage_windowed`'s `lake_map`) is present.
     InputLakes,
+    /// **ADR Finding 133-F** — [`Self::InputLakes`], and every `basin_base` closed depression (the open-ocean
+    /// flood's spill above the breached input) is ALSO a present lake, filled to its col. The author's decision
+    /// (2026-09-30): *« Les lacs des bassins sous la mer sont des lacs présents. »* χ stops at the depression's
+    /// SHORE (the first of its cells a path enters) with χ = 0 and base = the col, instead of walking to the col —
+    /// which is also where Finding 132's residual was born (that walk pushed cells with no lake test). The level is
+    /// the col, known when χ integrates; a basin lake held BELOW its col by an endorheic balance would be known only
+    /// after the water balance on the delivered field — circular, named, not built. Needs `basin_base`.
+    InputLakesAndBasins,
 }
 
 /// ADR Finding 127-B — the interpolant whose gradient the tracé descends.
@@ -501,6 +509,14 @@ pub fn skeleton_patched(
             // spill level and χ is counted from the col.
             if land[c] && dep(c) {
                 let lvl = spill_m(c);
+                // ADR Finding 133-F -- a basin lake is a present lake: χ stops at its shore
+                if vc.lake_base == Some(LakeBase::InputLakesAndBasins) {
+                    b = lvl;
+                    x = 0.0;
+                    chi[c] = 0.0;
+                    base[c] = lvl;
+                    break;
+                }
                 let mut terminal = false;
                 loop {
                     path.push(c);
@@ -1276,7 +1292,7 @@ fn smooth_positions(
 /// every other cell rises to the lowest col on its way to the ocean, so an inland below-sea basin
 /// and a closed land depression both read their spill level. Not the drainage chain's fill, which
 /// takes every `h <= sea` cell as base level and never sees an inland basin (Finding 85).
-fn ocean_flood(bf: &GridF32) -> Vec<f32> {
+pub fn ocean_flood(bf: &GridF32) -> Vec<f32> {
     use crate::lakes::connectivity::{WATER_CLASS_OCEAN, water_class};
     let (w, h) = (bf.width, bf.height);
     let n = w * h;
@@ -2075,6 +2091,44 @@ mod tests {
         assert!(on.chi_m[up] < off.chi_m[up], "its χ counts from the lake only ({} vs {})", on.chi_m[up], off.chi_m[up]);
         assert_eq!(on.base_alt_m[down].to_bits(), off.base_alt_m[down].to_bits(), "downstream of the lake nothing moves");
         assert_eq!(on.chi_m[down].to_bits(), off.chi_m[down].to_bits(), "downstream of the lake nothing moves");
+    }
+
+    /// ADR Finding 133-F, rule 13 — a below-sea basin's lake is a present lake: χ stops at its shore. A plane
+    /// falls 4 m per cell to the sea on 128² cells of 400 m; an inland bowl whose floor lies 100 m BELOW the sea
+    /// is set in it (a closed depression of the open-ocean flood). Negative control FIRST: under Finding 132's
+    /// `InputLakes`, a cell upstream integrates χ across the bowl's slope down to the water (the col walk), so a
+    /// cell on that slope carries χ > 0. Extended: every land cell of the depression has χ = 0 and the col as its
+    /// base, the upstream cell's χ is smaller, and a cell outside the bowl's catchment is bit-identical.
+    #[test]
+    fn a_below_sea_basin_lake_stops_chi_at_its_shore() {
+        let ss = SteinSteinParams::default();
+        let n = 128usize;
+        let z_m = |x: f32, y: f32| -> f32 {
+            if y >= 120.0 {
+                return -50.0;
+            }
+            let d = ((x - 64.0).powi(2) + (y - 50.0).powi(2)).sqrt();
+            let bowl = if d < 20.0 { 450.0 * (1.0 - (d / 20.0).powi(2)) } else { 0.0 };
+            5.0 + 4.0 * (120.0 - y) - bowl
+        };
+        let f = GridF32 {
+            width: n,
+            height: n,
+            data: (0..n * n).map(|k| c1_metres_to_altitude_norm(z_m((k % n) as f32 + 0.5, (k / n) as f32 + 0.5), &ss)).collect(),
+        };
+        let vc = ValleyConstruction::new(F121_AGE_K, None);
+        let f132 = skeleton(&f, &ValleyConstruction { lake_base: Some(LakeBase::InputLakes), ..vc }, &ss, 51.2);
+        let ext = skeleton(&f, &ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..vc }, &ss, 51.2);
+        // a land cell on the bowl's slope, below the col: the depression
+        let slope = (50 * n) + 64 - 14 * n; // (64, 36)
+        assert!(z_m(64.5, 36.5) > 0.0, "the slope cell is land");
+        assert!(f132.chi_m[slope] > 0.0, "negative control: under InputLakes the col walk gives the slope χ > 0 ({})", f132.chi_m[slope]);
+        assert_eq!(ext.chi_m[slope], 0.0, "extended: the basin lake's land cell has χ = 0");
+        let up = 5 * n + 64;
+        assert!(ext.chi_m[up] < f132.chi_m[up], "the upstream cell counts χ from the shore ({} vs {})", ext.chi_m[up], f132.chi_m[up]);
+        assert!((ext.base_alt_m[up] - f132.base_alt_m[up]).abs() < 1e-3, "both take the col as base");
+        let away = 110 * n + 10;
+        assert_eq!(ext.chi_m[away].to_bits(), f132.chi_m[away].to_bits(), "outside the bowl's catchment nothing moves");
     }
 
     /// ADR Finding 128-C, rule 13 — D8-LTD follows a planar slope off the lattice. On a plane whose
