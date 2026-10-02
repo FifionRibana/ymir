@@ -19475,3 +19475,61 @@ r = 0 / 0.5 / 1 / 1.5 / 2.
    them.
 - The raw output's "FNV" label for φ's draw is corrected in F139 (the code is splitmix64), with the correction
   marked.
+
+## Finding 139 — the tables completed: T3 is calibrated on the D8 lakes; "steepen" removes every shortage fall (m_fit ≤ 51, never at the cap); a per-lake retreat spreads the emptying over half the selector; the merged spill recovers the below-sea lakes' level
+
+**Where it lives.** Report and tables: `docs/reports/c1_continental_buoyancy/f139_tables_completed/`. Bench
+`f139_t`, read-only.
+- F138 committed (`e4802c1`); its "FNV" label is corrected.
+- **No production code; the specification stays v2.** Guard 6 / 6 field and lakes; hash `a8d2d538d692c2f0`;
+  checks green, before and after.
+
+**C1 — T3's calibration.** T3's area at r = 1 against the final run_hd area:
+- the 14 D8 lakes: **0.982–1.000**;
+- 4 of 8 spillway lakes are off by > 20 % (0.12–0.57). Their level is the merged one (C5).
+- 4 of 22 overall: no stop.
+
+**C2 — m_fit** (the least m whose gorge meets the law below before the next base): min 0.5, **p50 6.6**, max 50.7.
+**None needs the 28° cap**; the steepest required slope is 6.57°.
+
+**C3 — "steepen"** (S = max(10·S_loi, S_req), capped): **0 shortage falls** ≥ 1 m, against the fixed slope's 10
+(median 129 m, max 581 m). Three float ties at 0 m are counted as none.
+
+**C4 — the head fall first** (m = 10):
+- fixed slope fits 16 / 23 (F138: 13); lakes 2, 3 and 9 now fit; 7 shortages remain (median 138 m);
+- steepen fits all (2 float ties).
+
+**R — the retreat per lake**, `r_lake = min(2, r_world·(A/A_ref)^p)`, 14 D8 lakes, A_ref = 418.7 km².
+- **p = 0** (v2) empties all 14 at ×1.4 (spread 0 %).
+- **p = 0.5** empties 8 from **×1.03 to ×1.40** (spread **53 %** of the selector), and 6 never.
+  - The largest outlets go first (lake 19 at ×1.03, lake 1 at ×1.05).
+  - 4 lakes remain at r_world = 2.
+  - At ×1 (r_world 1): 0 lakes empty, area 521 km² (−55 % against −12 % at p = 0).
+- p is a DECISION. The link to the celerity is ANCHORED in form (F115), not in value.
+
+**C5 — the below-sea lakes.** L_in = the merged spill (`ocean_flood` on the breached input, F38's col) matches
+today's level within 1 m on **8 of 9**. The definition holds. 1000001 (a 1.2 km² lake in a hole the construction
+dug into a 3 000 m high) stays out, named.
+
+**Predictions.**
+- Mine: all held (C1 was declared not blind); the meta "at least one wrong" refuted.
+- The reviewer's: all held except R's "≥ 3 lakes empty at r_world = 1" (0); meta held.
+- **Nothing built, nothing promoted; the spec's decisions stay open.**
+
+**Recorded at commit.**
+- C1, C2 and C4's predictions were not blind or half-blind. All held, but **this round confirms tables more than it
+  tests hypotheses**.
+- **Lake 1000001** (a hole the construction dug into a ~3 000 m high, F135-K4) enters the queue as a named defect,
+  outside this work.
+
+**The author's decisions (2026-10-02), recorded as given:**
+- when room is lacking, the gorge **steepens** (no large fall);
+- the retreat per lake: « Ça peut être un slider ou sélection (0, 0.25 ou 0.5) car là je ne sais pas. Par défaut
+  j'irai sur 0.5. »;
+- the head falls: **as proposed** (one lake in three without a fall).
+- **Proposed by the reviewer, not contested by the author**:
+  - the age → r map (a): ×0.7 → 0, ×1 → 1, ×1.4 → 2, piecewise linear;
+  - m = 10;
+  - the below-sea lakes included with L_in = the merged spill (F139-C5), except 1000001 and the 3 lakes without a
+    spillway segment;
+  - H_f's floor of 10 m.

@@ -1,0 +1,77 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.16s
+     Running tests\f126_coast.rs (target_f139\release\deps\f126_coast-78c90b7d7fab281b.exe)
+running 1 test
+   C2 / C3 / C4 · per descent (L = today's level, B = the next base, law = B + k·χ along the path):
+      lake       1 · L   327.2 → B     0.0 m over  8.72 km · A  1295.9 km² · S_loi 0.0020 · S_req 0.0375 (2.15°) → **m_fit   18.8** · m = 10 fixed: fall 153 m · steepen (2.15°): fall 0 m · C4 φ 0.00, head 0 m: fixed NO ROOM → fall 153 m · steepen fits in 8.72 km
+      lake       2 · L  1292.0 → B   327.2 m over 21.22 km · A   357.8 km² · S_loi 0.0038 · S_req 0.0455 (2.60°) → **m_fit   12.0** · m = 10 fixed: fall 159 m · steepen (2.60°): fall 0 m · C4 φ 0.25, head 199 m: fixed fits in 20.07 km · steepen fits in 20.07 km
+      lake       3 · L  1314.5 → B   459.3 m over 26.72 km · A   698.6 km² · S_loi 0.0027 · S_req 0.0320 (1.83°) → **m_fit   11.8** · m = 10 fixed: fall 129 m · steepen (1.83°): fall 0 m · C4 φ 0.25, head 181 m: fixed fits in 24.62 km · steepen fits in 24.62 km
+      lake       4 · L   168.2 → B     0.0 m over  9.65 km · A   298.1 km² · S_loi 0.0042 · S_req 0.0174 (1.00°) → **m_fit    4.2** · m = 10 fixed: fall 0 m · steepen (2.38°): fall 0 m · C4 φ 0.31, head 44 m: fixed fits in 2.30 km · steepen fits in 2.30 km
+      lake       7 · L   383.4 → B     0.0 m over 12.53 km · A   240.4 km² · S_loi 0.0046 · S_req 0.0306 (1.75°) → **m_fit    6.6** · m = 10 fixed: fall 0 m · steepen (2.65°): fall 0 m · C4 φ 0.25, head 91 m: fixed fits in 5.73 km · steepen fits in 5.73 km
+      lake       8 · L   520.5 → B   110.2 m over 11.66 km · A   153.7 km² · S_loi 0.0058 · S_req 0.0352 (2.02°) → **m_fit    6.1** · m = 10 fixed: fall 0 m · steepen (3.32°): fall 0 m · C4 φ 0.00, head 0 m: fixed fits in 6.80 km · steepen fits in 6.80 km
+      lake       9 · L   418.0 → B   110.2 m over  8.06 km · A   389.0 km² · S_loi 0.0036 · S_req 0.0382 (2.19°) → **m_fit   10.5** · m = 10 fixed: fall 14 m · steepen (2.19°): fall 0 m · C4 φ 0.34, head 101 m: fixed fits in 5.45 km · steepen fits in 5.45 km
+      lake      10 · L   974.5 → B    76.3 m over 12.61 km · A   816.7 km² · S_loi 0.0025 · S_req 0.0713 (4.08°) → **m_fit   28.3** · m = 10 fixed: fall 581 m · steepen (4.08°): fall 0 m · C4 φ 0.00, head 0 m: fixed NO ROOM → fall 581 m · steepen fits in 12.61 km
+      lake      11 · L   362.0 → B    49.3 m over 16.49 km · A   932.9 km² · S_loi 0.0024 · S_req 0.0190 (1.09°) → **m_fit    8.1** · m = 10 fixed: fall 0 m · steepen (1.35°): fall 0 m · C4 φ 0.40, head 122 m: fixed fits in 7.23 km · steepen fits in 7.23 km
+      lake      12 · L   118.9 → B     0.1 m over  9.94 km · A   428.8 km² · S_loi 0.0035 · S_req 0.0120 (0.68°) → **m_fit    3.4** · m = 10 fixed: fall 0 m · steepen (1.99°): fall 0 m · C4 φ 0.28, head 26 m: fixed fits in 1.91 km · steepen fits in 1.91 km
+      lake      13 · L   239.3 → B   115.3 m over 24.89 km · A   988.4 km² · S_loi 0.0023 · S_req 0.0050 (0.29°) → **m_fit    2.2** · m = 10 fixed: fall 0 m · steepen (1.31°): fall 0 m · C4 φ 0.36, head 27 m: fixed fits in 2.00 km · steepen fits in 2.00 km
+      lake      15 · L   154.9 → B   115.3 m over  2.02 km · A   418.7 km² · S_loi 0.0035 · S_req 0.0196 (1.12°) → **m_fit    5.6** · m = 10 fixed: fall 0 m · steepen (2.01°): fall 0 m · C4 φ 0.20, head 7 m: fixed fits in 0.83 km · steepen fits in 0.83 km
+      lake      19 · L   197.6 → B     0.0 m over 23.47 km · A  1437.8 km² · S_loi 0.0019 · S_req 0.0084 (0.48°) → **m_fit    4.4** · m = 10 fixed: fall 0 m · steepen (1.09°): fall 0 m · C4 φ 0.00, head 0 m: fixed fits in 8.99 km · steepen fits in 8.99 km
+      lake      20 · L   127.6 → B    49.3 m over  7.90 km · A   240.3 km² · S_loi 0.0046 · S_req 0.0099 (0.57°) → **m_fit    2.1** · m = 10 fixed: fall 0 m · steepen (2.65°): fall 0 m · C4 φ 0.37, head 17 m: fixed fits in 0.59 km · steepen fits in 0.59 km
+      lake 1000001 · L   176.8 → B     0.0 m over  9.28 km · A     3.5 km² · S_loi 0.0383 · S_req 0.0191 (1.09°) → **m_fit    0.5** · m = 10 fixed: fall 0 m · steepen (20.93°): fall 0 m · C4 φ 0.40, head 26 m: fixed fits in 0.14 km · steepen fits in 0.14 km
+      lake 1000011 · L   459.3 → B   418.0 m over  1.02 km · A  2409.6 km² · S_loi 0.0015 · S_req 0.0407 (2.33°) → **m_fit   27.8** · m = 10 fixed: fall 26 m · steepen (2.33°): fall 0 m · C4 φ 0.41, head 6 m: fixed NO ROOM → fall 20 m · steepen fits in 1.02 km
+      lake 1000012 · L    22.0 → B     0.0 m over  4.77 km · A   308.0 km² · S_loi 0.0041 · S_req 0.0046 (0.26°) → **m_fit    1.1** · m = 10 fixed: fall 0 m · steepen (2.34°): fall 0 m · C4 φ 0.39, head 1 m: fixed fits in 0.07 km · steepen fits in 0.07 km
+      lake 1000013 · L   110.2 → B     0.0 m over 17.63 km · A  1263.0 km² · S_loi 0.0020 · S_req 0.0063 (0.36°) → **m_fit    3.1** · m = 10 fixed: fall 0 m · steepen (1.16°): fall 0 m · C4 φ 0.36, head 30 m: fixed fits in 2.51 km · steepen fits in 2.51 km
+      lake 1000014 · L    49.3 → B     0.0 m over  0.74 km · A  2986.6 km² · S_loi 0.0013 · S_req 0.0666 (3.81°) → **m_fit   50.7** · m = 10 fixed: fall 40 m · steepen (3.81°): fall 0 m · C4 φ 0.22, head 2 m: fixed NO ROOM → fall 37 m · steepen fits in 0.74 km
+      lake 1000016 · L   115.3 → B     0.0 m over  3.60 km · A  3608.0 km² · S_loi 0.0012 · S_req 0.0320 (1.83°) → **m_fit   26.8** · m = 10 fixed: fall 72 m · steepen (1.83°): fall 0 m · C4 φ 0.00, head 0 m: fixed NO ROOM → fall 72 m · steepen NO ROOM → fall 0 m
+      lake 1000017 · L   268.8 → B   239.3 m over  3.07 km · A   927.9 km² · S_loi 0.0024 · S_req 0.0096 (0.55°) → **m_fit    4.1** · m = 10 fixed: fall 0 m · steepen (1.35°): fall 0 m · C4 φ 0.28, head 7 m: fixed fits in 0.73 km · steepen fits in 0.73 km
+      lake 1000018 · L   471.8 → B   268.8 m over  1.76 km · A   701.1 km² · S_loi 0.0027 · S_req 0.1153 (6.57°) → **m_fit   42.5** · m = 10 fixed: fall 155 m · steepen (6.57°): fall 0 m · C4 φ 0.35, head 17 m: fixed NO ROOM → fall 138 m · steepen fits in 1.76 km
+      lake 1000019 · L   614.9 → B   197.6 m over  9.24 km · A  1028.8 km² · S_loi 0.0022 · S_req 0.0452 (2.59°) → **m_fit   20.2** · m = 10 fixed: fall 210 m · steepen (2.59°): fall 0 m · C4 φ 0.00, head 0 m: fixed NO ROOM → fall 210 m · steepen NO ROOM → fall 0 m
+   C2 · m_fit over 23 descents: min **0.50** · p50 **6.61** · max **50.7** · beyond the 28° cap: 0
+   C3 · m = 10, shortage falls · fixed slope (F138): 10 falls, median 129 m, max 581 m · STEEPEN: **3 falls, median 0 m, max 0 m**
+   C4 · m = 10, head fall first · fixed slope: fit 16 / no room 7 (7 falls, median 138 m, max 581 m) · steepen: fit 21 / no room 2 (2 falls, median 0 m, max 0 m)
+   C1 · T3's area at r = 1 against the final area (run_hd lake map):
+      lake       1 (D8) · T3 at r = 1   132.4 km² · final (run_hd mask)   132.8 km² · ratio **0.996**
+      lake       2 (D8) · T3 at r = 1    35.5 km² · final (run_hd mask)    35.5 km² · ratio **1.000**
+      lake       3 (D8) · T3 at r = 1   159.4 km² · final (run_hd mask)   159.7 km² · ratio **0.999**
+      lake       4 (D8) · T3 at r = 1    45.7 km² · final (run_hd mask)    45.8 km² · ratio **0.998**
+      lake       7 (D8) · T3 at r = 1     5.2 km² · final (run_hd mask)     5.3 km² · ratio **0.984**
+      lake       8 (D8) · T3 at r = 1    12.2 km² · final (run_hd mask)    12.3 km² · ratio **0.995**
+      lake       9 (D8) · T3 at r = 1    79.6 km² · final (run_hd mask)    79.7 km² · ratio **0.999**
+      lake      10 (D8) · T3 at r = 1   249.0 km² · final (run_hd mask)   249.0 km² · ratio **1.000**
+      lake      11 (D8) · T3 at r = 1   162.8 km² · final (run_hd mask)   163.0 km² · ratio **0.999**
+      lake      12 (D8) · T3 at r = 1    10.1 km² · final (run_hd mask)    10.2 km² · ratio **0.996**
+      lake      13 (D8) · T3 at r = 1   132.5 km² · final (run_hd mask)   133.1 km² · ratio **0.996**
+      lake      15 (D8) · T3 at r = 1    17.1 km² · final (run_hd mask)    17.4 km² · ratio **0.982**
+      lake      19 (D8) · T3 at r = 1    70.9 km² · final (run_hd mask)    72.0 km² · ratio **0.985**
+      lake      20 (D8) · T3 at r = 1    33.2 km² · final (run_hd mask)    33.2 km² · ratio **0.999**
+      lake 1000001 · no input body
+      lake 1000011 (spillway) · T3 at r = 1   201.8 km² · final (run_hd mask)   493.2 km² · ratio **0.409** · > 20 % OFF
+      lake 1000012 (spillway) · T3 at r = 1    10.5 km² · final (run_hd mask)    10.5 km² · ratio **0.999**
+      lake 1000013 (spillway) · T3 at r = 1   148.2 km² · final (run_hd mask)   152.6 km² · ratio **0.971**
+      lake 1000014 (spillway) · T3 at r = 1   596.6 km² · final (run_hd mask)   628.4 km² · ratio **0.949**
+      lake 1000016 (spillway) · T3 at r = 1   133.3 km² · final (run_hd mask)   502.0 km² · ratio **0.265** · > 20 % OFF
+      lake 1000017 (spillway) · T3 at r = 1    40.6 km² · final (run_hd mask)   337.9 km² · ratio **0.120** · > 20 % OFF
+      lake 1000018 (spillway) · T3 at r = 1   166.4 km² · final (run_hd mask)   185.3 km² · ratio **0.898**
+      lake 1000019 (spillway) · T3 at r = 1   218.1 km² · final (run_hd mask)   383.9 km² · ratio **0.568** · > 20 % OFF
+   C1 · lakes off by > 20 %: **4 of 22**
+   R · retreat per lake, the 14 D8 lakes · A_ref (median outlet area) 418.7 km² · map (a): r 0 → ×0.7, 1 → ×1, 2 → ×1.4 (piecewise linear)
+      p = 0: r_world 0: 14 lakes, 1308.5 km² · r_world 0.5: 14 lakes, 1223.6 km² · r_world 1: 14 lakes, 1145.7 km² · r_world 1.5: 14 lakes, 367.3 km² · r_world 2: 0 lakes, 0.0 km²
+         emptying age: 14 lakes within ×0.7–×1.4 (from ×1.40 to ×1.40, spread **0 %** of the selector's range) · never within the range: 0 · 1: ×1.40 · 2: ×1.40 · 3: ×1.40 · 4: ×1.40 · 7: ×1.40 · 8: ×1.40 · 9: ×1.40 · 10: ×1.40 · 11: ×1.40 · 12: ×1.40 · 13: ×1.40 · 15: ×1.40 · 19: ×1.40 · 20: ×1.40
+      p = 0.25: r_world 0: 14 lakes, 1308.5 km² · r_world 0.5: 14 lakes, 1214.3 km² · r_world 1: 14 lakes, 845.5 km² · r_world 1.5: 12 lakes, 135.4 km² · r_world 2: 3 lakes, 5.2 km²
+         emptying age: 8 lakes within ×0.7–×1.4 (from ×1.19 to ×1.40, spread **30 %** of the selector's range) · never within the range: 6 · 1: ×1.20 · 2: never (r_world 2.08) · 3: ×1.30 · 4: never (r_world 2.18) · 7: never (r_world 2.30) · 8: never (r_world 2.57) · 9: never (r_world 2.04) · 10: ×1.28 · 11: ×1.25 · 12: ×1.40 · 13: ×1.25 · 15: ×1.40 · 19: ×1.19 · 20: never (r_world 2.30)
+      p = 0.5: r_world 0: 14 lakes, 1308.5 km² · r_world 0.5: 14 lakes, 1202.7 km² · r_world 1: 14 lakes, 521.3 km² · r_world 1.5: 9 lakes, 103.0 km² · r_world 2: 4 lakes, 19.0 km²
+         emptying age: 8 lakes within ×0.7–×1.4 (from ×1.03 to ×1.40, spread **53 %** of the selector's range) · never within the range: 6 · 1: ×1.05 · 2: never (r_world 2.16) · 3: ×1.22 · 4: never (r_world 2.37) · 7: never (r_world 2.64) · 8: never (r_world 3.30) · 9: never (r_world 2.08) · 10: ×1.17 · 11: ×1.14 · 12: ×1.39 · 13: ×1.12 · 15: ×1.40 · 19: ×1.03 · 20: never (r_world 2.64)
+      p's provenance: DECISION; the link to the celerity (F115, c = K·A^m) is ANCHORED in form, not in value
+   C5 · the spillway lakes' merged spill (median of ocean_flood's spill on the breached S1 over the final footprint):
+      lake 1000001 · today   176.8 m · merged spill on the input ** 3046.6 m** (Δ +2869.8 m) · the F138 body's ring — · L(1) with the merged spill 176.8 m
+      lake 1000011 · today   459.3 m · merged spill on the input **  459.3 m** (Δ +0.0 m, within 1 m) · the F138 body's ring 325.8 m · L(1) with the merged spill 459.3 m
+      lake 1000012 · today    22.0 m · merged spill on the input **   22.0 m** (Δ +0.0 m, within 1 m) · the F138 body's ring 22.0 m · L(1) with the merged spill 22.0 m
+      lake 1000013 · today   110.2 m · merged spill on the input **  110.2 m** (Δ +0.0 m, within 1 m) · the F138 body's ring 110.2 m · L(1) with the merged spill 110.2 m
+      lake 1000014 · today    49.3 m · merged spill on the input **   49.3 m** (Δ +0.0 m, within 1 m) · the F138 body's ring 46.4 m · L(1) with the merged spill 49.3 m
+      lake 1000016 · today   115.3 m · merged spill on the input **  115.3 m** (Δ +0.0 m, within 1 m) · the F138 body's ring -1.1 m · L(1) with the merged spill 115.3 m
+      lake 1000017 · today   268.8 m · merged spill on the input **  268.8 m** (Δ -0.0 m, within 1 m) · the F138 body's ring 126.1 m · L(1) with the merged spill 268.8 m
+      lake 1000018 · today   471.8 m · merged spill on the input **  471.2 m** (Δ -0.6 m, within 1 m) · the F138 body's ring 471.2 m · L(1) with the merged spill 471.2 m
+      lake 1000019 · today   614.9 m · merged spill on the input **  614.9 m** (Δ -0.0 m, within 1 m) · the F138 body's ring 570.2 m · L(1) with the merged spill 614.9 m
+   C5 · within 1 m: **8 of 9**
+test f139_t ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 54 filtered out; finished in 373.50s
