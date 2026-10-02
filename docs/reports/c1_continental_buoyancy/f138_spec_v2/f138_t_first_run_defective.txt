@@ -1,0 +1,101 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.14s
+     Running tests\f126_coast.rs (target_f138\release\deps\f126_coast-78c90b7d7fab281b.exe)
+running 1 test
+   T2 · the max slope over 100 m on today's steps (F136-K6b drop > 50 m):
+      ON extended: 8 steps > 50 m · max slope over 100 m > 28° / > 40° / > 60°: **3 / 2 / 0** · among the 6 > 200 m: **3 / 2 / 0**
+         lake    1 · drop  290.1 m · max slope over 100 m ** 27.3°**
+         lake    2 · drop  862.1 m · max slope over 100 m ** 43.6°**
+         lake    4 · drop  119.0 m · max slope over 100 m ** 22.4°**
+         lake    7 · drop  316.6 m · max slope over 100 m ** 31.3°**
+         lake    8 · drop   51.3 m · max slope over 100 m ** 23.5°**
+         lake    9 · drop  265.9 m · max slope over 100 m ** 27.0°**
+         lake   10 · drop  810.7 m · max slope over 100 m ** 47.1°**
+         lake   11 · drop  260.4 m · max slope over 100 m ** 27.8°**
+      livré: 9 steps > 50 m · max slope over 100 m > 28° / > 40° / > 60°: **4 / 4 / 0** · among the 6 > 200 m: **4 / 4 / 0**
+         lake    1 · drop 1220.7 m · max slope over 100 m ** 55.6°**
+         lake    2 · drop 1857.0 m · max slope over 100 m ** 55.6°**
+         lake    5 · drop  238.4 m · max slope over 100 m ** 17.8°**
+         lake   14 · drop  274.2 m · max slope over 100 m ** 24.2°**
+         lake   30 · drop  119.6 m · max slope over 100 m ** 25.5°**
+         lake   33 · drop  330.6 m · max slope over 100 m ** 45.5°**
+         lake   35 · drop   81.0 m · max slope over 100 m ** 17.3°**
+         lake   40 · drop   79.4 m · max slope over 100 m ** 20.6°**
+         lake   51 · drop  799.4 m · max slope over 100 m ** 53.8°**
+   T1 · the gorge by m (L = today's level; S_g = min(m·S_loi(A), tan 28°)):
+      lake       1  132.8 km² · L   327.2 m · base     0.0 m (the sea) · D  327.2 m over X  8.72 km · A   1293.2 km² · S_loi 0.0020 (0.11°) · m=3: 0.34° fits in 0.00 km · m=10: 1.14° fits in 0.00 km · m=30: 3.43° fits in 0.00 km
+      lake       2   35.5 km² · L  1292.0 m · base   327.2 m (lake 1) · D  964.8 m over X 21.22 km · A    357.8 km² · S_loi 0.0038 (0.22°) · m=3: 0.65° fits in 0.00 km · m=10: 2.17° fits in 0.00 km · m=30: 6.50° fits in 0.00 km
+      lake       3  159.7 km² · L  1314.5 m · base   459.3 m (lake 1000011) · D  855.1 m over X 26.72 km · A      1.0 km² · S_loi 0.0717 (4.10°) · m=3: 12.14° fits in 0.00 km · m=10: 28.00° fits in 0.00 km · m=30: 28.00° fits in 0.00 km
+      lake       4   45.8 km² · L   168.2 m · base     0.0 m (the sea) · D  168.2 m over X  9.65 km · A    298.1 km² · S_loi 0.0042 (0.24°) · m=3: 0.72° fits in 0.00 km · m=10: 2.38° fits in 0.00 km · m=30: 7.11° fits in 0.00 km
+      lake       7    5.3 km² · L   383.4 m · base     0.0 m (the sea) · D  383.4 m over X 12.53 km · A    240.4 km² · S_loi 0.0046 (0.27°) · m=3: 0.80° fits in 0.00 km · m=10: 2.65° fits in 0.00 km · m=30: 7.91° fits in 0.00 km
+      lake       8   12.3 km² · L   520.5 m · base   110.2 m (lake 1000013) · D  410.3 m over X 11.66 km · A    153.7 km² · S_loi 0.0058 (0.33°) · m=3: 1.00° fits in 0.00 km · m=10: 3.32° fits in 0.00 km · m=30: 9.86° fits in 0.00 km
+      lake       9   79.7 km² · L   418.0 m · base   110.2 m (lake 1000013) · D  307.8 m over X  8.06 km · A    389.0 km² · S_loi 0.0036 (0.21°) · m=3: 0.63° fits in 0.00 km · m=10: 2.09° fits in 0.00 km · m=30: 6.24° fits in 0.00 km
+      lake      10  249.0 km² · L   974.5 m · base    76.3 m (lake 1000008) · D  898.3 m over X 12.61 km · A    810.0 km² · S_loi 0.0025 (0.14°) · m=3: 0.43° fits in 0.00 km · m=10: 1.45° fits in 0.00 km · m=30: 4.33° fits in 0.00 km
+      lake      11  163.0 km² · L   362.0 m · base    49.3 m (lake 1000014) · D  312.8 m over X 16.49 km · A    932.9 km² · S_loi 0.0024 (0.13°) · m=3: 0.40° fits in 0.00 km · m=10: 1.35° fits in 0.00 km · m=30: 4.04° fits in 0.00 km
+      lake      12   10.2 km² · L   118.9 m · base     0.1 m (lake 1000015) · D  118.8 m over X  9.94 km · A    131.5 km² · S_loi 0.0063 (0.36°) · m=3: 1.08° fits in 0.00 km · m=10: 3.58° fits in 0.00 km · m=30: 10.64° fits in 0.00 km
+      lake      13  133.1 km² · L   239.3 m · base   115.3 m (lake 1000016) · D  124.0 m over X 24.89 km · A      1.5 km² · S_loi 0.0585 (3.35°) · m=3: 9.95° fits in 0.00 km · m=10: 28.00° fits in 0.00 km · m=30: 28.00° fits in 0.00 km
+      lake      15   17.4 km² · L   154.9 m · base   115.3 m (lake 1000016) · D   39.6 m over X  2.02 km · A    418.7 km² · S_loi 0.0035 (0.20°) · m=3: 0.60° fits in 0.00 km · m=10: 2.01° fits in 0.00 km · m=30: 6.01° fits in 0.00 km
+      lake      19   72.0 km² · L   197.6 m · base     0.0 m (the sea) · D  197.6 m over X 23.47 km · A    270.9 km² · S_loi 0.0044 (0.25°) · m=3: 0.75° fits in 0.00 km · m=10: 2.50° fits in 0.00 km · m=30: 7.46° fits in 0.00 km
+      lake      20   33.2 km² · L   127.6 m · base    49.3 m (lake 1000014) · D   78.3 m over X  7.90 km · A    226.6 km² · S_loi 0.0048 (0.27°) · m=3: 0.82° fits in 0.00 km · m=10: 2.73° fits in 0.00 km · m=30: 8.15° fits in 0.00 km
+      lake 1000001    1.2 km² · L   176.8 m · base     0.0 m (spillway → the sea) · D  176.8 m over X  9.28 km · A      1.5 km² · S_loi 0.0578 (3.31°) · m=3: 9.84° fits in 0.00 km · m=10: 28.00° fits in 0.00 km · m=30: 28.00° fits in 0.00 km
+      lake 1000011  493.2 km² · L   459.3 m · base   418.0 m (spillway → lake 9) · D   41.3 m over X  1.02 km · A      0.1 km² · S_loi 0.2271 (12.80°) · m=3: 28.00° fits in 0.00 km · m=10: 28.00° fits in 0.00 km · m=30: 28.00° fits in 0.00 km
+      lake 1000012   10.5 km² · L    22.0 m · base     0.0 m (spillway → the sea) · D   22.0 m over X  4.77 km · A     24.6 km² · S_loi 0.0145 (0.83°) · m=3: 2.49° fits in 0.00 km · m=10: 8.25° fits in 0.00 km · m=30: 23.50° fits in 0.00 km
+      lake 1000013  152.6 km² · L   110.2 m · base     0.0 m (spillway → the sea) · D  110.2 m over X 17.63 km · A      1.8 km² · S_loi 0.0535 (3.06°) · m=3: 9.11° fits in 0.00 km · m=10: 28.00° fits in 0.00 km · m=30: 28.00° fits in 0.00 km
+      lake 1000014  628.4 km² · L    49.3 m · base     0.0 m (spillway → the sea) · D   49.3 m over X  0.74 km · A      0.1 km² · S_loi 0.2271 (12.80°) · m=3: 28.00° fits in 0.00 km · m=10: 28.00° fits in 0.00 km · m=30: 28.00° fits in 0.00 km
+      lake 1000016  502.0 km² · L   115.3 m · base     0.0 m (spillway → the sea) · D  115.3 m over X  3.60 km · A      0.7 km² · S_loi 0.0847 (4.84°) · m=3: 14.25° fits in 0.00 km · m=10: 28.00° fits in 0.00 km · m=30: 28.00° fits in 0.00 km
+      lake 1000017  337.9 km² · L   268.8 m · base   239.3 m (spillway → lake 13) · D   29.5 m over X  3.07 km · A      3.8 km² · S_loi 0.0367 (2.10°) · m=3: 6.27° fits in 0.00 km · m=10: 20.13° fits in 0.00 km · m=30: 28.00° fits in 0.00 km
+      lake 1000018  185.3 km² · L   471.8 m · base   268.8 m (spillway → lake 1000017) · D  203.0 m over X  1.76 km · A      2.4 km² · S_loi 0.0459 (2.63°) · m=3: 7.84° fits in 1.09 km · m=10: 24.67° fits in 0.20 km · m=30: 28.00° fits in 0.15 km
+      lake 1000019  383.9 km² · L   614.9 m · base   197.6 m (spillway → lake 19) · D  417.3 m over X  9.24 km · A      0.5 km² · S_loi 0.0996 (5.69°) · m=3: 16.64° fits in 0.00 km · m=10: 28.00° fits in 0.00 km · m=30: 28.00° fits in 0.00 km
+   T1 · descents: 23 · fit / no room: m = 3 23 / 0 · m = 10 **23 / 0** · m = 30 23 / 0
+   T4 · m = 10, φ (FNV of seed, lake): head falls > 0 **1** (tagged > H_f 0) median 27.4 m, max 27.4 m · shortage falls **0** (tagged 0) median NaN m, max NaN m · gorge cells over H_f (2-cell drops) **0**
+      lake       1 · φ 0.44 · head fall   -6.9 m · shortage fall    0.0 m · H_f 10.0 m
+      lake       2 · φ 0.45 · head fall  -21.3 m · shortage fall    0.0 m · H_f 10.0 m
+      lake       3 · φ 0.45 · head fall   -8.0 m · shortage fall    0.0 m · H_f 79.8 m
+      lake       4 · φ 0.45 · head fall   -1.8 m · shortage fall    0.0 m · H_f 10.0 m
+      lake       7 · φ 0.45 · head fall  -12.9 m · shortage fall    0.0 m · H_f 10.0 m
+      lake       8 · φ 0.45 · head fall   -3.0 m · shortage fall    0.0 m · H_f 10.0 m
+      lake       9 · φ 0.45 · head fall   -6.6 m · shortage fall    0.0 m · H_f 10.0 m
+      lake      10 · φ 0.45 · head fall  -12.2 m · shortage fall    0.0 m · H_f 10.0 m
+      lake      11 · φ 0.45 · head fall  -12.8 m · shortage fall    0.0 m · H_f 10.0 m
+      lake      12 · φ 0.45 · head fall   -1.8 m · shortage fall    0.0 m · H_f 10.0 m
+      lake      13 · φ 0.45 · head fall   -2.6 m · shortage fall    0.0 m · H_f 79.8 m
+      lake      15 · φ 0.46 · head fall   -6.8 m · shortage fall    0.0 m · H_f 10.0 m
+      lake      19 · φ 0.43 · head fall   -1.2 m · shortage fall    0.0 m · H_f 10.0 m
+      lake      20 · φ 0.44 · head fall   -3.5 m · shortage fall    0.0 m · H_f 10.0 m
+      lake 1000001 · φ 0.15 · head fall  -38.7 m · shortage fall    0.0 m · H_f 79.8 m
+      lake 1000011 · φ 0.00 · head fall   -0.0 m · shortage fall    0.0 m · H_f 79.8 m
+      lake 1000012 · φ 0.00 · head fall   -0.0 m · shortage fall    0.0 m · H_f 21.7 m
+      lake 1000013 · φ 0.35 · head fall -101.0 m · shortage fall    0.0 m · H_f 79.8 m
+      lake 1000014 · φ 0.35 · head fall   -5.4 m · shortage fall    0.0 m · H_f 79.8 m
+      lake 1000016 · φ 0.00 · head fall   -0.0 m · shortage fall    0.0 m · H_f 79.8 m
+      lake 1000017 · φ 0.32 · head fall  -33.3 m · shortage fall    0.0 m · H_f 55.0 m
+      lake 1000018 · φ 0.33 · head fall   27.4 m · shortage fall    0.0 m · H_f 68.9 m
+      lake 1000019 · φ 0.00 · head fall   -0.0 m · shortage fall    0.0 m · H_f 79.8 m
+   T3 · the lakes by r (L(r) between L_in, L_bed = min(L_in, today), L_floor; area grown from the body's lowest cell, cells < L(r)):
+      lake       1 (body input lake 1) · L_in 342.6 · L_bed 327.2 · L_floor 145.2 · today 132.8 km² · r 0: 342.6 m 143.8 km² · r 0.5: 334.9 m 137.9 km² · r 1: 327.2 m 132.4 km² · r 1.5: 236.2 m 66.8 km² · r 2: 145.2 m 0.0 km²
+      lake       2 (body input lake 2) · L_in 1339.6 · L_bed 1292.0 · L_floor 934.5 · today 35.5 km² · r 0: 1339.6 m 57.8 km² · r 0.5: 1315.8 m 45.5 km² · r 1: 1292.0 m 35.5 km² · r 1.5: 1113.2 m 4.2 km² · r 2: 934.5 m 0.0 km²
+      lake       3 (body input lake 3) · L_in 1332.3 · L_bed 1314.5 · L_floor 879.8 · today 159.7 km² · r 0: 1332.3 m 197.9 km² · r 0.5: 1323.4 m 177.7 km² · r 1: 1314.5 m 159.4 km² · r 1.5: 1097.1 m 25.6 km² · r 2: 879.8 m 0.0 km²
+      lake       4 (body input lake 4) · L_in 172.1 · L_bed 168.2 · L_floor 13.4 · today 45.8 km² · r 0: 172.1 m 49.4 km² · r 0.5: 170.2 m 47.4 km² · r 1: 168.2 m 45.7 km² · r 1.5: 90.8 m 10.7 km² · r 2: 13.4 m 0.0 km²
+      lake       7 (body input lake 7) · L_in 412.1 · L_bed 383.4 · L_floor 298.3 · today 5.3 km² · r 0: 412.1 m 8.8 km² · r 0.5: 397.7 m 6.9 km² · r 1: 383.4 m 5.2 km² · r 1.5: 340.8 m 1.4 km² · r 2: 298.3 m 0.0 km²
+      lake       8 (body input lake 9) · L_in 527.2 · L_bed 520.5 · L_floor 353.5 · today 12.3 km² · r 0: 527.2 m 13.6 km² · r 0.5: 523.8 m 12.9 km² · r 1: 520.5 m 12.2 km² · r 1.5: 437.0 m 2.8 km² · r 2: 353.5 m 0.0 km²
+      lake       9 (body input lake 11) · L_in 432.6 · L_bed 418.0 · L_floor 100.8 · today 79.7 km² · r 0: 432.6 m 87.3 km² · r 0.5: 425.3 m 83.3 km² · r 1: 418.0 m 79.6 km² · r 1.5: 259.4 m 23.1 km² · r 2: 100.8 m 0.0 km²
+      lake      10 (body input lake 10) · L_in 1001.5 · L_bed 974.5 · L_floor 674.3 · today 249.0 km² · r 0: 1001.5 m 287.1 km² · r 0.5: 988.0 m 267.5 km² · r 1: 974.5 m 249.0 km² · r 1.5: 824.4 m 58.0 km² · r 2: 674.3 m 0.0 km²
+      lake      11 (body input lake 13) · L_in 390.4 · L_bed 362.0 · L_floor 32.6 · today 163.0 km² · r 0: 390.4 m 179.4 km² · r 0.5: 376.2 m 171.1 km² · r 1: 362.0 m 162.8 km² · r 1.5: 197.3 m 74.3 km² · r 2: 32.6 m 0.0 km²
+      lake      12 (body input lake 15) · L_in 122.8 · L_bed 118.9 · L_floor 35.8 · today 10.2 km² · r 0: 122.8 m 11.4 km² · r 0.5: 120.8 m 10.7 km² · r 1: 118.9 m 10.1 km² · r 1.5: 77.3 m 2.2 km² · r 2: 35.8 m 0.0 km²
+      lake      13 (body input lake 16) · L_in 245.1 · L_bed 239.3 · L_floor 13.9 · today 133.1 km² · r 0: 245.1 m 137.5 km² · r 0.5: 242.2 m 134.9 km² · r 1: 239.3 m 132.5 km² · r 1.5: 126.6 m 60.2 km² · r 2: 13.9 m 0.0 km²
+      lake      15 (body input lake 18) · L_in 169.7 · L_bed 154.9 · L_floor 84.2 · today 17.4 km² · r 0: 169.7 m 23.3 km² · r 0.5: 162.3 m 20.1 km² · r 1: 154.9 m 17.1 km² · r 1.5: 119.5 m 4.7 km² · r 2: 84.2 m 0.0 km²
+      lake      19 (body input lake 23) · L_in 200.4 · L_bed 197.6 · L_floor 8.8 · today 72.0 km² · r 0: 200.4 m 73.0 km² · r 0.5: 199.0 m 72.0 km² · r 1: 197.6 m 70.9 km² · r 1.5: 103.2 m 27.6 km² · r 2: 8.8 m 0.0 km²
+      lake      20 (body input lake 24) · L_in 135.6 · L_bed 127.6 · L_floor 21.5 · today 33.2 km² · r 0: 135.6 m 38.2 km² · r 0.5: 131.6 m 35.7 km² · r 1: 127.6 m 33.2 km² · r 1.5: 74.5 m 5.8 km² · r 2: 21.5 m 0.0 km²
+      lake 1000001 · no input body
+      lake 1000011 (body component 2) · L_in 325.8 · L_bed 325.8 · L_floor -4.9 · today 493.2 km² · r 0: 325.8 m 201.8 km² · r 0.5: 325.8 m 201.8 km² · r 1: 325.8 m 201.8 km² · r 1.5: 160.4 m 45.4 km² · r 2: -4.9 m 0.0 km²
+      lake 1000012 (body component 5) · L_in 22.0 · L_bed 22.0 · L_floor -1.5 · today 10.5 km² · r 0: 22.0 m 10.5 km² · r 0.5: 22.0 m 10.5 km² · r 1: 22.0 m 10.5 km² · r 1.5: 10.3 m 1.7 km² · r 2: -1.5 m 0.0 km²
+      lake 1000013 (body component 4) · L_in 110.2 · L_bed 110.2 · L_floor -16.8 · today 152.6 km² · r 0: 110.2 m 148.2 km² · r 0.5: 110.2 m 148.2 km² · r 1: 110.2 m 148.2 km² · r 1.5: 46.7 m 68.7 km² · r 2: -16.8 m 0.0 km²
+      lake 1000014 (body component 6) · L_in 46.4 · L_bed 46.4 · L_floor -21.3 · today 628.4 km² · r 0: 46.4 m 596.6 km² · r 0.5: 46.4 m 596.6 km² · r 1: 46.4 m 596.6 km² · r 1.5: 12.5 m 459.3 km² · r 2: -21.3 m 0.0 km²
+      lake 1000016 (body component 8) · L_in -1.1 · L_bed -1.1 · L_floor -16.7 · today 502.0 km² · r 0: -1.1 m 133.3 km² · r 0.5: -1.1 m 133.3 km² · r 1: -1.1 m 133.3 km² · r 1.5: -8.9 m 66.4 km² · r 2: -16.7 m 0.0 km²
+      lake 1000017 (body component 9) · L_in 126.1 · L_bed 126.1 · L_floor -3.4 · today 337.9 km² · r 0: 126.1 m 40.6 km² · r 0.5: 126.1 m 40.6 km² · r 1: 126.1 m 40.6 km² · r 1.5: 61.3 m 8.5 km² · r 2: -3.4 m 0.0 km²
+      lake 1000018 (body component 37) · L_in 471.2 · L_bed 471.2 · L_floor -2.3 · today 185.3 km² · r 0: 471.2 m 166.4 km² · r 0.5: 471.2 m 166.4 km² · r 1: 471.2 m 166.4 km² · r 1.5: 234.5 m 68.2 km² · r 2: -2.3 m 0.0 km²
+      lake 1000019 (body component 43) · L_in 570.2 · L_bed 570.2 · L_floor -8.6 · today 383.9 km² · r 0: 570.2 m 218.1 km² · r 0.5: 570.2 m 218.1 km² · r 1: 570.2 m 218.1 km² · r 1.5: 280.8 m 130.3 km² · r 2: -8.6 m 0.0 km²
+   T3 · lakes ≥ 1 km² / total area by r: r 0: 22 lakes, 2823.8 km² · r 0.5: 22 lakes, 2738.9 km² · r 1: 22 lakes, 2661.0 km² · r 1.5: 22 lakes, 1215.8 km² · r 2: 0 lakes, 0.0 km² · ratio r=0 / r=1 **1.06**
+   T3 · the selector age each r would propose (DECISION options): (a) ×0.7 → r 0, ×1 → r 1, ×1.4 → r 2 · (b) ×0.7 → r 0.5, ×1 → r 1, ×1.4 → r 1.5
+test f138_t ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 53 filtered out; finished in 637.53s

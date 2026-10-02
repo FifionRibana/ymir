@@ -19403,3 +19403,75 @@ its time, eroded and breached fields), before the construction.
   serait le plus cohérent ? »
   - The reviewer's answer: the two are two distinct physical causes. The head fall must not be uniform: its
     variable share per lake, zero included, is a PROXY of the missing rock.
+
+## Finding 138 — specification v2 of the gorge's retreat by age, and the tables for the author's decisions (nothing built)
+
+**Where it lives.** Report, tables and **`spec_gorge_age_v2.md`**: `docs/reports/c1_continental_buoyancy/f138_spec_v2/`.
+Bench `f138_t`, read-only.
+- F137 committed (`c0852b1`).
+- **No production code.** Guard 6 / 6 field and lakes; hash `a8d2d538d692c2f0`; lib, viz and check green, before
+  and after.
+
+**Two instrument amendments after the first run, said so.** The first run is kept as `f138_t_first_run_defective.txt`.
+1. T1 / T4's law below read the skeleton's `floor_m`, which on the lake's own bed cells (the true col, F136-K7) is
+   the lake's base: every gorge "fit in 0 km". It is now B + k·χ along the path from the next base.
+2. The spillway lakes' outlet area is now their inflow.
+
+φ's FNV hash clustered (0.43–0.46); it is replaced by splitmix64.
+
+**T1 — the gorge by m** (23 descents, S_g = min(m·k·A^−0.5, 28°)):
+- fit / no room at m = 3 / 10 / 30: **4 / 19, 13 / 10, 21 / 2**;
+- at m = 10, the large outlets' gorges are 1.1–3.3° and need up to 36 km;
+- the shortage falls are 14–581 m (lake 10: 898 m to drop over 12.6 km).
+
+**T2 — today's steps over 100 m**: ON extended 3 / **2** / 0 over 28° / 40° / 60° (lake 10 47.1°, lake 2 43.6°);
+livré 4 / **4** / 0 (up to 55.6°). **Short walls exist** behind 8.5–15° means.
+
+**T3 — lakes by r** (input-bowl hypsometry), the 14 D8 lakes: **1 308.5 → 1 223.6 → 1 145.7 → 367.3 → 0 km²** at
+r = 0 / 0.5 / 1 / 1.5 / 2.
+- The ratio r = 0 / r = 1 is **1.14** (1.06 over 22 lakes): the loss is beyond r = 1.
+- The below-sea lakes do not fit the instrument (their merged level can exceed their body's ring): open.
+
+**T4 — falls at m = 10** (φ per lake: 0 with probability 1/3, else U[0.1, 0.5]; H_f = max(1.5·S_g·100 m, 10 m)):
+- 17 head falls (11 tagged), median **26 m**, max 200 m;
+- 10 shortage falls, all tagged, median **129 m**, max 581 m;
+- **0 gorge cells over H_f**.
+
+**Spec v2 corrects v1's eight points.**
+- r follows the age selector; the map is a DECISION shown with T3.
+- A drained lake re-bases its upstream on L_floor, never on χ from the sea.
+- `S_g(A) = m·S_loi(A)`, capped at 28° (the construction's walls); ANCHORED is empty.
+- **The invariant acts on the samples' floor** (`line_samples`, `valley_construction.rs:897`, read by every cone of
+  `carve_diag`), and the rim keeps ≥ L(r).
+- The two falls (head with φ, shortage at the next base), tagged above H_f, which exceeds the gorge's own 2-cell
+  drop.
+- C-3 is excluded.
+- r = 1 keeps ON's level, not its outlet; the old gate 1 is renamed "inertness of the code when off".
+- The gates come from independent controls: levels, rim, slope over 100 m, the lake below, drained lakes,
+  decreasing area, tags.
+- Two new binary questions for the author.
+
+**Predictions.**
+- Mine:
+  - T1's "≥ half" refuted (43 %);
+  - T2's "≤ 1 > 40°" refuted (2);
+  - T3 and T4 held;
+  - meta held.
+- The reviewer's:
+  - T1, T2 and T4 held;
+  - T3 (> 1.5×) refuted;
+  - meta held.
+- **Nothing built, nothing promoted.**
+
+**Review of the specification v2 (recorded at commit; v2 stays the specification, its decisions open).**
+1. **One r per world empties every lake at once** (T3: 0 km² at r = 2), against the diversity asked. A break's
+   celerity grows with the area (stream power, F115).
+2. **The rule "fixed slope, the rest falls" makes falls at large outlets** (lake 10: 581 m), whose available mean
+   slope is far from the cap (lake 10: 898 m over 12.6 km, about 4°).
+3. **The rim clamp**, put on `carve_diag`'s output and on the ring only, risks a one-cell ridge if another line
+   digs outside.
+4. **At ×1, r = 1 reduces the lakes by only 14 %** against r = 0 (T3).
+5. The three columns asked during F138 (T3's calibration, T4's variant, T1b) were not produced. F139 produces
+   them.
+- The raw output's "FNV" label for φ's draw is corrected in F139 (the code is splitmix64), with the correction
+  marked.
