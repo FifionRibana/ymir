@@ -160,7 +160,8 @@ beside it.
   order of the col above OFF's floor (1 339.6 − 352 ≈ 990 m).
 - Lakes 11 and 1 show the same structure on a smaller scale: their upstream carved Δz (515 / 243 m) also
   exceeds their depth (329 / 182 m).
-- The map (`d_lake2_dz.png`) shows a saturated red basin (> +1 000 m) north and east of the lake. Its trunks
+- The map (`d_lake2_dz.png`) shows a saturated red basin (> +1 000 m) south and east of the lake (the map is south up; *corrected in
+  Finding 135, which first read "north and east"*). Its trunks
   are where OFF drained through the col.
 
 ## T — θ on the carved links, by population (benches' témoin)

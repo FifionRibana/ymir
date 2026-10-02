@@ -19110,7 +19110,8 @@ Report and raw outputs are in `docs/reports/c1_continental_buoyancy/f134_guard_l
   semble là dans les crops » (the maps `d_lake{1,2,11}_dz.png`).
 
 **Legend of the F134 Δz maps** (`d_lake{1,2,11}_dz.png`):
-- **Crop**: the lake's ON centroid ± 307 cells (615 × 615 cells = 30 km), north up, viz cell coordinates.
+- **Crop**: the lake's ON centroid ± 307 cells (615 × 615 cells = 30 km), viz cell coordinates, drawn in DATA
+  rows: **south up** (y = 0, the south, at the top). *Corrected in Finding 135: this line first said "north up".*
 - **Colour**: Δz = z_ON − z_OFF on the CONDITIONED field (the pre-breach lakes at their surface).
   - Red: ON higher. Blue: ON lower. White: equal.
   - Linear from 0 to ± 1 000 m, **saturated beyond ± 1 000 m** (full red / full blue).
@@ -19120,3 +19121,107 @@ Report and raw outputs are in `docs/reports/c1_continental_buoyancy/f134_guard_l
   - black: the OFF lakes.
 
   Where they coincide, ON is drawn over OFF.
+
+## Finding 135 — the témoin already WAS the author's world; θ's fall is the construction's own based lakes, not run_hd's; ON keeps every lake but leaves a step below its col; the nearest sample lays 99 % of the construction
+
+**Units**: 1 cell = 48.8 m (domain). Benches `f135_*` (f126_coast) and `f135v_relief_capture` (viz). Report and
+raw outputs are in `docs/reports/c1_continental_buoyancy/f135_witness_cols/`.
+- F134 was committed (`5080b92`).
+- **A correction to F134**: its Δz maps are drawn in data rows, i.e. **south up** (not north up). Lake 2's basin
+  is south-east of the lake. The legend and the report are corrected, with the correction marked.
+- Guard 6 / 6 field and lakes; hash `a8d2d538d692c2f0`; check and lib green, before and after.
+
+**W — the témoin and the viz state.**
+- The configurations differ by **one upscale key**, `wall_sea_floor_m` (0.5 against none, digest `f57954eebde57b00`
+  against `cf1d4539c7afe588`), and by **one drainage key**, `infiltration`. Beside these, two assembly steps
+  differ: the plain breach, and no crater pass.
+- **The clause is inert on this world**: the témoin's field and the viz state's are bit-identical
+  (`a8d2d538d692c2f0` both, 0 cells; `carve(S1)` 0 cells). The construction lays no land cell at or below the
+  sea.
+- ⇒ **No F131–F134 terrain number carries a difference.** Only F131–F133's lake counts and areas carry the
+  assembly's (+1 crater lake), already corrected by F134.
+- F133's table on the realigned témoin, under the guard (OFF field and lakes Match), equals F133's to the digit:
+  - canyons 0 / 0 / 0; spurs near a coastal wall 0.0142 in all three;
+  - R8 terrain 0.0452 / 0.0395 / 0.0411; relief p50 515.4 / 551.9 / 546.6 m;
+  - Δz between flat resolutions 1 150 588 / 235 602 / 12 509;
+  - lakes 26 / 34 / 34.
+- **Mur ↔ mer becomes a gated viz candidate** ("Mur ↔ mer (F126-B)", off; inert here). Nothing is promoted.
+
+**M — without the lakes.**
+- With the asked mask (the union of run_hd's final lakes, after the crater pass) **the fall remains**:
+  - θ (iii) OFF 0.453 [0.446, 0.460] against ON 0.356 / 0.363;
+  - θ (i) 0.467 against 0.386 / 0.395;
+  - the under-law share 12.4 % against 19.1 / 14.3 %.
+- **The mask that removes it is the construction's own based set** (input lakes ∪ closed depressions; added after
+  the first results). On `carve(S1)`:
+  - θ on all trunk links 0.472 / 0.471 / 0.489;
+  - θ on the carved links **0.493 / 0.494 / 0.493**;
+  - the under-law share 10.9 / 10.9 / 3.9 %.
+- ⇒ F134's reading holds with the right mask: the law is not deformed. **The instrument defect is the mask**:
+  about 5 200 trunk links lie in input lakes or depressions that are not final lakes, where ON's law is the lake
+  level and the terrain is the bed.
+
+**K — the cuts through the cols.**
+- 35 items (25 input lakes, 10 closed depressions). Rim cut > 10 / > 100 / > 500 m:
+  - OFF 17 / 13 / 6 (at the col cell 13 / 11 / 4);
+  - extended 18 / 12 / 5 (at the col cell 8 / 5 / 1).
+- **The canyons instrument counts none.**
+- The profiles (`k2_profile_lake{1,2,11}`):
+  - **OFF lays one floor from the sea through both bowls to the sources**, about 1 km under the terrain.
+  - **ON keeps each lake at its col**, but **the outlet valley is laid from the NEXT base downstream** (χ from
+    the sea or the lower lake): **a step of hundreds of metres right below each col** (~300 m lake 1, ~280 m
+    lake 11, ~900 m out of lake 2).
+  - K1's extended "cuts" are those steps, plus 4 bases on absent lakes. The lakes themselves are lowered little
+    (15 m lake 1, 48 m lake 2).
+- **Lake 2's over-deepening is uniform**: on cells carved in both worlds, Δz = 1 171–1 183 m from 0 to 18 km
+  upstream (~1 %). This is the χ law's constant offset, (b_ON − b_OFF) − k·χ_OFF(col).
+- K3's first instrument (distance to the S1 col) reached 27 cells and was redone to the lake's footprint.
+
+**C — carve_diag.**
+- Grep:
+  - "nearest sample" comes from Finding 121 (ADR:17966, code `338e682`);
+  - Finding 127 names it as the dam's cause;
+  - Finding 128-A sets the priority by area;
+  - `carve_diag` dates from Finding 130.
+- The cone is rebuilt in the bench, **bit for bit on every carved cell**.
+- The nearest sample lays **98.91 %** of the 2 697 596 constructed cells; the cross-line minimum lays 1.09 %.
+- The residual of path dependence: 89.7 % nearest in both A and B.
+- **Finding 127's dams** (36 cells): 42 % nearest, **58 % cross-line minimum**. The rare clause carries the dams.
+
+**V — the author's tool.**
+- The viz's "🗻 Relief" menu offers hypsometry, a hillshade (315° / 45°) and the signed difference against a
+  stored reference world (±10 / ±100 / ±1 000 m, saturation and counts in the legend).
+- Views only: the hash is asserted unchanged.
+- OFF's incision of lake 2 reads at once on the hillshade and on the ±1 000 m difference (46 921 saturated
+  cells).
+- The images are the layer's own buffer, not screen grabs.
+
+**Predictions.**
+- Mine:
+  - W1, W3 (except the coast), K3, C (> 95 %, ~90 %) and V held.
+  - W2, M (with the asked mask), K1's ON half, C's dams and the meta refuted.
+- The reviewer's:
+  - K's OFF half, K3 and the meta held.
+  - W ("the only difference", "the coast > 10 %"), M (asked mask), K's ON half and C refuted.
+- **Gated, off, nothing promoted.**
+
+**Recorded at commit.**
+- **W**: on the terrain, the benches' témoin IS the author's world. `wall_sea_floor_m` acts on no cell. Only the
+  lake counts carried the assembly difference, already corrected by F134.
+- **M**: the mask that cancels θ's fall (input lakes + closed depressions) was added **after** the first
+  results: it is **not blind**. The ~5 200 links at stake lie in input lakes or depressions that are not final
+  lakes (F136-L splits them).
+- **C**: at Finding 127's dams the cross-line minimum lays 58 % of the cells (1 % elsewhere). The reviewer's
+  "defect with two symptoms" (F134) is withdrawn.
+- **K**: in ON extended, a step of 270–900 m below each col (lakes 1, 2, 11). The ON lakes are lowered by
+  15–48 m.
+- **Orientation of the `v_*` images** (F135-V): **north up**. They are crops of `layer_color_image`'s buffer
+  after its row flip, i.e. the viz's own view. The F134 `d_lake*` maps are south up.
+- **The author (2026-10-02), recorded as given:**
+  - « Chute ou gorge, les deux sont valides. »
+  - « Le cas des chutes lié au type de roche n'est pas encore activable, vu qu'on n'a pas la répartition
+    géologique actuellement. Ce sera donc intéressant de faire apparaître des chutes d'eau (et donc de les tagger
+    comme tel) là où c'est pertinent. Ça donnera de la diversité au monde. »
+- **The reviewer's consequence**: by default, a gorge between two levels; a waterfall only on a criterion, and
+  tagged. The present steps are an artefact of the construction and are not tagged. The target form downstream of
+  a lake is not decided yet.

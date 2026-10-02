@@ -8257,3 +8257,1252 @@ fn f134_delta() {
     }
     eprintln!("\n==========  end Finding 134-Δ . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
 }
+
+/// θ's fit and bootstrap of `theta_laid_ci`, on an explicit list of (ln A, ln S) pairs (Finding 135-M: the list
+/// is filtered by a lake mask before the fit). Same estimator, same resampling seed.
+fn theta_fit_ci(v: &[(f64, f64)]) -> (f32, f32, f32, usize) {
+    let fit = |idx: &mut dyn Iterator<Item = usize>| -> f64 {
+        let (mut n, mut sx, mut sy, mut sxx, mut sxy) = (0f64, 0f64, 0f64, 0f64, 0f64);
+        for i in idx {
+            let (x, y) = v[i];
+            n += 1.0;
+            sx += x;
+            sy += y;
+            sxx += x * x;
+            sxy += x * y;
+        }
+        -((sxy - sx * sy / n) / (sxx - sx * sx / n))
+    };
+    let m = v.len();
+    if m < 3 {
+        return (f32::NAN, f32::NAN, f32::NAN, m);
+    }
+    let t = fit(&mut (0..m));
+    let mut rng = 0x9E37_79B9_7F4A_7C15u64;
+    let mut next = move || {
+        rng ^= rng << 13;
+        rng ^= rng >> 7;
+        rng ^= rng << 17;
+        rng
+    };
+    let mut bs: Vec<f64> = (0..1000)
+        .map(|_| {
+            let picks: Vec<usize> = (0..m).map(|_| (next() % m as u64) as usize).collect();
+            fit(&mut picks.into_iter())
+        })
+        .collect();
+    bs.sort_by(f64::total_cmp);
+    (t as f32, bs[25] as f32, bs[974] as f32, m)
+}
+
+/// The OFF skeleton's trunk links ≥ 10 km² in `theta_laid_ci`'s order: (cell, receiver, ln A, step length m).
+fn trunk_links(sk: &Skeleton) -> Vec<(usize, usize, f64, f32)> {
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let (w, h) = (sk.width, sk.height);
+    let mut out = Vec::new();
+    for k in 0..w * h {
+        if !sk.trunk[k] || sk.area_km2[k] < 10.0 || sk.direction[k] == DIR_NONE {
+            continue;
+        }
+        let d = sk.direction[k] as usize;
+        let r = ((k / w) as i32 + D8_DY[d]).rem_euclid(h as i32) as usize * w + ((k % w) as i32 + D8_DX[d]).rem_euclid(w as i32) as usize;
+        if !sk.trunk[r] {
+            continue;
+        }
+        let dist = sk.cell_m * if d % 2 == 1 { std::f32::consts::SQRT_2 } else { 1.0 };
+        out.push((k, r, (sk.area_km2[k] as f64).ln(), dist));
+    }
+    out
+}
+
+/// θ on the links whose index passes `keep`, from the end altitudes `zk`, `zr` (m), as `theta_laid_ci` does.
+fn theta_links(links: &[(usize, usize, f64, f32)], zk: &[f32], zr: &[f32], keep: &dyn Fn(usize) -> bool) -> (f32, f32, f32, usize) {
+    let mut v = Vec::new();
+    for (i, &(_, _, x, dist)) in links.iter().enumerate() {
+        if !keep(i) {
+            continue;
+        }
+        let s = (zk[i] - zr[i]) / dist;
+        if s > 1e-4 {
+            v.push((x, (s as f64).ln()));
+        }
+    }
+    theta_fit_ci(&v)
+}
+
+/// ADR Finding 135-W1 — every configuration difference between the benches' témoin and the viz state
+/// "C2 /10 col (défaut)": the upscale config (recursive JSON diff), the eroded digests, the drainage config.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored --exact f135_w1 --nocapture
+#[test]
+#[ignore]
+fn f135_w1() {
+    use common::{bench_eroded_digest, bench_upscale_cfg, viz_dcfg};
+    use serde_json::Value;
+    eprintln!("\n==========  Finding 135-W1 . the témoin against the viz state, key by key  ==========");
+    fn diff(path: &str, a: &Value, b: &Value, out: &mut Vec<String>) {
+        match (a, b) {
+            (Value::Object(x), Value::Object(y)) => {
+                let mut keys: Vec<&String> = x.keys().chain(y.keys()).collect();
+                keys.sort();
+                keys.dedup();
+                for k in keys {
+                    diff(&format!("{path}.{k}"), x.get(k).unwrap_or(&Value::Null), y.get(k).unwrap_or(&Value::Null), out);
+                }
+            }
+            _ if a == b => {}
+            _ => out.push(format!("{path}: témoin {a} · viz {b}")),
+        }
+    }
+    let k = F121_AGE_K;
+    let viz = ValleyConstruction::new(k, Some(0.1));
+    let tem = ValleyConstruction { wall_sea_floor_m: Some(0.5), ..viz };
+    let kn = |vc: ValleyConstruction| Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) };
+    let a = serde_json::to_value(bench_upscale_cfg(kn(tem))).expect("json");
+    let b = serde_json::to_value(bench_upscale_cfg(kn(viz))).expect("json");
+    let mut d = Vec::new();
+    diff("upscale", &a, &b, &mut d);
+    eprintln!("   UPSCALE CONFIG: **{} difference(s)**", d.len());
+    for l in &d {
+        eprintln!("      {l}");
+    }
+    let (dt, dv) = (bench_eroded_digest(kn(tem), PSEED), bench_eroded_digest(kn(viz), PSEED));
+    eprintln!("   eroded digest: témoin {dt} · viz state {dv} (the guard's C2 /10 col: cf1d4539c7afe588)");
+    assert_eq!(dv, "cf1d4539c7afe588", "the viz state's digest moved");
+    let mut dd = Vec::new();
+    diff("drainage", &serde_json::to_value(dcfg()).expect("json"), &serde_json::to_value(viz_dcfg()).expect("json"), &mut dd);
+    eprintln!("   DRAINAGE CONFIG (the benches' dcfg() vs run_hd's): **{} difference(s)**", dd.len());
+    for l in &dd {
+        eprintln!("      {l}");
+    }
+    eprintln!("\n==========  end Finding 135-W1  ==========\n");
+}
+
+/// ADR Finding 135-W3 / M — the realigned témoin (the viz state + run_hd's tail), OFF / F132 / extended: F133's
+/// table with the guard on every world, then the trunk metrics without the lakes (θ (i), (ii), (iii) with CI, θ on
+/// the carved links, the under-law share). Declared in `f135_declared.md` before the run.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored --exact f135_w3m --nocapture
+#[test]
+#[ignore]
+fn f135_w3m() {
+    use common::{bench_eroded_digest, build_world, viz_dcfg, viz_hd_lakes_on};
+    use ymir_core::tectonics_c1::bench_guard::{check_lakes, entries, field_hash, lake_fingerprint};
+    use ymir_core::tectonics_c1::closures::volcanism::crater_protect_mask;
+    use ymir_core::tectonics_c1::drainage::C1_SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::valley_construction::{LakeBase, ocean_flood, skeleton_patched};
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, FlowConfig, breach_monotone_protected, compute_flow, flat_resolution};
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    let n2m = c1_altitude_norm_to_metres(1.0, &ss) - c1_altitude_norm_to_metres(0.0, &ss);
+    let cell_km2 = CELL_KM * CELL_KM;
+    let near = 2.0 / CELL_KM;
+    let vd = viz_dcfg();
+    eprintln!("\n==========  Finding 135-W3 / M . the realigned témoin (viz state + run_hd tail)  ==========");
+    let metres = |g: &GridF32| -> Vec<f32> { g.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect() };
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let pre = build_field_seed(Knobs::no_incision(), PSEED);
+    let (w, h) = (s1.width, s1.height);
+    let n = w * h;
+    let zs1 = metres(&s1);
+    let nb = |c: usize, k: usize| ((c / w) as i32 + D8_DY[k]).rem_euclid(h as i32) as usize * w + ((c % w) as i32 + D8_DX[k]).rem_euclid(w as i32) as usize;
+    let fill_pre = {
+        let cl = c1_climate_placed(&pre, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+        let dc = DrainageClimate { precip_internal: &cl.precipitation, temperature: &cl.temperature };
+        fill_field_m(&pre, &vd, &ss, &dc, DOMAIN_KM).0
+    };
+    let off = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let sk = skeleton(&s1, &off, &ss, DOMAIN_KM);
+    let links = trunk_links(&sk);
+    let trunk10: Vec<usize> = (0..n).filter(|&k| sk.trunk[k] && sk.area_km2[k] >= 10.0).collect();
+    eprintln!("   the OFF skeleton: {} trunk links ≥ 10 km² · {} trunk cells", links.len(), trunk10.len());
+    // present lakes on S1 and the flat-resolution patches (F133-F)
+    let dc0 = C1DrainageConfig::default();
+    let (lake, dep, target, arb_a, arb_b) = {
+        let d = c1_drainage_windowed(&s1, None, &dc0, &ss, DOMAIN_KM);
+        let bf = breach_monotone(&s1, &d.flow.filled, &d.lake_map, C1_SEA_LEVEL_NORM, w, h);
+        let lake = d.lake_map.clone();
+        drop(d);
+        let spill = ocean_flood(&bf);
+        let eps = 0.01 / c1_altitude_norm_to_metres(1.0, &ss).max(1.0);
+        let dep: Vec<bool> = (0..n).map(|k| bf.data[k] > C1_SEA_LEVEL_NORM && spill[k] > bf.data[k] + eps).collect();
+        drop(spill);
+        let flow = compute_flow(&bf, &FlowConfig { sea_level: C1_SEA_LEVEL_NORM, flat_perturbation: dc0.flat_perturbation.clone(), dinf: dc0.dinf });
+        let f = flow.filled.data.clone();
+        let is_ocean: Vec<bool> = f.iter().map(|&v| v <= C1_SEA_LEVEL_NORM).collect();
+        let (needs, g) = flat_resolution(&flow.filled, &is_ocean, dc0.flat_perturbation.as_ref(), w, h);
+        let target: Vec<bool> = (0..n).map(|c| needs[c] && lake[c] != 0).collect();
+        let arbitrary = |seed: u64| -> Vec<u8> {
+            (0..n)
+                .map(|c| {
+                    if !target[c] {
+                        return flow.direction[c];
+                    }
+                    let cand: Vec<u8> = (0..8u8)
+                        .filter(|&k| {
+                            let m = nb(c, k as usize);
+                            is_ocean[m] || f[m] < f[c] || (f[m] == f[c] && needs[m] && g[m] < g[c])
+                        })
+                        .collect();
+                    if cand.is_empty() {
+                        return flow.direction[c];
+                    }
+                    let hsh = ((c as u64) ^ seed.wrapping_mul(0xD6E8_FEB8_6659_FD93)).wrapping_mul(0x9E37_79B9_7F4A_7C15).rotate_left(29);
+                    cand[(hsh % cand.len() as u64) as usize]
+                })
+                .collect()
+        };
+        let (a, b) = (arbitrary(1), arbitrary(2));
+        (lake, dep, target, a, b)
+    };
+    let present: Vec<bool> = (0..n).map(|k| lake[k] != 0 || dep[k]).collect();
+    let pa = |_: &GridF32, _: &[u32], dd: &mut Vec<u8>| {
+        for c in 0..n {
+            if target[c] {
+                dd[c] = arb_a[c];
+            }
+        }
+    };
+    let pb = |_: &GridF32, _: &[u32], dd: &mut Vec<u8>| {
+        for c in 0..n {
+            if target[c] {
+                dd[c] = arb_b[c];
+            }
+        }
+    };
+    let q = |v: &mut Vec<f32>, p: f32| -> f32 {
+        if v.is_empty() {
+            return f32::NAN;
+        }
+        v.sort_by(f32::total_cmp);
+        v[((v.len() - 1) as f32 * p) as usize]
+    };
+    let fields = entries();
+    let at_links = |z: &[f32]| -> (Vec<f32>, Vec<f32>) { (links.iter().map(|l| z[l.0]).collect(), links.iter().map(|l| z[l.1]).collect()) };
+    struct Var {
+        label: &'static str,
+        st: [(Vec<f32>, Vec<f32>); 3],
+        zb: (Vec<f32>, Vec<f32>),
+        carved_l: Vec<bool>,
+        own_l: Vec<bool>,
+        under_t: Vec<bool>,
+        own_t: Vec<bool>,
+    }
+    let mut union = vec![false; n];
+    let mut vars: Vec<Var> = Vec::new();
+    let variants = [
+        ("OFF", off),
+        ("ON F132 (InputLakes)", ValleyConstruction { lake_base: Some(LakeBase::InputLakes), ..off }),
+        ("ON EXTENDED (InputLakesAndBasins)", ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..off }),
+    ];
+    for (label, vc) in variants {
+        let t = Instant::now();
+        eprintln!("\n────────── realigned témoin · {label} ──────────");
+        let kw = Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) };
+        let digest = bench_eroded_digest(kw, PSEED);
+        let wd = build_world(kw, None, PSEED, None);
+        let fh = format!("{:016x}", field_hash(&wd.heightmap));
+        let fg = match fields.iter().find(|e| e.digest == digest) {
+            Some(e) if e.field_hash == fh => format!("Match ({})", e.label),
+            Some(e) => format!("**MISMATCH** (bench {})", e.field_hash),
+            None => "NoReference".to_string(),
+        };
+        let v = viz_hd_lakes_on(&wd, kw, PSEED, 45.0, 40.0);
+        let lg = check_lakes(&v.digest, &v.drainage.lake_map, &v.drainage.lakes);
+        eprintln!(
+            "   GUARD · field {digest} = {fh} → {fg} · lakes key {} · {} → {lg:?}",
+            v.digest,
+            lake_fingerprint(&v.drainage.lake_map, &v.drainage.lakes)
+        );
+        let g = &wd.heightmap;
+        // the table
+        let cl_e = c1_climate_placed(g, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+        let dc_e = DrainageClimate { precip_internal: &cl_e.precipitation, temperature: &cl_e.temperature };
+        let (fill_del, _) = fill_field_m(g, &vd, &ss, &dc_e, DOMAIN_KM);
+        drop(cl_e);
+        set_dump(true);
+        let cr = f95_criteria(g, &v.conditioned, &pre, DELIVERED_P50_M, &ss, &vd, cell_km2, n2m, w, h);
+        set_dump(false);
+        let mut canyons = Vec::new();
+        for b in take_bodies() {
+            let floor = *b.cells.iter().min_by(|&&a, &&c| g.data[a].total_cmp(&g.data[c])).expect("body");
+            if over_dug_depression(fill_del[floor] - fill_pre[floor], b.rim) {
+                canyons.push((floor % w, floor / w));
+            }
+        }
+        drop(fill_del);
+        let skp = skeleton(&pre, &vc, &ss, DOMAIN_KM);
+        let (_, mkp) = carve(&pre, &skp, &vc, &ss);
+        let cls = classes(&pre, &skp, &mkp);
+        let sea: Vec<bool> = (0..n).map(|k| g.data[k] <= SEA).collect();
+        let dsea = dist_from(&sea, w, h);
+        let cw: Vec<bool> = (0..n).map(|k| mkp.carved[k] && !mkp.floor[k] && g.data[k] > SEA && dsea[k] <= 3).collect();
+        let dwall = dist_from(&cw, w, h);
+        drop((sea, dsea, cw, skp, mkp));
+        let co = coast(g, &ss, &dwall, near);
+        let rn = co.near.iter().filter(|&&b| b).count() as f32 / co.l_near_km.max(1e-6);
+        let r8w = r8_terrain(g, &cls, 16);
+        drop((co, dwall, cls));
+        let segs = &v.drainage.rivers.segments;
+        let wci: Vec<usize> = (0..segs.len()).filter(|&i| v.drainage.segment_kind[i] == SegmentKind::Watercourse && segs[i].points.len() >= 2).collect();
+        let pts: Vec<&[(u32, u32)]> = wci.iter().map(|&i| own(&segs[i])).collect();
+        eprintln!(
+            "   TABLE · canyons **{}** {:?} · spurs near a coastal wall **{rn:.4} /km** · R8 terrain **{r8w:.4}** · R8 network (chord 8) {:.4} · lakes **{}** ({:.1} km²) · relief p50 **{:.1} m**",
+            canyons.len(),
+            canyons,
+            r8_chords(&pts, 8),
+            v.drainage.lakes.len(),
+            v.drainage.lakes.iter().map(|l| l.area_km2).sum::<f32>(),
+            cr.p50
+        );
+        let lm = &v.drainage.lake_map;
+        for k in 0..n {
+            if lm[k] != 0 {
+                union[k] = true;
+            }
+        }
+        let own_l: Vec<bool> = links.iter().map(|l| lm[l.0] != 0 || lm[l.1] != 0).collect();
+        let own_t: Vec<bool> = trunk10.iter().map(|&k| lm[k] != 0).collect();
+        let st3 = at_links(&metres(g));
+        drop(v);
+        drop(wd);
+        // (i) as built, (ii) its run_hd breach
+        let w2 = build_world(Knobs { valley: Some(vc), no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, None, PSEED, None);
+        let st1 = at_links(&metres(&w2.heightmap));
+        let st2 = {
+            let d2 = c1_drainage_windowed(&w2.heightmap, None, &vd, &ss, DOMAIN_KM);
+            let prot = w2.volc.enabled.then(|| crater_protect_mask(&w2.craters, w, h));
+            let b2 = breach_monotone_protected(&w2.heightmap, &d2.flow.filled, &d2.lake_map, 0.5, w, h, prot.as_deref());
+            at_links(&metres(&b2))
+        };
+        drop(w2);
+        // the construction on S1
+        let skv = skeleton(&s1, &vc, &ss, DOMAIN_KM);
+        let (built, mk) = carve(&s1, &skv, &vc, &ss);
+        let zb = at_links(&metres(&built));
+        drop(built);
+        let carved_l: Vec<bool> = links.iter().map(|l| mk.carved[l.0] && mk.carved[l.1]).collect();
+        let under_t: Vec<bool> = trunk10
+            .iter()
+            .map(|&k| {
+                let law = if skv.chi_m[k].is_finite() { skv.floor_m(k, vc.age_k) } else { f32::NAN };
+                !mk.carved[k] && law.is_finite() && zs1[k] < law
+            })
+            .collect();
+        drop((skv, mk));
+        // Δz between flat resolutions
+        let ska = skeleton_patched(&s1, &vc, &ss, DOMAIN_KM, Some(&pa));
+        let (za, _) = carve(&s1, &ska, &vc, &ss);
+        drop(ska);
+        let skb = skeleton_patched(&s1, &vc, &ss, DOMAIN_KM, Some(&pb));
+        let (zbb, _) = carve(&s1, &skb, &vc, &ss);
+        drop(skb);
+        let mut dz: Vec<f32> = (0..n)
+            .filter(|&k| !present[k] && za.data[k] != zbb.data[k])
+            .map(|k| (c1_altitude_norm_to_metres(za.data[k], &ss) - c1_altitude_norm_to_metres(zbb.data[k], &ss)).abs())
+            .collect();
+        let out_input = (0..n).filter(|&k| lake[k] == 0 && za.data[k] != zbb.data[k]).count();
+        drop((za, zbb));
+        let nd = dz.len();
+        eprintln!(
+            "   TABLE · Δz between flat resolutions OUTSIDE the present lakes **{nd}** cells (outside the input lakes alone {out_input}) · |Δz| p50 {:.2} / p90 {:.2} / max {:.1} m ({:.0} s)",
+            q(&mut dz, 0.5),
+            q(&mut dz, 0.9),
+            q(&mut dz, 1.0),
+            t.elapsed().as_secs_f64()
+        );
+        vars.push(Var { label, st: [st1, st2, st3], zb, carved_l, own_l, under_t, own_t });
+    }
+    // M — the trunk metrics, with and without the lakes
+    let ul: Vec<bool> = links.iter().map(|l| union[l.0] || union[l.1]).collect();
+    let ut: Vec<bool> = trunk10.iter().map(|&k| union[k]).collect();
+    eprintln!(
+        "\n   M · the lake mask: the UNION of the three worlds' final lakes (run_hd tail) · {} cells · {} of {} links touch it · {} of {} trunk cells in it",
+        union.iter().filter(|&&b| b).count(),
+        ul.iter().filter(|&&b| b).count(),
+        links.len(),
+        ut.iter().filter(|&&b| b).count(),
+        trunk10.len()
+    );
+    let fmt = |r: (f32, f32, f32, usize)| format!("**{:.3}** [{:.3}, {:.3}] ({})", r.0, r.1, r.2, r.3);
+    let sn = ["(i) as built", "(ii) + run_hd breach", "(iii) the world"];
+    for v in &vars {
+        eprintln!("   ── {} ──", v.label);
+        for (si, (zk, zr)) in v.st.iter().enumerate() {
+            let all = theta_links(&links, zk, zr, &|_| true);
+            let nol = theta_links(&links, zk, zr, &|i| !ul[i]);
+            let own = if si == 2 { format!(" · without its OWN lakes {}", fmt(theta_links(&links, zk, zr, &|i| !v.own_l[i]))) } else { String::new() };
+            eprintln!("      θ {:<22} all {} · WITHOUT the lakes (union) {}{own}", sn[si], fmt(all), fmt(nol));
+        }
+        let ca = theta_links(&links, &v.zb.0, &v.zb.1, &|i| v.carved_l[i]);
+        let cn = theta_links(&links, &v.zb.0, &v.zb.1, &|i| v.carved_l[i] && !ul[i]);
+        eprintln!("      θ on the carved links   all {} · WITHOUT the lakes (union) {}", fmt(ca), fmt(cn));
+        let nall = v.under_t.iter().filter(|&&b| b).count();
+        let tn = (0..trunk10.len()).filter(|&i| !ut[i]).count();
+        let nno = (0..trunk10.len()).filter(|&i| v.under_t[i] && !ut[i]).count();
+        let tno = (0..trunk10.len()).filter(|&i| !v.own_t[i]).count();
+        let nown = (0..trunk10.len()).filter(|&i| v.under_t[i] && !v.own_t[i]).count();
+        eprintln!(
+            "      under-law share: all **{:.1} %** ({nall} / {}) · WITHOUT the lakes (union) **{:.1} %** ({nno} / {tn}) · without its own lakes {:.1} % ({nown} / {tno})",
+            100.0 * nall as f32 / trunk10.len() as f32,
+            trunk10.len(),
+            100.0 * nno as f32 / tn.max(1) as f32,
+            100.0 * nown as f32 / tno.max(1) as f32
+        );
+    }
+    eprintln!("\n==========  end Finding 135-W3 / M . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+
+/// A long profile as an SVG line chart: series of (km, m) with a colour and a dash, a vertical col marker,
+/// axes with ticks and labels. Finding 135-K2 (no plotting library in the toolchain).
+#[allow(clippy::type_complexity)]
+fn profile_svg(title: &str, series: &[(&str, &str, &str, Vec<(f32, f32)>)], col_km: Option<f32>, note: &str) -> String {
+    let (wd, ht, ml, mr, mt, mb) = (1100.0f32, 560.0f32, 80.0f32, 30.0f32, 50.0f32, 90.0f32);
+    let pts = series.iter().flat_map(|s| s.3.iter()).filter(|p| p.1.is_finite());
+    let (mut x0, mut x1, mut y0, mut y1) = (f32::MAX, f32::MIN, f32::MAX, f32::MIN);
+    for p in pts {
+        x0 = x0.min(p.0);
+        x1 = x1.max(p.0);
+        y0 = y0.min(p.1);
+        y1 = y1.max(p.1);
+    }
+    let ystep = if y1 - y0 > 2000.0 { 500.0 } else if y1 - y0 > 800.0 { 200.0 } else { 100.0 };
+    y0 = (y0 / ystep).floor() * ystep;
+    y1 = (y1 / ystep).ceil() * ystep;
+    let px = |x: f32| ml + (x - x0) / (x1 - x0).max(1e-3) * (wd - ml - mr);
+    let py = |y: f32| mt + (y1 - y) / (y1 - y0).max(1e-3) * (ht - mt - mb);
+    let mut s = format!("<svg xmlns='http://www.w3.org/2000/svg' width='{wd}' height='{ht}' font-family='sans-serif' font-size='12'>\n<rect width='100%' height='100%' fill='white'/>\n<text x='{ml}' y='24' font-size='15' font-weight='bold'>{title}</text>\n");
+    let xstep = if x1 - x0 > 60.0 { 10.0 } else { 5.0 };
+    let mut x = (x0 / xstep).ceil() * xstep;
+    while x <= x1 {
+        s += &format!("<line x1='{0}' y1='{1}' x2='{0}' y2='{2}' stroke='#ddd'/><text x='{0}' y='{3}' text-anchor='middle'>{x:.0}</text>\n", px(x), mt, ht - mb, ht - mb + 16.0);
+        x += xstep;
+    }
+    let mut y = y0;
+    while y <= y1 + 0.1 {
+        s += &format!("<line x1='{0}' y1='{1}' x2='{2}' y2='{1}' stroke='#ddd'/><text x='{3}' y='{4}' text-anchor='end'>{y:.0}</text>\n", ml, py(y), wd - mr, ml - 6.0, py(y) + 4.0);
+        y += ystep;
+    }
+    s += &format!("<text x='{}' y='{}' text-anchor='middle'>distance along the path (km, upstream → downstream)</text>\n", (ml + wd - mr) / 2.0, ht - mb + 36.0);
+    s += &format!("<text x='18' y='{}' transform='rotate(-90 18 {})' text-anchor='middle'>altitude (m)</text>\n", (mt + ht - mb) / 2.0, (mt + ht - mb) / 2.0);
+    if let Some(c) = col_km {
+        s += &format!("<line x1='{0}' y1='{1}' x2='{0}' y2='{2}' stroke='black' stroke-width='1.5' stroke-dasharray='2,3'/><text x='{3}' y='{4}'>col</text>\n", px(c), mt, ht - mb, px(c) + 4.0, mt + 12.0);
+    }
+    for (li, (name, colr, dash, p)) in series.iter().enumerate() {
+        let mut d = String::new();
+        let mut pen = false;
+        for &(xx, yy) in p {
+            if !yy.is_finite() {
+                pen = false;
+                continue;
+            }
+            d += &format!("{}{:.1},{:.1} ", if pen { "L" } else { "M" }, px(xx), py(yy));
+            pen = true;
+        }
+        s += &format!("<path d='{d}' fill='none' stroke='{colr}' stroke-width='1.6' stroke-dasharray='{dash}'/>\n");
+        let ly = ht - 30.0 + 0.0 * li as f32;
+        let lx = ml + li as f32 * 240.0;
+        s += &format!("<line x1='{lx}' y1='{ly}' x2='{}' y2='{ly}' stroke='{colr}' stroke-width='2' stroke-dasharray='{dash}'/><text x='{}' y='{}'>{name}</text>\n", lx + 28.0, lx + 34.0, ly + 4.0);
+    }
+    s += &format!("<text x='{ml}' y='{}' font-size='11' fill='#555'>{note}</text>\n", ht - 8.0);
+    s + "</svg>\n"
+}
+
+/// ADR Finding 135-K — the cuts through the cols (realigned témoin): every input lake and closed depression, its
+/// col and the built floor there in OFF and extended (K1); the long profiles of lakes 1, 2, 11 (K2, SVG); lake 2's
+/// Δz by distance upstream of its col (K3); which extended cuts remain (K4). Declared in `f135_declared.md`.
+/// SVGs to `F135_DIR` if set.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored --exact f135_k --nocapture
+#[test]
+#[ignore]
+fn f135_k() {
+    use common::{build_world, viz_hd_lakes_on};
+    use std::collections::HashMap;
+    use ymir_core::tectonics_c1::drainage::C1_SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::valley_construction::{LakeBase, ocean_flood};
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    eprintln!("\n==========  Finding 135-K . the cuts through the cols (realigned témoin)  ==========");
+    let metres = |g: &GridF32| -> Vec<f32> { g.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect() };
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let (w, h) = (s1.width, s1.height);
+    let n = w * h;
+    let zs1 = metres(&s1);
+    let nb = |c: usize, k: usize| ((c / w) as i32 + D8_DY[k]).rem_euclid(h as i32) as usize * w + ((c % w) as i32 + D8_DX[k]).rem_euclid(w as i32) as usize;
+    let off = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let ext = ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..off };
+    let (lake, dep, zbf) = {
+        let d = c1_drainage_windowed(&s1, None, &C1DrainageConfig::default(), &ss, DOMAIN_KM);
+        let bf = breach_monotone(&s1, &d.flow.filled, &d.lake_map, C1_SEA_LEVEL_NORM, w, h);
+        let spill = ocean_flood(&bf);
+        let eps = 0.01 / c1_altitude_norm_to_metres(1.0, &ss).max(1.0);
+        let dep: Vec<bool> = (0..n).map(|k| bf.data[k] > C1_SEA_LEVEL_NORM && spill[k] > bf.data[k] + eps).collect();
+        (d.lake_map, dep, metres(&bf))
+    };
+    let sk = skeleton(&s1, &off, &ss, DOMAIN_KM);
+    let (b_off, mk_off) = carve(&s1, &sk, &off, &ss);
+    let zoff_b = metres(&b_off);
+    drop(b_off);
+    let (zext_b, mk_ext) = {
+        let skx = skeleton(&s1, &ext, &ss, DOMAIN_KM);
+        let (b, m) = carve(&s1, &skx, &ext, &ss);
+        (metres(&b), m)
+    };
+    // the items: input lakes and closed-depression components
+    let mut items: Vec<(String, Vec<usize>, bool)> = Vec::new(); // (name, cells, on the breached field)
+    {
+        let mut by: HashMap<u32, Vec<usize>> = HashMap::new();
+        for k in 0..n {
+            if lake[k] != 0 {
+                by.entry(lake[k]).or_default().push(k);
+            }
+        }
+        let mut ids: Vec<u32> = by.keys().copied().collect();
+        ids.sort_unstable();
+        for id in ids {
+            items.push((format!("input lake {id}"), by.remove(&id).unwrap(), false));
+        }
+        let mut seen = vec![false; n];
+        let mut cid = 0;
+        for s in 0..n {
+            if !dep[s] || seen[s] {
+                continue;
+            }
+            cid += 1;
+            let mut comp = vec![s];
+            seen[s] = true;
+            let mut i = 0;
+            while i < comp.len() {
+                let c = comp[i];
+                i += 1;
+                for k in 0..8 {
+                    let m = nb(c, k);
+                    if dep[m] && !seen[m] {
+                        seen[m] = true;
+                        comp.push(m);
+                    }
+                }
+            }
+            comp.sort_unstable();
+            items.push((format!("closed depression {cid}"), comp, true));
+        }
+    }
+    // the outer ring, its lowest cell (the col) and the cuts
+    let ring_of = |cells: &[usize]| -> Vec<usize> {
+        let mut inside = HashMap::with_capacity(cells.len());
+        for &c in cells {
+            inside.insert(c, ());
+        }
+        let mut r: Vec<usize> = Vec::new();
+        for &c in cells {
+            for k in 0..8 {
+                let m = nb(c, k);
+                if !inside.contains_key(&m) {
+                    r.push(m);
+                }
+            }
+        }
+        r.sort_unstable();
+        r.dedup();
+        r
+    };
+    struct Cut {
+        name: String,
+        cells: Vec<usize>,
+        col: usize,
+        level: f32,
+        cut_off: f32,
+        cut_ext: f32,
+        colcut_off: f32,
+        colcut_ext: f32,
+    }
+    let mut cuts: Vec<Cut> = Vec::new();
+    for (name, cells, on_bf) in items {
+        let ring = ring_of(&cells);
+        let zr = |c: usize| if on_bf { zbf[c] } else { zs1[c] };
+        let col = *ring.iter().min_by(|&&a, &&b| zr(a).total_cmp(&zr(b))).expect("ring");
+        let level = zr(col);
+        let mo = ring.iter().map(|&c| zoff_b[c]).fold(f32::INFINITY, f32::min);
+        let me = ring.iter().map(|&c| zext_b[c]).fold(f32::INFINITY, f32::min);
+        cuts.push(Cut { name, cells, col, level, cut_off: level - mo, cut_ext: level - me, colcut_off: level - zoff_b[col], colcut_ext: level - zext_b[col] });
+    }
+    let count = |f: &dyn Fn(&Cut) -> f32, t: f32| cuts.iter().filter(|c| f(c) > t).count();
+    eprintln!("   K1 · {} items ({} input lakes, {} closed depressions)", cuts.len(), cuts.iter().filter(|c| c.name.starts_with("input")).count(), cuts.iter().filter(|c| c.name.starts_with("closed")).count());
+    for (st, f) in [("OFF", &(|c: &Cut| c.cut_off) as &dyn Fn(&Cut) -> f32), ("EXTENDED", &(|c: &Cut| c.cut_ext) as &dyn Fn(&Cut) -> f32)] {
+        eprintln!("   K1 · {st}: rims cut (level − lowest built ring cell) > 10 m **{}** · > 100 m **{}** · > 500 m **{}**", count(f, 10.0), count(f, 100.0), count(f, 500.0));
+    }
+    for (st, f) in [("OFF", &(|c: &Cut| c.colcut_off) as &dyn Fn(&Cut) -> f32), ("EXTENDED", &(|c: &Cut| c.colcut_ext) as &dyn Fn(&Cut) -> f32)] {
+        eprintln!("   K1 · {st}: at the col cell itself > 10 m {} · > 100 m {} · > 500 m {}", count(f, 10.0), count(f, 100.0), count(f, 500.0));
+    }
+    let mut order: Vec<usize> = (0..cuts.len()).collect();
+    order.sort_by(|&a, &b| cuts[b].cut_off.total_cmp(&cuts[a].cut_off));
+    eprintln!("   K1 · every item with a cut > 10 m in either state (sorted by the OFF cut):");
+    for &i in &order {
+        let c = &cuts[i];
+        if c.cut_off <= 10.0 && c.cut_ext <= 10.0 {
+            continue;
+        }
+        eprintln!(
+            "      {:<24} {:>8} cells ({:>7.2} km²) · col ({}, {}) at **{:.1} m** · built floor at the col OFF {:.1} / EXT {:.1} m · rim cut OFF **{:.1} m** / EXT **{:.1} m** · at the col OFF {:.1} / EXT {:.1} m",
+            c.name,
+            c.cells.len(),
+            c.cells.len() as f32 * CELL_KM * CELL_KM,
+            c.col % w,
+            c.col / w,
+            c.level,
+            zoff_b[c.col],
+            zext_b[c.col],
+            c.cut_off,
+            c.cut_ext,
+            c.colcut_off,
+            c.colcut_ext
+        );
+    }
+    // the worlds (conditioned fields, final lakes, the OFF drainage)
+    let kn = |vc: ValleyConstruction| Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) };
+    let (co, dir_off) = {
+        let wd = build_world(kn(off), None, PSEED, None);
+        let v = viz_hd_lakes_on(&wd, kn(off), PSEED, 45.0, 40.0);
+        (metres(&v.conditioned), v.drainage.flow.direction.clone())
+    };
+    let (cn, lm_ext, lakes_ext) = {
+        let wd = build_world(kn(ext), None, PSEED, None);
+        let v = viz_hd_lakes_on(&wd, kn(ext), PSEED, 45.0, 40.0);
+        (metres(&v.conditioned), v.drainage.lake_map.clone(), v.drainage.lakes.clone())
+    };
+    // K4 — the extended cuts that remain
+    let present = |k: usize| lake[k] != 0 || dep[k];
+    let mut unbased: Vec<(u32, Vec<usize>)> = Vec::new();
+    for l in &lakes_ext {
+        let cells: Vec<usize> = (0..n).filter(|&k| lm_ext[k] == l.base.id).collect();
+        let cov = cells.iter().filter(|&&k| present(k)).count();
+        if (cov as f32) < 0.5 * cells.len().max(1) as f32 {
+            unbased.push((l.base.id, cells));
+        }
+    }
+    let absent: Vec<bool> = cuts.iter().map(|c| (c.cells.iter().filter(|&&k| lm_ext[k] != 0).count() as f32) < 0.5 * c.cells.len() as f32).collect();
+    eprintln!("   K4 · bases on a lake ABSENT at the end (items < 50 % under the extended final lakes): **{}** · unbased final lakes: **{}** {:?}", absent.iter().filter(|&&b| b).count(), unbased.len(), unbased.iter().map(|u| u.0).collect::<Vec<_>>());
+    for (i, c) in cuts.iter().enumerate() {
+        if c.cut_ext <= 10.0 {
+            continue;
+        }
+        let ub = unbased.iter().find(|u| u.1.iter().any(|k| c.cells.binary_search(k).is_ok())).map(|u| u.0);
+        let lab = if absent[i] {
+            "a base on an ABSENT lake".to_string()
+        } else if let Some(id) = ub {
+            format!("overlaps the unbased final lake {id}")
+        } else {
+            "OTHER (a present, based lake)".to_string()
+        };
+        eprintln!("      EXT cut {:<24} rim cut **{:.1} m** · col ({}, {}) · {lab}", c.name, c.cut_ext, c.col % w, c.col / w);
+    }
+    for (id, cells) in &unbased {
+        let mut sorted = cells.clone();
+        sorted.sort_unstable();
+        let ring = ring_of(&sorted);
+        let col = *ring.iter().min_by(|&&a, &&b| zs1[a].total_cmp(&zs1[b])).expect("ring");
+        let me = ring.iter().map(|&c| zext_b[c]).fold(f32::INFINITY, f32::min);
+        let mo = ring.iter().map(|&c| zoff_b[c]).fold(f32::INFINITY, f32::min);
+        eprintln!("      unbased final lake {id}: {} cells · S1 col ({}, {}) at {:.1} m · rim cut OFF {:.1} / EXT **{:.1} m**", cells.len(), col % w, col / w, zs1[col], zs1[col] - mo, zs1[col] - me);
+    }
+    // K2 — the long profiles, K3 — lake 2's Δz by distance upstream of its col
+    let dir_out = std::env::var("F135_DIR").ok();
+    for (lid, centre) in [(2u32, (4019.0f64, 2839.0f64)), (11, (1429.0, 4287.0)), (1, (3491.0, 2500.0))] {
+        let cells: Vec<usize> = (0..n).filter(|&k| lm_ext[k] == lid).collect();
+        let (cx, cy) = (cells.iter().map(|&k| (k % w) as f64).sum::<f64>() / cells.len() as f64, cells.iter().map(|&k| (k / w) as f64).sum::<f64>() / cells.len() as f64);
+        let l = lakes_ext.iter().find(|l| l.base.id == lid).expect("lake");
+        let mut sorted = cells.clone();
+        sorted.sort_unstable();
+        let ring = ring_of(&sorted);
+        let col = *ring.iter().min_by(|&&a, &&b| zs1[a].total_cmp(&zs1[b])).expect("ring");
+        // the exit: the largest-area skeleton cell of the footprint ∪ ring
+        let exit = *sorted.iter().chain(ring.iter()).max_by(|&&a, &&b| sk.area_km2[a].total_cmp(&sk.area_km2[b])).expect("exit");
+        let step = |d: usize| -> f32 { CELL_KM * if d % 2 == 1 { std::f32::consts::SQRT_2 } else { 1.0 } };
+        let mut down = vec![exit];
+        let mut c = exit;
+        let mut len = 0.0;
+        while len < 60.0 {
+            let d = sk.direction[c];
+            if d == DIR_NONE || s1.data[c] <= SEA {
+                break;
+            }
+            len += step(d as usize);
+            c = nb(c, d as usize);
+            down.push(c);
+        }
+        let mut up = Vec::new();
+        let mut c = exit;
+        let mut len = 0.0;
+        while len < 40.0 {
+            let mut best: Option<usize> = None;
+            for k in 0..8 {
+                let m = nb(c, k);
+                let dm = sk.direction[m];
+                if dm != DIR_NONE && nb(m, dm as usize) == c && best.is_none_or(|b| sk.area_km2[m] > sk.area_km2[b]) {
+                    best = Some(m);
+                }
+            }
+            match best {
+                Some(m) if sk.area_km2[m] >= 1.0 => {
+                    len += CELL_KM * if (m % w != c % w) && (m / w != c / w) { std::f32::consts::SQRT_2 } else { 1.0 };
+                    up.push(m);
+                    c = m;
+                }
+                _ => break,
+            }
+        }
+        up.reverse();
+        let path: Vec<usize> = up.into_iter().chain(down).collect();
+        let mut xs = vec![0f32; path.len()];
+        for i in 1..path.len() {
+            let (a, b) = (path[i - 1], path[i]);
+            xs[i] = xs[i - 1] + CELL_KM * if (a % w != b % w) && (a / w != b / w) { std::f32::consts::SQRT_2 } else { 1.0 };
+        }
+        let col_on_path = path.iter().position(|&p| p == col);
+        let near_col = path.iter().enumerate().min_by(|a, b| {
+            let d = |p: usize| ((p % w) as f32 - (col % w) as f32).hypot((p / w) as f32 - (col / w) as f32);
+            d(*a.1).total_cmp(&d(*b.1))
+        });
+        let (ci, cdist) = near_col.map(|(i, &p)| (i, ((p % w) as f32 - (col % w) as f32).hypot((p / w) as f32 - (col / w) as f32) * CELL_KM)).unwrap();
+        let ser = |z: &[f32]| -> Vec<(f32, f32)> { path.iter().enumerate().map(|(i, &p)| (xs[i], z[p])).collect() };
+        let lake_line: Vec<(f32, f32)> = path.iter().enumerate().map(|(i, &p)| (xs[i], if lm_ext[p] == lid { l.level_m } else { f32::NAN })).collect();
+        let max_cut = path.iter().filter(|&&p| (cn[p] - co[p]) > 0.0).map(|&p| cn[p] - co[p]).fold(0f32, f32::max);
+        eprintln!(
+            "\n   K2 · lake {lid} · centre ({cx:.0}, {cy:.0}) (F134 ({:.0}, {:.0})) · level {:.1} m · depth {:.1} m · S1 col ({}, {}) at **{:.1} m** · the path: {} cells, {:.1} km, exit ({}, {}) · col {} the path (nearest path point {cdist:.2} km away, at {:.1} km) · OFF conditioned at that point **{:.1} m** vs EXT **{:.1} m** · max (EXT − OFF) along the path {max_cut:.1} m",
+            centre.0, centre.1, l.level_m, l.depth_m, col % w, col / w, zs1[col], path.len(), xs[xs.len() - 1], exit % w, exit / w,
+            if col_on_path.is_some() { "ON" } else { "off" }, xs[ci], co[path[ci]], cn[path[ci]]
+        );
+        if let Some(d) = &dir_out {
+            let svg = profile_svg(
+                &format!("Lake {lid} — long profile, OFF vs ON extended (realigned témoin, viz state C2 /10 col)"),
+                &[
+                    ("S1 (construction input)", "#999999", "5,4", ser(&zs1)),
+                    ("OFF (conditioned)", "#d62728", "", ser(&co)),
+                    ("ON extended (conditioned)", "#1f77b4", "", ser(&cn)),
+                    ("ON lake level", "#17becf", "1,3", lake_line),
+                ],
+                Some(xs[ci]),
+                &format!("Path on the OFF skeleton: max-area donors upstream, D8 receivers downstream. Col = lowest S1 cell of the lake's outer ring, at {:.1} m (marked at the nearest path point, {cdist:.2} km off). Lake {lid}: level {:.1} m, depth {:.1} m.", zs1[col], l.level_m, l.depth_m),
+            );
+            let p = std::path::Path::new(d).join(format!("k2_profile_lake{lid}.svg"));
+            std::fs::write(&p, svg).expect("svg");
+            eprintln!("      profile: {}", p.display());
+        }
+        if lid == 2 {
+            // K3 — distance upstream of the col along the OFF drainage (D8 length to within 3 cells of the col)
+            let target: Vec<bool> = {
+                let mut t = vec![false; n];
+                let (x0, y0) = ((col % w) as i64, (col / w) as i64);
+                for dy in -3i64..=3 {
+                    for dx in -3i64..=3 {
+                        let (x, y) = (x0 + dx, y0 + dy);
+                        if x >= 0 && y >= 0 && x < w as i64 && y < h as i64 {
+                            t[y as usize * w + x as usize] = true;
+                        }
+                    }
+                }
+                t
+            };
+            let mut dist = vec![f32::NAN; n];
+            let mut done = vec![false; n];
+            let mut path = Vec::new();
+            for s in 0..n {
+                if done[s] {
+                    continue;
+                }
+                path.clear();
+                let mut c = s;
+                let base;
+                loop {
+                    if done[c] {
+                        base = dist[c];
+                        break;
+                    }
+                    if target[c] {
+                        done[c] = true;
+                        dist[c] = 0.0;
+                        base = 0.0;
+                        break;
+                    }
+                    path.push(c);
+                    let d = dir_off[c];
+                    if d == DIR_NONE || path.len() > 20000 {
+                        base = f32::NAN;
+                        break;
+                    }
+                    let (x, y) = ((c % w) as i32 + D8_DX[d as usize], (c / w) as i32 + D8_DY[d as usize]);
+                    if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
+                        base = f32::NAN;
+                        break;
+                    }
+                    c = y as usize * w + x as usize;
+                }
+                let mut acc = base;
+                for &p in path.iter().rev() {
+                    let d = dir_off[p];
+                    if acc.is_finite() && d != DIR_NONE {
+                        acc += CELL_KM * if d % 2 == 1 { std::f32::consts::SQRT_2 } else { 1.0 };
+                    } else {
+                        acc = f32::NAN;
+                    }
+                    dist[p] = acc;
+                    done[p] = true;
+                }
+            }
+            eprintln!("   K3 · lake 2 · Δz = EXT − OFF (conditioned) by OFF-drainage distance upstream of the col (cells draining through the col in OFF; footprint excluded):");
+            let mut first_bins = Vec::new();
+            for b in 0..15 {
+                let (lo, hi) = (2.0 * b as f32, 2.0 * (b + 1) as f32);
+                let sel: Vec<usize> = (0..n).filter(|&k| dist[k] >= lo && dist[k] < hi && lm_ext[k] != lid).collect();
+                let mut dz: Vec<f32> = sel.iter().map(|&k| cn[k] - co[k]).collect();
+                let mut dzc: Vec<f32> = sel.iter().filter(|&&k| mk_off.carved[k] && mk_ext.carved[k]).map(|&k| cn[k] - co[k]).collect();
+                let nc = dzc.len();
+                let (p50, p50c) = (q_(&mut dz, 0.5), q_(&mut dzc, 0.5));
+                first_bins.push(p50c);
+                eprintln!(
+                    "      {lo:>4.0}–{hi:<3.0} km · {:>7} cells · p50 Δz **{p50:>7.1} m** (p90 {:>7.1}) · carved in both {nc:>6} · their p50 Δz **{p50c:>7.1} m**",
+                    sel.len(),
+                    q_(&mut dz, 0.9)
+                );
+            }
+            let _ = first_bins;
+        }
+    }
+    eprintln!("\n==========  end Finding 135-K . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+
+fn q_(v: &mut Vec<f32>, p: f32) -> f32 {
+    if v.is_empty() {
+        return f32::NAN;
+    }
+    v.sort_by(f32::total_cmp);
+    v[((v.len() - 1) as f32 * p) as usize]
+}
+
+/// ADR Finding 135-C — what `carve_diag` lays each constructed cell from: its `who` sample's cone (the
+/// nearest-sample propagation) or another line's cone (the cross-line minimum). The cone is rebuilt in the bench
+/// and must reproduce `out` bit for bit. Populations: the realigned témoin's constructed cells, the residual of path
+/// dependence (extended, A/B), Finding 127's four dams (B2 → A_c realigned). Declared in `f135_declared.md`.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored --exact f135_c --nocapture
+#[test]
+#[ignore]
+fn f135_c() {
+    use std::collections::HashMap;
+    use ymir_core::tectonics_c1::drainage::C1_SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::production_upscale::c1_metres_to_altitude_norm;
+    use ymir_core::tectonics_c1::valley_construction::{CarveDiag, LakeBase, carve_diag, ocean_flood, skeleton_patched};
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, FlowConfig, compute_flow, flat_resolution};
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    eprintln!("\n==========  Finding 135-C . carve_diag: the nearest sample vs the cross-line minimum  ==========");
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let (w, h) = (s1.width, s1.height);
+    let n = w * h;
+    let zfield: Vec<f32> = s1.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect();
+    let off = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    // 0 = not carved, 1 = laid by its `who` sample (nearest), 2 = by another line's cone (cross-line minimum)
+    // returns (classes, the laying sample, mismatches of the rebuild)
+    let classify = |sk: &Skeleton, vc: &ValleyConstruction, out: &GridF32, carved: &[bool], dg: &CarveDiag| -> (Vec<u8>, Vec<u32>, usize) {
+        assert!(vc.wall_profile.is_none() && vc.wall_sea_floor_m.is_none() && !vc.trunk_band, "the rebuild covers the plain cone only");
+        let src: Vec<(f32, f32, f32, f32)> = sk.polylines.iter().flatten().copied().collect();
+        let tan = vc.wall_deg.to_radians().tan();
+        let geo = |s: usize, c: usize| -> f32 {
+            let (sx, sy, zf, hw) = src[s];
+            let (cx, cy) = ((c % w) as f32 + 0.5, (c / w) as f32 + 0.5);
+            let mut dx = (cx - sx).rem_euclid(w as f32);
+            if dx > w as f32 / 2.0 {
+                dx -= w as f32;
+            }
+            let mut dy = (cy - sy).rem_euclid(h as f32);
+            if dy > h as f32 / 2.0 {
+                dy -= h as f32;
+            }
+            let d = (dx * dx + dy * dy).sqrt() * sk.cell_m;
+            let u = (d - hw).max(0.0);
+            zf + tan * (u - 0.5 * 0.0)
+        };
+        let mut cls = vec![0u8; n];
+        let mut by = vec![u32::MAX; n];
+        let mut bad = 0usize;
+        for c in 0..n {
+            if !carved[c] {
+                continue;
+            }
+            let me = dg.who[c] as usize;
+            let mut v = geo(me, c);
+            let mut from = me;
+            let (x, y) = ((c % w) as i32, (c / w) as i32);
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    let nbc = (y + dy).rem_euclid(h as i32) as usize * w + (x + dx).rem_euclid(w as i32) as usize;
+                    let o = dg.who[nbc];
+                    if o != u32::MAX && dg.line_of[o as usize] != dg.line_of[me] {
+                        let vv = geo(o as usize, c);
+                        if vv < v {
+                            v = vv;
+                            from = o as usize;
+                        }
+                    }
+                }
+            }
+            if c1_metres_to_altitude_norm(v, &ss).to_bits() != out.data[c].to_bits() || v >= zfield[c] {
+                bad += 1;
+            }
+            cls[c] = if from == me { 1 } else { 2 };
+            by[c] = from as u32;
+        }
+        (cls, by, bad)
+    };
+    // 1 · the realigned témoin's constructed cells
+    let sk = skeleton(&s1, &off, &ss, DOMAIN_KM);
+    let (out, mk, dg) = carve_diag(&s1, &sk, &off, &ss);
+    let (cls, _, bad) = classify(&sk, &off, &out, &mk.carved, &dg);
+    let nc = mk.carved.iter().filter(|&&b| b).count();
+    let n1 = cls.iter().filter(|&&c| c == 1).count();
+    let n2 = cls.iter().filter(|&&c| c == 2).count();
+    let fl1 = (0..n).filter(|&c| cls[c] == 1 && mk.floor[c]).count();
+    let fl2 = (0..n).filter(|&c| cls[c] == 2 && mk.floor[c]).count();
+    let t1 = (0..n).filter(|&c| cls[c] == 1 && sk.trunk[c]).count();
+    let t2 = (0..n).filter(|&c| cls[c] == 2 && sk.trunk[c]).count();
+    eprintln!(
+        "   1 · realigned témoin (OFF): constructed cells **{nc}** · the rebuild reproduces `out` bit for bit on all but **{bad}** · laid by the NEAREST sample **{n1} ({:.2} %)** · by the CROSS-LINE minimum **{n2} ({:.2} %)** · on the floor: nearest {fl1} / cross {fl2} · on a skeleton trunk cell: nearest {t1} / cross {t2}",
+        100.0 * n1 as f64 / nc as f64,
+        100.0 * n2 as f64 / nc as f64
+    );
+    drop((out, mk, dg, cls, sk));
+    // 2 · the residual of path dependence (extended, F133-F's A/B patches)
+    let dc = C1DrainageConfig::default();
+    let nbf = |c: usize, k: usize| ((c / w) as i32 + D8_DY[k]).rem_euclid(h as i32) as usize * w + ((c % w) as i32 + D8_DX[k]).rem_euclid(w as i32) as usize;
+    let (present, target, arb_a, arb_b) = {
+        let d = c1_drainage_windowed(&s1, None, &dc, &ss, DOMAIN_KM);
+        let bf = breach_monotone(&s1, &d.flow.filled, &d.lake_map, C1_SEA_LEVEL_NORM, w, h);
+        let lake = d.lake_map.clone();
+        drop(d);
+        let spill = ocean_flood(&bf);
+        let eps = 0.01 / c1_altitude_norm_to_metres(1.0, &ss).max(1.0);
+        let present: Vec<bool> = (0..n).map(|k| lake[k] != 0 || (bf.data[k] > C1_SEA_LEVEL_NORM && spill[k] > bf.data[k] + eps)).collect();
+        let flow = compute_flow(&bf, &FlowConfig { sea_level: C1_SEA_LEVEL_NORM, flat_perturbation: dc.flat_perturbation.clone(), dinf: dc.dinf });
+        let f = flow.filled.data.clone();
+        let is_ocean: Vec<bool> = f.iter().map(|&v| v <= C1_SEA_LEVEL_NORM).collect();
+        let (needs, g) = flat_resolution(&flow.filled, &is_ocean, dc.flat_perturbation.as_ref(), w, h);
+        let target: Vec<bool> = (0..n).map(|c| needs[c] && lake[c] != 0).collect();
+        let arbitrary = |seed: u64| -> Vec<u8> {
+            (0..n)
+                .map(|c| {
+                    if !target[c] {
+                        return flow.direction[c];
+                    }
+                    let cand: Vec<u8> = (0..8u8)
+                        .filter(|&k| {
+                            let m = nbf(c, k as usize);
+                            is_ocean[m] || f[m] < f[c] || (f[m] == f[c] && needs[m] && g[m] < g[c])
+                        })
+                        .collect();
+                    if cand.is_empty() {
+                        return flow.direction[c];
+                    }
+                    let hsh = ((c as u64) ^ seed.wrapping_mul(0xD6E8_FEB8_6659_FD93)).wrapping_mul(0x9E37_79B9_7F4A_7C15).rotate_left(29);
+                    cand[(hsh % cand.len() as u64) as usize]
+                })
+                .collect()
+        };
+        let (a, b) = (arbitrary(1), arbitrary(2));
+        (present, target, a, b)
+    };
+    let pa = |_: &GridF32, _: &[u32], dd: &mut Vec<u8>| {
+        for c in 0..n {
+            if target[c] {
+                dd[c] = arb_a[c];
+            }
+        }
+    };
+    let pb = |_: &GridF32, _: &[u32], dd: &mut Vec<u8>| {
+        for c in 0..n {
+            if target[c] {
+                dd[c] = arb_b[c];
+            }
+        }
+    };
+    let ext = ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..off };
+    let ska = skeleton_patched(&s1, &ext, &ss, DOMAIN_KM, Some(&pa));
+    let (za, ma, da) = carve_diag(&s1, &ska, &ext, &ss);
+    let (ca, _, bad_a) = classify(&ska, &ext, &za, &ma.carved, &da);
+    drop((ska, da, ma));
+    let skb = skeleton_patched(&s1, &ext, &ss, DOMAIN_KM, Some(&pb));
+    let (zb, mb, db) = carve_diag(&s1, &skb, &ext, &ss);
+    let (cb, _, bad_b) = classify(&skb, &ext, &zb, &mb.carved, &db);
+    drop((skb, db, mb));
+    let ch: Vec<usize> = (0..n).filter(|&k| !present[k] && za.data[k] != zb.data[k]).collect();
+    let mut tab: HashMap<(u8, u8), usize> = HashMap::new();
+    for &c in &ch {
+        *tab.entry((ca[c], cb[c])).or_insert(0) += 1;
+    }
+    let name = |c: u8| ["not carved", "nearest", "cross-line"][c as usize];
+    eprintln!("   2 · the residual of path dependence (realigned, extended): **{}** cells outside the present lakes · rebuild mismatches A {bad_a} / B {bad_b}", ch.len());
+    let mut rows: Vec<_> = tab.into_iter().collect();
+    rows.sort_by(|a, b| b.1.cmp(&a.1));
+    for ((a, b), c) in rows {
+        eprintln!("      A {:<11} · B {:<11} **{c}** ({:.1} %)", name(a), name(b), 100.0 * c as f64 / ch.len() as f64);
+    }
+    drop((za, zb, ca, cb));
+    // 3 · Finding 127's dams (B2 → A_c, realigned)
+    let ac = ValleyConstruction { a_min_km2: 0.1, ..off };
+    let skc = skeleton(&s1, &ac, &ss, DOMAIN_KM);
+    let (oc, mc, dgc) = carve_diag(&s1, &skc, &ac, &ss);
+    let (cc, byc, badc) = classify(&skc, &ac, &oc, &mc.carved, &dgc);
+    let src: Vec<(f32, f32, f32, f32)> = skc.polylines.iter().flatten().copied().collect();
+    eprintln!("   3 · Finding 127's dams, B2 → A_c realigned (rebuild mismatches {badc}): each true col ± 1 cell");
+    for (body, (x, y)) in [(3, (3852usize, 2337usize)), (7, (4551, 3280)), (13, (2253, 4495)), (14, (1805, 4580))] {
+        let mut row = Vec::new();
+        for dy in -1i64..=1 {
+            for dx in -1i64..=1 {
+                let c = (y as i64 + dy) as usize * w + (x as i64 + dx) as usize;
+                if cc[c] == 0 {
+                    row.push("—".to_string());
+                    continue;
+                }
+                let s = byc[c] as usize;
+                let (sx, sy, zf, _) = src[s];
+                let sc = (sy.floor() as i64).rem_euclid(h as i64) as usize * w + (sx.floor() as i64).rem_euclid(w as i64) as usize;
+                row.push(format!("{} (line {} at {:.2} km², floor {:.0} m)", name(cc[c]), dgc.line_of[s], skc.area_km2[sc], zf));
+            }
+        }
+        let c0 = y * w + x;
+        eprintln!(
+            "      body {body:>2} col ({x}, {y}) · S1 {:.1} m · built {:.1} m · skeleton area at the col {:.2} km² · the 3 × 3: {}",
+            zfield[c0],
+            c1_altitude_norm_to_metres(oc.data[c0], &ss),
+            skc.area_km2[c0],
+            row.join(" | ")
+        );
+    }
+    let _ = mc;
+    eprintln!("\n==========  end Finding 135-C . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+
+/// ADR Finding 135-W2 — does `wall_sea_floor_m = 0.5` change the témoin's FIELD? The F131–F134 témoin and the viz
+/// state, built and hashed; the cells that differ, and where (coast distance). Also the construction alone
+/// (`carve(S1)`), where the clause acts.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored --exact f135_w2 --nocapture
+#[test]
+#[ignore]
+fn f135_w2() {
+    use ymir_core::tectonics_c1::bench_guard::field_hash;
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    eprintln!("\n==========  Finding 135-W2 . the témoin's wall_sea_floor_m, field by field  ==========");
+    let viz = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let tem = ValleyConstruction { wall_sea_floor_m: Some(0.5), ..viz };
+    let kn = |vc: ValleyConstruction| Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) };
+    let a = build_field_seed(kn(tem), PSEED);
+    let b = build_field_seed(kn(viz), PSEED);
+    let n = a.data.len();
+    let d: Vec<usize> = (0..n).filter(|&k| a.data[k].to_bits() != b.data[k].to_bits()).collect();
+    let mut dz: Vec<f32> = d.iter().map(|&k| (c1_altitude_norm_to_metres(a.data[k], &ss) - c1_altitude_norm_to_metres(b.data[k], &ss)).abs()).collect();
+    dz.sort_by(f32::total_cmp);
+    eprintln!(
+        "   the world: témoin {:016x} · viz state {:016x} · cells differing **{}** · |Δz| max {:.3} m",
+        field_hash(&a),
+        field_hash(&b),
+        d.len(),
+        dz.last().copied().unwrap_or(0.0)
+    );
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let sk = skeleton(&s1, &viz, &ss, DOMAIN_KM);
+    let (ca, _) = carve(&s1, &sk, &tem, &ss);
+    let (cb, _) = carve(&s1, &sk, &viz, &ss);
+    let dc = (0..n).filter(|&k| ca.data[k].to_bits() != cb.data[k].to_bits()).count();
+    let below = (0..n).filter(|&k| cb.data[k] <= SEA && s1.data[k] > SEA).count();
+    eprintln!("   the construction alone, carve(S1): cells differing **{dc}** · land cells of S1 the viz state's construction lays at or below the sea {below}");
+    eprintln!("\n==========  end Finding 135-W2 . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+
+/// ADR Finding 135-K3 (redone) / M2 — K3's first instrument targeted the S1 col of the final lake 2, which OFF's
+/// drainage does not pass (27 cells reached): the target is now the final lake 2's FOOTPRINT (distance upstream of the
+/// lake along OFF's drainage). M2: where θ's fall survives the lakes' removal — on the construction `carve(S1)`, the
+/// carved links and the under-law share without (a) the union of the final lakes, (b) the BASED set (input lakes ∪
+/// closed depressions), (c) both. Added after the first results; declared in the report as such.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored --exact f135_km2 --nocapture
+#[test]
+#[ignore]
+fn f135_km2() {
+    use common::{build_world, viz_hd_lakes_on};
+    use ymir_core::tectonics_c1::drainage::C1_SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::valley_construction::{LakeBase, ocean_flood};
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    eprintln!("\n==========  Finding 135-K3 (redone) / M2  ==========");
+    let metres = |g: &GridF32| -> Vec<f32> { g.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect() };
+    let off = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let f132 = ValleyConstruction { lake_base: Some(LakeBase::InputLakes), ..off };
+    let ext = ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..off };
+    let kn = |vc: ValleyConstruction| Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) };
+    let mut union: Vec<bool> = Vec::new();
+    let mut co = Vec::new();
+    let mut cn = Vec::new();
+    let mut dir_off = Vec::new();
+    let mut lm_ext = Vec::new();
+    for (i, vc) in [off, f132, ext].into_iter().enumerate() {
+        let wd = build_world(kn(vc), None, PSEED, None);
+        let v = viz_hd_lakes_on(&wd, kn(vc), PSEED, 45.0, 40.0);
+        if union.is_empty() {
+            union = vec![false; v.drainage.lake_map.len()];
+        }
+        for (k, &l) in v.drainage.lake_map.iter().enumerate() {
+            if l != 0 {
+                union[k] = true;
+            }
+        }
+        match i {
+            0 => {
+                co = metres(&v.conditioned);
+                dir_off = v.drainage.flow.direction.clone();
+            }
+            2 => {
+                cn = metres(&v.conditioned);
+                lm_ext = v.drainage.lake_map.clone();
+            }
+            _ => {}
+        }
+    }
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let (w, h) = (s1.width, s1.height);
+    let n = w * h;
+    let zs1 = metres(&s1);
+    let (lake, dep) = {
+        let d = c1_drainage_windowed(&s1, None, &C1DrainageConfig::default(), &ss, DOMAIN_KM);
+        let bf = breach_monotone(&s1, &d.flow.filled, &d.lake_map, C1_SEA_LEVEL_NORM, w, h);
+        let spill = ocean_flood(&bf);
+        let eps = 0.01 / c1_altitude_norm_to_metres(1.0, &ss).max(1.0);
+        let dep: Vec<bool> = (0..n).map(|k| bf.data[k] > C1_SEA_LEVEL_NORM && spill[k] > bf.data[k] + eps).collect();
+        (d.lake_map, dep)
+    };
+    let based: Vec<bool> = (0..n).map(|k| lake[k] != 0 || dep[k]).collect();
+    let sk = skeleton(&s1, &off, &ss, DOMAIN_KM);
+    let links = trunk_links(&sk);
+    let trunk10: Vec<usize> = (0..n).filter(|&k| sk.trunk[k] && sk.area_km2[k] >= 10.0).collect();
+    let lu: Vec<bool> = links.iter().map(|l| union[l.0] || union[l.1]).collect();
+    let lb: Vec<bool> = links.iter().map(|l| based[l.0] || based[l.1]).collect();
+    eprintln!(
+        "   masks · union of the final lakes {} cells · based set {} cells · links touching: union {} · based {} · both {} (of {})",
+        union.iter().filter(|&&b| b).count(),
+        based.iter().filter(|&&b| b).count(),
+        lu.iter().filter(|&&b| b).count(),
+        lb.iter().filter(|&&b| b).count(),
+        (0..links.len()).filter(|&i| lu[i] && lb[i]).count(),
+        links.len()
+    );
+    let fmt = |r: (f32, f32, f32, usize)| format!("**{:.3}** [{:.3}, {:.3}] ({})", r.0, r.1, r.2, r.3);
+    let mut carved_both = (Vec::new(), Vec::new());
+    for (label, vc) in [("OFF", off), ("ON F132", f132), ("ON EXTENDED", ext)] {
+        let skv = skeleton(&s1, &vc, &ss, DOMAIN_KM);
+        let (built, mk) = carve(&s1, &skv, &vc, &ss);
+        let zb = metres(&built);
+        drop(built);
+        let zk: Vec<f32> = links.iter().map(|l| zb[l.0]).collect();
+        let zr: Vec<f32> = links.iter().map(|l| zb[l.1]).collect();
+        let cl: Vec<bool> = links.iter().map(|l| mk.carved[l.0] && mk.carved[l.1]).collect();
+        eprintln!("   ── {label} (construction, carve(S1)) ──");
+        for (nm, keep) in [
+            ("all", &(|_: usize| true) as &dyn Fn(usize) -> bool),
+            ("without the final lakes (union)", &(|i: usize| !lu[i]) as &dyn Fn(usize) -> bool),
+            ("without the BASED set", &(|i: usize| !lb[i]) as &dyn Fn(usize) -> bool),
+            ("without both", &(|i: usize| !lu[i] && !lb[i]) as &dyn Fn(usize) -> bool),
+        ] {
+            let ta = theta_links(&links, &zk, &zr, keep);
+            let tc = theta_links(&links, &zk, &zr, &|i| keep(i) && cl[i]);
+            eprintln!("      θ {nm:<32} all trunk links {} · carved links {}", fmt(ta), fmt(tc));
+        }
+        let under: Vec<bool> = trunk10
+            .iter()
+            .map(|&k| {
+                let law = if skv.chi_m[k].is_finite() { skv.floor_m(k, vc.age_k) } else { f32::NAN };
+                !mk.carved[k] && law.is_finite() && zs1[k] < law
+            })
+            .collect();
+        let share = |sel: &dyn Fn(usize) -> bool| {
+            let t = (0..trunk10.len()).filter(|&i| sel(trunk10[i])).count();
+            let u = (0..trunk10.len()).filter(|&i| sel(trunk10[i]) && under[i]).count();
+            format!("{:.1} % ({u} / {t})", 100.0 * u as f32 / t.max(1) as f32)
+        };
+        eprintln!(
+            "      under-law share: all {} · without union {} · without BASED {} · without both {}",
+            share(&|_| true),
+            share(&|k| !union[k]),
+            share(&|k| !based[k]),
+            share(&|k| !union[k] && !based[k])
+        );
+        if label == "OFF" {
+            carved_both.0 = mk.carved.clone();
+        } else if label == "ON EXTENDED" {
+            carved_both.1 = mk.carved.clone();
+        }
+    }
+    // K3 — lake 2: distance upstream of its FOOTPRINT along OFF's drainage
+    let target: Vec<bool> = (0..n).map(|k| lm_ext[k] == 2).collect();
+    let mut dist = vec![f32::NAN; n];
+    let mut done = vec![false; n];
+    let mut path = Vec::new();
+    for s in 0..n {
+        if done[s] {
+            continue;
+        }
+        path.clear();
+        let mut c = s;
+        let base;
+        loop {
+            if done[c] {
+                base = dist[c];
+                break;
+            }
+            if target[c] {
+                done[c] = true;
+                dist[c] = 0.0;
+                base = 0.0;
+                break;
+            }
+            path.push(c);
+            let d = dir_off[c];
+            if d == DIR_NONE || path.len() > 20000 {
+                base = f32::NAN;
+                break;
+            }
+            let (x, y) = ((c % w) as i32 + D8_DX[d as usize], (c / w) as i32 + D8_DY[d as usize]);
+            if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
+                base = f32::NAN;
+                break;
+            }
+            c = y as usize * w + x as usize;
+        }
+        let mut acc = base;
+        for &p in path.iter().rev() {
+            let d = dir_off[p];
+            acc = if acc.is_finite() && d != DIR_NONE { acc + CELL_KM * if d % 2 == 1 { std::f32::consts::SQRT_2 } else { 1.0 } } else { f32::NAN };
+            dist[p] = acc;
+            done[p] = true;
+        }
+    }
+    eprintln!("   K3 · lake 2 · Δz = EXT − OFF (conditioned) by OFF-drainage distance upstream of its FOOTPRINT (the footprint excluded):");
+    for b in 0..15 {
+        let (lo, hi) = (2.0 * b as f32, 2.0 * (b + 1) as f32);
+        let sel: Vec<usize> = (0..n).filter(|&k| dist[k] > lo.max(1e-6) - 1e-6 && dist[k] > 0.0 && dist[k] >= lo && dist[k] < hi).collect();
+        let mut dz: Vec<f32> = sel.iter().map(|&k| cn[k] - co[k]).collect();
+        let mut dzc: Vec<f32> = sel.iter().filter(|&&k| carved_both.0[k] && carved_both.1[k]).map(|&k| cn[k] - co[k]).collect();
+        let nc = dzc.len();
+        eprintln!(
+            "      {lo:>4.0}–{hi:<3.0} km · {:>7} cells · p50 Δz **{:>7.1} m** (p10 {:>7.1}, p90 {:>7.1}) · carved in both {nc:>6} · their p50 Δz **{:>7.1} m**",
+            sel.len(),
+            q_(&mut dz.clone(), 0.5),
+            q_(&mut dz.clone(), 0.1),
+            q_(&mut dz, 0.9),
+            q_(&mut dzc, 0.5)
+        );
+    }
+    eprintln!("\n==========  end Finding 135-K3 / M2 . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}

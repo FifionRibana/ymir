@@ -1,0 +1,79 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.21s
+     Running tests\f126_coast.rs (target_f135\release\deps\f126_coast-78c90b7d7fab281b.exe)
+running 1 test
+   K1 · 35 items (25 input lakes, 10 closed depressions)
+   K1 · OFF: rims cut (level − lowest built ring cell) > 10 m **17** · > 100 m **13** · > 500 m **6**
+   K1 · EXTENDED: rims cut (level − lowest built ring cell) > 10 m **18** · > 100 m **12** · > 500 m **5**
+   K1 · OFF: at the col cell itself > 10 m 13 · > 100 m 11 · > 500 m 4
+   K1 · EXTENDED: at the col cell itself > 10 m 8 · > 100 m 5 · > 500 m 1
+   K1 · every item with a cut > 10 m in either state (sorted by the OFF cut):
+      input lake 2                24256 cells (  57.83 km²) · col (3867, 2817) at **1339.6 m** · built floor at the col OFF 439.7 / EXT 800.7 m · rim cut OFF **1228.5 m** / EXT **941.4 m** · at the col OFF 899.9 / EXT 538.9 m
+      input lake 14                3439 cells (   8.20 km²) · col (1895, 4573) at **1257.4 m** · built floor at the col OFF 180.6 / EXT 1238.3 m · rim cut OFF **1115.5 m** / EXT **1125.7 m** · at the col OFF 1076.9 / EXT 19.1 m
+      input lake 8                 2168 cells (   5.17 km²) · col (3601, 3908) at **1148.2 m** · built floor at the col OFF 675.7 / EXT 658.3 m · rim cut OFF **839.1 m** / EXT **871.2 m** · at the col OFF 472.5 / EXT 489.9 m
+      input lake 10              120426 cells ( 287.12 km²) · col (2760, 4156) at **1001.5 m** · built floor at the col OFF 637.2 / EXT 1001.5 m · rim cut OFF **784.6 m** / EXT **796.1 m** · at the col OFF 364.4 / EXT 0.0 m
+      input lake 3                82993 cells ( 197.87 km²) · col (4037, 3196) at **1332.3 m** · built floor at the col OFF 623.6 / EXT 1332.3 m · rim cut OFF **761.4 m** / EXT **816.6 m** · at the col OFF 708.8 / EXT 0.0 m
+      input lake 12                2241 cells (   5.34 km²) · col (1634, 4156) at **723.4 m** · built floor at the col OFF 160.1 / EXT 401.0 m · rim cut OFF **563.6 m** / EXT **322.6 m** · at the col OFF 563.4 / EXT 322.4 m
+      input lake 7                 3683 cells (   8.78 km²) · col (1901, 3629) at **412.1 m** · built floor at the col OFF 46.5 / EXT 46.5 m · rim cut OFF **365.5 m** / EXT **365.5 m** · at the col OFF 365.5 / EXT 365.5 m
+      input lake 9                 5708 cells (  13.61 km²) · col (4091, 4047) at **527.2 m** · built floor at the col OFF 177.4 / EXT 449.5 m · rim cut OFF **352.6 m** / EXT **78.2 m** · at the col OFF 349.8 / EXT 77.6 m
+      input lake 1                60332 cells ( 143.84 km²) · col (3383, 2600) at **342.6 m** · built floor at the col OFF 13.6 / EXT 13.6 m · rim cut OFF **329.1 m** / EXT **329.1 m** · at the col OFF 329.1 / EXT 329.1 m
+      input lake 13               75242 cells ( 179.39 km²) · col (1295, 4279) at **390.4 m** · built floor at the col OFF 390.4 / EXT 390.4 m · rim cut OFF **305.2 m** / EXT **306.7 m** · at the col OFF 0.0 / EXT 0.0 m
+      input lake 11               36596 cells (  87.25 km²) · col (4130, 4089) at **432.6 m** · built floor at the col OFF 173.2 / EXT 432.6 m · rim cut OFF **279.7 m** / EXT **298.5 m** · at the col OFF 259.3 / EXT 0.0 m
+      input lake 23               30630 cells (  73.03 km²) · col (3451, 5912) at **200.4 m** · built floor at the col OFF 32.1 / EXT 200.4 m · rim cut OFF **172.5 m** / EXT **172.5 m** · at the col OFF 168.3 / EXT 0.0 m
+      input lake 4                20726 cells (  49.41 km²) · col (2288, 3566) at **172.1 m** · built floor at the col OFF 172.1 / EXT 172.1 m · rim cut OFF **135.5 m** / EXT **135.5 m** · at the col OFF 0.0 / EXT 0.0 m
+      input lake 15                4796 cells (  11.43 km²) · col (3485, 4650) at **122.8 m** · built floor at the col OFF 56.2 / EXT 122.8 m · rim cut OFF **98.9 m** / EXT **98.9 m** · at the col OFF 66.6 / EXT 0.0 m
+      input lake 16               57659 cells ( 137.47 km²) · col (2268, 5035) at **245.1 m** · built floor at the col OFF 245.1 / EXT 245.1 m · rim cut OFF **96.5 m** / EXT **76.4 m** · at the col OFF 0.0 / EXT 0.0 m
+      input lake 18                9753 cells (  23.25 km²) · col (2655, 5112) at **169.7 m** · built floor at the col OFF 169.7 / EXT 169.7 m · rim cut OFF **32.9 m** / EXT **49.4 m** · at the col OFF 0.0 / EXT 0.0 m
+      input lake 21                2553 cells (   6.09 km²) · col (2577, 5230) at **163.7 m** · built floor at the col OFF 134.9 / EXT 117.8 m · rim cut OFF **28.8 m** / EXT **45.8 m** · at the col OFF 28.8 / EXT 45.8 m
+      input lake 24               16004 cells (  38.16 km²) · col (1506, 5942) at **135.6 m** · built floor at the col OFF 135.6 / EXT 135.6 m · rim cut OFF **0.0 m** / EXT **48.8 m** · at the col OFF 0.0 / EXT 0.0 m
+   K4 · bases on a lake ABSENT at the end (items < 50 % under the extended final lakes): **5** · unbased final lakes: **8** [1000001, 1000002, 1000006, 1000007, 1000010, 1000014, 1000015, 2000001]
+      EXT cut input lake 1             rim cut **329.1 m** · col (3383, 2600) · OTHER (a present, based lake)
+      EXT cut input lake 2             rim cut **941.4 m** · col (3867, 2817) · OTHER (a present, based lake)
+      EXT cut input lake 3             rim cut **816.6 m** · col (4037, 3196) · OTHER (a present, based lake)
+      EXT cut input lake 4             rim cut **135.5 m** · col (2288, 3566) · OTHER (a present, based lake)
+      EXT cut input lake 7             rim cut **365.5 m** · col (1901, 3629) · OTHER (a present, based lake)
+      EXT cut input lake 8             rim cut **871.2 m** · col (3601, 3908) · a base on an ABSENT lake
+      EXT cut input lake 9             rim cut **78.2 m** · col (4091, 4047) · OTHER (a present, based lake)
+      EXT cut input lake 10            rim cut **796.1 m** · col (2760, 4156) · OTHER (a present, based lake)
+      EXT cut input lake 11            rim cut **298.5 m** · col (4130, 4089) · OTHER (a present, based lake)
+      EXT cut input lake 12            rim cut **322.6 m** · col (1634, 4156) · a base on an ABSENT lake
+      EXT cut input lake 13            rim cut **306.7 m** · col (1295, 4279) · OTHER (a present, based lake)
+      EXT cut input lake 14            rim cut **1125.7 m** · col (1895, 4573) · a base on an ABSENT lake
+      EXT cut input lake 15            rim cut **98.9 m** · col (3485, 4650) · OTHER (a present, based lake)
+      EXT cut input lake 16            rim cut **76.4 m** · col (2268, 5035) · OTHER (a present, based lake)
+      EXT cut input lake 18            rim cut **49.4 m** · col (2655, 5112) · OTHER (a present, based lake)
+      EXT cut input lake 21            rim cut **45.8 m** · col (2577, 5230) · a base on an ABSENT lake
+      EXT cut input lake 23            rim cut **172.5 m** · col (3451, 5912) · OTHER (a present, based lake)
+      EXT cut input lake 24            rim cut **48.8 m** · col (1506, 5942) · OTHER (a present, based lake)
+      unbased final lake 1000001: 500 cells · S1 col (4797, 2995) at 3121.6 m · rim cut OFF 2967.6 / EXT **2967.6 m**
+      unbased final lake 1000002: 192815 cells · S1 col (3465, 3670) at 76.2 m · rim cut OFF 0.0 / EXT **0.0 m**
+      unbased final lake 1000006: 2 cells · S1 col (2434, 3591) at 0.6 m · rim cut OFF 0.0 / EXT **0.0 m**
+      unbased final lake 1000007: 2 cells · S1 col (2433, 3594) at 0.4 m · rim cut OFF 0.0 / EXT **0.0 m**
+      unbased final lake 1000010: 18832 cells · S1 col (2525, 3791) at 0.1 m · rim cut OFF 0.0 / EXT **0.0 m**
+      unbased final lake 1000014: 263587 cells · S1 col (1519, 5392) at 49.0 m · rim cut OFF 0.0 / EXT **1.0 m**
+      unbased final lake 1000015: 2 cells · S1 col (3627, 4741) at 0.1 m · rim cut OFF 0.0 / EXT **0.0 m**
+      unbased final lake 2000001: 500 cells · S1 col (1725, 3507) at 2141.8 m · rim cut OFF 0.0 / EXT **0.0 m**
+   K2 · lake 2 · centre (4019, 2839) (F134 (4019, 2839)) · level 1292.0 m · depth 356.3 m · S1 col (4031, 2793) at **1291.9 m** · the path: 1076 cells, 67.2 km, exit (3960, 2806) · col off the path (nearest path point 0.53 km away, at 17.9 km) · OFF conditioned at that point **154.2 m** vs EXT **1330.4 m** · max (EXT − OFF) along the path 1393.9 m
+      profile: D:/Personnel/Projects/ymir/docs/reports/c1_continental_buoyancy/f135_witness_cols\k2_profile_lake2.svg
+   K3 · lake 2 · Δz = EXT − OFF (conditioned) by OFF-drainage distance upstream of the col (cells draining through the col in OFF; footprint excluded):
+         0–2   km ·      27 cells · p50 Δz ** 1048.3 m** (p90  1082.9) · carved in both      0 · their p50 Δz **    NaN m**
+         2–4   km ·       0 cells · p50 Δz **    NaN m** (p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+         4–6   km ·       0 cells · p50 Δz **    NaN m** (p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+         6–8   km ·       0 cells · p50 Δz **    NaN m** (p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+         8–10  km ·       0 cells · p50 Δz **    NaN m** (p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+        10–12  km ·       0 cells · p50 Δz **    NaN m** (p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+        12–14  km ·       0 cells · p50 Δz **    NaN m** (p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+        14–16  km ·       0 cells · p50 Δz **    NaN m** (p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+        16–18  km ·       0 cells · p50 Δz **    NaN m** (p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+        18–20  km ·       0 cells · p50 Δz **    NaN m** (p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+        20–22  km ·       0 cells · p50 Δz **    NaN m** (p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+        22–24  km ·       0 cells · p50 Δz **    NaN m** (p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+        24–26  km ·       0 cells · p50 Δz **    NaN m** (p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+        26–28  km ·       0 cells · p50 Δz **    NaN m** (p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+        28–30  km ·       0 cells · p50 Δz **    NaN m** (p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+   K2 · lake 11 · centre (1429, 4287) (F134 (1429, 4287)) · level 362.0 m · depth 329.1 m · S1 col (1445, 4458) at **362.0 m** · the path: 971 cells, 57.1 km, exit (1400, 4454) · col off the path (nearest path point 1.69 km away, at 38.6 km) · OFF conditioned at that point **91.7 m** vs EXT **362.0 m** · max (EXT − OFF) along the path 549.3 m
+      profile: D:/Personnel/Projects/ymir/docs/reports/c1_continental_buoyancy/f135_witness_cols\k2_profile_lake11.svg
+   K2 · lake 1 · centre (3491, 2500) (F134 (3491, 2500)) · level 327.2 m · depth 181.6 m · S1 col (3407, 2586) at **327.2 m** · the path: 754 cells, 47.9 km, exit (3399, 2584) · col off the path (nearest path point 0.07 km away, at 39.6 km) · OFF conditioned at that point **16.8 m** vs EXT **327.2 m** · max (EXT − OFF) along the path 1206.1 m
+      profile: D:/Personnel/Projects/ymir/docs/reports/c1_continental_buoyancy/f135_witness_cols\k2_profile_lake1.svg
+test f135_k ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 1128.67s

@@ -1,0 +1,19 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.15s
+     Running tests\f126_coast.rs (target_f135\release\deps\f126_coast-78c90b7d7fab281b.exe)
+running 1 test
+   1 · realigned témoin (OFF): constructed cells **2697596** · the rebuild reproduces `out` bit for bit on all but **0** · laid by the NEAREST sample **2668205 (98.91 %)** · by the CROSS-LINE minimum **29391 (1.09 %)** · on the floor: nearest 323093 / cross 7791 · on a skeleton trunk cell: nearest 46096 / cross 2032
+   2 · the residual of path dependence (realigned, extended): **12509** cells outside the present lakes · rebuild mismatches A 0 / B 0
+      A nearest     · B nearest     **11218** (89.7 %)
+      A not carved  · B nearest     **779** (6.2 %)
+      A nearest     · B not carved  **437** (3.5 %)
+      A nearest     · B cross-line  **41** (0.3 %)
+      A cross-line  · B cross-line  **27** (0.2 %)
+      A cross-line  · B nearest     **7** (0.1 %)
+   3 · Finding 127's dams, B2 → A_c realigned (rebuild mismatches 0): each true col ± 1 cell
+      body  3 col (3852, 2337) · S1 1730.5 m · built 492.4 m · skeleton area at the col 0.30 km² · the 3 × 3: nearest (line 3653 at 0.28 km², floor 489 m) | cross-line (line 3653 at 0.28 km², floor 489 m) | nearest (line 3659 at 0.30 km², floor 501 m) | cross-line (line 3653 at 0.28 km², floor 480 m) | nearest (line 3659 at 0.30 km², floor 492 m) | cross-line (line 3681 at 0.30 km², floor 486 m) | nearest (line 3659 at 0.31 km², floor 483 m) | cross-line (line 3681 at 0.30 km², floor 477 m) | cross-line (line 3322 at 0.01 km², floor 271 m)
+      body  7 col (4551, 3280) · S1 1818.5 m · built 623.5 m · skeleton area at the col 0.38 km² · the 3 × 3: nearest (line 12394 at 69.73 km², floor 624 m) | nearest (line 12394 at 69.73 km², floor 624 m) | cross-line (line 12394 at 69.73 km², floor 624 m) | nearest (line 12394 at 69.73 km², floor 624 m) | cross-line (line 12394 at 69.73 km², floor 624 m) | cross-line (line 12394 at 69.73 km², floor 624 m) | cross-line (line 12394 at 69.74 km², floor 623 m) | cross-line (line 12394 at 69.73 km², floor 624 m) | cross-line (line 15730 at 0.38 km², floor 730 m)
+      body 13 col (2253, 4495) · S1 1620.1 m · built 538.3 m · skeleton area at the col 0.18 km² · the 3 × 3: cross-line (line 54751 at 0.35 km², floor 539 m) | nearest (line 54751 at 0.37 km², floor 537 m) | nearest (line 54751 at 0.00 km², floor 532 m) | nearest (line 55150 at 0.33 km², floor 542 m) | cross-line (line 54751 at 0.37 km², floor 529 m) | nearest (line 54751 at 0.37 km², floor 529 m) | cross-line (line 55412 at 0.50 km², floor 499 m) | nearest (line 55150 at 0.33 km², floor 534 m) | cross-line (line 54751 at 0.00 km², floor 524 m)
+      body 14 col (1805, 4580) · S1 1017.9 m · built 119.5 m · skeleton area at the col 82.51 km² · the 3 × 3: cross-line (line 53544 at 82.51 km², floor 119 m) | cross-line (line 53544 at 82.51 km², floor 119 m) | nearest (line 53544 at 82.50 km², floor 120 m) | cross-line (line 53544 at 82.51 km², floor 119 m) | nearest (line 53544 at 82.51 km², floor 119 m) | cross-line (line 53544 at 82.51 km², floor 119 m) | nearest (line 53544 at 82.51 km², floor 119 m) | cross-line (line 53544 at 82.51 km², floor 119 m) | cross-line (line 53544 at 82.51 km², floor 119 m)
+test f135_c ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 882.10s

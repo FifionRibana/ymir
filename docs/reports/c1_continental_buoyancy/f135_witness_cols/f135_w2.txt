@@ -1,0 +1,8 @@
+...
+    Finished `release` profile [optimized] target(s) in 55.22s
+     Running tests\f126_coast.rs (target_f135\release\deps\f126_coast-78c90b7d7fab281b.exe)
+running 1 test
+   the world: témoin a8d2d538d692c2f0 · viz state a8d2d538d692c2f0 · cells differing **0** · |Δz| max 0.000 m
+   the construction alone, carve(S1): cells differing **0** · land cells of S1 the viz state's construction lays at or below the sea 0
+test f135_w2 ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 48 filtered out; finished in 598.79s

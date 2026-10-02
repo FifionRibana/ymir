@@ -411,6 +411,12 @@ fn bench_cfg(
     cfg
 }
 
+/// ADR Finding 135-W1 -- the benches' upscale configuration for `k`, exposed so a bench can diff it
+/// field by field against another state's (no floor, no A1 exemption: the témoin's).
+pub fn bench_upscale_cfg(k: Knobs) -> ymir_core::terrain::upscale::FbmUpscaleConfig {
+    bench_cfg(k, None, None)
+}
+
 /// ADR Finding 123 -- the eroded product's cache digest for `k` at `pseed`, computed exactly as the
 /// viz computes its own (`tectonic_key` → `eroded_key_full`), with the benches' tectonic run.
 pub fn bench_eroded_digest(k: Knobs, pseed: u64) -> String {

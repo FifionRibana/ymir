@@ -273,6 +273,9 @@ struct WorkspaceState {
     /// ADR Finding 132-P4 -- "Lac = niveau de base": a present lake (the construction input's pre-drainage
     /// lakes, `LakeBase::InputLakes`) stops χ at its shore. Off = `None`, the guarded digests.
     valley_lake_base: bool,
+    /// ADR Finding 135-W4 -- "Mur ↔ mer" (Finding 126-B's clause): no wall cell laid below sea + 0.5 m
+    /// (`wall_sea_floor_m = Some(0.5)`). Off = `None`, the guarded digests. Gated candidate, nothing promoted.
+    valley_wall_sea: bool,
     /// EXPERIMENTAL (ADR 0001, Finding 11): MFD incision — dendritic valleys, no solver.
     mfd: bool,
     mfd_p: f32,
@@ -336,6 +339,15 @@ struct WorkspaceState {
     overlays: TectonicOverlays,
     /// Overlay settings the cached `texture` was built with (rebuild on change).
     tex_overlays: TectonicOverlays,
+    /// ADR Finding 135-V -- how the Relief layer is drawn: 0 hypsometry (the shipped layer), 1 hillshade,
+    /// 2 the signed difference against `diff_ref`. A VIEW: it reads the world and never writes it.
+    relief_view: usize,
+    /// ADR Finding 135-V -- the reference world of the difference view, stored by the author.
+    diff_ref: Option<Arc<HdResult>>,
+    /// ADR Finding 135-V -- the difference's saturation, an index into `DIFF_SAT_M`.
+    diff_sat: usize,
+    /// ADR Finding 135-V -- (cells with |Δz| ≥ the saturation, cells with Δz ≠ 0) of the last difference texture.
+    diff_stats: Option<(usize, usize)>,
     hover: Option<CellInspection>,
     hover_xy: Option<(usize, usize)>,
     /// Active map tool: SELECT (microscope — hover/click inspects an entity) or PAN
@@ -411,6 +423,7 @@ impl Default for WorkspaceState {
             valley_age: 1,      // k × 1
             valley_width_gamma: 0, // ADR Finding 124-5 -- γ 0: the width ignores the age
             valley_lake_base: false, // ADR Finding 132-P4 -- off ships
+            valley_wall_sea: false,  // ADR Finding 135-W4 -- off ships
             cross_rill_d: 0.40,
             mfd: true,
             mfd_p: 2.0,
@@ -438,6 +451,10 @@ impl Default for WorkspaceState {
             tex_overlay: false,
             overlays: TectonicOverlays::default(),
             tex_overlays: TectonicOverlays::default(),
+            relief_view: 0, // ADR Finding 135-V -- the shipped layer
+            diff_ref: None,
+            diff_sat: 2,
+            diff_stats: None,
             hover: None,
             hover_xy: None,
             map_pan: [0.5, 0.5],
@@ -971,6 +988,8 @@ fn left_panel(
                                         // ADR Finding 133 -- the extended variant (basin lakes are present lakes)
                                         ymir_core::tectonics_c1::valley_construction::LakeBase::InputLakesAndBasins,
                                     ),
+                                    // ADR Finding 135-W4 -- mur ↔ mer, off stays `None` (the guarded digest)
+                                    wall_sea_floor_m: ws.valley_wall_sea.then_some(0.5),
                                     ..vc
                                 })
                             },
@@ -1242,6 +1261,18 @@ fn left_panel(
                                          n'est pas construit.\n\n\
                                          ⚠ Aucun banc ne garde cet état : le badge dira « non gardé ». \
                                          RIEN N'EST PROMU.",
+                                    );
+                                    ui.checkbox(
+                                        &mut ws.valley_wall_sea,
+                                        egui::RichText::new("Mur ↔ mer (F126-B)").color(DIM2).size(11.0),
+                                    )
+                                    .on_hover_text(
+                                        "ADR Findings 126-B / 135-W4 — la clause « mur ↔ mer » : aucune cellule de \
+                                         MUR de vallée n'est posée sous la mer + 0,5 m (le fond, lui, peut \
+                                         l'être). Elle portait tous les bancs des F127–F134 ; le viz ne la posait \
+                                         jamais.\n\n\
+                                         Candidate gatée. Aucun banc ne garde cet état : le badge dira « non \
+                                         gardé ». RIEN N'EST PROMU.",
                                     );
                                 }
                                 ui.checkbox(
@@ -2474,11 +2505,18 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         let overlay = ws.river_overlay;
         let overlays = ws.overlays;
         let t_tex = std::time::Instant::now();
-        let img = {
+        let (img, stats) = {
             let hd = ws.current.as_ref().unwrap();
             let rm = ws.river_map.as_ref().unwrap();
-            layer_color_image(hd, layer, rm, overlay, overlays)
+            // ADR Finding 135-V -- the relief view
+            let relief = match (ws.relief_view, &ws.diff_ref) {
+                (1, _) => ReliefView::Shade,
+                (2, Some(r)) => ReliefView::Diff(r, DIFF_SAT_M[ws.diff_sat.min(2)]),
+                _ => ReliefView::Hypso,
+            };
+            layer_color_image(hd, layer, rm, overlay, overlays, relief)
         };
+        ws.diff_stats = stats;
         ws.texture = Some(ui.ctx().load_texture("hd_map", img, egui::TextureOptions::NEAREST));
         ws.tex_layer = Some(ws.layer);
         ws.tex_overlay = ws.river_overlay;
@@ -2576,7 +2614,7 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     );
 
     overlay_chip(ui, vp, ws.layer);
-    legend_box(ui, vp, ws.layer);
+    legend_box(ui, vp, ws.layer, (ws.relief_view, ws.diff_sat, ws.diff_stats, ws.diff_ref.is_some()));
 
     // Hover -> cell -> inspect (only when the cursor is over the map, not the letterbox).
     ws.hover = None;
@@ -2771,7 +2809,7 @@ fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) 
     );
     let mut child = ui.new_child(
         egui::UiBuilder::new()
-            .max_rect(egui::Rect::from_min_size(bar.min, egui::vec2(360.0, 34.0))),
+            .max_rect(egui::Rect::from_min_size(bar.min, egui::vec2(520.0, 34.0))),
     );
     child.horizontal(|ui| {
         egui::Frame::default()
@@ -2804,6 +2842,59 @@ fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) 
                         .on_hover_text(
                             "Marqueurs sur la carte (volcans : ▲ rouge actif / gris éteint)",
                         );
+                    // ADR Finding 135-V -- the relief view (a view of the world, never the world)
+                    if ws.layer == HdLayer::Relief && ws.current.is_some() {
+                        ui.separator();
+                        let name = ["Hypsométrie", "Ombrage", "Différence"][ws.relief_view.min(2)];
+                        ui.menu_button(egui::RichText::new(format!("🗻 {name} ▾")).size(11.0), |ui| {
+                            ui.set_min_width(280.0);
+                            let views = [
+                                ("Hypsométrie", "La couche livrée : l'altitude en couleur."),
+                                (
+                                    "Ombrage",
+                                    "Ombrage du relief (lumière azimut 315°, hauteur 45°) calculé sur le \
+                                     champ conditionné en mètres, multiplié à la couleur hypsométrique.",
+                                ),
+                                (
+                                    "Différence",
+                                    "Monde courant − référence, en mètres, sur le champ conditionné : \
+                                     rouge = le courant est plus haut, bleu = plus bas, blanc = égal. \
+                                     Échelle linéaire, SATURÉE au-delà de ± la valeur choisie.",
+                                ),
+                            ];
+                            for (i, (lbl, hint)) in views.iter().enumerate() {
+                                if ui.radio(ws.relief_view == i, *lbl).on_hover_text(*hint).clicked() {
+                                    ws.relief_view = i;
+                                    ws.texture = None;
+                                }
+                            }
+                            ui.separator();
+                            if ui
+                                .button("Mémoriser ce monde comme référence")
+                                .on_hover_text(
+                                    "La vue Différence affiche (monde courant − référence). Mémorisez un \
+                                     état (p. ex. le toggle OFF), puis générez l'autre.",
+                                )
+                                .clicked()
+                            {
+                                ws.diff_ref = ws.current.clone();
+                                ws.texture = None;
+                            }
+                            let txt = match (&ws.diff_ref, &ws.current) {
+                                (Some(r), Some(c)) if Arc::ptr_eq(r, c) => {
+                                    "Référence = le monde courant (Δz ≡ 0)".to_string()
+                                }
+                                (Some(r), _) => format!("Référence mémorisée · {}", guard_short(&r.bench_guard)),
+                                (None, _) => "Aucune référence mémorisée".to_string(),
+                            };
+                            ui.label(egui::RichText::new(txt).size(10.5).color(DIM));
+                            ui.label(egui::RichText::new("Saturation").size(10.5).color(DIM2));
+                            if let Some(i) = seg_row(ui, &["±10 m", "±100 m", "±1000 m"], ws.diff_sat) {
+                                ws.diff_sat = i;
+                                ws.texture = None;
+                            }
+                        });
+                    }
                     // ── Microscope tectonique — un MENU compact (toggles empilés) pour
                     //    superposer les couches causales sur la vue courante. Disponible
                     //    quand les labels ont été dérivés (run HD ; pas l'aperçu coarse).
@@ -2920,7 +3011,14 @@ fn overlay_chip(ui: &mut egui::Ui, rect: egui::Rect, layer: HdLayer) {
     p.galley(egui::pos2(pos.x + 13.0, pos.y + 22.0), dg, DIM);
 }
 
-fn legend_box(ui: &mut egui::Ui, rect: egui::Rect, layer: HdLayer) {
+/// `relief` = (the relief view, the saturation index, the difference's stats, a reference is stored), Finding 135-V.
+fn legend_box(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    layer: HdLayer,
+    relief: (usize, usize, Option<(usize, usize)>, bool),
+) {
+    let diff_view = layer == HdLayer::Relief && relief.0 == 2 && relief.3;
     let p = ui.painter_at(rect);
     let items: Vec<(C, &str, &str)> = match layer {
         HdLayer::Relief => vec![], // scale below
@@ -2946,6 +3044,8 @@ fn legend_box(ui: &mut egui::Ui, rect: egui::Rect, layer: HdLayer) {
         HdLayer::Biomes => (0..10).map(|i| (biome_hex(i), biome_fr(i), "")).collect(),
     };
     let title = match layer {
+        HdLayer::Relief if diff_view => "DIFFÉRENCE COURANT − RÉFÉRENCE (M)",
+        HdLayer::Relief if relief.0 == 1 => "RELIEF — OMBRAGE (AZ 315°, H 45°)",
         HdLayer::Relief => "RELIEF — HYPSOMÉTRIE",
         HdLayer::Drainage => "DRAINAGE — NAVIGABILITÉ",
         HdLayer::Precipitation => "PRÉCIPITATION (MM/AN)",
@@ -2953,7 +3053,7 @@ fn legend_box(ui: &mut egui::Ui, rect: egui::Rect, layer: HdLayer) {
         HdLayer::Biomes => "BIOMES",
     };
     let row_h = 16.0;
-    let rows = if items.is_empty() { 2.0 } else { items.len() as f32 };
+    let rows = if diff_view { 3.0 } else if items.is_empty() { 2.0 } else { items.len() as f32 };
     let bh = 26.0 + rows * row_h;
     let bw = 210.0;
     let bpos = egui::pos2(rect.left() + 12.0, rect.bottom() - bh - 12.0);
@@ -2966,7 +3066,49 @@ fn legend_box(ui: &mut egui::Ui, rect: egui::Rect, layer: HdLayer) {
         egui::FontId::proportional(9.5),
         C::from_rgb(0x7a, 0x7a, 0x7a),
     );
-    if layer == HdLayer::Relief {
+    if diff_view {
+        // ADR Finding 135-V -- the signed scale, its saturation, the saturated cells
+        let sat = DIFF_SAT_M[relief.1.min(2)];
+        let gy = bpos.y + 26.0;
+        let gx0 = bpos.x + 12.0;
+        let gw = bw - 24.0;
+        let steps = 40;
+        for s in 0..steps {
+            let t = 2.0 * s as f32 / (steps - 1) as f32 - 1.0;
+            let [r, g, b] = diff_rgb(t);
+            p.rect_filled(
+                egui::Rect::from_min_size(
+                    egui::pos2(gx0 + gw * (t + 1.0) / 2.0, gy),
+                    egui::vec2(gw / steps as f32 + 1.0, 9.0),
+                ),
+                0.0,
+                C::from_rgb(r, g, b),
+            );
+        }
+        for (f, lbl) in [(0.0, format!("−{sat:.0}")), (0.5, "0".to_string()), (1.0, format!("+{sat:.0}"))] {
+            p.text(
+                egui::pos2(gx0 + gw * f, gy + 12.0),
+                if f == 0.0 {
+                    egui::Align2::LEFT_TOP
+                } else if f == 1.0 {
+                    egui::Align2::RIGHT_TOP
+                } else {
+                    egui::Align2::CENTER_TOP
+                },
+                lbl,
+                egui::FontId::proportional(8.0),
+                DIM,
+            );
+        }
+        let (ns, nd) = relief.2.unwrap_or((0, 0));
+        p.text(
+            egui::pos2(gx0, gy + 26.0),
+            egui::Align2::LEFT_TOP,
+            format!("saturé au-delà de ±{sat:.0} m · {ns} cellules saturées / {nd} ≠ 0"),
+            egui::FontId::proportional(8.0),
+            DIM,
+        );
+    } else if layer == HdLayer::Relief {
         // Gradient scale.
         let gy = bpos.y + 26.0;
         let gx0 = bpos.x + 12.0;
@@ -3275,19 +3417,117 @@ fn blend_tectonic_overlays(rgba: &mut [u8], hd: &HdResult, ov: TectonicOverlays)
     }
 }
 
+/// ADR Finding 135-V -- how the Relief layer is drawn. A VIEW: it reads the world and never writes it.
+#[derive(Clone, Copy)]
+enum ReliefView<'a> {
+    /// The shipped hypsometric layer.
+    Hypso,
+    /// The hypsometric colour times a hillshade.
+    Shade,
+    /// The current world minus a reference world (m), saturated at the given magnitude.
+    Diff(&'a HdResult, f32),
+}
+
+/// ADR Finding 135-V -- the difference view's saturations (m).
+const DIFF_SAT_M: [f32; 3] = [10.0, 100.0, 1000.0];
+
+/// ADR Finding 135-V -- the signed palette, `t` in [−1, 1]: blue (lower) → white → red (higher).
+fn diff_rgb(t: f32) -> [u8; 3] {
+    let t = t.clamp(-1.0, 1.0);
+    if t >= 0.0 {
+        let v = (255.0 * (1.0 - t)) as u8;
+        [255, v, v]
+    } else {
+        let v = (255.0 * (1.0 + t)) as u8;
+        [v, v, 255]
+    }
+}
+
+/// A short label for a guard verdict (the difference view's reference line).
+fn guard_short(g: &ymir_core::tectonics_c1::bench_guard::GuardStatus) -> String {
+    use ymir_core::tectonics_c1::bench_guard::GuardStatus;
+    match g {
+        GuardStatus::Match { label } => format!("= banc ({label})"),
+        GuardStatus::Mismatch { label, .. } => format!("≠ banc ({label})"),
+        GuardStatus::NoReference { viz } => format!("non gardé (champ {viz})"),
+    }
+}
+
+/// ADR Finding 135-V -- a Lambertian hillshade of the CONDITIONED field in metres: light from azimuth 315°
+/// (north-west), altitude 45°, normalised so that flat ground reads 1. The field is stored south-first, so data
+/// `y + 1` is north.
+fn hillshade(hd: &HdResult) -> Vec<f32> {
+    use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+    let ss = SteinSteinParams::default();
+    let (w, h) = (hd.width, hd.height);
+    let z: Vec<f32> = hd.eroded.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect();
+    let cell = (hd.km_per_cell * 1000.0).max(1e-3);
+    let (az, alt) = (315f32.to_radians(), 45f32.to_radians());
+    let l = [alt.cos() * az.sin(), alt.cos() * az.cos(), alt.sin()];
+    let mut s = vec![1.0f32; w * h];
+    for y in 0..h {
+        let (ym, yp) = (y.saturating_sub(1), (y + 1).min(h - 1));
+        for x in 0..w {
+            let (xm, xp) = (x.saturating_sub(1), (x + 1).min(w - 1));
+            let dzdx = (z[y * w + xp] - z[y * w + xm]) / (cell * (xp - xm).max(1) as f32);
+            let dzdy = (z[yp * w + x] - z[ym * w + x]) / (cell * (yp - ym).max(1) as f32);
+            let nn = (dzdx * dzdx + dzdy * dzdy + 1.0).sqrt();
+            s[y * w + x] = ((-dzdx * l[0] - dzdy * l[1] + l[2]) / nn).max(0.0) / l[2];
+        }
+    }
+    s
+}
+
 // ── Layer → RGBA image (canonical palettes) ──────────────────────────────
+/// The second value is the difference view's (saturated cells, cells ≠ 0), `None` for every other view.
 fn layer_color_image(
     hd: &HdResult,
     layer: HdLayer,
     river_map: &RiverCellMap,
     overlay: bool,
     tectonic: TectonicOverlays,
-) -> egui::ColorImage {
+    relief: ReliefView<'_>,
+) -> (egui::ColorImage, Option<(usize, usize)>) {
+    use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
     let (w, h) = (hd.width, hd.height);
     let mut rgba = vec![0u8; w * h * 4];
+    // ADR Finding 135-V -- the relief view's inputs (a reference of another size falls back to hypsometry)
+    let relief = match relief {
+        ReliefView::Diff(r, _) if (r.width, r.height) != (w, h) => ReliefView::Hypso,
+        v => v,
+    };
+    let shade = match (layer, relief) {
+        (HdLayer::Relief, ReliefView::Shade | ReliefView::Diff(..)) => Some(hillshade(hd)),
+        _ => None,
+    };
+    let ss = SteinSteinParams::default();
+    let (mut n_sat, mut n_diff) = (0usize, 0usize);
     for k in 0..w * h {
         let c = match layer {
-            HdLayer::Relief => relief_color(hd.eroded.data[k]),
+            HdLayer::Relief => match relief {
+                ReliefView::Hypso => relief_color(hd.eroded.data[k]),
+                ReliefView::Shade => {
+                    let [r, g, b] = relief_color(hd.eroded.data[k]);
+                    let f = (0.25 + 0.75 * shade.as_ref().map_or(1.0, |s| s[k])).min(1.35);
+                    [(r as f32 * f).min(255.0) as u8, (g as f32 * f).min(255.0) as u8, (b as f32 * f).min(255.0) as u8]
+                }
+                ReliefView::Diff(reference, sat) => {
+                    let d = c1_altitude_norm_to_metres(hd.eroded.data[k], &ss)
+                        - c1_altitude_norm_to_metres(reference.eroded.data[k], &ss);
+                    if d != 0.0 {
+                        n_diff += 1;
+                    }
+                    if d.abs() >= sat {
+                        n_sat += 1;
+                    }
+                    let [r, g, b] = diff_rgb(d / sat);
+                    // a faint shade of the current world, for orientation only
+                    let f = (0.8 + 0.2 * shade.as_ref().map_or(1.0, |s| s[k])).min(1.0);
+                    [(r as f32 * f) as u8, (g as f32 * f) as u8, (b as f32 * f) as u8]
+                }
+            },
             HdLayer::Precipitation => precip_color(precip_mm_per_year(hd.precipitation.data[k])),
             HdLayer::Temperature => temp_color(hd.temperature.data[k]),
             HdLayer::Biomes => {
@@ -3311,7 +3551,8 @@ fn layer_color_image(
     // shows NORTH-UP, so mirror the texture rows here. The DATA, the export and the
     // inspector's cell lookup all stay south-first; only the pixels are flipped.
     flip_rows_rgba(&mut rgba, w, h);
-    egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba)
+    let stats = matches!((layer, relief), (HdLayer::Relief, ReliefView::Diff(..))).then_some((n_sat, n_diff));
+    (egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba), stats)
 }
 
 /// Vertically mirror a row-major RGBA buffer in place: display row `j` ↔ data row
@@ -6596,6 +6837,56 @@ mod f133v_bench {
             let active = r.volcanoes.iter().filter(|c| c.active).count();
             eprintln!("      active craters: {active}");
         }
+    }
+
+    /// ADR Finding 135-V — the layers' own buffers (the SAME `layer_color_image` the viz draws), cropped on lake 2:
+    /// the difference ON extended − OFF at ±1000 m and ±100 m, the hillshade of OFF and of ON. NOT a screen grab.
+    /// The worlds' field hashes are printed: a view must not change them.
+    ///
+    /// Run: F135_DIR=<dir> cargo test -p ymir-viz --release f135v_relief_capture -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn f135v_relief_capture() {
+        use ymir_core::tectonics_c1::bench_guard::field_hash;
+        let dir = std::env::var("F135_DIR").expect("F135_DIR");
+        let base = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+        let off = run(base);
+        let on = run(ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..base });
+        let (h0, h1) = (field_hash(&off.eroded), field_hash(&on.eroded));
+        let (w, h) = (on.width, on.height);
+        let (cx, cy) = (4019usize, h - 1 - 2839usize); // lake 2, data (4019, 2839), shown north-up
+        let half = 307usize;
+        let save = |img: &egui::ColorImage, name: &str| {
+            let side = (2 * half + 1) as u32;
+            let mut out = image::RgbaImage::new(side, side);
+            for yy in 0..side as usize {
+                for xx in 0..side as usize {
+                    let (x, y) = (cx + xx - half, cy + yy - half);
+                    let c = img.pixels[y * w + x];
+                    out.put_pixel(xx as u32, yy as u32, image::Rgba([c.r(), c.g(), c.b(), 255]));
+                }
+            }
+            let p = std::path::Path::new(&dir).join(name);
+            out.save(&p).expect("png");
+            eprintln!("   wrote {}", p.display());
+        };
+        let rm_off = RiverCellMap::from_drainage(&off.drainage);
+        let rm_on = RiverCellMap::from_drainage(&on.drainage);
+        let ov = TectonicOverlays::default();
+        for (sat, name) in [(1000.0f32, "v_diff_lake2_1000m.png"), (100.0, "v_diff_lake2_100m.png")] {
+            let (img, st) = layer_color_image(&on, HdLayer::Relief, &rm_on, false, ov, ReliefView::Diff(&off, sat));
+            eprintln!("   difference ON − OFF at ±{sat} m: (saturated, ≠ 0) = {st:?}");
+            save(&img, name);
+        }
+        let (img, _) = layer_color_image(&off, HdLayer::Relief, &rm_off, false, ov, ReliefView::Shade);
+        save(&img, "v_shade_lake2_OFF.png");
+        let (img, _) = layer_color_image(&on, HdLayer::Relief, &rm_on, false, ov, ReliefView::Shade);
+        save(&img, "v_shade_lake2_ON.png");
+        let (img, _) = layer_color_image(&off, HdLayer::Relief, &rm_off, false, ov, ReliefView::Hypso);
+        save(&img, "v_hypso_lake2_OFF.png");
+        assert_eq!(field_hash(&off.eroded), h0, "a view wrote the world");
+        assert_eq!(field_hash(&on.eroded), h1, "a view wrote the world");
+        eprintln!("   field hashes unchanged by the views: OFF {h0:016x} · ON {h1:016x} · guard OFF {:?}", off.bench_guard);
     }
 
     /// ADR Finding 134, item 0.3 — the viz path's lakes, lake by lake, OFF and ON (extended lake base),

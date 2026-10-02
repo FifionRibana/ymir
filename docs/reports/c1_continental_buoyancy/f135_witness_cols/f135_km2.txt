@@ -1,0 +1,41 @@
+...
+    Finished `release` profile [optimized] target(s) in 43.75s
+     Running tests\f126_coast.rs (target_f135\release\deps\f126_coast-78c90b7d7fab281b.exe)
+running 1 test
+   masks · union of the final lakes 1873840 cells · based set 1683143 cells · links touching: union 28507 · based 31593 · both 26418 (of 70720)
+   ── OFF (construction, carve(S1)) ──
+      θ all                              all trunk links **0.338** [0.331, 0.344] (65802) · carved links **0.493** [0.492, 0.495] (46885)
+      θ without the final lakes (union)  all trunk links **0.467** [0.462, 0.470] (41306) · carved links **0.494** [0.492, 0.496] (36233)
+      θ without the BASED set            all trunk links **0.472** [0.467, 0.476] (38436) · carved links **0.493** [0.491, 0.495] (34264)
+      θ without both                     all trunk links **0.477** [0.473, 0.481] (36356) · carved links **0.494** [0.492, 0.496] (32975)
+      under-law share: all 32.1 % (22775 / 70904) · without union 12.4 % (5299 / 42580) · without BASED 10.9 % (4308 / 39405) · without both 9.4 % (3512 / 37327)
+   ── ON F132 (construction, carve(S1)) ──
+      θ all                              all trunk links **0.243** [0.235, 0.251] (59600) · carved links **0.436** [0.427, 0.445] (34786)
+      θ without the final lakes (union)  all trunk links **0.386** [0.377, 0.395] (40024) · carved links **0.433** [0.422, 0.441] (33495)
+      θ without the BASED set            all trunk links **0.471** [0.466, 0.476] (38399) · carved links **0.494** [0.492, 0.496] (34273)
+      θ without both                     all trunk links **0.476** [0.473, 0.480] (36319) · carved links **0.494** [0.492, 0.496] (32982)
+      under-law share: all 49.6 % (35146 / 70904) · without union 19.1 % (8115 / 42580) · without BASED 10.9 % (4294 / 39405) · without both 9.4 % (3500 / 37327)
+   ── ON EXTENDED (construction, carve(S1)) ──
+      θ all                              all trunk links **0.247** [0.239, 0.254] (59578) · carved links **0.439** [0.431, 0.446] (37473)
+      θ without the final lakes (union)  all trunk links **0.395** [0.386, 0.405] (40033) · carved links **0.435** [0.426, 0.444] (35450)
+      θ without the BASED set            all trunk links **0.489** [0.486, 0.491] (38394) · carved links **0.493** [0.491, 0.495] (36943)
+      θ without both                     all trunk links **0.489** [0.487, 0.492] (36323) · carved links **0.494** [0.492, 0.496] (34928)
+      under-law share: all 45.6 % (32348 / 70904) · without union 14.3 % (6095 / 42580) · without BASED 3.9 % (1546 / 39405) · without both 4.0 % (1493 / 37327)
+   K3 · lake 2 · Δz = EXT − OFF (conditioned) by OFF-drainage distance upstream of its FOOTPRINT (the footprint excluded):
+         0–2   km ·    8208 cells · p50 Δz **  673.7 m** (p10     0.0, p90  1093.7) · carved in both     39 · their p50 Δz ** 1183.2 m**
+         2–4   km ·    7068 cells · p50 Δz **  238.8 m** (p10     0.0, p90  1128.6) · carved in both     42 · their p50 Δz ** 1181.6 m**
+         4–6   km ·    8822 cells · p50 Δz **  134.0 m** (p10     0.0, p90  1170.5) · carved in both    616 · their p50 Δz ** 1171.2 m**
+         6–8   km ·    7451 cells · p50 Δz **  260.0 m** (p10     0.0, p90  1171.2) · carved in both    682 · their p50 Δz ** 1171.2 m**
+         8–10  km ·    4684 cells · p50 Δz **  923.1 m** (p10     0.0, p90  1171.2) · carved in both   1221 · their p50 Δz ** 1171.2 m**
+        10–12  km ·    6298 cells · p50 Δz ** 1056.2 m** (p10   565.8, p90  1171.3) · carved in both   2090 · their p50 Δz ** 1171.2 m**
+        12–14  km ·   12295 cells · p50 Δz **  959.2 m** (p10   246.4, p90  1190.5) · carved in both   1548 · their p50 Δz ** 1171.2 m**
+        14–16  km ·   14101 cells · p50 Δz **  553.6 m** (p10    79.8, p90  1171.2) · carved in both   1770 · their p50 Δz ** 1171.2 m**
+        16–18  km ·   13555 cells · p50 Δz **  574.0 m** (p10     0.0, p90  1386.7) · carved in both   2421 · their p50 Δz ** 1200.1 m**
+        18–20  km ·   15297 cells · p50 Δz **  360.1 m** (p10     0.0, p90  1084.4) · carved in both   1243 · their p50 Δz **  249.4 m**
+        20–22  km ·    6521 cells · p50 Δz **    0.0 m** (p10     0.0, p90   208.2) · carved in both    210 · their p50 Δz **  117.6 m**
+        22–24  km ·    1159 cells · p50 Δz **    0.0 m** (p10     0.0, p90     0.0) · carved in both      0 · their p50 Δz **    NaN m**
+        24–26  km ·      27 cells · p50 Δz **    0.0 m** (p10     0.0, p90     0.0) · carved in both      0 · their p50 Δz **    NaN m**
+        26–28  km ·       0 cells · p50 Δz **    NaN m** (p10     NaN, p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+        28–30  km ·       0 cells · p50 Δz **    NaN m** (p10     NaN, p90     NaN) · carved in both      0 · their p50 Δz **    NaN m**
+test f135_km2 ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 49 filtered out; finished in 1366.79s

@@ -1,0 +1,11 @@
+...
+    Finished `release` profile [optimized] target(s) in 1m 26s
+     Running tests\f126_coast.rs (target_f135\release\deps\f126_coast-78c90b7d7fab281b.exe)
+running 1 test
+   UPSCALE CONFIG: **1 difference(s)**
+      upscale.valley_construction.wall_sea_floor_m: témoin 0.5 · viz null
+   eroded digest: témoin f57954eebde57b00 · viz state cf1d4539c7afe588 (the guard's C2 /10 col: cf1d4539c7afe588)
+   DRAINAGE CONFIG (the benches' dcfg() vs run_hd's): **1 difference(s)**
+      drainage.infiltration: témoin null · viz {"enabled":true,"f_cap":0.699999988079071,"k_ref_m_per_day":0.0027000000700354576}
+test f135_w1 ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 0.00s

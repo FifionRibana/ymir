@@ -1,0 +1,9 @@
+    Finished `release` profile [optimized] target(s) in 1.83s
+test result: ok. 591 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 2.00s
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes = banc
+   C1 nue                 field = banc · lakes = banc
+   C2 /10 col (défaut)    field = banc · lakes = banc
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes = banc
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 44 filtered out; finished in 106.85s

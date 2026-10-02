@@ -3,10 +3,13 @@
 Written by `f134_d` (`crates/ymir-core/tests/f126_coast.rs`).
 
 - **Crop**: centred on the lake's ON centroid, ± 307 cells (615 × 615 cells = 30 km at 48.8 m per cell),
-  north up, viz cell coordinates. The lake's centre is the image centre.
+  viz cell coordinates. The lake's centre is the image centre.
   - Lake 1: (3491, 2500).
   - Lake 2: (4019, 2839).
   - Lake 11: (1429, 4287).
+- **Orientation: SOUTH UP.** The rows are the DATA rows, and the field is stored south-first (y = 0 is the south,
+  Finding 27). The image is the viz's north-up view flipped vertically: east is right, south is up.
+  *Corrected in Finding 135: this file first said "north up".*
 - **Colour**: Δz = z_ON − z_OFF on the CONDITIONED field (`HdResult.eroded`). Its pre-breach lakes sit at
   their water surface.
   - **Red**: ON higher than OFF. **Blue**: ON lower. **White**: equal.
