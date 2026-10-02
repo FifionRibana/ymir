@@ -1,0 +1,111 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.18s
+     Running tests\f126_coast.rs (target_f137\release\deps\f126_coast-78c90b7d7fab281b.exe)
+running 1 test
+   Q1 · livré (delivered stream power): 60 final lakes · ≥ 1 km² non-crater with a D8 outlet 43 (without 11) · steps (drop to the first graded reach ≥ 2 km) > 50 / > 200 / > 500 m: **9 / 6 / 3** (227 s)
+      lake       1    33.4 km² level  1260.7 m · drop 1220.7 m at  2.24 km · mean slope  28.6° steep · drop over 5 km 1258.8 m
+      lake       2     5.2 km² level  1911.3 m · drop 1857.0 m at  6.54 km · mean slope  15.9° steep · drop over 5 km 1373.2 m
+      lake       3   259.0 km² level   342.4 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    0.0 m
+      lake       4    17.6 km² level   361.8 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km   19.4 m
+      lake       5     5.4 km² level   274.8 m · drop  238.4 m at  1.28 km · mean slope  10.6° steep · drop over 5 km  274.9 m
+      lake       6    61.9 km² level  1322.6 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    0.0 m
+      lake       7     6.7 km² level  1203.1 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  860.7 m
+      lake       8   270.8 km² level  1331.4 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    0.0 m
+      lake       9    12.1 km² level  2321.7 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km 1109.1 m
+      lake      10     5.6 km² level   367.5 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    0.0 m
+      lake      12    21.9 km² level   374.8 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    0.0 m
+      lake      13    44.0 km² level   104.5 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  104.6 m
+      lake      14     9.9 km² level   963.8 m · drop  274.2 m at  1.48 km · mean slope  10.5° steep · drop over 5 km  299.2 m
+      lake      15    53.2 km² level   197.5 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  197.5 m
+      lake      19     6.3 km² level   674.2 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  517.3 m
+      lake      20    46.6 km² level    29.8 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km   20.1 m
+      lake      21     8.5 km² level     1.5 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    0.0 m
+      lake      22    12.5 km² level  1148.1 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  993.6 m
+      lake      23     6.8 km² level   471.5 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  404.2 m
+      lake      24    37.4 km² level   527.1 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    0.0 m
+      lake      25    17.8 km² level   435.7 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  362.6 m
+      lake      26   117.6 km² level   432.3 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  325.0 m
+      lake      27    26.4 km² level   723.4 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  333.1 m
+      lake      28     9.6 km² level    25.1 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km   15.5 m
+      lake      29     5.1 km² level    71.3 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km   49.0 m
+      lake      30     5.0 km² level   702.0 m · drop  119.6 m at  0.46 km · mean slope  14.5° steep · drop over 5 km  266.3 m
+      lake      31   255.6 km² level   390.4 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    0.0 m
+      lake      32     5.3 km² level  1007.9 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  860.7 m
+      lake      33    11.9 km² level   776.4 m · drop  330.6 m at  1.09 km · mean slope  16.8° steep · drop over 5 km  340.7 m
+      lake      34     6.3 km² level   809.9 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  374.2 m
+      lake      35     6.9 km² level   239.5 m · drop   81.0 m at  0.37 km · mean slope  12.2° steep · drop over 5 km  118.1 m
+      lake      36    14.4 km² level   628.7 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  193.1 m
+      lake      37    16.4 km² level  1257.0 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km 1148.3 m
+      lake      38     7.3 km² level   202.6 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    0.0 m
+      lake      39     7.4 km² level    76.1 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km   27.2 m
+      lake      40    22.3 km² level   121.4 m · drop   79.4 m at  1.25 km · mean slope   3.6° gorge · drop over 5 km  121.2 m
+      lake      41     9.2 km² level   755.2 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km  198.3 m
+      lake      43    53.4 km² level   169.2 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    0.0 m
+      lake      47    18.2 km² level   127.3 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km   37.0 m
+      lake      51     9.3 km² level   974.4 m · drop  799.4 m at  2.85 km · mean slope  15.6° steep · drop over 5 km  877.0 m
+      lake      53   126.5 km² level   196.5 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km   43.3 m
+      lake      55    19.2 km² level    51.0 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km    3.6 m
+      lake      56    15.1 km² level   676.8 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  244.1 m
+   Q1 · A1+B2 (delivered + the age closure, F114's world): 38 final lakes · ≥ 1 km² non-crater with a D8 outlet 18 (without 11) · steps (drop to the first graded reach ≥ 2 km) > 50 / > 200 / > 500 m: **5 / 2 / 1** (215 s)
+      lake       1   145.3 km² level   342.5 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km  180.3 m
+      lake       2     8.0 km² level   487.7 m · drop  103.9 m at  0.73 km · mean slope   8.1° gorge · drop over 5 km  145.2 m
+      lake       3    54.4 km² level  1333.7 m · drop  889.8 m at  4.57 km · mean slope  11.0° steep · drop over 5 km  894.2 m
+      lake       4   198.7 km² level  1332.3 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    6.5 m
+      lake       5    48.8 km² level   171.4 m · drop  109.3 m at  0.30 km · mean slope  19.7° steep · drop over 5 km  156.0 m
+      lake       8     8.9 km² level   409.8 m · drop  364.3 m at  2.11 km · mean slope   9.8° gorge · drop over 5 km  401.0 m
+      lake       9    13.7 km² level   527.1 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km   94.5 m
+      lake      10    87.8 km² level   432.6 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  324.0 m
+      lake      11   275.1 km² level   993.4 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  917.9 m
+      lake      12     5.7 km² level   723.4 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km  333.1 m
+      lake      13   182.0 km² level   390.4 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    0.0 m
+      lake      14     7.6 km² level  1256.0 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km 1029.5 m
+      lake      15    11.5 km² level   122.8 m · drop   62.6 m at  0.75 km · mean slope   4.8° gorge · drop over 5 km  112.2 m
+      lake      16   138.6 km² level   245.1 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km   82.3 m
+      lake      18    23.7 km² level   169.6 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    0.0 m
+      lake      20     6.2 km² level   162.8 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km   55.5 m
+      lake      23    75.6 km² level   200.8 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    3.1 m
+      lake      24    35.8 km² level   131.8 m · drop   29.5 m at  0.24 km · mean slope   7.1° gorge · drop over 5 km   76.4 m
+   Q1 · ON extended (construction): 34 final lakes · ≥ 1 km² non-crater with a D8 outlet 14 (without 12) · steps (drop to the first graded reach ≥ 2 km) > 50 / > 200 / > 500 m: **8 / 6 / 2** (318 s)
+      lake       1   132.8 km² level   327.2 m · drop  290.1 m at  1.94 km · mean slope   8.5° gorge · drop over 5 km  319.5 m
+      lake       2    35.5 km² level  1292.0 m · drop  862.1 m at  3.31 km · mean slope  14.6° steep · drop over 5 km  899.2 m
+      lake       3   159.7 km² level  1314.5 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    0.0 m
+      lake       4    45.8 km² level   168.2 m · drop  119.0 m at  0.39 km · mean slope  16.8° steep · drop over 5 km  148.1 m
+      lake       7     5.3 km² level   383.4 m · drop  316.6 m at  1.85 km · mean slope   9.7° gorge · drop over 5 km  351.6 m
+      lake       8    12.3 km² level   520.5 m · drop   51.3 m at  0.12 km · mean slope  23.5° steep · drop over 5 km  317.4 m
+      lake       9    79.7 km² level   418.0 m · drop  265.9 m at  1.50 km · mean slope  10.1° steep · drop over 5 km  296.4 m
+      lake      10   249.0 km² level   974.5 m · drop  810.7 m at  3.02 km · mean slope  15.0° steep · drop over 5 km  840.5 m
+      lake      11   163.0 km² level   362.0 m · drop  260.4 m at  1.55 km · mean slope   9.5° gorge · drop over 5 km  286.0 m
+      lake      12    10.2 km² level   118.9 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km  102.6 m
+      lake      13   133.1 km² level   239.3 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    0.0 m
+      lake      15    17.4 km² level   154.9 m · drop    NaN m at   NaN km · mean slope   NaN° —     · drop over 5 km   41.1 m
+      lake      19    72.0 km² level   197.6 m · drop    0.0 m at  0.00 km · mean slope   NaN° —     · drop over 5 km    0.0 m
+      lake      20    33.2 km² level   127.6 m · drop   23.9 m at  0.12 km · mean slope  11.5° steep · drop over 5 km   64.0 m
+   Q4 · the below-sea-basin lakes (ON extended, ≥ 1 km², no D8 outlet) and their spillways:
+      lake 1000001 ·    1.2 km² · Exorheic · level   176.8 m · spillway start z 176.8 m · path 9.3 km, end z -1.0 m · drop to the first graded reach ≥ 2 km **86.9 m** at 0.90 km · 5.5° gorge · drop over 5 km 141.5 m · total drop to the path end 177.8 m
+      lake 1000002 · 459.7 km² · level 76.3 m · NO spillway segment
+      lake 1000008 · 96.3 km² · level 76.3 m · NO spillway segment
+      lake 1000010 · 44.9 km² · level 0.4 m · NO spillway segment
+      lake 1000011 ·  493.2 km² · Unresolved · level   459.3 m · spillway start z 459.3 m · path 30.0 km, end z 21.7 m · drop to the first graded reach ≥ 2 km **0.8 m** at 0.14 km · 0.3° gorge · drop over 5 km 41.3 m · total drop to the path end 437.6 m
+      lake 1000012 ·   10.5 km² · Exorheic · level    22.0 m · spillway start z 22.0 m · path 4.8 km, end z -1.0 m · drop to the first graded reach ≥ 2 km **-0.0 m** at 0.00 km · NaN° — · drop over 5 km 23.0 m · total drop to the path end 23.0 m
+      lake 1000013 ·  152.6 km² · Exorheic · level   110.2 m · spillway start z 110.2 m · path 17.6 km, end z -1.0 m · drop to the first graded reach ≥ 2 km **-0.0 m** at 0.00 km · NaN° — · drop over 5 km 22.3 m · total drop to the path end 111.2 m
+      lake 1000014 ·  628.4 km² · Exorheic · level    49.3 m · spillway start z 49.3 m · path 0.7 km, end z -1.0 m · drop to the first graded reach ≥ 2 km **NaN m** at NaN km · NaN° — · drop over 5 km 50.3 m · total drop to the path end 50.3 m
+      lake 1000016 ·  502.0 km² · Exorheic · level   115.3 m · spillway start z 115.3 m · path 3.6 km, end z -1.0 m · drop to the first graded reach ≥ 2 km **NaN m** at NaN km · NaN° — · drop over 5 km 116.3 m · total drop to the path end 116.3 m
+      lake 1000017 ·  337.9 km² · Exorheic · level   268.8 m · spillway start z 268.8 m · path 30.0 km, end z 51.7 m · drop to the first graded reach ≥ 2 km **-0.0 m** at 0.00 km · NaN° — · drop over 5 km 29.5 m · total drop to the path end 217.1 m
+      lake 1000018 ·  185.3 km² · Exorheic · level   471.8 m · spillway start z 471.8 m · path 24.4 km, end z -1.0 m · drop to the first graded reach ≥ 2 km **307.0 m** at 4.46 km · 3.9° gorge · drop over 5 km 318.9 m · total drop to the path end 472.8 m
+      lake 1000019 ·  383.9 km² · Exorheic · level   614.9 m · spillway start z 614.9 m · path 30.1 km, end z 197.6 m · drop to the first graded reach ≥ 2 km **348.1 m** at 3.22 km · 6.2° gorge · drop over 5 km 383.3 m · total drop to the path end 417.3 m
+   Q4 · spillways measured 9 · drops > 50 / > 200 / > 500 m: **3 / 2 / 0**
+   Q2 · C-3 production_k_field on the viz state (67108864 cells, 11328133 land):
+      K (the product)                    land min 1.027 · p1 1.036 · p10 1.060 · p50 1.273 · p90 5.464 · p99 23.777 · max 56.728
+      lithology classes (bilinear)       land min 1.000 · p1 1.000 · p10 1.000 · p50 1.000 · p90 1.000 · p99 10.000 · max 10.000
+      fracture density factor (C-3b)     land min 1.027 · p1 1.036 · p10 1.059 · p50 1.251 · p90 3.578 · p99 6.146 · max 7.000
+      histogram of K on land: [0, 1) 0.00 % · [1, 1.0001) 0.00 % · [1.0001, 1.5) 61.84 % · [1.5, 2.5) 16.77 % · [2.5, 3.5) 4.95 % · [3.5, 6) 7.48 % · [6, 9.99) 3.27 % · [9.99, 10.01) 0.01 % · [10.01, 100) 5.69 %
+      volcanic mask 4.29 % of land · lithology rift-soft (> 1.5) 4.87 % · fracture factor ≠ 1 100.00 %
+      ACF K (the product)          first lag below 1/e: x **25.0 km** · y **NaN km** · ACF(x) at 1/4/16/64/256/1024 cells: 1.00 / 1.00 / 0.99 / 0.94 / 0.49 / 0.08
+      ACF log K                    first lag below 1/e: x **50.0 km** · y **NaN km** · ACF(x) at 1/4/16/64/256/1024 cells: 1.00 / 1.00 / 0.99 / 0.97 / 0.79 / 0.26
+      ACF lithology classes        first lag below 1/e: x **25.0 km** · y **50.0 km** · ACF(x) at 1/4/16/64/256/1024 cells: 1.00 / 1.00 / 1.00 / 0.96 / 0.52 / 0.00
+      ACF fracture factor          first lag below 1/e: x **100.0 km** · y **NaN km** · ACF(x) at 1/4/16/64/256/1024 cells: 1.00 / 1.00 / 1.00 / 1.00 / 0.97 / 0.64
+      ACF altitude (conditioned)   first lag below 1/e: x **25.0 km** · y **12.5 km** · ACF(x) at 1/4/16/64/256/1024 cells: 1.00 / 1.00 / 0.96 / 0.72 / 0.37 / 0.01
+      Pearson r of log K (land) with: altitude 0.142 · slope 0.330 · precipitation -0.006 · volcanic mask 0.451 · cratonic mask -0.178 · lithology rift-soft 0.619 · fracture factor 0.746
+      map: D:/Personnel/Projects/ymir/docs/reports/c1_continental_buoyancy/f137_gorge_age\q2_k_field_map.png (north up, 1/8 resolution; land coloured by log K from green = 1 to red = max 56.73; volcanic discs white; sea dark blue)
+test f137_q ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 52 filtered out; finished in 768.01s

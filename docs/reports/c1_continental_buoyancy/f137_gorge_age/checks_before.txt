@@ -1,0 +1,11 @@
+# F137 checks BEFORE = F136's checks_after (no code changed since; only documents). Copied verbatim:
+    Finished `release` profile [optimized] target(s) in 5.36s
+test result: ok. 591 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 2.04s
+test result: ok. 30 passed; 0 failed; 16 ignored; 0 measured; 0 filtered out; finished in 1.24s
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes = banc
+   C1 nue                 field = banc · lakes = banc
+   C2 /10 col (défaut)    field = banc · lakes = banc
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes = banc
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 45 filtered out; finished in 105.64s

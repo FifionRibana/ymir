@@ -19310,3 +19310,96 @@ and 11.
 - **K7**: downstream, nothing protects the rim. The outlet valley, built from the base below, retreats through
   the rim down to the lake's bed, which the construction does not touch.
   - **Pattern: an invariant applied on one side only.** The base protects upstream, not downstream.
+
+## Finding 137 — the age sets how far the gorge has retreated: the measurements before the design, and its specification (nothing built)
+
+**The author's criterion, recorded as given.**
+- « Je veux réduire la taille des lacs avec l'âge, car au départ ils étaient tous remplis à la hauteur
+  d'équilibre, ce qui donnait des lacs énormes. » (2026-09-30)
+- « Un lac présent est un niveau de base pour les rivières qui s'y jettent ; un lac vidé ne l'est plus. »
+  (2026-09-29) « Les lacs des bassins sous la mer sont des lacs présents. » (2026-09-30)
+- « Chute ou gorge, les deux sont valides. » « Le cas des chutes lié au type de roche n'est pas encore activable
+  […]. Ce sera donc intéressant de faire apparaître des chutes d'eau (et donc de les tagger comme tel) là où
+  c'est pertinent. Ça donnera de la diversité au monde. » (2026-10-02)
+- **« C'est bien d'avoir l'âge qui fixe jusqu'où la gorge a reculé. »** (2026-10-02)
+  - The reviewer's reading, accepted by the author: young = a full lake and a gorge downstream; old = a notched
+    rim and a lowered lake.
+- Cost: a world in minutes, not hours.
+
+**Where it lives.** Report, raw outputs and **`spec_gorge_age.md`**:
+`docs/reports/c1_continental_buoyancy/f137_gorge_age/`. Bench `f137_q`.
+- F136 was committed (`c209c9c`); ADR:259 is corrected in place.
+- **No production code.** Guard 6 / 6 field and lakes; hash `a8d2d538d692c2f0`; lib 591, viz 30; check clean,
+  before and after.
+
+**Q1 — family 1 was measured on the delivered world with the age closure** (`f114_sill.rs:85`, A1+B2, the framing of
+its time, eroded and breached fields), before the construction.
+- Today, F136-K6b's instrument (steps > 50 / > 200 / > 500 m):
+  - livré **9 / 6 / 3** (19 lakes drop > 200 m over 5 km);
+  - A1+B2 **5 / 2 / 1**;
+  - ON extended **8 / 6 / 2**.
+- **The step is not the construction's alone. The OFF construction hid it** by cutting through the cols.
+
+**Q2 — C-3 is a smooth erodibility, not a hardness map.**
+- Its source: K = rift class (coarse 64², ×10, bilinear) ∨ volcanic discs (×3) × the C-3b fracture factor (≠ 1
+  everywhere). On land: p50 1.27, p90 5.46, max 56.7.
+- Its correlation length: K 12.5–25 km in x, > 100 km in y.
+- Its correlations: r with fracture 0.75, rift 0.62, volcanic 0.45, slope 0.33, altitude 0.14, precipitation
+  −0.006.
+- It is read by the incision (delivered and the light pass), not by `carve`.
+- ⇒ It is usable only at its contrasts (the disc and rift edges), never alone.
+
+**Q3 — no step is a wall.**
+- Mean slopes: ON's six > 200 m (amended) 8.5–15.0°: 3 gorges, 3 steep. Declared 9.8–34.1°. Delivered
+  3.6–28.6°.
+
+**Q4 — the below-sea basins' spillways descend gently.**
+- 9 of 12 are traced; 3 have no spillway segment of their own.
+- Drops > 50 / > 200 / > 500 m: **3 / 2 / 0**, all gorges (3.9–6.2°). The largest: 1000019, the 614.9 m lake,
+  348 m.
+
+**A — the age in the code.**
+- The construction: k (`floor_m = base + k·χ`), W(k)'s γ (gated) and the light pass's S_eq.
+- The delivered world: S_eq (F109) + k_time.
+- **No break position and no retreat state exist.** F115's celerity is a diagnostic.
+- In the viz: "âge k" ×0.7 / ×1 / ×1.4, "Âge du continent" s_eq ∈ {0.021, 0.024, 0.027}, γ ∈ {0, 0.5, 1}.
+- F121-C3 already said the k factor is not the age.
+
+**S — the specification, for review before any construction** (`spec_gorge_age.md`).
+- **The retreat parameter** r ∈ [0, 2]: r = 0 young, r = 1 = today's ON extended, r = 2 emptied (then not a
+  base). Its link to age is a DECISION: the age selector → 0 / 1 / 2, or an independent selector.
+- **The lake level** L(r) between L_in, L_bed and L_floor.
+- **The rim invariant** `floor_outlet = max(law_below, z_gorge)`: it closes F136-K7's one-sided invariant.
+- **The descent slope** S_g = 14.5° (the delivered world's median: MEASURED, a PROXY).
+- **Waterfalls** on a drop ≥ H_f within ~100 m (DECISION). C-3 is used only at its contrasts. A `features` tag
+  goes in `rivers.json`; today's steps are not tagged.
+- **Gates** from negative controls, the first being r = 1 ≡ today's ON bit for bit.
+- **Cost** < 2 s per world (an ESTIMATE).
+
+**Predictions.**
+- Mine: Q2–Q4 and A held; Q1 half; meta not held.
+- The reviewer's: Q1 held; Q2 half; Q3, Q4 and A's "only k" refuted; meta held.
+- **Nothing built, nothing promoted.**
+
+**Review of the specification v1 (recorded at commit; v1 is kept as a draft, F138 writes v2).**
+1. **The waterfall criterion** (20 m over ~100 m) is under the gorge's own slope (14.5° ≈ 25 m per 100 m): the
+   whole gorge would be tagged. And a constant-slope gorge creates no fall by itself.
+2. **Beyond r = 1**, "re-base like OFF" recreates F135's kilometre trench. A drained lake re-bases its upstream on
+   the level of the gorge that drained it.
+3. **S_g = 14.5° is a circular proxy**: the median of the delivered world's steps, i.e. of the same object. Gate 3
+   is circular too.
+4. **"r = 1 is today's ON state"** holds for the lake's level only. Gate 1 tests only the inertness of the code
+   when off.
+5. **The invariant**, written on the corridor's cells, would let the downstream valley's cones dig beside it. It
+   must act on the samples' floor, before the cones.
+6. **"Never walls"** over-reads mean slopes.
+7. **The case of a gorge with no room** before the next base is missing.
+8. **C-3's contrasts** are a 6 km grid and perfect circles: falls there would line up in a grid and in rings.
+
+**The author's decisions (2026-10-02), recorded as given:**
+- the gorge's retreat follows **the existing age selector**;
+- the gorge's slope is set **by the river's size**;
+- the tagged falls: **« les deux »** (the gorge head and the shortage of room). The author asked: « Qu'est-ce qui
+  serait le plus cohérent ? »
+  - The reviewer's answer: the two are two distinct physical causes. The head fall must not be uniform: its
+    variable share per lake, zero included, is a PROXY of the missing rock.

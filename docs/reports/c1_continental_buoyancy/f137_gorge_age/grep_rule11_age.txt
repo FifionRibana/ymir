@@ -1,0 +1,107 @@
+######## age
+== âge · ADR 3 hits · code 7 hits in 2 files
+   ADR first: ADR:15514: - A "relief ≈ 0.72 / 0.86 / 1.00 / 1.18, quasi-linear — **c'est l'âge en un nombre**" **✗✗✗.**
+   code first: crates/ymir-viz/src/bridge/c1/hd.rs:129: /// **ADR 0001 Finding 109 — "Âge du continent" (the absolute constant).** `None` (default) =
+== age_k · ADR 25 hits · code 291 hits in 44 files
+   ADR first: ADR:902: `rivers.json` exported only `drainage_km2` + navigability — no channel geometry, so consumers drew
+   code first: crates/ymir-core/src/export/container.rs:101: /// the exported HYDROLOGY (river `width_m`, `discharge_m3s`, `drainage_km2`,
+== F121_AGE_K · ADR 1 hits · code 92 hits in 9 files
+   ADR first: ADR:18351: `W = a₀·(k/k₀)^γ·A^0.3`, `k₀ = F121_AGE_K` — the age knob that deepens the floors also widens them.
+   code first: crates/ymir-core/src/tectonics_c1/cached_product.rs:880: use crate::tectonics_c1::valley_construction::{F121_AGE_K, ValleyConstruction, WallProfile};
+== Âge du continent · ADR 1 hits · code 2 hits in 2 files
+   ADR first: ADR:17322: instead of drawing a stale drainage over a new terrain. The viz box is *"Âge du continent —
+   code first: crates/ymir-viz/src/bridge/c1/hd.rs:129: /// **ADR 0001 Finding 109 — "Âge du continent" (the absolute constant).** `None` (default) =
+== AGE OF THE CONTINENT · ADR 0 hits · code 3 hits in 2 files
+   ADR first: NOTHING FOUND
+   code first: crates/ymir-viz/src/bridge/c1/hd.rs:569: "[HD] AGE OF THE CONTINENT ON (ADR Finding 109): absolute slope floor S_eq = \
+== closure d'âge · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== age closure · ADR 2 hits · code 9 hits in 8 files
+   ADR first: ADR:17636: **Measured, nothing wired.** The round asked to promote the age closure (A1) and to attribute the
+   code first: crates/ymir-core/src/tectonics_c1/closures/volcanism/mod.rs:5: //! an HD-stage closure: a 10–20 km edifice is a single cell at the 64² tectonic
+== age_closure · ADR 0 hits · code 5 hits in 1 files
+   ADR first: NOTHING FOUND
+   code first: crates/ymir-viz/src/ui/workspace.rs:261: age_closure: bool,
+== valley_age · ADR 0 hits · code 5 hits in 1 files
+   ADR first: NOTHING FOUND
+   code first: crates/ymir-viz/src/ui/workspace.rs:269: valley_age: usize,
+== width_age_gamma · ADR 1 hits · code 9 hits in 4 files
+   ADR first: ADR:18353: rate. Gated: `ValleyConstruction::width_age_gamma`, `None` = the width of Findings 121–124
+   code first: crates/ymir-core/src/tectonics_c1/cached_product.rs:153: // change. The Debug form printed `wall_profile: None, width_age_gamma: None`, and when Finding
+== F109 · ADR 3 hits · code 33 hits in 11 files
+   ADR first: ADR:17323: constante (F109)"*, off by default, with `s_eq` restricted to the **measured window**
+   code first: crates/ymir-core/src/terrain/upscale.rs:215: /// seeds in `f109_toggle.rs`, which also asserts that the `Absolute` branch reproduces the
+== toggle · ADR 40 hits · code 63 hits in 22 files
+   ADR first: ADR:2083: 0.01-0.1, 1-15 deg). Not a style toggle.
+   code first: crates/ymir-core/src/bin/step7_baseline.rs:162: /// The slab toggle is the only axis of variation between the
+== k calé · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== calibrat · ADR 110 hits · code 449 hits in 110 files
+   ADR first: ADR:41: (raise the ocean) via `target_land_fraction` (tlf) quantile calibration. It is
+   code first: crates/ymir-core/src/cache.rs:4: //! **What it accelerates:** downstream calibration on a FIXED relief (climate /
+== 0,07186 · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== 0.07186 · ADR 2 hits · code 2 hits in 1 files
+   ADR first: ADR:17965: 0.1 km² (ANCHORED, Harel 2016); **k = 0.07186** (PROXY, calibrated so the floor surface's paired
+   code first: crates/ymir-core/src/tectonics_c1/valley_construction.rs:53: /// framing since Finding 124 — 0.07186 at Findings 121–123's framing): the floor surface
+== 0.07183 · ADR 1 hits · code 1 hits in 1 files
+   ADR first: ADR:18109: each. The age k re-calibrated there: **0.07183** (0.07186 at Findings 121–123's framing).
+   code first: crates/ymir-core/src/tectonics_c1/valley_construction.rs:57: pub const F121_AGE_K: f32 = 0.07183;
+== oracle · ADR 50 hits · code 75 hits in 17 files
+   ADR first: ADR:3931: oracle's own value), lake fraction **17.51 %** (closer to the oracle's 15.92 % than any other
+   code first: crates/ymir-core/src/export/vector.rs:25: /// Default cliff slope threshold in degrees (WP-3 oracle default).
+== F95 · ADR 8 hits · code 60 hits in 21 files
+   ADR first: ADR:14557: | **ORACLE** (F95, 300 passes) | **0 / 24** | **0 %** | **0** | 1 | **15.92** | **488.1 m** | — | n/a | n/a | n/a | +29 | −2 | **6 210 s** |
+   code first: crates/ymir-viz/src/ui/workspace.rs:1215: l'oracle F95, 488 m). Rien d'autre n'est offert.",
+== H-2 · ADR 33 hits · code 18 hits in 8 files
+   ADR first: ADR:2667: ### Ordering: H-1 / H-2 come before coastal erosion (C-4)
+   code first: crates/ymir-core/src/erosion/stream_power.rs:1006: // H-2's France↔Scotland dial is sill incision at 10⁴ against 10⁶ years.
+== Finding 114 · ADR 2 hits · code 11 hits in 5 files
+   ADR first: ADR:17688: ## Finding 114 — the threshold incision (H-2) computes exactly ZERO, and the lakes split into two families
+   code first: crates/ymir-core/tests/f114_sill.rs:1: //! ADR 0001 Finding 114 — **H-2: why the lakes do not drain. It is not a missing mechanism.**
+== Finding 115 · ADR 3 hits · code 6 hits in 4 files
+   ADR first: ADR:17716: ## Finding 115 — knickpoint retreat is NOT absent: the wave arrives in a fraction of a pass; what holds the lakes is a gate, not a speed
+   code first: crates/ymir-core/tests/f115_knick.rs:1: //! ADR 0001 Finding 115 — **knickpoint retreat is NOT missing: it is 3 699× over Courant and has
+== retreat · ADR 11 hits · code 13 hits in 7 files
+   ADR first: ADR:2490: C-4 coastal, whose cliff retreat needs rock resistance): the closures already KNOW what they do at the moment
+   code first: crates/ymir-core/src/erosion/stream_power.rs:309: /// on the outlet path that A1 skips keeps its height and stops the retreat wave there.
+== recul · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== stream power · ADR 11 hits · code 20 hits in 10 files
+   ADR first: ADR:22: diffusion≈0.05` (diffusion on hillslopes `A<A_c`, stream power on channels
+   code first: crates/ymir-core/src/erosion/stream_power.rs:8: //! Detachment-limited stream power `E = K · A^m · S^n` solved with the implicit /
+== stream_power · ADR 22 hits · code 306 hits in 99 files
+   ADR first: ADR:148: **Prototype results (measured, `erosion/stream_power.rs`, off by default).** Braun &
+   code first: crates/ymir-core/src/erosion/mod.rs:8: pub mod stream_power; // routed stream-power incision (Braun & Willett 2013) — prototype, off by default
+== k_time · ADR 65 hits · code 105 hits in 20 files
+   ADR first: ADR:3743: cannot have changed any output. `StreamPowerConfig` gains `k_time()`, `k_for_duration()`,
+   code first: crates/ymir-core/src/erosion/stream_power.rs:134: /// **⚠️ The output depends on [`Self::k_time`] (`k·dt·iterations`), not on `k` alone** —
+== temps · ADR 0 hits · code 3 hits in 2 files
+   ADR first: NOTHING FOUND
+   code first: crates/ymir-viz/src/ui/workspace.rs:1233: affaire de TEMPS, et le a de Clubb 2022 est un \
+== Myr · ADR 6 hits · code 17 hits in 7 files
+   ADR first: ADR:3815: | 1e-7 (hard rock, low) | 2.51e-5 | 3.58e8 yr = **358 Myr** |
+   code first: crates/ymir-core/src/tectonics/solver/config.rs:153: /// (Myr) once issue #10 lands.
+== years · ADR 23 hits · code 16 hits in 7 files
+   ADR first: ADR:3642: years IS the mechanism. It cannot be expressed against `dt = 1.0` with a fixed iteration
+   code first: crates/ymir-core/src/erosion/stream_power.rs:141: /// Duration in **YEARS** modelled by ONE drainage↔incision iteration, so the total
+######## break position
+== knickpoint · ADR 7 hits · code 9 hits in 4 files
+   ADR first: ADR:433: isolated fluvial cliffs (channel walls/knickpoints, deliberately excluded from the
+   code first: crates/ymir-core/src/erosion/stream_power.rs:1028: /// Largest knickpoint celerity on the map, `K·A_max^m`, in m/yr.
+== knick · ADR 8 hits · code 16 hits in 5 files
+   ADR first: ADR:433: isolated fluvial cliffs (channel walls/knickpoints, deliberately excluded from the
+   code first: crates/ymir-core/src/erosion/stream_power.rs:1028: /// Largest knickpoint celerity on the map, `K·A_max^m`, in m/yr.
+== break position · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== retreat distance · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== migration · ADR 1 hits · code 11 hits in 7 files
+   ADR first: ADR:14456: > very property that makes χ-mapping a divide-migration diagnostic in the literature is what
+   code first: crates/ymir-core/src/tectonics_c1/init_r7/age_init.rs:150: /// signature shape eases the migration.

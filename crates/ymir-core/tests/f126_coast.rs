@@ -10159,3 +10159,363 @@ fn f136_k6b() {
     eprintln!("   K6b · drops > 50 / > 200 / > 500 m: **{} / {} / {}** of {} lakes with a graded reach within 10 km", c(50.0), c(200.0), c(500.0), hs.len());
     eprintln!("\n==========  end Finding 136-K6b  ==========\n");
 }
+
+/// F136-K6b's amended step instrument on one world: for every final lake ≥ 1 km² that is not a crater lake and has a
+/// D8 receiver at `Lake::outlet`, the drop from its level to the first graded reach ≥ 2 km (slope over 2 km < 2 %)
+/// within 10 km of the true col, the distance to it, and the drop over the first 5 km. Returns (lake id, km², level,
+/// drop, distance km, drop over 5 km) and the number of lakes without a D8 receiver.
+fn steps_k6b(cn: &[f32], d: &ymir_core::tectonics_c1::drainage::C1DrainageResult, w: usize, h: usize) -> (Vec<(u32, f32, f32, f32, f32, f32)>, usize) {
+    use ymir_core::tectonics_c1::drainage::LakeType;
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let dir = &d.flow.direction;
+    let recv = |c: usize| -> Option<usize> {
+        let k = dir[c];
+        if k == DIR_NONE {
+            return None;
+        }
+        let (x, y) = ((c % w) as i32 + D8_DX[k as usize], (c / w) as i32 + D8_DY[k as usize]);
+        if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 { None } else { Some(y as usize * w + x as usize) }
+    };
+    let step_len = |a: usize, b: usize| CELL_KM * if (a % w != b % w) && (a / w != b / w) { std::f32::consts::SQRT_2 } else { 1.0 };
+    let (mut out, mut none) = (Vec::new(), 0usize);
+    for l in d.lakes.iter().filter(|l| l.area_km2 >= 1.0 && !matches!(l.lake_type, LakeType::CraterAcidic | LakeType::CraterNeutral)) {
+        let o = l.base.outlet.1 as usize * w + l.base.outlet.0 as usize;
+        let Some(col) = recv(o) else {
+            none += 1;
+            continue;
+        };
+        let (mut path, mut dd) = (vec![col], vec![0f32]);
+        let mut c = col;
+        while *dd.last().unwrap() < 30.0 && cn[c] > 0.0 {
+            let Some(r) = recv(c) else { break };
+            dd.push(dd.last().unwrap() + step_len(c, r));
+            path.push(r);
+            if d.lake_map[r] != 0 && d.lake_map[r] != l.base.id {
+                break;
+            }
+            c = r;
+        }
+        let (dg, xg, d5) = profile_k6b(&path.iter().map(|&p| cn[p]).collect::<Vec<_>>(), &dd, l.level_m);
+        out.push((l.base.id, l.area_km2, l.level_m, dg, xg, d5));
+    }
+    (out, none)
+}
+
+/// K6b on an explicit profile (z along the path, cumulative distance in km): (drop to the first graded reach ≥ 2 km
+/// within 10 km, the distance to it, the drop over the first 5 km), from `top`.
+fn profile_k6b(z: &[f32], d: &[f32], top: f32) -> (f32, f32, f32) {
+    let s2 = |i: usize| -> Option<f32> {
+        let j = (i..z.len()).find(|&j| d[j] >= d[i] + 2.0)?;
+        Some((z[i] - z[j]) / ((d[j] - d[i]) * 1000.0))
+    };
+    let g = (0..z.len()).find(|&i| d[i] <= 10.0 && s2(i).is_some_and(|s| s < 0.02));
+    let i5 = (0..z.len()).rev().find(|&i| d[i] <= 5.0).unwrap_or(0);
+    match g {
+        Some(i) => (top - z[i], d[i], top - z[i5]),
+        None => (f32::NAN, f32::NAN, top - z[i5]),
+    }
+}
+
+/// Q3's classes on the mean slope of a descent: wall > 45°, steep 10–45°, gorge < 10°.
+fn slope_class(drop: f32, km: f32) -> (f32, &'static str) {
+    if !(drop.is_finite() && km > 0.0) || drop <= 0.0 {
+        return (f32::NAN, "—");
+    }
+    let deg = (drop / (km * 1000.0)).atan().to_degrees();
+    (deg, if deg > 45.0 { "WALL" } else if deg >= 10.0 { "steep" } else { "gorge" })
+}
+
+/// ADR Finding 137-Q — Q1 (the steps below the lakes in the delivered worlds, F136-K6b's instrument, against ON
+/// extended), Q2 (C-3's `production_k_field`: components, histogram, correlation length, correlations, map), Q4 (the
+/// below-sea basins' spillways, the same instrument). Declared in `f137_declared.md` before the run. Map to
+/// `F137_DIR`.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored --exact f137_q --nocapture
+#[test]
+#[ignore]
+fn f137_q() {
+    use common::{build_world, viz_hd_lakes_on};
+    use ymir_core::seed::WorldSeed;
+    use ymir_core::tectonics_c1::closures::fracture::build_hd_density_k;
+    use ymir_core::tectonics_c1::closures::lithology::{build_coarse_k, stamp_volcanic_k, upscale_k_to_hd};
+    use ymir_core::tectonics_c1::closures::volcanism::place_edifices;
+    use ymir_core::tectonics_c1::production_upscale::production_k_field;
+    use ymir_core::tectonics_c1::valley_construction::LakeBase;
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    eprintln!("\n==========  Finding 137-Q . the delivered worlds' steps, C-3, the below-sea spillways  ==========");
+    let metres = |g: &GridF32| -> Vec<f32> { g.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect() };
+    let off = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let ext = ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..off };
+    let worlds: [(&str, Knobs); 3] = [
+        ("livré (delivered stream power)", Knobs::passes(2)),
+        ("A1+B2 (delivered + the age closure, F114's world)", Knobs { slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) }),
+        ("ON extended (construction)", Knobs { valley: Some(ext), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) }),
+    ];
+    let mut keep = None;
+    for (label, kn) in worlds {
+        let t = Instant::now();
+        let wd = build_world(kn, None, PSEED, None);
+        let v = viz_hd_lakes_on(&wd, kn, PSEED, 45.0, 40.0);
+        let (w, h) = (wd.heightmap.width, wd.heightmap.height);
+        let cn = metres(&v.conditioned);
+        let (st, none) = steps_k6b(&cn, &v.drainage, w, h);
+        let c = |t: f32| st.iter().filter(|s| s.3 > t).count();
+        eprintln!(
+            "\n   Q1 · {label}: {} final lakes · ≥ 1 km² non-crater with a D8 outlet {} (without {none}) · steps (drop to the first graded reach ≥ 2 km) > 50 / > 200 / > 500 m: **{} / {} / {}** ({:.0} s)",
+            v.drainage.lakes.len(),
+            st.len(),
+            c(50.0),
+            c(200.0),
+            c(500.0),
+            t.elapsed().as_secs_f64()
+        );
+        for s in &st {
+            let (deg, cls) = slope_class(s.3, s.4);
+            eprintln!(
+                "      lake {:>7} {:>7.1} km² level {:>7.1} m · drop {:>6.1} m at {:>5.2} km · mean slope {deg:>5.1}° {cls:<5} · drop over 5 km {:>6.1} m",
+                s.0, s.1, s.2, s.3, s.4, s.5
+            );
+        }
+        if label.starts_with("ON") {
+            keep = Some((wd, v, cn));
+        }
+    }
+    let (wd, v, cn) = keep.expect("ON");
+    let (w, h) = (wd.heightmap.width, wd.heightmap.height);
+    let n = w * h;
+    // ── Q4 — the below-sea basins' spillways
+    eprintln!("\n   Q4 · the below-sea-basin lakes (ON extended, ≥ 1 km², no D8 outlet) and their spillways:");
+    let dir = &v.drainage.flow.direction;
+    let recv = |c: usize| -> Option<usize> {
+        let k = dir[c];
+        if k == DIR_NONE {
+            return None;
+        }
+        let (x, y) = ((c % w) as i32 + D8_DX[k as usize], (c / w) as i32 + D8_DY[k as usize]);
+        if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 { None } else { Some(y as usize * w + x as usize) }
+    };
+    let step_len = |a: usize, b: usize| CELL_KM * if (a % w != b % w) && (a / w != b / w) { std::f32::consts::SQRT_2 } else { 1.0 };
+    let segs = &v.drainage.rivers.segments;
+    let mut q4 = Vec::new();
+    for l in v.drainage.lakes.iter().filter(|l| l.area_km2 >= 1.0 && l.base.id >= 1_000_000 && l.base.id < 2_000_000) {
+        let o = l.base.outlet.1 as usize * w + l.base.outlet.0 as usize;
+        if recv(o).is_some() {
+            continue;
+        }
+        let sp: Vec<usize> = (0..segs.len())
+            .filter(|&i| v.drainage.segment_kind[i] == SegmentKind::Spillway && v.drainage.segment_source_lake.get(i).copied().flatten() == Some(l.base.id))
+            .collect();
+        if sp.is_empty() {
+            eprintln!("      lake {} · {:.1} km² · level {:.1} m · NO spillway segment", l.base.id, l.area_km2, l.level_m);
+            continue;
+        }
+        // the spillway's points, then its downstream chain, then the D8 until the sea / 30 km
+        let mut path: Vec<usize> = Vec::new();
+        let mut si = Some(sp[0]);
+        let mut guard = 0;
+        while let Some(i) = si {
+            for &(x, y) in &segs[i].points {
+                let p = y as usize * w + x as usize;
+                if path.last() != Some(&p) {
+                    path.push(p);
+                }
+            }
+            si = segs[i].downstream;
+            guard += 1;
+            if guard > 10_000 {
+                break;
+            }
+        }
+        let mut c = *path.last().unwrap();
+        let mut len: f32 = path.windows(2).map(|p| step_len(p[0], p[1])).sum();
+        while len < 30.0 && cn[c] > 0.0 {
+            let Some(r) = recv(c) else { break };
+            len += step_len(c, r);
+            path.push(r);
+            c = r;
+        }
+        let mut dd = vec![0f32; path.len()];
+        for i in 1..path.len() {
+            dd[i] = dd[i - 1] + step_len(path[i - 1], path[i]);
+        }
+        let z: Vec<f32> = path.iter().map(|&p| cn[p]).collect();
+        let (dg, xg, d5) = profile_k6b(&z, &dd, l.level_m);
+        let (deg, cls) = slope_class(dg, xg);
+        let zend = *z.last().unwrap();
+        eprintln!(
+            "      lake {} · {:>6.1} km² · {:?} · level {:>7.1} m · spillway start z {:.1} m · path {:.1} km, end z {zend:.1} m · drop to the first graded reach ≥ 2 km **{dg:.1} m** at {xg:.2} km · {deg:.1}° {cls} · drop over 5 km {d5:.1} m · total drop to the path end {:.1} m",
+            l.base.id,
+            l.area_km2,
+            l.lake_type,
+            l.level_m,
+            z[0],
+            dd.last().unwrap(),
+            l.level_m - zend
+        );
+        q4.push(dg);
+    }
+    let c4 = |t: f32| q4.iter().filter(|&&x| x > t).count();
+    eprintln!("   Q4 · spillways measured {} · drops > 50 / > 200 / > 500 m: **{} / {} / {}**", q4.len(), c4(50.0), c4(200.0), c4(500.0));
+    // ── Q2 — C-3's production_k_field
+    let edi = place_edifices(&wd.state, &wd.kin, &WorldSeed::new(PSEED), wd.volc.domain_km, &wd.volc);
+    let kf = production_k_field(&wd.state, Some(&wd.kin), &wd.cfg, &edi, &wd.volc, w, h).expect("C-3 is on in the viz state");
+    let lith: Vec<f32> = upscale_k_to_hd(&build_coarse_k(&wd.state, &wd.cfg.lithology), w, h, wd.cfg.sample_origin, wd.cfg.sample_size);
+    let volc: Vec<bool> = {
+        let mut k = vec![1.0f32; n];
+        let kpc = wd.cfg.sample_size as f32 * wd.volc.domain_km / w as f32;
+        stamp_volcanic_k(&mut k, &edi, wd.cfg.sample_origin, wd.cfg.sample_size, kpc, w, h, &wd.cfg.lithology);
+        k.iter().map(|&x| x != 1.0).collect()
+    };
+    let frac = build_hd_density_k(&wd.state, &wd.kin, &wd.cfg.fracture, None, w, h, wd.cfg.sample_origin, wd.cfg.sample_size);
+    let land: Vec<bool> = cn.iter().map(|&z| z > 0.0).collect();
+    let nl = land.iter().filter(|&&b| b).count();
+    eprintln!("\n   Q2 · C-3 production_k_field on the viz state ({} cells, {nl} land):", n);
+    let stats = |name: &str, f: &dyn Fn(usize) -> f32| {
+        let mut v: Vec<f32> = (0..n).filter(|&k| land[k]).map(f).collect();
+        v.sort_by(f32::total_cmp);
+        let q = |p: f64| v[((v.len() - 1) as f64 * p) as usize];
+        eprintln!(
+            "      {name:<34} land min {:.3} · p1 {:.3} · p10 {:.3} · p50 {:.3} · p90 {:.3} · p99 {:.3} · max {:.3}",
+            v[0],
+            q(0.01),
+            q(0.1),
+            q(0.5),
+            q(0.9),
+            q(0.99),
+            v[v.len() - 1]
+        );
+    };
+    stats("K (the product)", &|k| kf[k]);
+    stats("lithology classes (bilinear)", &|k| lith[k]);
+    stats("fracture density factor (C-3b)", &|k| frac[k]);
+    let hist: Vec<(f32, f32, usize)> = [(0.0, 1.0), (1.0, 1.0001), (1.0001, 1.5), (1.5, 2.5), (2.5, 3.5), (3.5, 6.0), (6.0, 9.99), (9.99, 10.01), (10.01, 100.0)]
+        .iter()
+        .map(|&(a, b)| (a, b, (0..n).filter(|&k| land[k] && kf[k] >= a && kf[k] < b).count()))
+        .collect();
+    eprintln!("      histogram of K on land: {}", hist.iter().map(|(a, b, c)| format!("[{a}, {b}) {:.2} %", 100.0 * *c as f64 / nl as f64)).collect::<Vec<_>>().join(" · "));
+    eprintln!(
+        "      volcanic mask {:.2} % of land · lithology rift-soft (> 1.5) {:.2} % · fracture factor ≠ 1 {:.2} %",
+        100.0 * (0..n).filter(|&k| land[k] && volc[k]).count() as f64 / nl as f64,
+        100.0 * (0..n).filter(|&k| land[k] && lith[k] > 1.5).count() as f64 / nl as f64,
+        100.0 * (0..n).filter(|&k| land[k] && (frac[k] - 1.0).abs() > 1e-4).count() as f64 / nl as f64
+    );
+    // correlation length: the autocorrelation along x and y, over land pairs
+    let acf = |f: &dyn Fn(usize) -> f32, lag: usize, horiz: bool| -> f64 {
+        let (mut sx, mut sy, mut sxx, mut syy, mut sxy, mut m) = (0f64, 0f64, 0f64, 0f64, 0f64, 0f64);
+        for y in (0..h).step_by(8) {
+            for x in (0..w).step_by(8) {
+                let (x2, y2) = if horiz { (x + lag, y) } else { (x, y + lag) };
+                if x2 >= w || y2 >= h {
+                    continue;
+                }
+                let (a, b) = (y * w + x, y2 * w + x2);
+                if !(land[a] && land[b]) {
+                    continue;
+                }
+                let (u, v) = (f(a) as f64, f(b) as f64);
+                sx += u;
+                sy += v;
+                sxx += u * u;
+                syy += v * v;
+                sxy += u * v;
+                m += 1.0;
+            }
+        }
+        let cov = sxy / m - (sx / m) * (sy / m);
+        cov / ((sxx / m - (sx / m).powi(2)).sqrt() * (syy / m - (sy / m).powi(2)).sqrt()).max(1e-12)
+    };
+    let lags = [1usize, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048];
+    for (name, f) in [
+        ("K (the product)", &(|k: usize| kf[k]) as &dyn Fn(usize) -> f32),
+        ("log K", &(|k: usize| kf[k].ln()) as &dyn Fn(usize) -> f32),
+        ("lithology classes", &(|k: usize| lith[k]) as &dyn Fn(usize) -> f32),
+        ("fracture factor", &(|k: usize| frac[k]) as &dyn Fn(usize) -> f32),
+        ("altitude (conditioned)", &(|k: usize| cn[k]) as &dyn Fn(usize) -> f32),
+    ] {
+        let row: Vec<(usize, f64, f64)> = lags.iter().map(|&l| (l, acf(f, l, true), acf(f, l, false))).collect();
+        let e = (1.0f64).exp().recip();
+        let lx = row.iter().find(|r| r.1 < e).map_or(f32::NAN, |r| r.0 as f32 * CELL_KM);
+        let ly = row.iter().find(|r| r.2 < e).map_or(f32::NAN, |r| r.0 as f32 * CELL_KM);
+        eprintln!(
+            "      ACF {name:<24} first lag below 1/e: x **{lx:.1} km** · y **{ly:.1} km** · ACF(x) at 1/4/16/64/256/1024 cells: {}",
+            [0usize, 2, 4, 6, 8, 10].iter().map(|&i| format!("{:.2}", row[i].1)).collect::<Vec<_>>().join(" / ")
+        );
+    }
+    // correlations on land
+    let precip = c1_climate_placed(&v.conditioned, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM).precipitation;
+    let cell_m = CELL_KM * 1000.0;
+    let slope = |k: usize| -> f32 {
+        let (x, y) = (k % w, k / w);
+        let (xm, xp, ym, yp) = (x.saturating_sub(1), (x + 1).min(w - 1), y.saturating_sub(1), (y + 1).min(h - 1));
+        let gx = (cn[y * w + xp] - cn[y * w + xm]) / (cell_m * (xp - xm).max(1) as f32);
+        let gy = (cn[yp * w + x] - cn[ym * w + x]) / (cell_m * (yp - ym).max(1) as f32);
+        (gx * gx + gy * gy).sqrt()
+    };
+    let crat: Vec<f32> = {
+        // the cratonic mask, nearest-sampled at the SAME (sx, sy) mapping as the altitude
+        let (cw, ch) = (wd.state.plate_id.nx(), wd.state.plate_id.ny());
+        let cm = &wd.state.cratonic_mask;
+        (0..n)
+            .map(|k| {
+                let (x, y) = (k % w, k / w);
+                let sx = wd.cfg.sample_origin[0] * cw as f64 + x as f64 * wd.cfg.sample_size * cw as f64 / w as f64;
+                let sy = wd.cfg.sample_origin[1] * ch as f64 + y as f64 * wd.cfg.sample_size * ch as f64 / h as f64;
+                let (i, j) = ((sx.floor() as i64).rem_euclid(cw as i64) as usize, (sy.floor() as i64).rem_euclid(ch as i64) as usize);
+                if cm.get(i, j) { 1.0 } else { 0.0 }
+            })
+            .collect()
+    };
+    let pearson = |a: &dyn Fn(usize) -> f32, b: &dyn Fn(usize) -> f32| -> f64 {
+        let (mut sa, mut sb, mut saa, mut sbb, mut sab, mut m) = (0f64, 0f64, 0f64, 0f64, 0f64, 0f64);
+        for k in (0..n).step_by(7) {
+            if !land[k] {
+                continue;
+            }
+            let (u, v) = (a(k) as f64, b(k) as f64);
+            sa += u;
+            sb += v;
+            saa += u * u;
+            sbb += v * v;
+            sab += u * v;
+            m += 1.0;
+        }
+        (sab / m - sa / m * sb / m) / ((saa / m - (sa / m).powi(2)).sqrt() * (sbb / m - (sb / m).powi(2)).sqrt()).max(1e-12)
+    };
+    let lk = |k: usize| kf[k].ln();
+    eprintln!(
+        "      Pearson r of log K (land) with: altitude {:.3} · slope {:.3} · precipitation {:.3} · volcanic mask {:.3} · cratonic mask {:.3} · lithology rift-soft {:.3} · fracture factor {:.3}",
+        pearson(&lk, &|k| cn[k]),
+        pearson(&lk, &slope),
+        pearson(&lk, &|k| precip.data[k]),
+        pearson(&lk, &|k| volc[k] as u8 as f32),
+        pearson(&lk, &|k| crat[k]),
+        pearson(&lk, &|k| (lith[k] > 1.5) as u8 as f32),
+        pearson(&lk, &|k| frac[k])
+    );
+    // the map (1/8 resolution, north up, log K)
+    if let Ok(dout) = std::env::var("F137_DIR") {
+        let s = 8usize;
+        let (iw, ih) = (w / s, h / s);
+        let mut img = image::RgbImage::new(iw as u32, ih as u32);
+        let lmax = kf.iter().cloned().fold(1.0f32, f32::max).ln().max(1e-3);
+        for yy in 0..ih {
+            for xx in 0..iw {
+                let k = (h - 1 - yy * s) * w + xx * s; // north up
+                let px = if !land[k] {
+                    [30, 40, 70]
+                } else {
+                    let t = (kf[k].ln() / lmax).clamp(0.0, 1.0);
+                    let base = [(60.0 + 195.0 * t) as u8, (160.0 * (1.0 - t) + 40.0) as u8, (60.0 * (1.0 - t)) as u8];
+                    if volc[k] { [255, 255, 255] } else { base }
+                };
+                img.put_pixel(xx as u32, yy as u32, image::Rgb(px));
+            }
+        }
+        let p = std::path::Path::new(&dout).join("q2_k_field_map.png");
+        img.save(&p).expect("png");
+        eprintln!("      map: {} (north up, 1/8 resolution; land coloured by log K from green = 1 to red = max {:.2}; volcanic discs white; sea dark blue)", p.display(), lmax.exp());
+    }
+    eprintln!("\n==========  end Finding 137-Q . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
