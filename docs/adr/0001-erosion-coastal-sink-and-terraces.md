@@ -19533,3 +19533,66 @@ dug into a 3 000 m high) stays out, named.
   - the below-sea lakes included with L_in = the merged spill (F139-C5), except 1000001 and the 3 lakes without a
     spillway segment;
   - H_f's floor of 10 m.
+
+## Finding 140 — the gorge's retreat built gated (off by default); its gate run STOPS at the first world: at ×1, p = 0.5, the HD assembly fires Finding 38's invariant, because the construction's outlet area drains large lakes at the default age and the breach then carves their residual pits below the sea
+
+**Status: stopped and reported, by the author's choice. Nothing corrected after the failure, nothing promoted.**
+Report, raw outputs and `spec_gorge_age_v3.md`: `docs/reports/c1_continental_buoyancy/f140_gorge_build/`.
+- F139 was committed (`2857814`), with the author's decisions recorded as given.
+
+**Built (gated, `ValleyConstruction::gorge_retreat`, `None` by default; it needs `InputLakesAndBasins`).**
+- **The present lakes ≥ 1 km² as bodies**: L_in, L_bed (minimax to the outflow), L_floor; A = the col's drained area
+  (deviation 1 of the spec); r_lake = min(2, r·(A/418.7)^p); L(r_lake).
+- **The lake is a base at L(r_lake)**: the χ walk's lake stops.
+- **The gorge invariant on the samples' floor**: `base ← max(base, z_gorge − k·χ)` on the outlet path, so
+  `line_samples`' `zf = max(law, z_gorge)` before the cones.
+- **The rim clamp** `≥ L(r_lake)` in `carve_diag`.
+- **The tagged falls**, carried through `UpscaleResult` → `ErodedProduct` (a `gorge.json` only when non-empty) →
+  `HdResult` → `rivers.json` (`features` per segment, omitted when empty).
+- **The viz**: a toggle, a p selector, markers with hover.
+- **Three permanent tests with negative controls** (lib 591 → 593; the key test is extended):
+  - the rim kept at r = 0 and cut to the floor at r = 2; without the gorge the outlet notches the rim by > 10 m;
+    the gate alone is inert;
+  - the key moves on the gorge, r and p;
+  - `rivers.json` is byte-identical without falls.
+
+**The gate run (`f140_g`) panicked on GORGE ×1, p 0.5** in the HD assembly: *"ADR Finding 38/92-B: 2 enclosed
+below-sea component(s) carry no water body"* (floor cells (4379, 3551) and (2435, 3586)). The viz would stop the
+same way with the gate on.
+
+**Diagnosed, stage by stage:**
+1. The construction lays no new land cell below the sea (0 cells).
+2. The floor cell is 178.7 m through the construction, the light pass, the droplets and the bathymetry, and
+   **−8.4 m after the protected breach**. In ON the breach fills it to 325.8 m (pre-breach lake 5).
+3. **Body 4**: A = 1 571 km² in the construction (the F139 bench: 298 km² for the same lake), so r_lake = 1.94 at ×1
+   and L(r_lake) = 178.7 m, near its floor (168.9).
+   - The pre-breach drainage holds 0.6 of its 52.4 km² (ON: all).
+   - The breach carves the residual pits with ramps that cross the sea: 2 821 land cells ≤ sea (ON: 292).
+4. **A second defect**: a cell of the drained bowl lies at 91.1 m, 78 m under its input floor (the stage is not
+   located).
+
+**The cause** is deviation 1: the col's area makes r_lake ≈ 2 at ×1 for the large outlets, so the default age
+drains them. The breach is unchanged; it now carves sub-threshold drained bowls.
+
+**Not measured**: G-levels, G-rim, G-ring, G-slope100, G-drained, G-area, G-tag, the non-regression, rules 14 and 18,
+the cost. **G-inert HOLDS**: the after-checks' guard reads 6 / 6, field and lakes, with the gate off.
+
+**Options named for the reviewer, none applied**:
+1. A = the lake's inflow;
+2. cap r_lake at r_world;
+3. hold a drained bowl's residual pits (or keep L(r) above the lake-detection floor);
+4. locate the cell under the drained floor first.
+
+**Predictions mostly unjudged.**
+
+**Recorded at commit (F141).** The F140 code is committed **with its viz toggle HIDDEN** (`GORGE_TOGGLE_VISIBLE = false`),
+so the author's world cannot crash. The gate stays reachable from code and benches only.
+- **Deviation 1** (A = the col's drained area) changed the quantity F139-R tabulated. The gate run tested another
+  setting than the one the author chose.
+  - **Method rule, recorded: a deviation that touches a tabulated quantity is re-tabulated BEFORE the construction.**
+- **The crash will come back at the old ages, even with A corrected.** Eight lakes empty BY DESIGN between ×1.03 and
+  ×1.40 at p = 0.5 (F139-R), and an emptied bowl's residual pits are what the breach carves below the sea.
+- **ON already carries 292 land cells below the sea**, left by the breach and covered by its lakes. **Finding 38's
+  invariant holds by covering, not by construction.**
+- **Option 2** (r_lake ≤ r_world) would cancel the −55 % of area at ×1 the author chose (p = 0.5). It is the
+  author's decision, not a fix.

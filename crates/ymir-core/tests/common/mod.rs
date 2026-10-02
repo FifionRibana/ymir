@@ -463,6 +463,8 @@ pub struct World {
     pub kin: PlateKinematics,
     pub cfg: ymir_core::terrain::upscale::FbmUpscaleConfig,
     pub volc: VolcanismConfig,
+    /// ADR Finding 140 -- the gorge's tagged falls (empty when the gate is off).
+    pub gorge_falls: Vec<ymir_core::tectonics_c1::valley_construction::GorgeFall>,
 }
 
 pub fn build_world(
@@ -504,7 +506,7 @@ pub fn build_world(
         &mut |_| {},
         &|| false,
     );
-    World { heightmap: up.heightmap, craters, state, kin, cfg, volc }
+    World { heightmap: up.heightmap, craters, state, kin, cfg, volc, gorge_falls: up.gorge_falls }
 }
 
 /// ADR Finding 134 -- the viz's drainage config (`run_hd`): the benches' [`C1DrainageConfig`] plus

@@ -179,6 +179,98 @@ pub struct ValleyConstruction {
     /// as present is [`LakeBase`]'s choice — see there for the circularity it names. DECISION, gated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lake_base: Option<LakeBase>,
+    /// **ADR Finding 140 — the gorge's retreat by age** (`spec_gorge_age_v3.md`). With `Some` (and
+    /// `lake_base = InputLakesAndBasins`, `basin_base`), each present lake ≥ 1 km² stands at `L(r_lake)`
+    /// between its input spill and its floor, its outlet leaves through a gorge hung from that level (the
+    /// invariant on the samples' floor), its rim keeps `≥ L(r_lake)`, and its falls are computed
+    /// ([`Skeleton::gorge_falls`]). `None` = off, byte-identical (skipped in the serialised key). DECISION,
+    /// gated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gorge_retreat: Option<GorgeRetreat>,
+}
+
+/// ADR Finding 140 — the gorge's retreat parameters (`spec_gorge_age_v3.md` § 1).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GorgeRetreat {
+    /// The world's retreat, from the age selector by map (a): ×0.7 → 0, ×1 → 1, ×1.4 → 2. DECISION.
+    pub r_world: f32,
+    /// The per-lake exponent: `r_lake = min(2, r_world·(A/A_ref)^p)`, p ∈ {0, 0.25, 0.5}. DECISION (the author:
+    /// default 0.5). The link to the knickpoint celerity (F115, `c = K·A^m`) is ANCHORED in form, not in value.
+    pub p: f32,
+    /// The gorge's steepness factor: `S = min(tan 28°, max(m·S_loi(A), S_req))`. DECISION, m = 10.
+    pub m: f32,
+    /// The reference outlet area, km². A DECLARED CONSTANT: 418.7 (MEASURED, F139-R: the median outlet area of
+    /// the témoin's 14 D8 lakes), never the current world's, so a lake's retreat does not depend on the others.
+    pub a_ref_km2: f32,
+}
+
+impl GorgeRetreat {
+    /// Spec v3's values: m = 10, A_ref = 418.7 km².
+    pub fn v3(r_world: f32, p: f32) -> Self {
+        Self { r_world, p, m: 10.0, a_ref_km2: 418.7 }
+    }
+}
+
+/// ADR Finding 140 — one fall the gorge construction lays, tagged (its drop exceeds `H_f`).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GorgeFall {
+    /// `"waterfall_head"` (at the lip) or `"waterfall_shortage"` (at the next base, beyond the 28° cap).
+    pub kind: GorgeFallKind,
+    /// The cell (x, y) of the fall's top.
+    pub x: u32,
+    pub y: u32,
+    /// The lake's outflow cell (x, y): the lake cell just upstream of the col.
+    pub exit_x: u32,
+    pub exit_y: u32,
+    /// The drop, m.
+    pub height_m: f32,
+}
+
+/// ADR Finding 140 — the two causes of a fall (the author's « les deux »).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GorgeFallKind {
+    WaterfallHead,
+    WaterfallShortage,
+}
+
+/// ADR Finding 140 — a present lake as the gorge construction saw it (diagnostics, benches).
+#[derive(Clone, Debug, Default)]
+pub struct GorgeBody {
+    /// The body's lowest cell (its key) and size.
+    pub low: u32,
+    pub cells: u32,
+    /// Its outflow cell and the col (the outflow's receiver), `u32::MAX` if none.
+    pub exit: u32,
+    pub col: u32,
+    /// Levels (m): the input spill, the bed sill (minimax from the lowest cell to the outflow), the floor.
+    pub l_in: f32,
+    pub l_bed: f32,
+    pub l_floor: f32,
+    /// The col's drained area (km²), the lake's retreat and its level `L(r_lake)`.
+    pub a_out_km2: f32,
+    pub r_lake: f32,
+    pub level: f32,
+    /// The head fall's share, the gorge's slope, the gorge's drop D_g (m), the head fall and the shortage (m).
+    pub phi: f32,
+    pub slope: f32,
+    pub d_g: f32,
+    pub head_fall_m: f32,
+    pub shortage_m: f32,
+    /// The outlet path's length (km) and the number of cells the gorge raised.
+    pub path_km: f32,
+    pub gorge_cells: u32,
+}
+
+/// ADR Finding 140 — φ, the head fall's share: 0 with probability 1/3, otherwise U[0.1, 0.5], from splitmix64 of
+/// `key` (the body's lowest cell: the construction knows no seed and no final lake id; deviation 3 of the spec).
+fn gorge_phi(key: u64) -> f32 {
+    let mut z = key.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^= z >> 31;
+    let u = (z >> 11) as f64 / (1u64 << 53) as f64;
+    if u < 1.0 / 3.0 { 0.0 } else { (0.1 + 0.4 * (u - 1.0 / 3.0) / (2.0 / 3.0)) as f32 }
 }
 
 /// ADR Finding 132-P4 — which lakes are "present" when the construction integrates χ.
@@ -312,6 +404,7 @@ impl ValleyConstruction {
             trunk_band_downstream: false,
             trunk_band_concordant: false,
             lake_base: None,
+            gorge_retreat: None,
         }
     }
 
@@ -364,6 +457,14 @@ pub struct Skeleton {
     /// head stops on the first cell an earlier line already owns, so its last cell IS the junction.
     /// `None`: the line ends at the sea or a base, or the skeleton is traced off-grid (Finding 127-B).
     pub line_parent: Vec<Option<(u32, u32)>>,
+    /// ADR Finding 140 — the rim clamp: every outer-ring cell of a present lake keeps `≥` this (m); NaN elsewhere.
+    /// `None` when the gorge is off.
+    pub rim_floor_m: Option<Vec<f32>>,
+    /// ADR Finding 140 — the tagged falls the gorge construction laid (empty when off).
+    pub gorge_falls: Vec<GorgeFall>,
+    /// ADR Finding 140 — the present lakes it treated, and each cell's body (`u32::MAX` none), for the benches.
+    pub gorge_bodies: Vec<GorgeBody>,
+    pub gorge_body_of: Option<Vec<u32>>,
 }
 
 impl Skeleton {
@@ -474,6 +575,21 @@ pub fn skeleton_patched(
         c1_altitude_norm_to_metres(spill.as_ref().expect("basin_base")[k], ss)
     };
 
+    // ADR Finding 140 -- the gorge's retreat: the present lakes as bodies and their level L(r_lake), known before the
+    // χ walk so that the lake stops take it as their base
+    let gorge = match (vc.gorge_retreat, vc.lake_base, lake_map.as_deref(), lake_level.as_deref()) {
+        (Some(g), Some(LakeBase::InputLakesAndBasins), Some(lm), Some(lv)) if vc.basin_base => Some(gorge_bodies(
+            field, lm, lv, &land, dir, &area_km2, &dep, &spill_m, w, h, cell_km2, ss, vc, &g,
+        )),
+        _ => None,
+    };
+    let gorge_level = |c: usize, fallback: f32| -> f32 {
+        match &gorge {
+            Some((bo, bs)) if bo[c] != u32::MAX => bs[bo[c] as usize].level,
+            _ => fallback,
+        }
+    };
+
     // χ, integrated from each base upstream (memoised walk down the receivers)
     let mut chi = vec![f32::NAN; n];
     let mut base = vec![f32::NAN; n];
@@ -499,7 +615,7 @@ pub fn skeleton_patched(
             if let (Some(lm), Some(lv)) = (lake_map.as_deref(), lake_level.as_deref())
                 && lm[c] != 0
             {
-                b = lv[c];
+                b = gorge_level(c, lv[c]); // ADR Finding 140 -- the lake at L(r_lake)
                 x = 0.0;
                 chi[c] = 0.0;
                 base[c] = b;
@@ -511,10 +627,10 @@ pub fn skeleton_patched(
                 let lvl = spill_m(c);
                 // ADR Finding 133-F -- a basin lake is a present lake: χ stops at its shore
                 if vc.lake_base == Some(LakeBase::InputLakesAndBasins) {
-                    b = lvl;
+                    b = gorge_level(c, lvl); // ADR Finding 140 -- the lake at L(r_lake)
                     x = 0.0;
                     chi[c] = 0.0;
-                    base[c] = lvl;
+                    base[c] = b;
                     break;
                 }
                 let mut terminal = false;
@@ -576,6 +692,120 @@ pub fn skeleton_patched(
             base[c] = b;
         }
     }
+
+    // ADR Finding 140 -- the gorge: the invariant on the outlet path's floor, the rim clamp, the falls
+    let (rim_floor_m, gorge_falls, gorge_bodies_out, gorge_body_of) = match gorge {
+        Some((body_of, mut bodies)) => {
+            let g = vc.gorge_retreat.expect("the gate");
+            let tan28 = 28f32.to_radians().tan();
+            let nb8 = |c: usize, k: usize| -> usize {
+                (((c / w) as i32 + D8_DY[k]).rem_euclid(h as i32) as usize) * w
+                    + ((c % w) as i32 + D8_DX[k]).rem_euclid(w as i32) as usize
+            };
+            // the rim: every outer-ring cell (not in another body) keeps >= the lake's level
+            let mut rf = vec![f32::NAN; n];
+            for c in 0..n {
+                let bi = body_of[c];
+                if bi == u32::MAX {
+                    continue;
+                }
+                let lvl = bodies[bi as usize].level;
+                for k in 0..8 {
+                    let m = nb8(c, k);
+                    if body_of[m] == u32::MAX && land[m] {
+                        rf[m] = if rf[m].is_nan() { lvl } else { rf[m].max(lvl) };
+                    }
+                }
+            }
+            let mut falls = Vec::new();
+            for b in bodies.iter_mut() {
+                if b.col == u32::MAX {
+                    continue;
+                }
+                let lv = b.level;
+                let mut path = vec![b.col as usize];
+                let mut s = vec![0f32];
+                let mut c = b.col as usize;
+                while path.len() < 20_000 {
+                    let Some(r) = recv(dir, c, w, h) else { break };
+                    if !land[r] || body_of[r] != u32::MAX {
+                        break;
+                    }
+                    s.push(s.last().expect("one") + link_m(c, r));
+                    path.push(r);
+                    c = r;
+                }
+                // the law below along the path, frozen before the gorge raises any base
+                let lawv: Vec<f32> = path.iter().map(|&c| base[c] + vc.age_k * chi[c]).collect();
+                let s_req = |top: f32| -> f32 {
+                    if top <= lawv[0] {
+                        return 0.0;
+                    }
+                    (1..path.len()).map(|i| (top - lawv[i]) / s[i]).fold(f32::INFINITY, f32::min).max(0.0)
+                };
+                let sl = vc.age_k * b.a_out_km2.max(vc.a_c_km2).powf(-0.5);
+                let slope_for = |top: f32| -> f32 {
+                    let r = s_req(top);
+                    (g.m * sl).max(if r.is_finite() { r } else { 0.0 }).min(tan28)
+                };
+                let fit = |top: f32, sg: f32| (0..path.len()).find(|&i| top - sg * s[i] <= lawv[i]);
+                let s_end = *s.last().expect("one");
+                let s0 = slope_for(lv);
+                let dg = match fit(lv, s0) {
+                    Some(i) => lv - lawv[i],
+                    None => s0 * s_end,
+                };
+                let top = lv - b.phi * dg;
+                let sg = slope_for(top);
+                let mut raised = 0u32;
+                let mut end = path.len();
+                for (i, &c) in path.iter().enumerate() {
+                    let z = if i == 0 { lv } else { top - sg * s[i] };
+                    if i > 0 && z <= lawv[i] {
+                        end = i;
+                        break;
+                    }
+                    if chi[c].is_finite() && z - vc.age_k * chi[c] > base[c] {
+                        base[c] = z - vc.age_k * chi[c];
+                        raised += 1;
+                    }
+                }
+                let hf = (1.5 * sg * 100.0).max(10.0);
+                let head = if path.len() > 1 { lv - (top - sg * s[1]) } else { 0.0 };
+                let short = if end == path.len() && path.len() > 1 {
+                    ((top - sg * s_end) - lawv[path.len() - 1]).max(0.0)
+                } else {
+                    0.0
+                };
+                let (ex, cx) = (b.exit as usize, b.col as usize);
+                if head > hf {
+                    falls.push(GorgeFall {
+                        kind: GorgeFallKind::WaterfallHead,
+                        x: (cx % w) as u32,
+                        y: (cx / w) as u32,
+                        exit_x: (ex % w) as u32,
+                        exit_y: (ex / w) as u32,
+                        height_m: head,
+                    });
+                }
+                if short > hf {
+                    let e = path[path.len() - 1];
+                    falls.push(GorgeFall {
+                        kind: GorgeFallKind::WaterfallShortage,
+                        x: (e % w) as u32,
+                        y: (e / w) as u32,
+                        exit_x: (ex % w) as u32,
+                        exit_y: (ex / w) as u32,
+                        height_m: short,
+                    });
+                }
+                (b.slope, b.d_g, b.head_fall_m, b.shortage_m, b.path_km, b.gorge_cells) =
+                    (sg, dg, head, short, s_end / 1000.0, raised);
+            }
+            (Some(rf), falls, bodies, Some(body_of))
+        }
+        None => (None, Vec::new(), Vec::new(), None),
+    };
 
     // trunks and their polylines
     let trunk: Vec<bool> = (0..n).map(|k| land[k] && area_km2[k] >= vc.a_min_km2).collect();
@@ -657,7 +887,150 @@ pub fn skeleton_patched(
         direction,
         ltd_flat_cells,
         line_parent,
+        rim_floor_m,
+        gorge_falls,
+        gorge_bodies: gorge_bodies_out,
+        gorge_body_of,
     }
+}
+
+/// ADR Finding 140 — the present lakes ≥ 1 km² as bodies (the input lakes and the closed-depression components),
+/// each with its levels, outflow, col, outlet area, retreat and level `L(r_lake)`. Returns each cell's body
+/// (`u32::MAX` none) and the bodies.
+#[allow(clippy::too_many_arguments)]
+fn gorge_bodies(
+    field: &GridF32,
+    lm: &[u32],
+    lv: &[f32],
+    land: &[bool],
+    dir: &[u8],
+    area_km2: &[f32],
+    dep: &dyn Fn(usize) -> bool,
+    spill_m: &dyn Fn(usize) -> f32,
+    w: usize,
+    h: usize,
+    cell_km2: f32,
+    ss: &SteinSteinParams,
+    vc: &ValleyConstruction,
+    g: &GorgeRetreat,
+) -> (Vec<u32>, Vec<GorgeBody>) {
+    use std::collections::HashMap;
+    let n = w * h;
+    let nb8 = |c: usize, k: usize| -> usize {
+        (((c / w) as i32 + D8_DY[k]).rem_euclid(h as i32) as usize) * w + ((c % w) as i32 + D8_DX[k]).rem_euclid(w as i32) as usize
+    };
+    let z = |c: usize| c1_altitude_norm_to_metres(field.data[c], ss);
+    // label: the input lakes by id, then the depression components (8-connected)
+    let mut label = vec![u32::MAX; n];
+    let mut members: Vec<(Vec<usize>, bool)> = Vec::new(); // (cells, is an input lake)
+    let mut by_id: HashMap<u32, u32> = HashMap::new();
+    for c in 0..n {
+        if lm[c] != 0 {
+            let id = *by_id.entry(lm[c]).or_insert_with(|| {
+                members.push((Vec::new(), true));
+                (members.len() - 1) as u32
+            });
+            label[c] = id;
+            members[id as usize].0.push(c);
+        }
+    }
+    for s0 in 0..n {
+        if label[s0] != u32::MAX || !land[s0] || !dep(s0) {
+            continue;
+        }
+        let id = members.len() as u32;
+        members.push((vec![s0], false));
+        label[s0] = id;
+        let mut i = 0;
+        while i < members[id as usize].0.len() {
+            let c = members[id as usize].0[i];
+            i += 1;
+            for k in 0..8 {
+                let m = nb8(c, k);
+                if label[m] == u32::MAX && land[m] && lm[m] == 0 && dep(m) {
+                    label[m] = id;
+                    members[id as usize].0.push(m);
+                }
+            }
+        }
+    }
+    let mut body_of = vec![u32::MAX; n];
+    let mut bodies = Vec::new();
+    for (id, (cells, is_lake)) in members.iter().enumerate() {
+        if (cells.len() as f32) * cell_km2 < 1.0 {
+            continue;
+        }
+        let bi = bodies.len() as u32;
+        for &c in cells {
+            body_of[c] = bi;
+        }
+        let low = *cells.iter().min_by(|&&a, &&b| z(a).total_cmp(&z(b))).expect("non-empty");
+        let l_in = if *is_lake { lv[cells[0]] } else { spill_m(low) };
+        let l_floor = z(low);
+        // the outflow: the largest-area cell whose receiver leaves the body
+        let mut exit: Option<usize> = None;
+        for &c in cells {
+            if let Some(r) = recv(dir, c, w, h)
+                && label[r] != id as u32
+                && exit.is_none_or(|e| area_km2[c] > area_km2[e])
+            {
+                exit = Some(c);
+            }
+        }
+        let col = exit.and_then(|e| recv(dir, e, w, h));
+        // the bed sill: minimax from the lowest cell to the outflow, within the body
+        let l_bed = match exit {
+            Some(e) => {
+                let mut best: HashMap<usize, f32> = HashMap::new();
+                let mut heap = BinaryHeap::new();
+                best.insert(low, z(low));
+                heap.push(Item(z(low), low));
+                let mut found = l_in;
+                while let Some(Item(d, c)) = heap.pop() {
+                    if best.get(&c).is_some_and(|&b| d > b) {
+                        continue;
+                    }
+                    if c == e {
+                        found = d;
+                        break;
+                    }
+                    for k in 0..8 {
+                        let m = nb8(c, k);
+                        if label[m] != id as u32 {
+                            continue;
+                        }
+                        let dm = d.max(z(m));
+                        if best.get(&m).is_none_or(|&b| dm < b) {
+                            best.insert(m, dm);
+                            heap.push(Item(dm, m));
+                        }
+                    }
+                }
+                found.min(l_in)
+            }
+            None => l_in,
+        };
+        let l_floor = l_floor.min(l_bed);
+        let a_out = col.map_or(0.0, |c| area_km2[c]);
+        let r_lake = if a_out > 0.0 { (g.r_world * (a_out / g.a_ref_km2).powf(g.p)).min(2.0) } else { 0.0 };
+        let level = if r_lake <= 1.0 { l_in - r_lake * (l_in - l_bed) } else { l_bed - (r_lake - 1.0) * (l_bed - l_floor) };
+        bodies.push(GorgeBody {
+            low: low as u32,
+            cells: cells.len() as u32,
+            exit: exit.map_or(u32::MAX, |e| e as u32),
+            col: col.map_or(u32::MAX, |c| c as u32),
+            l_in,
+            l_bed,
+            l_floor,
+            a_out_km2: a_out,
+            r_lake,
+            level,
+            phi: gorge_phi(low as u64),
+            ..Default::default()
+        });
+    }
+    let _ = vc;
+    (body_of, bodies)
 }
 
 /// ADR Finding 128-C — D8-LTD pointers (Orlandini et al. 2003 §2, with λ = 1; Orlandini, Moretti &
@@ -1640,6 +2013,12 @@ pub fn carve_diag(
         {
             v = v.max(sea_m + eps);
         }
+        // ADR Finding 140 -- the rim: a present lake's outer ring keeps >= its level L(r_lake)
+        if let Some(rf) = sk.rim_floor_m.as_deref()
+            && rf[c].is_finite()
+        {
+            v = v.max(rf[c]);
+        }
         if v < zfield[c] {
             let nv = c1_metres_to_altitude_norm(v, ss);
             if nv < out.data[c] {
@@ -1939,6 +2318,10 @@ mod tests {
             ltd_flat_cells: 0,
             // the tributary (line 1) ends on the trunk's sample at x = 30.5 (index 56)
             line_parent: vec![None, Some((0, 56))],
+            rim_floor_m: None,
+            gorge_falls: Vec::new(),
+            gorge_bodies: Vec::new(),
+            gorge_body_of: None,
         };
         (f, sk, ss)
     }
@@ -2091,6 +2474,81 @@ mod tests {
         assert!(on.chi_m[up] < off.chi_m[up], "its χ counts from the lake only ({} vs {})", on.chi_m[up], off.chi_m[up]);
         assert_eq!(on.base_alt_m[down].to_bits(), off.base_alt_m[down].to_bits(), "downstream of the lake nothing moves");
         assert_eq!(on.chi_m[down].to_bits(), off.chi_m[down].to_bits(), "downstream of the lake nothing moves");
+    }
+
+    /// ADR Finding 140, rule 13 — the gorge's retreat. A plane falls 4 m per cell to the sea on 128² cells of 400 m;
+    /// a bowl 150 m deep sits in it (a present lake). Negative controls FIRST:
+    /// (a) without the gorge, the extended lake base still lets the outlet valley, laid from the sea, cut the rim
+    /// more than 10 m below the lake's spill (F136-K7's notch);
+    /// (b) the gate without the extended lake base is inert, bit for bit.
+    /// With the gorge at r = 0 the rim keeps ≥ the spill (the lake full); at r = 2 the lake's level is its floor
+    /// and the col is cut down to it (the lake drained). The gate is absent from the serialised key when off.
+    #[test]
+    fn the_gorge_keeps_the_rim_at_the_lakes_level_and_retreats_with_age() {
+        let ss = SteinSteinParams::default();
+        let n = 128usize;
+        let z_m = |x: f32, y: f32| -> f32 {
+            if y >= 120.0 {
+                return -50.0;
+            }
+            let d = ((x - 64.0).powi(2) + (y - 50.0).powi(2)).sqrt();
+            let bowl = if d < 12.0 { 150.0 * (1.0 - (d / 12.0).powi(2)) } else { 0.0 };
+            5.0 + 4.0 * (120.0 - y) - bowl
+        };
+        let f = GridF32 {
+            width: n,
+            height: n,
+            data: (0..n * n).map(|k| c1_metres_to_altitude_norm(z_m((k % n) as f32 + 0.5, (k / n) as f32 + 0.5), &ss)).collect(),
+        };
+        let m = |g: &GridF32, k: usize| c1_altitude_norm_to_metres(g.data[k], &ss);
+        let ext = ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..ValleyConstruction::new(F121_AGE_K, None) };
+        let gorge = |r: f32| ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v3(r, 0.0)), ..ext };
+        // the key: absent when off
+        let js = serde_json::to_string(&ext).unwrap();
+        assert!(!js.contains("gorge_retreat"), "{js}");
+        assert!(serde_json::to_string(&gorge(1.0)).unwrap().contains("gorge_retreat"), "negative control: present when on");
+        // (b) the gate needs the extended lake base: without it, bit-identical
+        let plain = ValleyConstruction::new(F121_AGE_K, None);
+        let (a, _) = carve(&f, &skeleton(&f, &plain, &ss, 51.2), &plain, &ss);
+        let with = ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v3(1.0, 0.0)), ..plain };
+        let (b, _) = carve(&f, &skeleton(&f, &with, &ss, 51.2), &with, &ss);
+        assert!(a.data.iter().zip(b.data.iter()).all(|(x, y)| x.to_bits() == y.to_bits()), "the gate alone must be inert");
+        // the body and its ring, from the gorge's own diagnostics
+        let sk0 = skeleton(&f, &gorge(0.0), &ss, 51.2);
+        assert_eq!(sk0.gorge_bodies.len(), 1, "one present lake ≥ 1 km²");
+        let body = sk0.gorge_bodies[0].clone();
+        assert!(body.col != u32::MAX, "the lake has an outflow");
+        let bo = sk0.gorge_body_of.as_ref().expect("diagnostics");
+        let ring: Vec<usize> = (0..n * n)
+            .filter(|&k| {
+                bo[k] == u32::MAX
+                    && f.data[k] > C1_SEA_LEVEL_NORM
+                    && [(-1i32, -1i32), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)].iter().any(|&(dx, dy)| {
+                        let (x, y) = ((k % n) as i32 + dx, (k / n) as i32 + dy);
+                        x >= 0 && y >= 0 && x < n as i32 && y < n as i32 && bo[y as usize * n + x as usize] == 0
+                    })
+            })
+            .collect();
+        let ring_min = |g: &GridF32| ring.iter().map(|&k| m(g, k)).fold(f32::INFINITY, f32::min);
+        // (a) the negative control: without the gorge the rim is notched
+        let (no_gorge, _) = carve(&f, &skeleton(&f, &ext, &ss, 51.2), &ext, &ss);
+        assert!(
+            ring_min(&no_gorge) < body.l_in - 10.0,
+            "negative control: without the gorge the outlet cuts the rim ({} m against the spill {} m)",
+            ring_min(&no_gorge),
+            body.l_in
+        );
+        // r = 0: the lake full, the rim kept
+        assert!((body.level - body.l_in).abs() < 1e-3, "r = 0: L = L_in");
+        let (young, _) = carve(&f, &sk0, &gorge(0.0), &ss);
+        assert!(ring_min(&young) >= body.l_in - 0.5, "r = 0: the rim keeps ≥ the spill ({} m against {} m)", ring_min(&young), body.l_in);
+        // r = 2: drained, the col cut to the floor
+        let sk2 = skeleton(&f, &gorge(2.0), &ss, 51.2);
+        let b2 = &sk2.gorge_bodies[0];
+        assert!((b2.level - b2.l_floor).abs() < 1e-3, "r = 2: L = L_floor");
+        let (old, _) = carve(&f, &sk2, &gorge(2.0), &ss);
+        assert!(m(&old, b2.col as usize) <= b2.l_floor + 1.0, "r = 2: the col is cut to the floor ({} m against {} m)", m(&old, b2.col as usize), b2.l_floor);
+        assert!(ring_min(&old) >= b2.l_floor - 0.5, "r = 2: no ring cell under the drained level");
     }
 
     /// ADR Finding 133-F, rule 13 — a below-sea basin's lake is a present lake: χ stops at its shore. A plane

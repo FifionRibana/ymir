@@ -498,6 +498,8 @@ pub struct UpscaleResult {
     /// when `cfg.erosion` ran. Forwarded from `ErosionResult.sediment`; the
     /// hook for a future rivers/lakes chantier (NOT consumed yet).
     pub sediment: Option<GridF32>,
+    /// ADR Finding 140 — the tagged falls the valley construction's gorge laid (empty when the gate is off).
+    pub gorge_falls: Vec<crate::tectonics_c1::valley_construction::GorgeFall>,
 }
 
 /// Hermite smoothstep: 0 at lo, 1 at hi, smooth transition.
@@ -820,7 +822,7 @@ pub fn upscale_with_fbm(
         }
     }
 
-    UpscaleResult { heightmap, slope: slope_out, sediment: None }
+    UpscaleResult { heightmap, slope: slope_out, sediment: None, gorge_falls: Vec::new() }
 }
 
 /// Compute slope magnitude and direction on the coarse grid.

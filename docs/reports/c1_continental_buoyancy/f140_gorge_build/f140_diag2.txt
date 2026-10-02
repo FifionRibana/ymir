@@ -1,0 +1,15 @@
+appended f140_diag2
+=== ON
+   (a) construction + rims    (4379,3551) 319.7 m, ≤ sea within 30 cells 0 · (2435,3586) -0.3 m, ≤ sea within 30 cells 27
+   (b) + light pass           (4379,3551) 319.7 m, ≤ sea within 30 cells 0 · (2435,3586) -0.3 m, ≤ sea within 30 cells 27
+   (c) + droplets             (4379,3551) 319.7 m, ≤ sea within 30 cells 0 · (2435,3586) -0.3 m, ≤ sea within 30 cells 27
+   (d) + bathymetry           (4379,3551) 319.7 m, ≤ sea within 30 cells 0 · (2435,3586) -1.0 m, ≤ sea within 30 cells 27
+   (e) protected breach       (4379,3551) 325.8 m (pre-breach lake id 5) · (2435,3586) -1.0 m (pre-breach lake id 0)
+=== GORGE
+   (a) construction + rims    (4379,3551) 178.7 m, ≤ sea within 30 cells 0 · (2435,3586) -0.3 m, ≤ sea within 30 cells 27
+   (b) + light pass           (4379,3551) 178.7 m, ≤ sea within 30 cells 0 · (2435,3586) -0.3 m, ≤ sea within 30 cells 27
+   (c) + droplets             (4379,3551) 178.7 m, ≤ sea within 30 cells 0 · (2435,3586) -0.3 m, ≤ sea within 30 cells 27
+   (d) + bathymetry           (4379,3551) 178.7 m, ≤ sea within 30 cells 0 · (2435,3586) -1.0 m, ≤ sea within 30 cells 27
+   (e) protected breach       (4379,3551) -8.4 m (pre-breach lake id 0) · (2435,3586) -1.0 m (pre-breach lake id 0)
+
+[exited with code 0]

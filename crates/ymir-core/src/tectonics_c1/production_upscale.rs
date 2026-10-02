@@ -494,6 +494,8 @@ pub fn upscale_from_c1_with_progress(
         );
         result.heightmap =
             crate::tectonics_c1::valley_construction::carve(&result.heightmap, &sk, vc, ss).0;
+        // ADR Finding 140 -- the gorge's tagged falls travel with the terrain (empty when the gate is off)
+        result.gorge_falls = sk.gorge_falls.clone();
     }
 
     // ADR 0001 — routed stream-power incision (prototype), applied AFTER the FBM and
@@ -603,8 +605,13 @@ pub fn upscale_from_c1_with_progress(
                 slope.set(i, j, (gx * gx + gy * gy).sqrt());
             }
         }
-        result =
-            UpscaleResult { heightmap: eroded.heightmap, slope, sediment: Some(eroded.sediment) };
+        let gorge_falls = std::mem::take(&mut result.gorge_falls);
+        result = UpscaleResult {
+            heightmap: eroded.heightmap,
+            slope,
+            sediment: Some(eroded.sediment),
+            gorge_falls,
+        };
     }
 
     // C-2 active-rim reconstruction — the erosion above breaches every crater rim;

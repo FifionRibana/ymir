@@ -57,6 +57,21 @@ struct RiverSegmentView<'a> {
     /// "a real basin, not inventoried": the consumer is never handed an id it cannot
     /// resolve. Always `null` on a watercourse.
     source_lake_id: Option<u32>,
+    /// ADR Finding 140 — the tagged falls on this segment (the gorge's retreat). Omitted when empty, so a world
+    /// without the gate exports byte-identical `rivers.json`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    features: Vec<FeatureView>,
+}
+
+/// ADR Finding 140 — one tagged fall on a segment: `point` indexes the segment's `points`.
+#[derive(Serialize)]
+struct FeatureView {
+    kind: crate::tectonics_c1::valley_construction::GorgeFallKind,
+    point: usize,
+    x: u32,
+    y: u32,
+    height_m: f32,
+    lake_id: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -71,6 +86,42 @@ struct RiversView<'a> {
 /// which core keeps in CELLS so that no interior stage needs a cell area it does not have —
 /// the conversion happens once, here, at the point of use.
 pub fn rivers_json(drainage: &C1DrainageResult, cell_km2: f32) -> Vec<u8> {
+    rivers_json_with_falls(drainage, cell_km2, &[])
+}
+
+/// ADR Finding 140 — [`rivers_json`] with the gorge's tagged falls attached to the segments: each fall goes to the
+/// segment point nearest to it (within 2 cells), and `lake_id` is the drainage's lake at the fall's outflow cell.
+/// With no falls the bytes are [`rivers_json`]'s.
+pub fn rivers_json_with_falls(
+    drainage: &C1DrainageResult,
+    cell_km2: f32,
+    falls: &[crate::tectonics_c1::valley_construction::GorgeFall],
+) -> Vec<u8> {
+    let w = drainage.flow.filled.width;
+    let mut per_seg: Vec<Vec<FeatureView>> = drainage.rivers.segments.iter().map(|_| Vec::new()).collect();
+    for f in falls {
+        let mut best: Option<(usize, usize, i64)> = None;
+        for (si, seg) in drainage.rivers.segments.iter().enumerate() {
+            for (pi, &(x, y)) in seg.points.iter().enumerate() {
+                let d = (x as i64 - f.x as i64).pow(2) + (y as i64 - f.y as i64).pow(2);
+                if d <= 8 && best.is_none_or(|b| d < b.2) {
+                    best = Some((si, pi, d));
+                }
+            }
+        }
+        if let Some((si, pi, _)) = best {
+            let lk = drainage.lake_map.get(f.exit_y as usize * w + f.exit_x as usize).copied().unwrap_or(0);
+            per_seg[si].push(FeatureView {
+                kind: f.kind,
+                point: pi,
+                x: f.x,
+                y: f.y,
+                height_m: f.height_m,
+                lake_id: (lk != 0).then_some(lk),
+            });
+        }
+    }
+    let mut per_seg = per_seg.into_iter();
     let segments = drainage
         .rivers
         .segments
@@ -92,6 +143,7 @@ pub fn rivers_json(drainage: &C1DrainageResult, cell_km2: f32) -> Vec<u8> {
             profile_m: drainage.segment_profile_m.get(i).map(|v| v.as_slice()).unwrap_or(&[]),
             kind: drainage.segment_kind.get(i).copied().unwrap_or(SegmentKind::Watercourse),
             source_lake_id: drainage.segment_source_lake.get(i).copied().flatten(),
+            features: per_seg.next().unwrap_or_default(),
         })
         .collect();
     let view = RiversView { coordinate_space: COORDINATE_SPACE, segments };
@@ -188,4 +240,22 @@ mod tests {
         assert_eq!(lakes[0].base.id, 3);
         assert!((lakes[0].area_km2 - 12.5).abs() < 1e-6);
     }
+
+    /// ADR Finding 140, rule 13 — without falls `rivers.json` carries no `features` key (byte-identical to the
+    /// pre-F140 export: [`rivers_json`] IS the no-fall call); with one fall the nearest segment carries it.
+    #[test]
+    fn rivers_json_carries_the_tagged_falls_only_when_there_are_any() {
+        use crate::tectonics_c1::valley_construction::{GorgeFall, GorgeFallKind};
+        let d = synthetic_drainage();
+        let plain = rivers_json(&d, 0.0381);
+        assert_eq!(plain, rivers_json_with_falls(&d, 0.0381, &[]), "no falls: the same bytes");
+        assert!(!String::from_utf8(plain).unwrap().contains("features"), "no falls: no features key");
+        let fall = GorgeFall { kind: GorgeFallKind::WaterfallHead, x: 2, y: 2, exit_x: 1, exit_y: 1, height_m: 42.0 };
+        let v: Value = serde_json::from_slice(&rivers_json_with_falls(&d, 0.0381, &[fall])).unwrap();
+        let f = &v["segments"][0]["features"][0];
+        assert_eq!(f["kind"], "waterfall_head", "negative control: the fall is exported ({v})");
+        assert_eq!(f["point"], 1);
+        assert_eq!(f["height_m"], 42.0);
+    }
+
 }

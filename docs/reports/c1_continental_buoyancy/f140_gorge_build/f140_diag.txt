@@ -1,0 +1,17 @@
+appended f140_diag
+=== F140 diag · 35 bodies
+   body 25 low (3104,3532) 177925 cells · L_in 174.9 · L_bed 76.3 · L_floor 0.0 · r 1.52 · level 36.8 · A 964
+   body 26 low (4449,3863) 163148 cells · L_in 459.3 · L_bed 1.2 · L_floor 0.1 · r 2.00 · level 0.1 · A 2264
+   body 27 low (2512,3751) 109776 cells · L_in 215.7 · L_bed 4.1 · L_floor 0.0 · r 0.99 · level 5.2 · A 414
+   body 28 low (4065,4323) 48303 cells · L_in 110.2 · L_bed 1.2 · L_floor 0.0 · r 1.04 · level 1.1 · A 449
+   body 29 low (4692,4264) 4392 cells · L_in 22.0 · L_bed 2.3 · L_floor 0.1 · r 0.62 · level 9.8 · A 161
+   body 30 low (1441,4957) 95092 cells · L_in 49.3 · L_bed 6.1 · L_floor 0.0 · r 1.59 · level 2.5 · A 1061
+   body 31 low (3161,4881) 127684 cells · L_in 115.3 · L_bed 19.1 · L_floor 0.0 · r 2.00 · level 0.0 · A 1805
+   body 32 low (1900,5136) 98095 cells · L_in 268.8 · L_bed 2.3 · L_floor 0.0 · r 1.02 · level 2.3 · A 438
+   body 33 low (1887,5787) 69782 cells · L_in 471.2 · L_bed 0.3 · L_floor 0.3 · r 0.90 · level 47.9 · A 338
+   body 34 low (2666,5963) 104084 cells · L_in 614.9 · L_bed 8.8 · L_floor 0.0 · r 0.97 · level 27.7 · A 393
+   land cells the GORGE lays at or below the sea (and ON does not): 0
+   floor (4379,3551): S1 319.7 m · GORGE 178.7 m · ON 319.7 m · body 4 · new below-sea cells within 30 cells 0 (bodies {})
+   floor (2435,3586): S1 -0.3 m · GORGE -0.3 m · ON -0.3 m · body 4294967295 · new below-sea cells within 30 cells 0 (bodies {})
+
+[exited with code 0]

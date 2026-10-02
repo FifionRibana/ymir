@@ -1,0 +1,7 @@
+appended f140_diag3
+=== body 4: 21991 cells (52.4 km²) · L_in 325.8 · L_bed 325.7 · L_floor 168.9 · A 1571 km² · r_lake 1.94 · level 178.7 · slope 0.018 · head 0.0 m · col (4403,3625)
+   S1 footprint cells below L(r): 59 (0.1 km²)
+   ON: pre-breach lakes over the footprint 21991 cells (52.4 km², ids {5}) · land cells the breach lowers to ≤ sea: 292 (within 200 cells of the floor cell: 0) · lowest UNHELD footprint cell in the world inf m at (0,0)
+   GORGE: pre-breach lakes over the footprint 248 cells (0.6 km², ids {3, 5, 7, 9}) · land cells the breach lowers to ≤ sea: 2821 (within 200 cells of the floor cell: 458) · lowest UNHELD footprint cell in the world 91.1 m at (4148,3674)
+
+[exited with code 0]

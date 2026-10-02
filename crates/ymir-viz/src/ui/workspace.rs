@@ -129,6 +129,9 @@ enum InspectTab {
     Volcanoes,
 }
 
+/// ADR Finding 141 -- the gorge's retreat toggle (Finding 140) stays hidden until its crash is fixed.
+const GORGE_TOGGLE_VISIBLE: bool = false;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 enum HdLayer {
     #[default]
@@ -276,6 +279,11 @@ struct WorkspaceState {
     /// ADR Finding 135-W4 -- "Mur ↔ mer" (Finding 126-B's clause): no wall cell laid below sea + 0.5 m
     /// (`wall_sea_floor_m = Some(0.5)`). Off = `None`, the guarded digests. Gated candidate, nothing promoted.
     valley_wall_sea: bool,
+    /// ADR Finding 140 -- "Recul de la gorge (âge)": the gorge's retreat, r read from the age selector by map (a).
+    /// Off = `None`, the guarded digests. Gated, nothing promoted.
+    valley_gorge: bool,
+    /// ADR Finding 140 -- the per-lake exponent p, an index into {0, 0.25, 0.5} (the author: default 0.5).
+    valley_gorge_p: usize,
     /// EXPERIMENTAL (ADR 0001, Finding 11): MFD incision — dendritic valleys, no solver.
     mfd: bool,
     mfd_p: f32,
@@ -424,6 +432,8 @@ impl Default for WorkspaceState {
             valley_width_gamma: 0, // ADR Finding 124-5 -- γ 0: the width ignores the age
             valley_lake_base: false, // ADR Finding 132-P4 -- off ships
             valley_wall_sea: false,  // ADR Finding 135-W4 -- off ships
+            valley_gorge: false,     // ADR Finding 140 -- off ships
+            valley_gorge_p: 2,       // ADR Finding 140 -- p = 0.5, the author's default
             cross_rill_d: 0.40,
             mfd: true,
             mfd_p: 2.0,
@@ -984,12 +994,20 @@ fn left_panel(
                                     width_age_gamma: [None, Some(0.5), Some(1.0)]
                                         [ws.valley_width_gamma.min(2)],
                                     // ADR Finding 132-P4 -- off stays `None` (the guarded digest)
-                                    lake_base: ws.valley_lake_base.then_some(
+                                    lake_base: (ws.valley_lake_base || ws.valley_gorge).then_some(
                                         // ADR Finding 133 -- the extended variant (basin lakes are present lakes)
                                         ymir_core::tectonics_c1::valley_construction::LakeBase::InputLakesAndBasins,
                                     ),
                                     // ADR Finding 135-W4 -- mur ↔ mer, off stays `None` (the guarded digest)
                                     wall_sea_floor_m: ws.valley_wall_sea.then_some(0.5),
+                                    // ADR Finding 140 -- the gorge's retreat: r from the age selector by map (a)
+                                    // (×0.7 → 0, ×1 → 1, ×1.4 → 2), p from its selector
+                                    gorge_retreat: ws.valley_gorge.then(|| {
+                                        ymir_core::tectonics_c1::valley_construction::GorgeRetreat::v3(
+                                            [0.0f32, 1.0, 2.0][ws.valley_age.min(2)],
+                                            [0.0f32, 0.25, 0.5][ws.valley_gorge_p.min(2)],
+                                        )
+                                    }),
                                     ..vc
                                 })
                             },
@@ -1274,6 +1292,40 @@ fn left_panel(
                                          Candidate gatée. Aucun banc ne garde cet état : le badge dira « non \
                                          gardé ». RIEN N'EST PROMU.",
                                     );
+                                    // ADR Finding 141 -- HIDDEN until Finding 140's crash is fixed (the gorge at ×1, p 0.5 fires
+                                    // Finding 38's invariant in the HD assembly): `valley_gorge` stays false, the world is
+                                    // the guarded one
+                                    if GORGE_TOGGLE_VISIBLE {
+                                    ui.checkbox(
+                                        &mut ws.valley_gorge,
+                                        egui::RichText::new("Recul de la gorge (âge)").color(DIM2).size(11.0),
+                                    )
+                                    .on_hover_text(
+                                        "ADR Finding 140 — spec v3. Chaque lac présent (≥ 1 km²) se tient à un \
+                                         niveau L(r) entre son déversoir et son fond ; son exutoire part en \
+                                         GORGE accrochée à ce niveau (pente 10 × la loi gradée, raidie si la \
+                                         place manque, plafond 28°) ; son rebord garde ≥ L(r) ; une chute de \
+                                         tête (un lac sur trois sans) est taggée.\n\n\
+                                         r suit le sélecteur d'âge : ×0,7 → 0 (lac plein), ×1 → 1 (lac sur \
+                                         son seuil de fond), ×1,4 → 2 (vidé). Recul par lac : \
+                                         r_lac = r · (A/418,7 km²)^p.\n\n\
+                                         Active la base des lacs étendue. Aucun banc ne garde cet état : le \
+                                         badge dira « non gardé ». RIEN N'EST PROMU.",
+                                    );
+                                    if ws.valley_gorge {
+                                        ui.horizontal(|ui| {
+                                            ui.label(egui::RichText::new("recul par lac p").color(DIM2).size(11.0))
+                                                .on_hover_text(
+                                                    "p = 0 : tous les lacs reculent ensemble. p = 0,5 : les \
+                                                     grands exutoires reculent plus vite (la célérité d'une \
+                                                     rupture croît avec l'aire, F115). L'auteur : défaut 0,5.",
+                                                );
+                                            if let Some(i) = seg_row(ui, &["0", "0,25", "0,5"], ws.valley_gorge_p) {
+                                                ws.valley_gorge_p = i;
+                                            }
+                                        });
+                                    }
+                                    }
                                 }
                                 ui.checkbox(
                                     &mut ws.cross_rill,
@@ -2780,6 +2832,43 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         ));
         if sel {
             pnt.circle_stroke(c, s + 3.0, egui::Stroke::new(2.0, C::WHITE));
+        }
+    }
+
+    // ADR Finding 140 -- the gorge's tagged falls: a cyan diamond on the Relief layer (with "Symboles"); hovering
+    // shows its kind, height and lake
+    if ws.show_symbols && ws.layer == HdLayer::Relief {
+        let hover = ui.input(|i| i.pointer.hover_pos());
+        for (f, lk) in &hd.gorge_falls {
+            let c = to_screen(f.x, f.y);
+            let s = 6.0;
+            let dia = vec![
+                egui::pos2(c.x, c.y - s),
+                egui::pos2(c.x + s, c.y),
+                egui::pos2(c.x, c.y + s),
+                egui::pos2(c.x - s, c.y),
+            ];
+            pnt.add(egui::Shape::convex_polygon(
+                dia,
+                C::from_rgb(0x40, 0xd0, 0xf0),
+                egui::Stroke::new(1.5, C::from_rgb(0x10, 0x20, 0x30)),
+            ));
+            if hover.is_some_and(|h| h.distance(c) < 9.0) {
+                let kind = match f.kind {
+                    ymir_core::tectonics_c1::valley_construction::GorgeFallKind::WaterfallHead => "chute de tête",
+                    ymir_core::tectonics_c1::valley_construction::GorgeFallKind::WaterfallShortage => {
+                        "chute de manque de place"
+                    }
+                };
+                let lake = lk.map_or("—".to_string(), |l| l.to_string());
+                pnt.text(
+                    egui::pos2(c.x + 10.0, c.y - 8.0),
+                    egui::Align2::LEFT_TOP,
+                    format!("{kind} · {:.0} m · lac {lake}", f.height_m),
+                    egui::FontId::proportional(11.0),
+                    C::WHITE,
+                );
+            }
         }
     }
 
@@ -7005,6 +7094,7 @@ mod f124_objects {
             sample_size: 1.0,
             bench_guard: ymir_core::tectonics_c1::bench_guard::GuardStatus::NoReference { viz: String::new() },
             lake_guard: ymir_core::tectonics_c1::bench_guard::GuardStatus::NoReference { viz: String::new() },
+            gorge_falls: Vec::new(),
             km_per_cell: 1.0,
         };
         let wcs = aggregate_watercourses(&hd, w as f32, 1.0);

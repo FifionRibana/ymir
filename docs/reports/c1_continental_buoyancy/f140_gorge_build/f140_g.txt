@@ -1,0 +1,15 @@
+...
+...
+    Finished `release` profile [optimized] target(s) in 0.26s
+     Running tests\f126_coast.rs (target_f140\release\deps\f126_coast-78c90b7d7fab281b.exe)
+running 1 test
+────────── GORGE ×1 (r_world 1, p 0.5) ──────────
+thread 'f140_g' (47556) panicked at crates\ymir-core\src\tectonics_c1\hd_assembly.rs:279:5:
+ADR Finding 38/92-B: 2 enclosed below-sea component(s) carry no water body. (floor cell, cells): [(29094171, 121), (29378947, 1)]. This is the invariant Finding 38 closed and Finding 86's `MergedUnionRelevel` re-opened; see `separate_unclaimed_regions`.
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test f140_g ... FAILED
+failures:
+failures:
+    f140_g
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 55 filtered out; finished in 2373.04s
+error: test failed, to rerun pass `-p ymir-core --test f126_coast`

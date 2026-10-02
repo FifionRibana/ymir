@@ -169,6 +169,9 @@ pub struct ErodedProduct {
     /// Craters placed by the volcanism closure, in HD pixel coords. Empty when
     /// volcanism is disabled.
     pub craters: Vec<CraterRecord>,
+    /// ADR Finding 140 — the gorge's tagged falls. Empty when the gate is off; then no sidecar is written and
+    /// the cache entry is byte-identical to before.
+    pub gorge_falls: Vec<crate::tectonics_c1::valley_construction::GorgeFall>,
 }
 
 impl RawCodec for ErodedProduct {
@@ -184,7 +187,15 @@ impl RawCodec for ErodedProduct {
         let json = serde_json::to_string(&self.craters)
             .map_err(|e| format!("crater serialize error: {e}"))?;
         std::fs::write(stem.with_extension("craters.json"), json)
-            .map_err(|e| format!("crater write error: {e}"))
+            .map_err(|e| format!("crater write error: {e}"))?;
+        // ADR Finding 140 -- the gorge's falls, only when there are any (off: no new file)
+        if !self.gorge_falls.is_empty() {
+            let gj = serde_json::to_string(&self.gorge_falls)
+                .map_err(|e| format!("gorge serialize error: {e}"))?;
+            std::fs::write(stem.with_extension("gorge.json"), gj)
+                .map_err(|e| format!("gorge write error: {e}"))?;
+        }
+        Ok(())
     }
     fn read_raw(stem: &Path, shape: &Value) -> Result<Self, String> {
         let w = shape["width"].as_u64().ok_or("sidecar: missing width")? as usize;
@@ -194,7 +205,11 @@ impl RawCodec for ErodedProduct {
             .map_err(|e| format!("crater read error: {e}"))?;
         let craters: Vec<CraterRecord> =
             serde_json::from_str(&cj).map_err(|e| format!("crater parse error: {e}"))?;
-        Ok(ErodedProduct { heightmap, craters })
+        let gorge_falls = match std::fs::read_to_string(stem.with_extension("gorge.json")) {
+            Ok(gj) => serde_json::from_str(&gj).map_err(|e| format!("gorge parse error: {e}"))?,
+            Err(_) => Vec::new(),
+        };
+        Ok(ErodedProduct { heightmap, craters, gorge_falls })
     }
 }
 
@@ -302,7 +317,7 @@ pub fn cached_c1_eroded_with_progress(
         if cancel() {
             return Err("cancelled".to_string());
         }
-        Ok(ErodedProduct { heightmap: up.heightmap, craters })
+        Ok(ErodedProduct { heightmap: up.heightmap, craters, gorge_falls: up.gorge_falls })
     })
 }
 
@@ -893,6 +908,7 @@ mod tests {
             "trunk_band_downstream",
             "trunk_band_concordant",
             "lake_base",
+            "gorge_retreat",
         ] {
             assert!(js.get(f).is_none(), "the gated-off `{f}` is serialised: {js}");
         }
@@ -920,6 +936,19 @@ mod tests {
         assert_eq!(key.digest(), rebuilt.digest(), "the construction entry must be its serde form");
         let (_, key_b1) = key_of(ValleyConstruction { wall_profile: Some(WallProfile::f124()), ..vc });
         assert_ne!(key.digest(), key_b1.digest(), "a gated field turned ON must move the key");
+        // ADR Finding 140 -- the gorge's retreat and each of its parameters move the key (negative control: off
+        // does not, above)
+        let gr = |r: f32, p: f32| {
+            key_of(ValleyConstruction {
+                gorge_retreat: Some(crate::tectonics_c1::valley_construction::GorgeRetreat::v3(r, p)),
+                ..vc
+            })
+            .1
+            .digest()
+        };
+        assert_ne!(key.digest(), gr(1.0, 0.5), "the gorge turned ON must move the key");
+        assert_ne!(gr(1.0, 0.5), gr(2.0, 0.5), "r_world must move the key");
+        assert_ne!(gr(1.0, 0.5), gr(1.0, 0.25), "p must move the key");
     }
 
     fn tmp(name: &str) -> PathBuf {

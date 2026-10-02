@@ -315,6 +315,9 @@ pub struct HdResult {
     /// ADR Finding 134 -- the lake guard: the final lakes (after the C-2 crater pass) against the
     /// bench's, under the final drainage's digest. One climate is guarded (45° / 40°).
     pub lake_guard: ymir_core::tectonics_c1::bench_guard::GuardStatus,
+    /// ADR Finding 140 -- the gorge's tagged falls, each with the final lake at its outflow (if any). Empty when the
+    /// gate is off.
+    pub gorge_falls: Vec<(ymir_core::tectonics_c1::valley_construction::GorgeFall, Option<u32>)>,
     /// Physical km per HD cell (`sample_size · domain_km / width`) — for the basal-disc
     /// radius of the volcaniclastic overlay.
     pub km_per_cell: f32,
@@ -869,6 +872,8 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // volcanism is off) travel to the lake-typing stage. Bundled with the terrain
     // through the cache, so a HIT carries its craters too (no silent mistyping).
     let craters = eroded.craters;
+    // ADR Finding 140 -- the gorge's tagged falls (empty when the gate is off)
+    let gorge_falls = eroded.gorge_falls;
     let eroded = eroded.heightmap;
     // ADR Finding 123 — the identity guard, on the eroded field (pre-breach), keyed by the SAME
     // digest the cache uses: equal digest ⇒ equal configuration, equal hash ⇒ the same world.
@@ -1171,6 +1176,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             &climate,
             &biomes,
             &drainage,
+            &gorge_falls,
             lat,
             lat_span,
             params.geo_scale_ratio,
@@ -1228,6 +1234,14 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     };
 
     // ── Done — ship the full product. ──
+    // ADR Finding 140 -- each tagged fall with the final lake at its outflow
+    let gorge_falls_res: Vec<_> = gorge_falls
+        .iter()
+        .map(|f| {
+            let lk = drainage.lake_map[f.exit_y as usize * eroded.width + f.exit_x as usize];
+            (*f, (lk != 0).then_some(lk))
+        })
+        .collect();
     let result = Arc::new(HdResult {
         width: eroded.width,
         height: eroded.height,
@@ -1245,6 +1259,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         km_per_cell,
         bench_guard,
         lake_guard,
+        gorge_falls: gorge_falls_res,
     });
     eprintln!(
         "[HD timing] run_hd TOTAL {:.1}s (render is separate, on the UI thread)",
@@ -1267,6 +1282,7 @@ fn export_ymir_container(
     climate: &ClimateResult,
     biomes: &[Biome],
     drainage: &C1DrainageResult,
+    gorge_falls: &[ymir_core::tectonics_c1::valley_construction::GorgeFall],
     lat: f32,
     lat_span_deg: f32,
     geo_scale_ratio: f32,
@@ -1366,7 +1382,8 @@ fn export_ymir_container(
         let km_per_cell = window_km / eroded.width as f32;
         km_per_cell * km_per_cell
     };
-    let rivers = hydro::rivers_json(drainage, cell_km2);
+    // ADR Finding 140 -- the gorge's tagged falls ride on the segments; none → rivers_json's bytes
+    let rivers = hydro::rivers_json_with_falls(drainage, cell_km2, gorge_falls);
     writer.add_vector_file("rivers", "rivers.json", &rivers)?;
     let lakes = hydro::lakes_json(drainage);
     writer.add_vector_file("lakes", "lakes.json", &lakes)?;
