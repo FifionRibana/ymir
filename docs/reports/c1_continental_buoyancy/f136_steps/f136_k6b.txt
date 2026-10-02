@@ -1,0 +1,21 @@
+...
+    Finished `release` profile [optimized] target(s) in 43.03s
+     Running tests\f126_coast.rs (target_f136\release\deps\f126_coast-78c90b7d7fab281b.exe)
+running 1 test
+   lake    1  132.8 km² level   327.2 m · drop to the first graded reach ≥ 2 km ** 290.1 m**, reached at  1.94 km · drop over the first 5 km  319.5 m
+   lake    2   35.5 km² level  1292.0 m · drop to the first graded reach ≥ 2 km ** 862.1 m**, reached at  3.31 km · drop over the first 5 km  899.2 m
+   lake    3  159.7 km² level  1314.5 m · drop to the first graded reach ≥ 2 km **   0.0 m**, reached at  0.00 km · drop over the first 5 km    0.0 m
+   lake    4   45.8 km² level   168.2 m · drop to the first graded reach ≥ 2 km ** 119.0 m**, reached at  0.39 km · drop over the first 5 km  148.1 m
+   lake    7    5.3 km² level   383.4 m · drop to the first graded reach ≥ 2 km ** 316.6 m**, reached at  1.85 km · drop over the first 5 km  351.6 m
+   lake    8   12.3 km² level   520.5 m · drop to the first graded reach ≥ 2 km **  51.3 m**, reached at  0.12 km · drop over the first 5 km  317.4 m
+   lake    9   79.7 km² level   418.0 m · drop to the first graded reach ≥ 2 km ** 265.9 m**, reached at  1.50 km · drop over the first 5 km  296.4 m
+   lake   10  249.0 km² level   974.5 m · drop to the first graded reach ≥ 2 km ** 810.7 m**, reached at  3.02 km · drop over the first 5 km  840.5 m
+   lake   11  163.0 km² level   362.0 m · drop to the first graded reach ≥ 2 km ** 260.4 m**, reached at  1.55 km · drop over the first 5 km  286.0 m
+   lake   12   10.2 km² level   118.9 m · drop to the first graded reach ≥ 2 km **   0.0 m**, reached at  0.00 km · drop over the first 5 km  102.6 m
+   lake   13  133.1 km² level   239.3 m · drop to the first graded reach ≥ 2 km **   0.0 m**, reached at  0.00 km · drop over the first 5 km    0.0 m
+   lake   15   17.4 km² level   154.9 m · drop to the first graded reach ≥ 2 km **   NaN m**, reached at   NaN km · drop over the first 5 km   41.1 m
+   lake   19   72.0 km² level   197.6 m · drop to the first graded reach ≥ 2 km **   0.0 m**, reached at  0.00 km · drop over the first 5 km    0.0 m
+   lake   20   33.2 km² level   127.6 m · drop to the first graded reach ≥ 2 km **  23.9 m**, reached at  0.12 km · drop over the first 5 km   64.0 m
+   K6b · drops > 50 / > 200 / > 500 m: **8 / 6 / 2** of 13 lakes with a graded reach within 10 km
+test f136_k6b ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 51 filtered out; finished in 256.36s

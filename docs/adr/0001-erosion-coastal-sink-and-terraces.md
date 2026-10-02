@@ -265,6 +265,11 @@ valleys), passed to `incise` as a per-cell K field. A richer palette needs a new
 tectonic lithology field — out of scope here. Deferred until the base sculpt is
 visually confirmed.
 
+> ⛔ **Corrected in place by Finding 137 (2026-10-02): this label is OUT OF DATE.** The erodibility field
+> it says is missing now exists: C-3 `production_k_field` (`production_upscale.rs:662`), a per-cell
+> multiplier, hard basement ×1, rift-soft ×10, volcaniclastic ×3, times the C-3b fracture density, read by
+> the incision. It is an erodibility, not a geological map of rock types (Finding 136-G, Finding 137-Q2).
+
 ---
 
 ## Finding 5 — FBM shrinks to a symmetry-breaking seed; width widens downstream; incision is resolution-dependent
@@ -19225,3 +19230,83 @@ raw outputs are in `docs/reports/c1_continental_buoyancy/f135_witness_cols/`.
 - **The reviewer's consequence**: by default, a gorge between two levels; a waterfall only on a criterion, and
   tagged. The present steps are an artefact of the construction and are not tagged. The target form downstream of
   a lake is not decided yet.
+
+## Finding 136 — the steps are real on the ON water's path (8 > 50 m, 6 > 200 m, 2 > 500 m), invisible to the canyons instrument; the lakes' lowering is their own bed, not the notch; the absent bases are emptied by the construction and the light pass; no hanging junction > 50 m
+
+**Units**: 1 cell = 48.8 m (domain). Benches `f136_k`, `f136_k6b` (f126_coast). Report and raw outputs are in
+`docs/reports/c1_continental_buoyancy/f136_steps/`.
+- F135 was committed (`bfc3907`). F135's `v_*` images are north up.
+- No production code changes: no remedy, no tag. The guard reads 6 / 6, field and lakes, before and after.
+
+**G (rules 11 / 11c).**
+- **Nothing joins two base levels.** The construction lays each reach from its own base; the breach only makes a
+  path monotone.
+- What exists:
+  - stream-power knickpoint retreat (`stream_power.rs:1028`; F115);
+  - "Sill incision (H-2)" (ADR:2664, earliest), computed as zero by F114 and never built.
+- **The step itself was measured in F114**: family 1, "the drop … DOWNSTREAM (d@200 85–975 m, max S 0.20–1.40)".
+- **An erodibility field exists**: C-3 `production_k_field`, hard ×1 / rift ×10 / volcaniclastic ×3 × C-3b
+  fracture. It is not a rock map.
+  - The earliest ADR hit (ADR:259, "NO lithology / geology / erodibility field") is out of date.
+  - A volcanic mask exists: the edifices' basal discs (`stamp_volcanic_k`).
+- **`rivers.json`** carries per-point `profile_m` but no tag field. A per-point tag would be a parallel array, not
+  built.
+
+**K5 — on the ON water's own path** (from `Lake::outlet`'s receiver down the ON D8), the step exists for lakes 1, 2
+and 11.
+- The declared instrument (the first steep zone) read 136 / 413 / 276 m: it stops at short benches.
+- An instrument **amended after reading the profiles** (K6b: the drop to the first graded reach ≥ 2 km) reads
+  **290 / 862 / 260 m**, within 7 % of K2's.
+- OFF on the same cells has no step.
+
+**K6 — 14 present lakes measured.** 12 below-sea-basin lakes drain by spillway and have no D8 outlet.
+- Steps > 50 / > 200 / > 500 m: declared **9 / 4 / 1**, K6b **8 / 6 / 2**.
+- The largest: lake 10 811 m, lake 2 862 m, lakes 7, 1, 9, 11 at 260–317 m.
+- Max slope over 2 km up to 0.35.
+- **The canyons instrument sees none.**
+
+**K7 — the lowering (3–48 m) is the input lake's OWN BED.**
+- On all 14, the final sill (the true col) is a bed cell already under the input spill in S1. The construction
+  does not touch it; the light pass takes 0–3 m.
+- The notch (the construction's downstream valley through the rim) is 49–941 m deep, 0.4–17 km from the sill,
+  3–60 times the lowering.
+- It opens a lower exit; the lake then spills over its own bed.
+
+**L — the 5 absent bases.**
+- Input lakes 8 and 14 are emptied by the construction (no bowl left); 12 and 21 by the light pass.
+- Their floors: 0 % under 0.1 % slope, 28–151 m under the base laid. **Not plains.**
+- Closed depression 3 is an instrument limit: its ring touches the inland basin, and the fill read treats ≤ sea
+  as ocean.
+- They carry 33.7 % of F135-M's 5 175 links; **59.9 % are the margins of lakes that shrank**, 6.4 % closed
+  depressions.
+
+**K8 — counts only.**
+- Hanging junctions (tributary ≥ 10 km²) > 10 / > 50 / > 200 m: **11 / 0 / 0** (2 dam-type, 4 clean breaks,
+  5 uncarved).
+- Coastal-wall mouths above the sea: **0**.
+- Volcanic trunk cells: 2 183. Their 2 km slope is **not** steeper than outside (p50 0.0085 against 0.0106).
+- K6's steps are all lake outlets (one also volcanic).
+
+**Predictions.**
+- Mine: G, K7, L and K8 (except the volcanic slope) held; K5 refuted (declared instrument); K6 half; meta not
+  held (one of five disagreements wrong).
+- The reviewer's:
+  - G half (the field exists);
+  - K5 refuted with the declared instrument, held with K6b;
+  - K6's "≥ 8 > 200 m", K7, L and K8 refuted;
+  - meta held.
+- **Nothing built, nothing tagged, nothing promoted.**
+
+**Recorded at commit.**
+- **K5**: the instrument was amended after seeing the profiles, so it is **not blind**.
+  - Both readings are kept: 136 / 413 / 276 m declared, 290 / 862 / 260 m amended.
+  - The step's existence holds with both.
+  - The 7 % agreement with F135 is not an independent confirmation.
+- **ADR:259** was an out-of-date label (the C-3 erodibility field exists). It is corrected in place, with the
+  correction marked.
+- **G**: the step downstream of the lakes is F114's "family 1" (85–975 m), already measured.
+- **M (F135)**: θ's fall comes 59.9 % from the margins of the lakes that shrank and 33.7 % from the bases on
+  absent lakes.
+- **K7**: downstream, nothing protects the rim. The outlet valley, built from the base below, retreats through
+  the rim down to the lake's bed, which the construction does not touch.
+  - **Pattern: an invariant applied on one side only.** The base protects upstream, not downstream.

@@ -1,0 +1,156 @@
+######## two levels joined / retreat
+== knickpoint · ADR 6 hits · code 9 hits in 4 files
+   ADR first: ADR:428: isolated fluvial cliffs (channel walls/knickpoints, deliberately excluded from the
+   code first: crates/ymir-core/src/erosion/stream_power.rs:1028: /// Largest knickpoint celerity on the map, `K·A_max^m`, in m/yr.
+== knick-point · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== knickzone · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== rupture de pente · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== marche · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== chute · ADR 4 hits · code 0 hits in 0 files
+   ADR first: ADR:16853: > it.** *"le 92,97 m³/s, chute 115 m sur 3 km"* — the bench, searching only for the maximum
+   code first: NOTHING FOUND
+== cascade · ADR 7 hits · code 7 hits in 2 files
+   ADR first: ADR:10848: **And the risk, named before it is measured: the merge can CASCADE.** A class's new, higher sill can
+   code first: crates/ymir-core/src/tectonics_c1/drainage.rs:1987: /// **The risk this carries, named before it is measured**: merging can CASCADE. A class's new,
+== waterfall · ADR 9 hits · code 1 hits in 1 files
+   ADR first: ADR:1707: trace sees only the below-sea lake_map, not detected lakes. To be diagnosed on its own. The waterfall at river
+   code first: crates/ymir-core/tests/f87_coherence.rs:281: waterfall > 1e-1",
+== rapids · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== rapides · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== gorge · ADR 20 hits · code 16 hits in 4 files
+   ADR first: ADR:263: derive a 2-class K (craton → low-K hard/narrow gorges, else → high-K soft/wide
+   code first: crates/ymir-core/src/erosion/stream_power.rs:259: /// narrow gorges — turning the 1-px/1000-m slit into a valley with a floor whose
+== recul · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== retreat · ADR 9 hits · code 13 hits in 7 files
+   ADR first: ADR:2485: C-4 coastal, whose cliff retreat needs rock resistance): the closures already KNOW what they do at the moment
+   code first: crates/ymir-core/src/erosion/stream_power.rs:309: /// on the outlet path that A1 skips keeps its height and stops the retreat wave there.
+== incision d'exutoire · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== outlet incision · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== outlet-incision · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== sill incision · ADR 5 hits · code 7 hits in 5 files
+   ADR first: ADR:2664: Sill incision (H-2) drains exorheic basins — the outlet carves its col, the lake retreats, the water re-emerges as
+   code first: crates/ymir-core/src/erosion/stream_power.rs:1006: // H-2's France↔Scotland dial is sill incision at 10⁴ against 10⁶ years.
+== H-2 · ADR 32 hits · code 18 hits in 8 files
+   ADR first: ADR:2662: ### Ordering: H-1 / H-2 come before coastal erosion (C-4)
+   code first: crates/ymir-core/src/erosion/stream_power.rs:1006: // H-2's France↔Scotland dial is sill incision at 10⁴ against 10⁶ years.
+== Finding 114 · ADR 2 hits · code 11 hits in 5 files
+   ADR first: ADR:17683: ## Finding 114 — the threshold incision (H-2) computes exactly ZERO, and the lakes split into two families
+   code first: crates/ymir-core/tests/f114_sill.rs:1: //! ADR 0001 Finding 114 — **H-2: why the lakes do not drain. It is not a missing mechanism.**
+== F114 · ADR 1 hits · code 2 hits in 1 files
+   ADR first: ADR:17709: no emptied field to measure. Bench: `tests/f114_sill.rs`. **No production change.**
+   code first: crates/ymir-core/tests/f114_sill.rs:40: //! Run: cargo test -p ymir-core --release --test f114_sill -- --ignored --nocapture
+######## geology
+== lithologie · ADR 0 hits · code 1 hits in 1 files
+   ADR first: NOTHING FOUND
+   code first: crates/ymir-viz/src/ui/workspace.rs:1331: egui::RichText::new("Lithologie (C-3)").color(DIM2).size(11.0),
+== lithology · ADR 35 hits · code 196 hits in 47 files
+   ADR first: ADR:259: **Valley-type variety (lithology-K) — availability.** There is NO lithology / geology
+   code first: crates/ymir-core/src/erosion/stream_power.rs:541: /// [`incise`] with a per-cell erodibility MULTIPLIER (`k_field`, C-3 lithology + C-3b
+== géologie · ADR 0 hits · code 1 hits in 1 files
+   ADR first: NOTHING FOUND
+   code first: crates/ymir-viz/src/ui/workspace.rs:1848: group_title(ui, "GÉOLOGIE");
+== geology · ADR 2 hits · code 0 hits in 0 files
+   ADR first: ADR:259: **Valley-type variety (lithology-K) — availability.** There is NO lithology / geology
+   code first: NOTHING FOUND
+== geolog · ADR 2 hits · code 31 hits in 24 files
+   ADR first: ADR:259: **Valley-type variety (lithology-K) — availability.** There is NO lithology / geology
+   code first: crates/ymir-core/src/lakes/mod.rs:5: // pub mod classification;  // M5 — lake type from geological context
+== roche · ADR 1 hits · code 1 hits in 1 files
+   ADR first: ADR:19222: - « Le cas des chutes lié au type de roche n'est pas encore activable, vu qu'on n'a pas la répartition
+   code first: crates/ymir-viz/src/ui/workspace.rs:1336: ×10, footprints volcaniclastiques ×3. La roche tendre s'érode plus → \
+== rock · ADR 23 hits · code 28 hits in 9 files
+   ADR first: ADR:260: / erodibility field in core; the only spatial rock proxy at the HD stage is the BINARY
+   code first: crates/ymir-core/src/erosion/mod.rs:9: // pub mod thermal;     // M5 — rockfall on steep slopes
+== dureté · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== hardness · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== erodibility · ADR 12 hits · code 37 hits in 16 files
+   ADR first: ADR:260: / erodibility field in core; the only spatial rock proxy at the HD stage is the BINARY
+   code first: crates/ymir-core/src/erosion/stream_power.rs:132: /// Erodibility `K` in the physical law `E = K·A_km²^m·S^n`, with `E` in **m/yr**.
+== érodabilité · ADR 0 hits · code 2 hits in 1 files
+   ADR first: NOTHING FOUND
+   code first: crates/ymir-viz/src/ui/workspace.rs:1335: bruit): érodabilité par cellule, socle dur ×1 (référence), rift tendre \
+== K_erod · ADR 0 hits · code 6 hits in 1 files
+   ADR first: NOTHING FOUND
+   code first: crates/ymir-core/src/cache.rs:114: /// dependency chain (`k_eroded ⊃ k_state`, `k_drainage ⊃ k_eroded`).
+== k_field · ADR 2 hits · code 36 hits in 8 files
+   ADR first: ADR:4663: `production_k_field` so the bench cannot drift from it (the reconstruction trap).
+   code first: crates/ymir-core/src/erosion/stream_power.rs:541: /// [`incise`] with a per-cell erodibility MULTIPLIER (`k_field`, C-3 lithology + C-3b
+== basalte · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== basalt · ADR 2 hits · code 9 hits in 3 files
+   ADR first: ADR:2075: n=158, mostly monogenetic. H/WB 0.01-0.1 (central 0.10), flank slopes 1-15 deg (central 12), basaltic. This
+   code first: crates/ymir-core/src/tectonics_c1/closures/infiltration/mod.rs:9: //! C-3's `build_coarse_k` is an ERODIBILITY. The two correlate only by accident: a basalt
+== volcanic mask · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== volcaniclastic · ADR 7 hits · code 34 hits in 10 files
+   ADR first: ADR:2495: 10⁻⁷–10⁻⁶, volcaniclastic 10⁻⁵–10⁻⁴, young mudstone 10⁻⁴–10⁻² m^0.2/yr; measured spread "1 to 5 orders of
+   code first: crates/ymir-core/src/tectonics_c1/debug_labels.rs:40: /// source: hard basement, rift-soft, volcaniclastic). Volcaniclastic is stamped at HD
+== coulée · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== lava flow · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== lava · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== glacier · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== glaciaire · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== glacial · ADR 5 hits · code 2 hits in 2 files
+   ADR first: ADR:1805: (lake-riddled, glacially over-deepened) by accident, not by glaciation (glacial erosion is planned M6, the
+   code first: crates/ymir-core/src/erosion/mod.rs:12: // pub mod glacial;     // M6 — ice carving for cold continents
+== vallée suspendue · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== hanging valley · ADR 0 hits · code 0 hits in 0 files
+   ADR first: NOTHING FOUND
+   code first: NOTHING FOUND
+== hanging · ADR 10 hits · code 18 hits in 16 files
+   ADR first: ADR:2160: or changing volcanism changes the terrain key and forces a recompute. (2) Crater records CANNOT be recomputed
+   code first: crates/ymir-core/src/cache.rs:6: //! accelerate the relief loop — changing the relief changes the key, so erosion
+######## export
+== rivers.json · ADR 27 hits · code 60 hits in 17 files
+   ADR first: ADR:95: **Context.** Ymir computes a full drainage network (`rivers.json`, Strahler orders,
+   code first: crates/ymir-core/src/export/container.rs:430: let rivers = vector("rivers", "rivers.json");
+== tag · ADR 241 hits · code 1073 hits in 182 files
+   ADR first: ADR:85: eroded cache key and correctly rebuilds derived stages.
+   code first: crates/ymir-core/src/bin/step7_baseline.rs:276: m.newton.as_ref().map(|n| n.outcome_percentages()).unwrap_or((0.0, 0.0, 0.0, 0.0));
+== feature · ADR 9 hits · code 72 hits in 27 files
+   ADR first: ADR:273: interpolation gives a featureless surface (the bilinear baseline). Detail must be
+   code first: crates/ymir-core/src/bin/step5_baseline.rs:191: // Keep every row so single-row features (rift, subduction) are
+== profile_m · ADR 12 hits · code 128 hits in 31 files
+   ADR first: ADR:901: drainage area — so a dry/endorheic reach → 0 width, no channel), and `segment_profile_m`, the bed
+   code first: crates/ymir-core/src/export/hydro.rs:47: /// (`segment_profile_m[i]`).
+== RiverSegmentView · ADR 0 hits · code 3 hits in 1 files
+   ADR first: NOTHING FOUND
+   code first: crates/ymir-core/src/export/hydro.rs:19: struct RiverSegmentView<'a> {

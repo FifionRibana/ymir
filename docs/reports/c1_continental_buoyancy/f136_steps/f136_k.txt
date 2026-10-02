@@ -1,0 +1,64 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.14s
+     Running tests\f126_coast.rs (target_f136\release\deps\f126_coast-78c90b7d7fab281b.exe)
+running 1 test
+   OFF · field a8d2d538d692c2f0 · lakes Match { label: "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°" }
+   ON extended · field a620a9aa0d5882a0 · 34 final lakes
+   K6 · present lakes (ON final, ≥ 1 km², not crater): 26
+      lake       1   132.8 km² level   327.2 m · path   8.7 km (the sea) · ON step **H  136.0 m** over  0.33 km, max S(2 km) 0.154 · OFF on the same cells H   -2.7 m over 1.99 km, max S(2 km) 0.078 · ctx -
+         K7 · input lake 1 · L_in 342.6 m → level 327.2 m · **lowering 15.4 m** · true col (3396, 2582) z S1 328.0 / built 328.0 / eroded 327.2 / conditioned 327.2 → **S1 (the input body's own bed)** · notch (ring cut) **329.1 m**, 1.11 km from the true col
+         K5 profile: D:/Personnel/Projects/ymir/docs/reports/c1_continental_buoyancy/f136_steps\k5_profile_lake1.svg
+      lake       2    35.5 km² level  1292.0 m · path  21.2 km (another lake) · ON step **H  413.0 m** over  0.61 km, max S(2 km) 0.261 · OFF on the same cells H  -78.6 m over 1.25 km, max S(2 km) 0.188 · ctx -
+         K7 · input lake 2 · L_in 1339.6 m → level 1292.0 m · **lowering 47.6 m** · true col (3912, 2833) z S1 1292.1 / built 1292.1 / eroded 1292.0 / conditioned 1292.0 → **S1 (the input body's own bed)** · notch (ring cut) **941.4 m**, 1.97 km from the true col
+         K5 profile: D:/Personnel/Projects/ymir/docs/reports/c1_continental_buoyancy/f136_steps\k5_profile_lake2.svg
+      lake       3   159.7 km² level  1314.5 m · path  26.7 km (another lake) · ON step **H    0.0 m** over  0.00 km, max S(2 km) 0.349 · OFF on the same cells H -137.0 m over 1.39 km, max S(2 km) 0.193 · ctx -
+         K7 · input lake 3 · L_in 1332.3 m → level 1314.5 m · **lowering 17.9 m** · true col (3995, 3134) z S1 1314.5 / built 1314.5 / eroded 1314.4 / conditioned 1314.5 → **S1 (the input body's own bed)** · notch (ring cut) **816.6 m**, 7.64 km from the true col
+      lake       4    45.8 km² level   168.2 m · path   9.7 km (the sea) · ON step **H  119.0 m** over  0.39 km, max S(2 km) 0.067 · OFF on the same cells H    0.0 m over 0.00 km, max S(2 km) 0.005 · ctx -
+         K7 · input lake 4 · L_in 172.1 m → level 168.2 m · **lowering 3.9 m** · true col (2171, 3463) z S1 168.2 / built 168.2 / eroded 168.2 / conditioned 168.2 → **S1 (the input body's own bed)** · notch (ring cut) **135.5 m**, 0.73 km from the true col
+      lake       7     5.3 km² level   383.4 m · path  12.5 km (the sea) · ON step **H  157.6 m** over  0.30 km, max S(2 km) 0.166 · OFF on the same cells H   -6.5 m over 1.85 km, max S(2 km) 0.101 · ctx volcanic
+         K7 · input lake 7 · L_in 412.1 m → level 383.4 m · **lowering 28.7 m** · true col (1888, 3647) z S1 385.0 / built 385.0 / eroded 383.4 / conditioned 383.4 → **S1 (the input body's own bed)** · notch (ring cut) **365.5 m**, 1.08 km from the true col
+      lake       8    12.3 km² level   520.5 m · path  11.7 km (another lake) · ON step **H   58.0 m** over  0.22 km, max S(2 km) 0.114 · OFF on the same cells H    8.4 m over 5.10 km, max S(2 km) 0.059 · ctx -
+         K7 · input lake 9 · L_in 527.2 m → level 520.5 m · **lowering 6.6 m** · true col (4087, 4044) z S1 522.6 / built 522.6 / eroded 520.5 / conditioned 520.5 → **S1 (the input body's own bed)** · notch (ring cut) **78.2 m**, 0.39 km from the true col
+      lake       9    79.7 km² level   418.0 m · path   8.1 km (another lake) · ON step **H  280.9 m** over  1.55 km, max S(2 km) 0.142 · OFF on the same cells H   -6.3 m over 1.50 km, max S(2 km) 0.059 · ctx -
+         K7 · input lake 11 · L_in 432.6 m → level 418.0 m · **lowering 14.6 m** · true col (4141, 4098) z S1 419.2 / built 419.2 / eroded 418.0 / conditioned 418.0 → **S1 (the input body's own bed)** · notch (ring cut) **298.5 m**, 1.02 km from the true col
+      lake      10   249.0 km² level   974.5 m · path  12.6 km (another lake) · ON step **H  819.4 m** over  3.29 km, max S(2 km) 0.345 · OFF on the same cells H   46.2 m over 3.34 km, max S(2 km) 0.135 · ctx -
+         K7 · input lake 10 · L_in 1001.5 m → level 974.5 m · **lowering 27.0 m** · true col (2942, 4010) z S1 974.7 / built 974.7 / eroded 974.5 / conditioned 974.5 → **S1 (the input body's own bed)** · notch (ring cut) **796.1 m**, 2.05 km from the true col
+      lake      11   163.0 km² level   362.0 m · path  16.5 km (another lake) · ON step **H  276.4 m** over  1.60 km, max S(2 km) 0.138 · OFF on the same cells H  -10.4 m over 1.55 km, max S(2 km) 0.079 · ctx -
+         K7 · input lake 13 · L_in 390.4 m → level 362.0 m · **lowering 28.3 m** · true col (1402, 4459) z S1 365.2 / built 365.2 / eroded 362.0 / conditioned 362.0 → **S1 (the input body's own bed)** · notch (ring cut) **306.7 m**, 1.03 km from the true col
+         K5 profile: D:/Personnel/Projects/ymir/docs/reports/c1_continental_buoyancy/f136_steps\k5_profile_lake11.svg
+      lake      12    10.2 km² level   118.9 m · path   9.9 km (another lake) · ON step **H   87.9 m** over  2.95 km, max S(2 km) 0.050 · OFF on the same cells H    0.0 m over 0.00 km, max S(2 km) 0.009 · ctx -
+         K7 · input lake 15 · L_in 122.8 m → level 118.9 m · **lowering 3.8 m** · true col (3493, 4696) z S1 118.9 / built 118.9 / eroded 118.9 / conditioned 118.9 → **S1 (the input body's own bed)** · notch (ring cut) **98.9 m**, 1.95 km from the true col
+      lake      13   133.1 km² level   239.3 m · path  24.9 km (another lake) · ON step **H    0.0 m** over  0.00 km, max S(2 km) 0.035 · OFF on the same cells H    0.0 m over 0.00 km, max S(2 km) 0.021 · ctx -
+         K7 · input lake 16 · L_in 245.1 m → level 239.3 m · **lowering 5.8 m** · true col (2413, 4872) z S1 239.3 / built 239.3 / eroded 239.3 / conditioned 239.3 → **S1 (the input body's own bed)** · notch (ring cut) **76.4 m**, 16.93 km from the true col
+      lake      15    17.4 km² level   154.9 m · path   2.0 km (another lake) · ON step **H    0.0 m** over  0.00 km, max S(2 km) 0.020 · OFF on the same cells H    0.0 m over 0.00 km, max S(2 km) 0.012 · ctx -
+         K7 · input lake 18 · L_in 169.7 m → level 154.9 m · **lowering 14.8 m** · true col (2687, 5108) z S1 155.1 / built 155.1 / eroded 154.9 / conditioned 154.9 → **S1 (the input body's own bed)** · notch (ring cut) **49.4 m**, 0.46 km from the true col
+      lake      19    72.0 km² level   197.6 m · path  23.5 km (the sea) · ON step **H    0.0 m** over  0.00 km, max S(2 km) 0.086 · OFF on the same cells H   74.4 m over 0.98 km, max S(2 km) 0.070 · ctx -
+         K7 · input lake 23 · L_in 200.4 m → level 197.6 m · **lowering 2.8 m** · true col (3291, 5746) z S1 198.8 / built 198.8 / eroded 197.6 / conditioned 197.6 → **S1 (the input body's own bed)** · notch (ring cut) **172.5 m**, 12.58 km from the true col
+      lake      20    33.2 km² level   127.6 m · path   7.9 km (another lake) · ON step **H    0.0 m** over  0.00 km, max S(2 km) 0.024 · OFF on the same cells H    0.0 m over 0.00 km, max S(2 km) 0.027 · ctx -
+         K7 · input lake 24 · L_in 135.6 m → level 127.6 m · **lowering 8.0 m** · true col (1525, 5734) z S1 127.6 / built 127.6 / eroded 127.6 / conditioned 127.6 → **S1 (the input body's own bed)** · notch (ring cut) **48.8 m**, 0.51 km from the true col
+      lake 1000001 · outlet (4798, 3005) has no receiver
+      lake 1000002 · outlet (3302, 3536) has no receiver
+      lake 1000008 · outlet (2915, 3594) has no receiver
+      lake 1000010 · outlet (2431, 3599) has no receiver
+      lake 1000011 · outlet (4451, 3861) has no receiver
+      lake 1000012 · outlet (4691, 4262) has no receiver
+      lake 1000013 · outlet (4035, 4318) has no receiver
+      lake 1000014 · outlet (1624, 4665) has no receiver
+      lake 1000016 · outlet (3084, 4854) has no receiver
+      lake 1000017 · outlet (1903, 5132) has no receiver
+      lake 1000018 · outlet (1885, 5788) has no receiver
+      lake 1000019 · outlet (2652, 5908) has no receiver
+   K6 · ON steps > 50 / > 200 / > 500 m: **9 / 4 / 1** · (OFF on the same cells, among those: 0 / 0 / 0) · the canyons instrument sees 0 (W3: canyons 0 in ON extended)
+   K8 · K6's steps (> 50 m) by context: {"lake outlet only": 8, "lake outlet + volcanic": 1}
+   L · 5 input bodies absent at the end:
+      input lake 8                2168 cells (5.17 km²) · L_in 1148.2 m · under water: S1 100 % / construction 14 % / eroded 0 % / final 0 % → **the CONSTRUCTION (no bowl left in carve(S1))** · final floor: slope p50 **0.4099** · under 0.1 % **0.0 %** · median z − L_in **-143.7 m** · ring cut ON 871.2 m
+      input lake 12               2241 cells (5.34 km²) · L_in 723.4 m · under water: S1 100 % / construction 57 % / eroded 0 % / final 0 % → **the light pass / erosion (no lake in the eroded world)** · final floor: slope p50 **0.1189** · under 0.1 % **0.0 %** · median z − L_in **-56.2 m** · ring cut ON 322.6 m
+      input lake 14               3439 cells (8.20 km²) · L_in 1257.4 m · under water: S1 100 % / construction 6 % / eroded 0 % / final 0 % → **the CONSTRUCTION (no bowl left in carve(S1))** · final floor: slope p50 **0.3275** · under 0.1 % **0.0 %** · median z − L_in **-151.1 m** · ring cut ON 1125.7 m
+      input lake 21               2553 cells (6.09 km²) · L_in 163.7 m · under water: S1 100 % / construction 82 % / eroded 0 % / final 20 % → **the light pass / erosion (no lake in the eroded world)** · final floor: slope p50 **0.0497** · under 0.1 % **0.0 %** · median z − L_in **-28.4 m** · ring cut ON 45.8 m
+      closed depression 3       109776 cells (261.73 km²) · L_in -5.6 m · under water: S1 100 % / construction 0 % / eroded 0 % / final 1 % → **the CONSTRUCTION (no bowl left in carve(S1))** · final floor: slope p50 **0.0500** · under 0.1 % **0.0 %** · median z − L_in **101.2 m** · ring cut ON 0.0 m
+   L · F135-M's links in the based set but no final lake: **5175** (F135: 5 175) · touching the 5 absent bodies **1744 (33.7 %)** · another input lake's cells (shrunk margins) 3102 (59.9 %) · a closed depression only 329 (6.4 %)
+   K8 · junctions with a tributary ≥ 10 km²: 452 · hanging > 10 / > 50 / > 200 m: **11 / 0 / 0** · of those > 10 m: dam-type 2 · clean break 4 · uncarved 5
+   K8 · mouths above the sea (> 1 m) within 2 cells of a coastal wall: **0** · height p50 NaN / max NaN m
+   K8 · volcanic mask 1806190 cells · trunk cells (≥ 10 km²) inside **2183** / outside 69520 · slope over 2 km inside p50 0.0085 / p90 0.0354 / max 0.269 · outside p50 0.0106 / p90 0.0473 / max 0.423
+test f136_k ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 50 filtered out; finished in 1101.86s
