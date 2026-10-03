@@ -1,0 +1,437 @@
+
+==========  Finding 142-G . spec v4 against its gates (témoin)  ==========
+
+────────── ON ×1 (the references and the controls) ──────────
+   the 14 D8 lakes: [1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13, 15, 19, 20] · ON's below-sea land cells after the breach: 292 · G-slope100 negative control: 14 outlet paths (the 14 D8) · > 28° **4** · max 47.1°
+
+────────── GORGE v4 ×1 (r_world 1, p 0.5) ──────────
+   construction + plain 156.7 s · ON's construction at ×1 159.8 s · added **-3.1 s** · 18 kept bodies · 11 tagged falls in the skeleton
+   G-bodies · D8 lakes matched 14 of 14 · distinct bodies 14 · body share > 50 % 14 · lakes split over > 1 body 0 · **1:1 HOLDS** · kept bodies matching no D8 lake: 4 ["body 5 (5.2 km², r 0.43) no ON lake", "body 9 (5.3 km², r 0.83) no ON lake", "body 11 (8.2 km², r 0.43) no ON lake", "body 15 (6.1 km², r 1.63) ON lake 1000016 (20 %)"]
+   G-deposit · bodies with a plain (r_lake > 1): 9 · deposited **0.0603 km³** · the gorge's removal against ON at ×1 (construction, land) 150.443 km³ (after the plain 150.443) · deposit / removal **0.0 %**
+      body 0 (lake Some(1)) r 1.81 · spill 182.6 m · raised 1977 cells (4.71 km²) · deepest 37.0 m · 0.0563 km³
+      body 1 (lake Some(2)) r 1.03 · spill 1327.2 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 2 (lake Some(3)) r 1.20 · spill 1243.4 m · raised 256 cells (0.61 km²) · deepest 0.6 m · 0.0001 km³
+      body 7 (lake Some(10)) r 1.40 · spill 870.8 m · raised 30 cells (0.07 km²) · deepest 1.0 m · 0.0000 km³
+      body 10 (lake Some(11)) r 1.50 · spill 210.0 m · raised 188 cells (0.45 km²) · deepest 25.8 m · 0.0039 km³
+      body 12 (lake Some(12)) r 1.01 · spill 122.0 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 13 (lake Some(13)) r 1.53 · spill 122.0 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 15 (lake None) r 1.63 · spill 123.1 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 16 (lake Some(19)) r 1.32 · spill 139.5 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+   G-pits · (bench) construction + plain: **0** pit cells outside the lakes (deepest 0.0 m) · b0 r 1.81 L(r) 182.6 · ring min 182.6 · lake 182.6 m · pits 0 (0 levels, 0.0 m) | b1 r 1.03 L(r) 1327.2 · ring min 1327.2 · lake 1327.2 m · pits 0 (0 levels, 0.0 m) | b2 r 1.20 L(r) 1243.4 · ring min 1243.4 · lake 1243.4 m · pits 0 (0 levels, 0.0 m) | b7 r 1.40 L(r) 870.8 · ring min 870.8 · lake 870.8 m · pits 0 (0 levels, 0.0 m) | b10 r 1.50 L(r) 210.0 · ring min 210.0 · lake 210.0 m · pits 0 (0 levels, 0.0 m) | b12 r 1.01 L(r) 122.0 · ring min 122.0 · lake 122.0 m · pits 0 (0 levels, 0.0 m) | b13 r 1.53 L(r) 122.0 · ring min 122.0 · lake 122.0 m · pits 0 (0 levels, 0.0 m) | b15 r 1.63 L(r) 123.1 · ring min 123.1 · lake 123.1 m · pits 0 (0 levels, 0.0 m) | b16 r 1.32 L(r) 139.5 · ring min 139.5 · lake 139.5 m · pits 0 (0 levels, 0.0 m)
+   G-pits · (a) construction + plain + rims: **0** pit cells outside the lakes (deepest 0.0 m) · b0 r 1.81 L(r) 182.6 · ring min 182.6 · lake 182.6 m · pits 0 (0 levels, 0.0 m) | b1 r 1.03 L(r) 1327.2 · ring min 1327.2 · lake 1327.2 m · pits 0 (0 levels, 0.0 m) | b2 r 1.20 L(r) 1243.4 · ring min 1243.4 · lake 1243.4 m · pits 0 (0 levels, 0.0 m) | b7 r 1.40 L(r) 870.8 · ring min 870.8 · lake 870.8 m · pits 0 (0 levels, 0.0 m) | b10 r 1.50 L(r) 210.0 · ring min 210.0 · lake 210.0 m · pits 0 (0 levels, 0.0 m) | b12 r 1.01 L(r) 122.0 · ring min 122.0 · lake 122.0 m · pits 0 (0 levels, 0.0 m) | b13 r 1.53 L(r) 122.0 · ring min 122.0 · lake 122.0 m · pits 0 (0 levels, 0.0 m) | b15 r 1.63 L(r) 123.1 · ring min 123.1 · lake 123.1 m · pits 0 (0 levels, 0.0 m) | b16 r 1.32 L(r) 139.5 · ring min 139.5 · lake 139.5 m · pits 0 (0 levels, 0.0 m) · the pipeline's (a) against the bench's construction + plain on the kept bodies: 9640 cells differ (max 0.01 m; by body {13: 8568, 14: 3, 15: 1069})
+   G-pits · (b) + light pass: **43078** pit cells outside the lakes (deepest 188.2 m) · b0 r 1.81 L(r) 182.6 · ring min 175.0 · lake 182.6 m · pits 1773 (3 levels, 0.7 m) | b1 r 1.03 L(r) 1327.2 · ring min 1321.6 · lake 1327.2 m · pits 1 (1 levels, 0.1 m) | b2 r 1.20 L(r) 1243.4 · ring min 1074.0 · lake 1243.4 m · pits 43 (11 levels, 45.6 m) | b7 r 1.40 L(r) 870.8 · ring min 587.2 · lake 587.2 m · pits 41236 (117 levels, 188.2 m) | b10 r 1.50 L(r) 210.0 · ring min 210.0 · lake 210.0 m · pits 16 (6 levels, 7.5 m) | b12 r 1.01 L(r) 122.0 · ring min 120.2 · lake 121.0 m · pits 0 (0 levels, 0.0 m) | b13 r 1.53 L(r) 122.0 · ring min 122.0 · lake 122.0 m · pits 8 (6 levels, 1.3 m) | b15 r 1.63 L(r) 123.1 · ring min 117.0 · lake 123.0 m · pits 1 (1 levels, 0.6 m) | b16 r 1.32 L(r) 139.5 · ring min 120.7 · lake 139.5 m · pits 0 (0 levels, 0.0 m)
+   G-pits · (c) + droplets: **43078** pit cells outside the lakes (deepest 188.2 m) · b0 r 1.81 L(r) 182.6 · ring min 175.0 · lake 182.6 m · pits 1773 (3 levels, 0.7 m) | b1 r 1.03 L(r) 1327.2 · ring min 1321.6 · lake 1327.2 m · pits 1 (1 levels, 0.1 m) | b2 r 1.20 L(r) 1243.4 · ring min 1074.0 · lake 1243.4 m · pits 43 (11 levels, 45.6 m) | b7 r 1.40 L(r) 870.8 · ring min 587.2 · lake 587.2 m · pits 41236 (117 levels, 188.2 m) | b10 r 1.50 L(r) 210.0 · ring min 210.0 · lake 210.0 m · pits 16 (6 levels, 7.5 m) | b12 r 1.01 L(r) 122.0 · ring min 120.2 · lake 121.0 m · pits 0 (0 levels, 0.0 m) | b13 r 1.53 L(r) 122.0 · ring min 122.0 · lake 122.0 m · pits 8 (6 levels, 1.3 m) | b15 r 1.63 L(r) 123.1 · ring min 117.0 · lake 123.0 m · pits 1 (1 levels, 0.6 m) | b16 r 1.32 L(r) 139.5 · ring min 120.7 · lake 139.5 m · pits 0 (0 levels, 0.0 m)
+   G-pits · (d) + bathymetry (the breach's input): **43078** pit cells outside the lakes (deepest 188.2 m) · b0 r 1.81 L(r) 182.6 · ring min 175.0 · lake 182.6 m · pits 1773 (3 levels, 0.7 m) | b1 r 1.03 L(r) 1327.2 · ring min 1321.6 · lake 1327.2 m · pits 1 (1 levels, 0.1 m) | b2 r 1.20 L(r) 1243.4 · ring min 1074.0 · lake 1243.4 m · pits 43 (11 levels, 45.6 m) | b7 r 1.40 L(r) 870.8 · ring min 587.2 · lake 587.2 m · pits 41236 (117 levels, 188.2 m) | b10 r 1.50 L(r) 210.0 · ring min 210.0 · lake 210.0 m · pits 16 (6 levels, 7.5 m) | b12 r 1.01 L(r) 122.0 · ring min 120.2 · lake 121.0 m · pits 0 (0 levels, 0.0 m) | b13 r 1.53 L(r) 122.0 · ring min 122.0 · lake 122.0 m · pits 8 (6 levels, 1.3 m) | b15 r 1.63 L(r) 123.1 · ring min 117.0 · lake 123.0 m · pits 1 (1 levels, 0.6 m) | b16 r 1.32 L(r) 139.5 · ring min 120.7 · lake 139.5 m · pits 0 (0 levels, 0.0 m)
+   G-sea · land cells ≤ sea after the breach 292 (ON 292) · added 0 · missing 0 · **EXACTLY ON's**
+   F38 · the run_hd tail completes: the invariant does NOT fire
+   G-levels · kept bodies with an outflow 18 · at L(r) ± 1 m **7** of 18 not drained · drained (r_lake = 2) 0, absent at the end **0**
+      off: body 0 (D8 lake Some(1)) 143.8 km² r 1.81 L(r) 182.6: NO final lake
+      off: body 3 (D8 lake Some(4)) 49.4 km² r 0.85 L(r) 172.0 final 170.6 (A 301 km²)
+      off: body 4 (D8 lake Some(7)) 8.8 km² r 0.76 L(r) 411.8 final 402.8 (A 245 km²)
+      off: body 5 (D8 lake None) 5.2 km² r 0.43 L(r) 1148.1: NO final lake
+      off: body 7 (D8 lake Some(10)) 287.1 km² r 1.40 L(r) 870.8 final 863.1 (A 819 km²)
+      off: body 9 (D8 lake None) 5.3 km² r 0.83 L(r) 723.3: NO final lake
+      off: body 11 (D8 lake None) 8.2 km² r 0.43 L(r) 1257.4 final 1256.1 (A 79 km²)
+      off: body 13 (D8 lake Some(13)) 137.5 km² r 1.53 L(r) 122.0 final 128.0 (A 983 km²)
+      off: body 14 (D8 lake Some(15)) 23.3 km² r 1.00 L(r) 167.7 final 165.6 (A 417 km²)
+      off: body 15 (D8 lake None) 6.1 km² r 1.63 L(r) 123.1 final 115.3 (A 1108 km²)
+      off: body 17 (D8 lake Some(20)) 38.2 km² r 0.74 L(r) 135.3 final 133.2 (A 227 km²)
+   G-rim (r_lake ≤ 1) · 9 bodies · cuts > 10 m below L(r) on the construction **0** · on the eroded world **5**
+   G-ring · ring cells bound by the clamp **2833** · with a slope > 28° to an outside neighbour **162** (worst 82°) ["body 0 (3382,2598) 28°", "body 0 (3382,2599) 28°", "body 0 (3382,2600) 37°", "body 0 (3383,2601) 28°", "body 0 (3384,2601) 37°", "body 0 (3385,2601) 28°"]
+   G-slope100 · 14 outlet paths · max slope over 100 m > 28° **2** · p50 6.6° · max 35.6°
+   G-drained · upstream cells of drained lakes 0 · below L_floor − 1 m on the construction **0**
+   G-tag · tagged falls: head **11** (median 60.4 m, max 348.6 m) · shortage **0** · gorge 2-cell drops over H_f beyond the lip **145**
+   G-area · final non-crater lakes 3961.7 km² · the 14 D8 bodies' final lakes 658.1 km²
+   RELIEF paired (n = 11326995): p10/p50/p90 **78.8 / 541.2 / 1507.9 m** · median cut 1.5 m · **+27.6 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       1 ·    51.37 km² · cut p50 **  -61.67 m** · fill max **  391.43 m** · fill p50   61.70 m · **deep share  57.9 %** · rim p50   2.4° ⇒ cut  no / over-dug  no
+     body       2 ·    85.33 km² · cut p50 **  -85.00 m** · fill max **  362.88 m** · fill p50   84.99 m · **deep share  64.2 %** · rim p50   3.3° ⇒ cut  no / over-dug  no
+     body       3 ·    47.98 km² · cut p50 **  -37.39 m** · fill max **  156.79 m** · fill p50   37.40 m · **deep share  40.0 %** · rim p50   2.4° ⇒ cut  no / over-dug  no
+     body       6 ·     7.53 km² · cut p50 **  -33.75 m** · fill max **  102.74 m** · fill p50   33.74 m · **deep share  30.7 %** · rim p50   6.4° ⇒ cut  no / over-dug  no
+     body       7 ·    13.51 km² · cut p50 **  -45.08 m** · fill max **  172.35 m** · fill p50   45.07 m · **deep share  46.2 %** · rim p50   3.0° ⇒ cut  no / over-dug  no
+     body       8 ·    87.64 km² · cut p50 **  -96.17 m** · fill max **  330.47 m** · fill p50   96.14 m · **deep share  71.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body       9 ·    94.24 km² · cut p50 **  -54.72 m** · fill max **  188.24 m** · fill p50   54.73 m · **deep share  53.2 %** · rim p50   2.6° ⇒ cut  no / over-dug  no
+     body      10 ·    80.47 km² · cut p50 **  -98.22 m** · fill max **  177.11 m** · fill p50   98.22 m · **deep share  74.9 %** · rim p50   5.1° ⇒ cut  no / over-dug  no
+     body      11 ·     7.62 km² · cut p50 **  -25.00 m** · fill max **   53.41 m** · fill p50   24.99 m · **deep share   5.2 %** · rim p50   3.5° ⇒ cut  no / over-dug  no
+     body      12 ·    11.22 km² · cut p50 **  -21.57 m** · fill max **   85.34 m** · fill p50   21.57 m · **deep share  15.3 %** · rim p50   3.4° ⇒ cut  no / over-dug  no
+     body      13 ·    77.25 km² · cut p50 **  -34.21 m** · fill max **  113.61 m** · fill p50   34.20 m · **deep share  36.1 %** · rim p50  13.1° ⇒ cut  no / over-dug  no
+     body      15 ·    21.73 km² · cut p50 **  -26.64 m** · fill max **   80.66 m** · fill p50   26.64 m · **deep share  16.9 %** · rim p50   2.4° ⇒ cut  no / over-dug  no
+     body      19 ·    36.71 km² · cut p50 **  -26.71 m** · fill max **  111.11 m** · fill p50   26.71 m · **deep share  22.2 %** · rim p50   3.4° ⇒ cut  no / over-dug  no
+     body      20 ·    43.07 km² · cut p50 **  -51.83 m** · fill max **  130.34 m** · fill p50   51.82 m · **deep share  51.6 %** · rim p50   3.8° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2944.80 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  52.2° ⇒ cut YES / over-dug  no
+     body 1000002 ·   459.71 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000008 ·    95.64 km² · cut p50 **    0.00 m** · fill max **    8.39 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   6.7° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   493.24 km² · cut p50 **    0.02 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50  11.5° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.52 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.2° ⇒ cut  no / over-dug  no
+     body 1000013 ·   152.88 km² · cut p50 **    0.00 m** · fill max **    6.83 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.4° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.71 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.0° ⇒ cut  no / over-dug  no
+     body 1000016 ·   502.15 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   8.1° ⇒ cut  no / over-dug  no
+     body 1000017 ·   337.86 km² · cut p50 **    0.00 m** · fill max **   97.19 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   7.2° ⇒ cut  no / over-dug  no
+     body 1000018 ·   185.33 km² · cut p50 **   20.35 m** · fill max **   31.21 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  14.0° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.90 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.7° ⇒ cut  no / over-dug  no
+     Spillway max **94.35 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.38 m³/s** · 11 cells · drop **6.9 m** · FILL along                  the bed: p50 **0.0000 m** · max **6.8020 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **33 bodies · 3962 km² = 14.67 % of 27008 km² of land** · {"Exorheic": 24, "Unresolved": 5, "Endorheic": 4} · OVER-DUG **0 of 26** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 56.6 m³/s · wc==2 cells 381011
+   extras · canyons **0** · spurs near a coastal wall 0.0142 /km · removal (S1 − world, land) **4634.3 km³** (inside the kept bodies 18.7, elsewhere 4615.7) · raise (world − S1, land) 0.71 km³ (inside the kept bodies 0.08) [GORGE v4 ×1 (r_world 1, p 0.5)] · θ on the carved links, construction mask **0.264** [0.253, 0.274] (36746)
+   (1277 s)
+
+────────── GORGE v4 ×0.7 (r_world 0, p 0.5) ──────────
+   construction + plain 126.3 s · ON's construction at ×0.7 130.1 s · added **-3.8 s** · 18 kept bodies · 12 tagged falls in the skeleton
+   G-bodies · D8 lakes matched 14 of 14 · distinct bodies 14 · body share > 50 % 14 · lakes split over > 1 body 0 · **1:1 HOLDS** · kept bodies matching no D8 lake: 4 ["body 5 (5.2 km², r 0.00) no ON lake", "body 9 (5.3 km², r 0.00) no ON lake", "body 11 (8.2 km², r 0.00) no ON lake", "body 15 (6.1 km², r 0.00) ON lake 1000016 (20 %)"]
+   G-deposit · bodies with a plain (r_lake > 1): 0 · deposited **-0.0000 km³** · the gorge's removal against ON at ×0.7 (construction, land) 0.075 km³ (after the plain 0.075) · deposit / removal **-0.0 %**
+   G-pits · (bench) construction + plain: **0** pit cells outside the lakes (deepest 0.0 m) · 
+   G-pits · (d) + bathymetry (the breach's input): **0** pit cells outside the lakes (deepest 0.0 m) · 
+   G-sea · land cells ≤ sea after the breach 292 (ON 292) · added 0 · missing 0 · **EXACTLY ON's**
+   F38 · the run_hd tail completes: the invariant does NOT fire
+   G-levels · kept bodies with an outflow 18 · at L(r) ± 1 m **2** of 18 not drained · drained (r_lake = 2) 0, absent at the end **0**
+      off: body 0 (D8 lake Some(1)) 143.8 km² r 0.00 L(r) 342.6 final 337.7 (A 1372 km²)
+      off: body 1 (D8 lake Some(2)) 57.8 km² r 0.00 L(r) 1339.6 final 1337.2 (A 443 km²)
+      off: body 2 (D8 lake Some(3)) 197.9 km² r 0.00 L(r) 1332.4 final 1320.3 (A 599 km²)
+      off: body 3 (D8 lake Some(4)) 49.4 km² r 0.00 L(r) 172.1 final 170.7 (A 301 km²)
+      off: body 4 (D8 lake Some(7)) 8.8 km² r 0.00 L(r) 412.1 final 402.8 (A 245 km²)
+      off: body 5 (D8 lake None) 5.2 km² r 0.00 L(r) 1148.2: NO final lake
+      off: body 6 (D8 lake Some(8)) 13.6 km² r 0.00 L(r) 527.2 final 524.1 (A 156 km²)
+      off: body 7 (D8 lake Some(10)) 287.1 km² r 0.00 L(r) 1001.5 final 985.6 (A 819 km²)
+      off: body 9 (D8 lake None) 5.3 km² r 0.00 L(r) 723.4: NO final lake
+      off: body 11 (D8 lake None) 8.2 km² r 0.00 L(r) 1257.4 final 1255.8 (A 79 km²)
+      off: body 12 (D8 lake Some(12)) 11.4 km² r 0.00 L(r) 122.8 final 121.0 (A 425 km²)
+      off: body 13 (D8 lake Some(13)) 137.5 km² r 0.00 L(r) 245.1 final 243.3 (A 983 km²)
+      off: body 14 (D8 lake Some(15)) 23.3 km² r 0.00 L(r) 169.7 final 167.8 (A 417 km²)
+      off: body 15 (D8 lake None) 6.1 km² r 0.00 L(r) 163.7 final 157.4 (A 1108 km²)
+   G-rim (r_lake ≤ 1) · 18 bodies · cuts > 10 m below L(r) on the construction **0** · on the eroded world **12**
+   G-ring · ring cells bound by the clamp **1073** · with a slope > 28° to an outside neighbour **201** (worst 83°) ["body 0 (3382,2598) 45°", "body 0 (3382,2599) 45°", "body 0 (3385,2602) 55°", "body 0 (3386,2602) 45°", "body 2 (4089,3233) 28°", "body 2 (4089,3234) 42°"]
+   G-slope100 · 16 outlet paths · max slope over 100 m > 28° **1** · p50 11.6° · max 40.8°
+   G-drained · upstream cells of drained lakes 0 · below L_floor − 1 m on the construction **0**
+   G-tag · tagged falls: head **12** (median 69.1 m, max 413.7 m) · shortage **0** · gorge 2-cell drops over H_f beyond the lip **227**
+   G-area · final non-crater lakes 4564.2 km² · the 14 D8 bodies' final lakes 1246.3 km²
+   (576 s)
+
+────────── GORGE v4 ×0.85 (r_world 0.5000001, p 0.5) ──────────
+   construction + plain 123.7 s · ON's construction at ×0.85 114.2 s · added **9.5 s** · 18 kept bodies · 12 tagged falls in the skeleton
+   G-bodies · D8 lakes matched 14 of 14 · distinct bodies 14 · body share > 50 % 14 · lakes split over > 1 body 0 · **1:1 HOLDS** · kept bodies matching no D8 lake: 4 ["body 5 (5.2 km², r 0.21) no ON lake", "body 9 (5.3 km², r 0.41) no ON lake", "body 11 (8.2 km², r 0.22) no ON lake", "body 15 (6.1 km², r 0.81) ON lake 1000016 (20 %)"]
+   G-deposit · bodies with a plain (r_lake > 1): 0 · deposited **-0.0000 km³** · the gorge's removal against ON at ×0.85 (construction, land) 0.304 km³ (after the plain 0.304) · deposit / removal **-0.0 %**
+   G-pits · (bench) construction + plain: **0** pit cells outside the lakes (deepest 0.0 m) · 
+   G-pits · (d) + bathymetry (the breach's input): **0** pit cells outside the lakes (deepest 0.0 m) · 
+   G-sea · land cells ≤ sea after the breach 292 (ON 292) · added 0 · missing 0 · **EXACTLY ON's**
+   F38 · the run_hd tail completes: the invariant does NOT fire
+   G-levels · kept bodies with an outflow 18 · at L(r) ± 1 m **7** of 18 not drained · drained (r_lake = 2) 0, absent at the end **0**
+      off: body 0 (D8 lake Some(1)) 143.8 km² r 0.91 L(r) 342.4 final 337.7 (A 1372 km²)
+      off: body 2 (D8 lake Some(3)) 197.9 km² r 0.60 L(r) 1332.1 final 1322.0 (A 599 km²)
+      off: body 3 (D8 lake Some(4)) 49.4 km² r 0.42 L(r) 172.1 final 170.7 (A 301 km²)
+      off: body 4 (D8 lake Some(7)) 8.8 km² r 0.38 L(r) 411.9 final 402.5 (A 245 km²)
+      off: body 5 (D8 lake None) 5.2 km² r 0.21 L(r) 1148.2: NO final lake
+      off: body 7 (D8 lake Some(10)) 287.1 km² r 0.70 L(r) 1001.3 final 985.6 (A 819 km²)
+      off: body 9 (D8 lake None) 5.3 km² r 0.41 L(r) 723.4: NO final lake
+      off: body 11 (D8 lake None) 8.2 km² r 0.22 L(r) 1257.4 final 1256.1 (A 79 km²)
+      off: body 14 (D8 lake Some(15)) 23.3 km² r 0.50 L(r) 168.7 final 167.7 (A 417 km²)
+      off: body 15 (D8 lake None) 6.1 km² r 0.81 L(r) 163.5 final 155.4 (A 1108 km²)
+      off: body 17 (D8 lake Some(20)) 38.2 km² r 0.37 L(r) 135.5 final 133.2 (A 227 km²)
+   G-rim (r_lake ≤ 1) · 18 bodies · cuts > 10 m below L(r) on the construction **0** · on the eroded world **12**
+   G-ring · ring cells bound by the clamp **1372** · with a slope > 28° to an outside neighbour **214** (worst 83°) ["body 0 (3382,2598) 45°", "body 0 (3382,2599) 45°", "body 0 (3382,2600) 55°", "body 0 (3383,2601) 45°", "body 0 (3384,2601) 55°", "body 0 (3385,2601) 45°"]
+   G-slope100 · 16 outlet paths · max slope over 100 m > 28° **1** · p50 9.3° · max 40.8°
+   G-drained · upstream cells of drained lakes 0 · below L_floor − 1 m on the construction **0**
+   G-tag · tagged falls: head **12** (median 69.1 m, max 413.6 m) · shortage **0** · gorge 2-cell drops over H_f beyond the lip **225**
+   G-area · final non-crater lakes 4572.4 km² · the 14 D8 bodies' final lakes 1256.9 km²
+   (532 s)
+
+────────── GORGE v4 ×1.2 (r_world 1.5000001, p 0.5) ──────────
+   construction + plain 115.7 s · ON's construction at ×1.2 113.5 s · added **2.2 s** · 18 kept bodies · 8 tagged falls in the skeleton
+   G-bodies · D8 lakes matched 14 of 14 · distinct bodies 14 · body share > 50 % 14 · lakes split over > 1 body 0 · **1:1 HOLDS** · kept bodies matching no D8 lake: 4 ["body 5 (5.2 km², r 0.64) no ON lake", "body 9 (5.3 km², r 1.24) no ON lake", "body 11 (8.2 km², r 0.65) no ON lake", "body 15 (6.1 km², r 2.00) ON lake 1000016 (20 %)"]
+   G-deposit · bodies with a plain (r_lake > 1): 15 · deposited **0.0663 km³** · the gorge's removal against ON at ×1.2 (construction, land) 375.257 km³ (after the plain 375.257) · deposit / removal **0.0 %**
+      body 0 (lake Some(1)) r 2.00 · spill 145.2 m · raised 1836 cells (4.38 km²) · deepest 35.8 m · 0.0508 km³
+      body 1 (lake Some(2)) r 1.54 · spill 1119.4 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 2 (lake Some(3)) r 1.79 · spill 973.1 m · raised 126 cells (0.30 km²) · deepest 0.5 m · 0.0000 km³
+      body 3 (lake Some(4)) r 1.27 · spill 129.0 m · raised 4 cells (0.01 km²) · deepest 0.2 m · 0.0000 km³
+      body 4 (lake Some(7)) r 1.15 · spill 395.1 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 7 (lake Some(10)) r 2.00 · spill 674.3 m · raised 116 cells (0.28 km²) · deepest 6.5 m · 0.0004 km³
+      body 8 (lake Some(9)) r 1.45 · spill 282.0 m · raised 21 cells (0.05 km²) · deepest 1.3 m · 0.0000 km³
+      body 9 (lake None) r 1.24 · spill 681.6 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 10 (lake Some(11)) r 2.00 · spill 32.6 m · raised 1481 cells (3.53 km²) · deepest 8.3 m · 0.0135 km³
+      body 12 (lake Some(12)) r 1.51 · spill 78.2 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 13 (lake Some(13)) r 2.00 · spill 13.9 m · raised 271 cells (0.65 km²) · deepest 5.1 m · 0.0015 km³
+      body 14 (lake Some(15)) r 1.50 · spill 126.3 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 15 (lake None) r 2.00 · spill 99.2 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 16 (lake Some(19)) r 1.98 · spill 13.2 m · raised 12 cells (0.03 km²) · deepest 0.7 m · 0.0000 km³
+      body 17 (lake Some(20)) r 1.11 · spill 123.3 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+   G-pits · (bench) construction + plain: **0** pit cells outside the lakes (deepest 0.0 m) · b0 r 2.00 L(r) 145.2 · ring min 145.2 · lake none · pits 0 (0 levels, 0.0 m) | b1 r 1.54 L(r) 1119.4 · ring min 1119.4 · lake 1119.4 m · pits 0 (0 levels, 0.0 m) | b2 r 1.79 L(r) 973.1 · ring min 973.1 · lake 973.1 m · pits 0 (0 levels, 0.0 m) | b3 r 1.27 L(r) 129.0 · ring min 129.0 · lake 129.0 m · pits 0 (0 levels, 0.0 m) | b4 r 1.15 L(r) 395.1 · ring min 395.1 · lake 395.1 m · pits 0 (0 levels, 0.0 m) | b7 r 2.00 L(r) 674.3 · ring min 674.3 · lake none · pits 0 (0 levels, 0.0 m) | b8 r 1.45 L(r) 282.0 · ring min 282.0 · lake 282.0 m · pits 0 (0 levels, 0.0 m) | b9 r 1.24 L(r) 681.6 · ring min 681.6 · lake 681.6 m · pits 0 (0 levels, 0.0 m) | b10 r 2.00 L(r) 32.6 · ring min 32.6 · lake none · pits 0 (0 levels, 0.0 m) | b12 r 1.51 L(r) 78.2 · ring min 78.2 · lake 78.2 m · pits 0 (0 levels, 0.0 m) | b13 r 2.00 L(r) 13.9 · ring min 13.9 · lake none · pits 0 (0 levels, 0.0 m) | b14 r 1.50 L(r) 126.3 · ring min 126.3 · lake 126.3 m · pits 0 (0 levels, 0.0 m) | b15 r 2.00 L(r) 99.2 · ring min 99.2 · lake none · pits 0 (0 levels, 0.0 m) | b16 r 1.98 L(r) 13.2 · ring min 13.2 · lake 13.2 m · pits 0 (0 levels, 0.0 m) | b17 r 1.11 L(r) 123.3 · ring min 123.3 · lake 123.3 m · pits 0 (0 levels, 0.0 m)
+   G-pits · (a) construction + plain + rims: **0** pit cells outside the lakes (deepest 0.0 m) · b0 r 2.00 L(r) 145.2 · ring min 145.2 · lake none · pits 0 (0 levels, 0.0 m) | b1 r 1.54 L(r) 1119.4 · ring min 1119.4 · lake 1119.4 m · pits 0 (0 levels, 0.0 m) | b2 r 1.79 L(r) 973.1 · ring min 973.1 · lake 973.1 m · pits 0 (0 levels, 0.0 m) | b3 r 1.27 L(r) 129.0 · ring min 129.0 · lake 129.0 m · pits 0 (0 levels, 0.0 m) | b4 r 1.15 L(r) 395.1 · ring min 395.1 · lake 395.1 m · pits 0 (0 levels, 0.0 m) | b7 r 2.00 L(r) 674.3 · ring min 674.3 · lake none · pits 0 (0 levels, 0.0 m) | b8 r 1.45 L(r) 282.0 · ring min 282.0 · lake 282.0 m · pits 0 (0 levels, 0.0 m) | b9 r 1.24 L(r) 681.6 · ring min 681.6 · lake 681.6 m · pits 0 (0 levels, 0.0 m) | b10 r 2.00 L(r) 32.6 · ring min 32.6 · lake none · pits 0 (0 levels, 0.0 m) | b12 r 1.51 L(r) 78.2 · ring min 78.2 · lake 78.2 m · pits 0 (0 levels, 0.0 m) | b13 r 2.00 L(r) 13.9 · ring min 13.9 · lake none · pits 0 (0 levels, 0.0 m) | b14 r 1.50 L(r) 126.3 · ring min 126.3 · lake 126.3 m · pits 0 (0 levels, 0.0 m) | b15 r 2.00 L(r) 99.2 · ring min 99.2 · lake none · pits 0 (0 levels, 0.0 m) | b16 r 1.98 L(r) 13.2 · ring min 13.2 · lake 13.2 m · pits 0 (0 levels, 0.0 m) | b17 r 1.11 L(r) 123.3 · ring min 123.3 · lake 123.3 m · pits 0 (0 levels, 0.0 m) · the pipeline's (a) against the bench's construction + plain on the kept bodies: 5814 cells differ (max 21.34 m; by body {13: 2766, 14: 2928, 15: 120})
+   G-pits · (b) + light pass: **8788** pit cells outside the lakes (deepest 112.9 m) · b0 r 2.00 L(r) 145.2 · ring min 141.0 · lake none · pits 1733 (14 levels, 12.9 m) | b1 r 1.54 L(r) 1119.4 · ring min 1114.7 · lake 1119.4 m · pits 12 (9 levels, 5.3 m) | b2 r 1.79 L(r) 973.1 · ring min 889.6 · lake 973.1 m · pits 285 (54 levels, 52.5 m) | b3 r 1.27 L(r) 129.0 · ring min 87.0 · lake 125.1 m · pits 66 (3 levels, 24.6 m) | b4 r 1.15 L(r) 395.1 · ring min 249.2 · lake none · pits 2112 (12 levels, 80.6 m) | b7 r 2.00 L(r) 674.3 · ring min 441.8 · lake 475.6 m · pits 3274 (311 levels, 112.9 m) | b8 r 1.45 L(r) 282.0 · ring min 281.5 · lake 282.0 m · pits 7 (6 levels, 0.2 m) | b9 r 1.24 L(r) 681.6 · ring min 535.2 · lake 681.5 m · pits 21 (4 levels, 23.8 m) | b10 r 2.00 L(r) 32.6 · ring min 32.6 · lake none · pits 1270 (12 levels, 32.3 m) | b12 r 1.51 L(r) 78.2 · ring min 77.1 · lake 78.2 m · pits 0 (0 levels, 0.0 m) | b13 r 2.00 L(r) 13.9 · ring min 13.9 · lake none · pits 7 (7 levels, 0.4 m) | b14 r 1.50 L(r) 126.3 · ring min 125.6 · lake 126.3 m · pits 0 (0 levels, 0.0 m) | b15 r 2.00 L(r) 99.2 · ring min 99.2 · lake none · pits 0 (0 levels, 0.0 m) | b16 r 1.98 L(r) 13.2 · ring min 13.2 · lake 13.2 m · pits 0 (0 levels, 0.0 m) | b17 r 1.11 L(r) 123.3 · ring min 88.9 · lake 121.2 m · pits 1 (1 levels, 0.3 m)
+   G-pits · (c) + droplets: **8788** pit cells outside the lakes (deepest 112.9 m) · b0 r 2.00 L(r) 145.2 · ring min 141.0 · lake none · pits 1733 (14 levels, 12.9 m) | b1 r 1.54 L(r) 1119.4 · ring min 1114.7 · lake 1119.4 m · pits 12 (9 levels, 5.3 m) | b2 r 1.79 L(r) 973.1 · ring min 889.6 · lake 973.1 m · pits 285 (54 levels, 52.5 m) | b3 r 1.27 L(r) 129.0 · ring min 87.0 · lake 125.1 m · pits 66 (3 levels, 24.6 m) | b4 r 1.15 L(r) 395.1 · ring min 249.2 · lake none · pits 2112 (12 levels, 80.6 m) | b7 r 2.00 L(r) 674.3 · ring min 441.8 · lake 475.6 m · pits 3274 (311 levels, 112.9 m) | b8 r 1.45 L(r) 282.0 · ring min 281.5 · lake 282.0 m · pits 7 (6 levels, 0.2 m) | b9 r 1.24 L(r) 681.6 · ring min 535.2 · lake 681.5 m · pits 21 (4 levels, 23.8 m) | b10 r 2.00 L(r) 32.6 · ring min 32.6 · lake none · pits 1270 (12 levels, 32.3 m) | b12 r 1.51 L(r) 78.2 · ring min 77.1 · lake 78.2 m · pits 0 (0 levels, 0.0 m) | b13 r 2.00 L(r) 13.9 · ring min 13.9 · lake none · pits 7 (7 levels, 0.4 m) | b14 r 1.50 L(r) 126.3 · ring min 125.6 · lake 126.3 m · pits 0 (0 levels, 0.0 m) | b15 r 2.00 L(r) 99.2 · ring min 99.2 · lake none · pits 0 (0 levels, 0.0 m) | b16 r 1.98 L(r) 13.2 · ring min 13.2 · lake 13.2 m · pits 0 (0 levels, 0.0 m) | b17 r 1.11 L(r) 123.3 · ring min 88.9 · lake 121.2 m · pits 1 (1 levels, 0.3 m)
+   G-pits · (d) + bathymetry (the breach's input): **8788** pit cells outside the lakes (deepest 112.9 m) · b0 r 2.00 L(r) 145.2 · ring min 141.0 · lake none · pits 1733 (14 levels, 12.9 m) | b1 r 1.54 L(r) 1119.4 · ring min 1114.7 · lake 1119.4 m · pits 12 (9 levels, 5.3 m) | b2 r 1.79 L(r) 973.1 · ring min 889.6 · lake 973.1 m · pits 285 (54 levels, 52.5 m) | b3 r 1.27 L(r) 129.0 · ring min 87.0 · lake 125.1 m · pits 66 (3 levels, 24.6 m) | b4 r 1.15 L(r) 395.1 · ring min 249.2 · lake none · pits 2112 (12 levels, 80.6 m) | b7 r 2.00 L(r) 674.3 · ring min 441.8 · lake 475.6 m · pits 3274 (311 levels, 112.9 m) | b8 r 1.45 L(r) 282.0 · ring min 281.5 · lake 282.0 m · pits 7 (6 levels, 0.2 m) | b9 r 1.24 L(r) 681.6 · ring min 535.2 · lake 681.5 m · pits 21 (4 levels, 23.8 m) | b10 r 2.00 L(r) 32.6 · ring min 32.6 · lake none · pits 1270 (12 levels, 32.3 m) | b12 r 1.51 L(r) 78.2 · ring min 77.1 · lake 78.2 m · pits 0 (0 levels, 0.0 m) | b13 r 2.00 L(r) 13.9 · ring min 13.9 · lake none · pits 7 (7 levels, 0.4 m) | b14 r 1.50 L(r) 126.3 · ring min 125.6 · lake 126.3 m · pits 0 (0 levels, 0.0 m) | b15 r 2.00 L(r) 99.2 · ring min 99.2 · lake none · pits 0 (0 levels, 0.0 m) | b16 r 1.98 L(r) 13.2 · ring min 13.2 · lake 13.2 m · pits 0 (0 levels, 0.0 m) | b17 r 1.11 L(r) 123.3 · ring min 88.9 · lake 121.2 m · pits 1 (1 levels, 0.3 m)
+   G-sea · land cells ≤ sea after the breach 292 (ON 292) · added 0 · missing 0 · **EXACTLY ON's**
+   F38 · the run_hd tail completes: the invariant does NOT fire
+   G-levels · kept bodies with an outflow 18 · at L(r) ± 1 m **3** of 13 not drained · drained (r_lake = 2) 5, absent at the end **3**
+      off: body 1 (D8 lake Some(2)) 57.8 km² r 1.54 L(r) 1119.4: NO final lake
+      off: body 3 (D8 lake Some(4)) 49.4 km² r 1.27 L(r) 129.0 final 125.1 (A 301 km²)
+      off: body 4 (D8 lake Some(7)) 8.8 km² r 1.15 L(r) 395.1 final 382.0 (A 245 km²)
+      off: body 5 (D8 lake None) 5.2 km² r 0.64 L(r) 1148.1: NO final lake
+      off: body 6 (D8 lake Some(8)) 13.6 km² r 0.92 L(r) 526.9 final 522.7 (A 156 km²)
+      off: body 9 (D8 lake None) 5.3 km² r 1.24 L(r) 681.6: NO final lake
+      off: body 11 (D8 lake None) 8.2 km² r 0.65 L(r) 1257.3 final 1256.1 (A 79 km²)
+      off: body 12 (D8 lake Some(12)) 11.4 km² r 1.51 L(r) 78.2: NO final lake
+      off: body 13 (D8 lake Some(13)) drained, yet final lake 10 covers 60 % at 116.7 m (L_floor 13.9)
+      off: body 15 (D8 lake None) drained, yet final lake 10 covers 73 % at 116.7 m (L_floor 99.2)
+      off: body 16 (D8 lake Some(19)) 73.0 km² r 1.98 L(r) 13.2 final 33.0 (A 727 km²)
+      off: body 17 (D8 lake Some(20)) 38.2 km² r 1.11 L(r) 123.3 final 121.2 (A 227 km²)
+   G-rim (r_lake ≤ 1) · 3 bodies · cuts > 10 m below L(r) on the construction **0** · on the eroded world **2**
+   G-ring · ring cells bound by the clamp **3791** · with a slope > 28° to an outside neighbour **127** (worst 82°) ["body 0 (3382,2599) 31°", "body 0 (3382,2600) 31°", "body 0 (3383,2601) 32°", "body 0 (3384,2601) 31°", "body 0 (3385,2602) 31°", "body 2 (4096,3245) 68°"]
+   G-slope100 · 9 outlet paths · max slope over 100 m > 28° **2** · p50 10.3° · max 32.9°
+   G-drained · upstream cells of drained lakes 1232451 · below L_floor − 1 m on the construction **53**
+   G-tag · tagged falls: head **8** (median 162.8 m, max 307.3 m) · shortage **0** · gorge 2-cell drops over H_f beyond the lip **106**
+   G-area · final non-crater lakes 3648.3 km² · the 14 D8 bodies' final lakes 141.7 km²
+   (918 s)
+
+────────── GORGE v4 ×1.4 (r_world 2, p 0.5) ──────────
+   construction + plain 114.0 s · ON's construction at ×1.4 113.1 s · added **0.9 s** · 18 kept bodies · 7 tagged falls in the skeleton
+   G-bodies · D8 lakes matched 14 of 14 · distinct bodies 14 · body share > 50 % 14 · lakes split over > 1 body 0 · **1:1 HOLDS** · kept bodies matching no D8 lake: 4 ["body 5 (5.2 km², r 0.85) no ON lake", "body 9 (5.3 km², r 1.66) no ON lake", "body 11 (8.2 km², r 0.87) no ON lake", "body 15 (6.1 km², r 2.00) ON lake 1000016 (20 %)"]
+   G-deposit · bodies with a plain (r_lake > 1): 16 · deposited **0.1175 km³** · the gorge's removal against ON at ×1.4 (construction, land) 434.784 km³ (after the plain 434.784) · deposit / removal **0.0 %**
+      body 0 (lake Some(1)) r 2.00 · spill 145.2 m · raised 1836 cells (4.38 km²) · deepest 35.8 m · 0.0508 km³
+      body 1 (lake Some(2)) r 2.00 · spill 934.5 m · raised 470 cells (1.12 km²) · deepest 95.9 m · 0.0374 km³
+      body 2 (lake Some(3)) r 2.00 · spill 879.8 m · raised 322 cells (0.77 km²) · deepest 14.7 m · 0.0031 km³
+      body 3 (lake Some(4)) r 1.69 · spill 61.8 m · raised 5 cells (0.01 km²) · deepest 0.3 m · 0.0000 km³
+      body 4 (lake Some(7)) r 1.53 · spill 351.7 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 6 (lake Some(8)) r 1.22 · spill 488.3 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 7 (lake Some(10)) r 2.00 · spill 674.3 m · raised 116 cells (0.28 km²) · deepest 6.5 m · 0.0004 km³
+      body 8 (lake Some(9)) r 1.94 · spill 121.2 m · raised 20 cells (0.05 km²) · deepest 0.8 m · 0.0000 km³
+      body 9 (lake None) r 1.66 · spill 610.5 m · raised 7 cells (0.02 km²) · deepest 29.0 m · 0.0002 km³
+      body 10 (lake Some(11)) r 2.00 · spill 32.6 m · raised 1481 cells (3.53 km²) · deepest 8.3 m · 0.0135 km³
+      body 12 (lake Some(12)) r 2.00 · spill 35.8 m · raised 144 cells (0.34 km²) · deepest 15.5 m · 0.0019 km³
+      body 13 (lake Some(13)) r 2.00 · spill 13.9 m · raised 271 cells (0.65 km²) · deepest 5.1 m · 0.0015 km³
+      body 14 (lake Some(15)) r 1.99 · spill 84.6 m · raised 579 cells (1.38 km²) · deepest 20.7 m · 0.0086 km³
+      body 15 (lake None) r 2.00 · spill 99.2 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 16 (lake Some(19)) r 2.00 · spill 8.8 m · raised 10 cells (0.02 km²) · deepest 0.7 m · 0.0000 km³
+      body 17 (lake Some(20)) r 1.47 · spill 81.4 m · raised 52 cells (0.12 km²) · deepest 1.9 m · 0.0001 km³
+   G-pits · (bench) construction + plain: **0** pit cells outside the lakes (deepest 0.0 m) · b0 r 2.00 L(r) 145.2 · ring min 145.2 · lake none · pits 0 (0 levels, 0.0 m) | b1 r 2.00 L(r) 934.5 · ring min 934.5 · lake none · pits 0 (0 levels, 0.0 m) | b2 r 2.00 L(r) 879.8 · ring min 879.8 · lake 879.8 m · pits 0 (0 levels, 0.0 m) | b3 r 1.69 L(r) 61.8 · ring min 61.8 · lake 61.8 m · pits 0 (0 levels, 0.0 m) | b4 r 1.53 L(r) 351.7 · ring min 351.7 · lake 351.7 m · pits 0 (0 levels, 0.0 m) | b6 r 1.22 L(r) 488.3 · ring min 488.3 · lake 488.3 m · pits 0 (0 levels, 0.0 m) | b7 r 2.00 L(r) 674.3 · ring min 674.3 · lake none · pits 0 (0 levels, 0.0 m) | b8 r 1.94 L(r) 121.2 · ring min 121.2 · lake 121.2 m · pits 0 (0 levels, 0.0 m) | b9 r 1.66 L(r) 610.5 · ring min 610.5 · lake 610.5 m · pits 0 (0 levels, 0.0 m) | b10 r 2.00 L(r) 32.6 · ring min 32.6 · lake none · pits 0 (0 levels, 0.0 m) | b12 r 2.00 L(r) 35.8 · ring min 35.8 · lake none · pits 0 (0 levels, 0.0 m) | b13 r 2.00 L(r) 13.9 · ring min 13.9 · lake none · pits 0 (0 levels, 0.0 m) | b14 r 1.99 L(r) 84.6 · ring min 84.6 · lake none · pits 0 (0 levels, 0.0 m) | b15 r 2.00 L(r) 99.2 · ring min 99.2 · lake none · pits 0 (0 levels, 0.0 m) | b16 r 2.00 L(r) 8.8 · ring min 8.8 · lake none · pits 0 (0 levels, 0.0 m) | b17 r 1.47 L(r) 81.4 · ring min 81.4 · lake 81.4 m · pits 0 (0 levels, 0.0 m)
+   G-pits · (a) construction + plain + rims: **0** pit cells outside the lakes (deepest 0.0 m) · b0 r 2.00 L(r) 145.2 · ring min 145.2 · lake none · pits 0 (0 levels, 0.0 m) | b1 r 2.00 L(r) 934.5 · ring min 934.5 · lake none · pits 0 (0 levels, 0.0 m) | b2 r 2.00 L(r) 879.8 · ring min 879.8 · lake 879.8 m · pits 0 (0 levels, 0.0 m) | b3 r 1.69 L(r) 61.8 · ring min 61.8 · lake 61.8 m · pits 0 (0 levels, 0.0 m) | b4 r 1.53 L(r) 351.7 · ring min 351.7 · lake 351.7 m · pits 0 (0 levels, 0.0 m) | b6 r 1.22 L(r) 488.3 · ring min 488.3 · lake 488.3 m · pits 0 (0 levels, 0.0 m) | b7 r 2.00 L(r) 674.3 · ring min 674.3 · lake none · pits 0 (0 levels, 0.0 m) | b8 r 1.94 L(r) 121.2 · ring min 121.2 · lake 121.2 m · pits 0 (0 levels, 0.0 m) | b9 r 1.66 L(r) 610.5 · ring min 610.5 · lake 610.5 m · pits 0 (0 levels, 0.0 m) | b10 r 2.00 L(r) 32.6 · ring min 32.6 · lake none · pits 0 (0 levels, 0.0 m) | b12 r 2.00 L(r) 35.8 · ring min 35.8 · lake none · pits 0 (0 levels, 0.0 m) | b13 r 2.00 L(r) 13.9 · ring min 13.9 · lake none · pits 0 (0 levels, 0.0 m) | b14 r 1.99 L(r) 84.6 · ring min 84.6 · lake none · pits 0 (0 levels, 0.0 m) | b15 r 2.00 L(r) 99.2 · ring min 99.2 · lake none · pits 0 (0 levels, 0.0 m) | b16 r 2.00 L(r) 8.8 · ring min 8.8 · lake none · pits 0 (0 levels, 0.0 m) | b17 r 1.47 L(r) 81.4 · ring min 81.4 · lake 81.4 m · pits 0 (0 levels, 0.0 m) · the pipeline's (a) against the bench's construction + plain on the kept bodies: 7098 cells differ (max 28.91 m; by body {13: 2766, 14: 4212, 15: 120})
+   G-pits · (b) + light pass: **9628** pit cells outside the lakes (deepest 122.4 m) · b0 r 2.00 L(r) 145.2 · ring min 141.1 · lake none · pits 1733 (14 levels, 13.0 m) | b1 r 2.00 L(r) 934.5 · ring min 930.6 · lake none · pits 457 (6 levels, 10.6 m) | b2 r 2.00 L(r) 879.8 · ring min 817.6 · lake none · pits 540 (74 levels, 79.4 m) | b3 r 1.69 L(r) 61.8 · ring min 46.2 · lake 61.8 m · pits 159 (16 levels, 31.1 m) | b4 r 1.53 L(r) 351.7 · ring min 169.2 · lake 176.8 m · pits 636 (29 levels, 38.0 m) | b6 r 1.22 L(r) 488.3 · ring min 434.2 · lake 488.3 m · pits 0 (0 levels, 0.0 m) | b7 r 2.00 L(r) 674.3 · ring min 406.4 · lake 440.6 m · pits 3734 (347 levels, 122.4 m) | b8 r 1.94 L(r) 121.2 · ring min 121.2 · lake 121.2 m · pits 36 (20 levels, 3.4 m) | b9 r 1.66 L(r) 610.5 · ring min 482.3 · lake none · pits 261 (3 levels, 57.5 m) | b10 r 2.00 L(r) 32.6 · ring min 32.6 · lake none · pits 1273 (12 levels, 32.7 m) | b12 r 2.00 L(r) 35.8 · ring min 35.4 · lake none · pits 139 (1 levels, 0.4 m) | b13 r 2.00 L(r) 13.9 · ring min 13.9 · lake none · pits 7 (7 levels, 0.4 m) | b14 r 1.99 L(r) 84.6 · ring min 84.6 · lake none · pits 607 (3 levels, 1.1 m) | b15 r 2.00 L(r) 99.2 · ring min 99.2 · lake none · pits 0 (0 levels, 0.0 m) | b16 r 2.00 L(r) 8.8 · ring min 8.8 · lake none · pits 0 (0 levels, 0.0 m) | b17 r 1.47 L(r) 81.4 · ring min 81.4 · lake 81.4 m · pits 46 (1 levels, 0.3 m)
+   G-pits · (c) + droplets: **9628** pit cells outside the lakes (deepest 122.4 m) · b0 r 2.00 L(r) 145.2 · ring min 141.1 · lake none · pits 1733 (14 levels, 13.0 m) | b1 r 2.00 L(r) 934.5 · ring min 930.6 · lake none · pits 457 (6 levels, 10.6 m) | b2 r 2.00 L(r) 879.8 · ring min 817.6 · lake none · pits 540 (74 levels, 79.4 m) | b3 r 1.69 L(r) 61.8 · ring min 46.2 · lake 61.8 m · pits 159 (16 levels, 31.1 m) | b4 r 1.53 L(r) 351.7 · ring min 169.2 · lake 176.8 m · pits 636 (29 levels, 38.0 m) | b6 r 1.22 L(r) 488.3 · ring min 434.2 · lake 488.3 m · pits 0 (0 levels, 0.0 m) | b7 r 2.00 L(r) 674.3 · ring min 406.4 · lake 440.6 m · pits 3734 (347 levels, 122.4 m) | b8 r 1.94 L(r) 121.2 · ring min 121.2 · lake 121.2 m · pits 36 (20 levels, 3.4 m) | b9 r 1.66 L(r) 610.5 · ring min 482.3 · lake none · pits 261 (3 levels, 57.5 m) | b10 r 2.00 L(r) 32.6 · ring min 32.6 · lake none · pits 1273 (12 levels, 32.7 m) | b12 r 2.00 L(r) 35.8 · ring min 35.4 · lake none · pits 139 (1 levels, 0.4 m) | b13 r 2.00 L(r) 13.9 · ring min 13.9 · lake none · pits 7 (7 levels, 0.4 m) | b14 r 1.99 L(r) 84.6 · ring min 84.6 · lake none · pits 607 (3 levels, 1.1 m) | b15 r 2.00 L(r) 99.2 · ring min 99.2 · lake none · pits 0 (0 levels, 0.0 m) | b16 r 2.00 L(r) 8.8 · ring min 8.8 · lake none · pits 0 (0 levels, 0.0 m) | b17 r 1.47 L(r) 81.4 · ring min 81.4 · lake 81.4 m · pits 46 (1 levels, 0.3 m)
+   G-pits · (d) + bathymetry (the breach's input): **9628** pit cells outside the lakes (deepest 122.4 m) · b0 r 2.00 L(r) 145.2 · ring min 141.1 · lake none · pits 1733 (14 levels, 13.0 m) | b1 r 2.00 L(r) 934.5 · ring min 930.6 · lake none · pits 457 (6 levels, 10.6 m) | b2 r 2.00 L(r) 879.8 · ring min 817.6 · lake none · pits 540 (74 levels, 79.4 m) | b3 r 1.69 L(r) 61.8 · ring min 46.2 · lake 61.8 m · pits 159 (16 levels, 31.1 m) | b4 r 1.53 L(r) 351.7 · ring min 169.2 · lake 176.8 m · pits 636 (29 levels, 38.0 m) | b6 r 1.22 L(r) 488.3 · ring min 434.2 · lake 488.3 m · pits 0 (0 levels, 0.0 m) | b7 r 2.00 L(r) 674.3 · ring min 406.4 · lake 440.6 m · pits 3734 (347 levels, 122.4 m) | b8 r 1.94 L(r) 121.2 · ring min 121.2 · lake 121.2 m · pits 36 (20 levels, 3.4 m) | b9 r 1.66 L(r) 610.5 · ring min 482.3 · lake none · pits 261 (3 levels, 57.5 m) | b10 r 2.00 L(r) 32.6 · ring min 32.6 · lake none · pits 1273 (12 levels, 32.7 m) | b12 r 2.00 L(r) 35.8 · ring min 35.4 · lake none · pits 139 (1 levels, 0.4 m) | b13 r 2.00 L(r) 13.9 · ring min 13.9 · lake none · pits 7 (7 levels, 0.4 m) | b14 r 1.99 L(r) 84.6 · ring min 84.6 · lake none · pits 607 (3 levels, 1.1 m) | b15 r 2.00 L(r) 99.2 · ring min 99.2 · lake none · pits 0 (0 levels, 0.0 m) | b16 r 2.00 L(r) 8.8 · ring min 8.8 · lake none · pits 0 (0 levels, 0.0 m) | b17 r 1.47 L(r) 81.4 · ring min 81.4 · lake 81.4 m · pits 46 (1 levels, 0.3 m)
+   G-sea · land cells ≤ sea after the breach 404 (ON 292) · added 112 · missing 0 · **DIFFERS**
+   F38 · the run_hd tail completes: the invariant does NOT fire
+   G-levels · kept bodies with an outflow 18 · at L(r) ± 1 m **2** of 9 not drained · drained (r_lake = 2) 9, absent at the end **7**
+      off: body 3 (D8 lake Some(4)) 49.4 km² r 1.69 L(r) 61.8: NO final lake
+      off: body 4 (D8 lake Some(7)) 8.8 km² r 1.53 L(r) 351.7: NO final lake
+      off: body 5 (D8 lake None) 5.2 km² r 0.85 L(r) 1148.1: NO final lake
+      off: body 8 (D8 lake Some(9)) 87.3 km² r 1.94 L(r) 121.2 final 143.5 (A 393 km²)
+      off: body 9 (D8 lake None) 5.3 km² r 1.66 L(r) 610.5: NO final lake
+      off: body 13 (D8 lake Some(13)) drained, yet final lake 7 covers 60 % at 116.9 m (L_floor 13.9)
+      off: body 14 (D8 lake Some(15)) 23.3 km² r 1.99 L(r) 84.6 final 122.1 (A 417 km²)
+      off: body 15 (D8 lake None) drained, yet final lake 7 covers 73 % at 116.9 m (L_floor 99.2)
+      off: body 17 (D8 lake Some(20)) 38.2 km² r 1.47 L(r) 81.4 final 91.8 (A 227 km²)
+   G-rim (r_lake ≤ 1) · 2 bodies · cuts > 10 m below L(r) on the construction **0** · on the eroded world **1**
+   G-ring · ring cells bound by the clamp **3847** · with a slope > 28° to an outside neighbour **113** (worst 82°) ["body 0 (3382,2599) 31°", "body 0 (3382,2600) 31°", "body 0 (3383,2601) 32°", "body 0 (3384,2601) 31°", "body 0 (3385,2602) 31°", "body 2 (4096,3245) 63°"]
+   G-slope100 · 5 outlet paths · max slope over 100 m > 28° **1** · p50 0.8° · max 32.6°
+   G-drained · upstream cells of drained lakes 2151336 · below L_floor − 1 m on the construction **2223**
+   G-tag · tagged falls: head **7** (median 142.3 m, max 301.0 m) · shortage **0** · gorge 2-cell drops over H_f beyond the lip **58**
+   G-area · final non-crater lakes 3610.9 km² · the 14 D8 bodies' final lakes 67.9 km²
+   (917 s)
+
+────────── GORGE v4 ×1 (r_world 1, p 0) ──────────
+   construction + plain 121.3 s · ON's construction at ×1 113.8 s · added **7.5 s** · 18 kept bodies · 12 tagged falls in the skeleton
+   G-bodies · D8 lakes matched 14 of 14 · distinct bodies 14 · body share > 50 % 14 · lakes split over > 1 body 0 · **1:1 HOLDS** · kept bodies matching no D8 lake: 4 ["body 5 (5.2 km², r 1.00) no ON lake", "body 9 (5.3 km², r 1.00) no ON lake", "body 11 (8.2 km², r 1.00) no ON lake", "body 15 (6.1 km², r 1.00) ON lake 1000016 (20 %)"]
+   G-deposit · bodies with a plain (r_lake > 1): 0 · deposited **-0.0000 km³** · the gorge's removal against ON at ×1 (construction, land) 0.448 km³ (after the plain 0.448) · deposit / removal **-0.0 %**
+   G-pits · (bench) construction + plain: **0** pit cells outside the lakes (deepest 0.0 m) · 
+   G-pits · (d) + bathymetry (the breach's input): **0** pit cells outside the lakes (deepest 0.0 m) · 
+   G-sea · land cells ≤ sea after the breach 292 (ON 292) · added 0 · missing 0 · **EXACTLY ON's**
+   F38 · the run_hd tail completes: the invariant does NOT fire
+   G-levels · kept bodies with an outflow 18 · at L(r) ± 1 m **8** of 18 not drained · drained (r_lake = 2) 0, absent at the end **0**
+      off: body 0 (D8 lake Some(1)) 143.8 km² r 1.00 L(r) 342.4 final 337.7 (A 1372 km²)
+      off: body 2 (D8 lake Some(3)) 197.9 km² r 1.00 L(r) 1331.9 final 1320.3 (A 599 km²)
+      off: body 3 (D8 lake Some(4)) 49.4 km² r 1.00 L(r) 172.0 final 170.6 (A 301 km²)
+      off: body 4 (D8 lake Some(7)) 8.8 km² r 1.00 L(r) 411.7 final 402.8 (A 245 km²)
+      off: body 5 (D8 lake None) 5.2 km² r 1.00 L(r) 1148.0: NO final lake
+      off: body 7 (D8 lake Some(10)) 287.1 km² r 1.00 L(r) 1001.1 final 985.6 (A 819 km²)
+      off: body 9 (D8 lake None) 5.3 km² r 1.00 L(r) 723.2: NO final lake
+      off: body 14 (D8 lake Some(15)) 23.3 km² r 1.00 L(r) 167.7 final 165.6 (A 417 km²)
+      off: body 15 (D8 lake None) 6.1 km² r 1.00 L(r) 163.4 final 155.4 (A 1108 km²)
+      off: body 17 (D8 lake Some(20)) 38.2 km² r 1.00 L(r) 135.2 final 132.5 (A 227 km²)
+   G-rim (r_lake ≤ 1) · 18 bodies · cuts > 10 m below L(r) on the construction **0** · on the eroded world **12**
+   G-ring · ring cells bound by the clamp **1517** · with a slope > 28° to an outside neighbour **205** (worst 83°) ["body 0 (3382,2598) 45°", "body 0 (3382,2599) 45°", "body 0 (3382,2600) 55°", "body 0 (3383,2601) 45°", "body 0 (3384,2601) 55°", "body 0 (3385,2601) 45°"]
+   G-slope100 · 16 outlet paths · max slope over 100 m > 28° **2** · p50 8.8° · max 40.4°
+   G-drained · upstream cells of drained lakes 0 · below L_floor − 1 m on the construction **0**
+   G-tag · tagged falls: head **12** (median 69.1 m, max 413.6 m) · shortage **0** · gorge 2-cell drops over H_f beyond the lip **207**
+   G-area · final non-crater lakes 4566.6 km² · the 14 D8 bodies' final lakes 1251.8 km²
+   (529 s)
+
+────────── GORGE v4 ×1 (r_world 1, p 0.25) ──────────
+   construction + plain 115.8 s · ON's construction at ×1 114.9 s · added **0.9 s** · 18 kept bodies · 12 tagged falls in the skeleton
+   G-bodies · D8 lakes matched 14 of 14 · distinct bodies 14 · body share > 50 % 14 · lakes split over > 1 body 0 · **1:1 HOLDS** · kept bodies matching no D8 lake: 4 ["body 5 (5.2 km², r 0.65) no ON lake", "body 9 (5.3 km², r 0.91) no ON lake", "body 11 (8.2 km², r 0.66) no ON lake", "body 15 (6.1 km², r 1.28) ON lake 1000016 (20 %)"]
+   G-deposit · bodies with a plain (r_lake > 1): 9 · deposited **0.0001 km³** · the gorge's removal against ON at ×1 (construction, land) 59.819 km³ (after the plain 59.819) · deposit / removal **0.0 %**
+      body 0 (lake Some(1)) r 1.35 · spill 274.3 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 1 (lake Some(2)) r 1.01 · spill 1332.9 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 2 (lake Some(3)) r 1.09 · spill 1289.7 m · raised 272 cells (0.65 km²) · deepest 0.6 m · 0.0001 km³
+      body 7 (lake Some(10)) r 1.18 · spill 941.4 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 10 (lake Some(11)) r 1.23 · spill 309.3 m · raised 4 cells (0.01 km²) · deepest 0.4 m · 0.0000 km³
+      body 12 (lake Some(12)) r 1.00 · spill 122.4 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 13 (lake Some(13)) r 1.24 · spill 190.0 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 15 (lake None) r 1.28 · spill 145.7 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 16 (lake Some(19)) r 1.15 · spill 172.0 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+   G-pits · (bench) construction + plain: **0** pit cells outside the lakes (deepest 0.0 m) · b0 r 1.35 L(r) 274.3 · ring min 274.3 · lake 274.3 m · pits 0 (0 levels, 0.0 m) | b1 r 1.01 L(r) 1332.9 · ring min 1332.9 · lake 1332.9 m · pits 0 (0 levels, 0.0 m) | b2 r 1.09 L(r) 1289.7 · ring min 1289.7 · lake 1289.7 m · pits 0 (0 levels, 0.0 m) | b7 r 1.18 L(r) 941.4 · ring min 941.4 · lake 941.4 m · pits 0 (0 levels, 0.0 m) | b10 r 1.23 L(r) 309.3 · ring min 309.3 · lake 309.3 m · pits 0 (0 levels, 0.0 m) | b12 r 1.00 L(r) 122.4 · ring min 122.4 · lake 122.4 m · pits 0 (0 levels, 0.0 m) | b13 r 1.24 L(r) 190.0 · ring min 190.0 · lake 190.0 m · pits 0 (0 levels, 0.0 m) | b15 r 1.28 L(r) 145.7 · ring min 145.7 · lake 145.7 m · pits 0 (0 levels, 0.0 m) | b16 r 1.15 L(r) 172.0 · ring min 172.0 · lake 172.0 m · pits 0 (0 levels, 0.0 m)
+   G-pits · (a) construction + plain + rims: **0** pit cells outside the lakes (deepest 0.0 m) · b0 r 1.35 L(r) 274.3 · ring min 274.3 · lake 274.3 m · pits 0 (0 levels, 0.0 m) | b1 r 1.01 L(r) 1332.9 · ring min 1332.9 · lake 1332.9 m · pits 0 (0 levels, 0.0 m) | b2 r 1.09 L(r) 1289.7 · ring min 1289.7 · lake 1289.7 m · pits 0 (0 levels, 0.0 m) | b7 r 1.18 L(r) 941.4 · ring min 941.4 · lake 941.4 m · pits 0 (0 levels, 0.0 m) | b10 r 1.23 L(r) 309.3 · ring min 309.3 · lake 309.3 m · pits 0 (0 levels, 0.0 m) | b12 r 1.00 L(r) 122.4 · ring min 122.4 · lake 122.4 m · pits 0 (0 levels, 0.0 m) | b13 r 1.24 L(r) 190.0 · ring min 190.0 · lake 190.0 m · pits 0 (0 levels, 0.0 m) | b15 r 1.28 L(r) 145.7 · ring min 145.7 · lake 145.7 m · pits 0 (0 levels, 0.0 m) | b16 r 1.15 L(r) 172.0 · ring min 172.0 · lake 172.0 m · pits 0 (0 levels, 0.0 m) · the pipeline's (a) against the bench's construction + plain on the kept bodies: 3601 cells differ (max 0.00 m; by body {13: 3586, 14: 3, 15: 12})
+   G-pits · (b) + light pass: **80424** pit cells outside the lakes (deepest 256.5 m) · b0 r 1.35 L(r) 274.3 · ring min 256.1 · lake 274.3 m · pits 0 (0 levels, 0.0 m) | b1 r 1.01 L(r) 1332.9 · ring min 1325.7 · lake 1331.4 m · pits 2 (1 levels, 0.3 m) | b2 r 1.09 L(r) 1289.7 · ring min 1134.4 · lake 1289.7 m · pits 26 (5 levels, 41.4 m) | b7 r 1.18 L(r) 941.4 · ring min 647.7 · lake 683.4 m · pits 80396 (35 levels, 256.5 m) | b10 r 1.23 L(r) 309.3 · ring min 309.3 · lake 309.3 m · pits 0 (0 levels, 0.0 m) | b12 r 1.00 L(r) 122.4 · ring min 120.5 · lake 120.7 m · pits 0 (0 levels, 0.0 m) | b13 r 1.24 L(r) 190.0 · ring min 189.9 · lake 190.0 m · pits 0 (0 levels, 0.0 m) | b15 r 1.28 L(r) 145.7 · ring min 125.7 · lake 139.5 m · pits 0 (0 levels, 0.0 m) | b16 r 1.15 L(r) 172.0 · ring min 144.2 · lake 172.0 m · pits 0 (0 levels, 0.0 m)
+   G-pits · (c) + droplets: **80424** pit cells outside the lakes (deepest 256.5 m) · b0 r 1.35 L(r) 274.3 · ring min 256.1 · lake 274.3 m · pits 0 (0 levels, 0.0 m) | b1 r 1.01 L(r) 1332.9 · ring min 1325.7 · lake 1331.4 m · pits 2 (1 levels, 0.3 m) | b2 r 1.09 L(r) 1289.7 · ring min 1134.4 · lake 1289.7 m · pits 26 (5 levels, 41.4 m) | b7 r 1.18 L(r) 941.4 · ring min 647.7 · lake 683.4 m · pits 80396 (35 levels, 256.5 m) | b10 r 1.23 L(r) 309.3 · ring min 309.3 · lake 309.3 m · pits 0 (0 levels, 0.0 m) | b12 r 1.00 L(r) 122.4 · ring min 120.5 · lake 120.7 m · pits 0 (0 levels, 0.0 m) | b13 r 1.24 L(r) 190.0 · ring min 189.9 · lake 190.0 m · pits 0 (0 levels, 0.0 m) | b15 r 1.28 L(r) 145.7 · ring min 125.7 · lake 139.5 m · pits 0 (0 levels, 0.0 m) | b16 r 1.15 L(r) 172.0 · ring min 144.2 · lake 172.0 m · pits 0 (0 levels, 0.0 m)
+   G-pits · (d) + bathymetry (the breach's input): **80424** pit cells outside the lakes (deepest 256.5 m) · b0 r 1.35 L(r) 274.3 · ring min 256.1 · lake 274.3 m · pits 0 (0 levels, 0.0 m) | b1 r 1.01 L(r) 1332.9 · ring min 1325.7 · lake 1331.4 m · pits 2 (1 levels, 0.3 m) | b2 r 1.09 L(r) 1289.7 · ring min 1134.4 · lake 1289.7 m · pits 26 (5 levels, 41.4 m) | b7 r 1.18 L(r) 941.4 · ring min 647.7 · lake 683.4 m · pits 80396 (35 levels, 256.5 m) | b10 r 1.23 L(r) 309.3 · ring min 309.3 · lake 309.3 m · pits 0 (0 levels, 0.0 m) | b12 r 1.00 L(r) 122.4 · ring min 120.5 · lake 120.7 m · pits 0 (0 levels, 0.0 m) | b13 r 1.24 L(r) 190.0 · ring min 189.9 · lake 190.0 m · pits 0 (0 levels, 0.0 m) | b15 r 1.28 L(r) 145.7 · ring min 125.7 · lake 139.5 m · pits 0 (0 levels, 0.0 m) | b16 r 1.15 L(r) 172.0 · ring min 144.2 · lake 172.0 m · pits 0 (0 levels, 0.0 m)
+   G-sea · land cells ≤ sea after the breach 292 (ON 292) · added 0 · missing 0 · **EXACTLY ON's**
+   F38 · the run_hd tail completes: the invariant does NOT fire
+   G-levels · kept bodies with an outflow 18 · at L(r) ± 1 m **9** of 18 not drained · drained (r_lake = 2) 0, absent at the end **0**
+      off: body 3 (D8 lake Some(4)) 49.4 km² r 0.92 L(r) 172.0 final 170.6 (A 301 km²)
+      off: body 4 (D8 lake Some(7)) 8.8 km² r 0.87 L(r) 411.7 final 402.8 (A 245 km²)
+      off: body 5 (D8 lake None) 5.2 km² r 0.65 L(r) 1148.1: NO final lake
+      off: body 7 (D8 lake Some(10)) 287.1 km² r 1.18 L(r) 941.4 final 931.3 (A 819 km²)
+      off: body 9 (D8 lake None) 5.3 km² r 0.91 L(r) 723.3: NO final lake
+      off: body 11 (D8 lake None) 8.2 km² r 0.66 L(r) 1257.3 final 1256.1 (A 79 km²)
+      off: body 14 (D8 lake Some(15)) 23.3 km² r 1.00 L(r) 167.7 final 165.6 (A 417 km²)
+      off: body 15 (D8 lake None) 6.1 km² r 1.28 L(r) 145.7 final 115.3 (A 1108 km²)
+      off: body 17 (D8 lake Some(20)) 38.2 km² r 0.86 L(r) 135.3 final 132.5 (A 227 km²)
+   G-rim (r_lake ≤ 1) · 9 bodies · cuts > 10 m below L(r) on the construction **0** · on the eroded world **5**
+   G-ring · ring cells bound by the clamp **2822** · with a slope > 28° to an outside neighbour **156** (worst 83°) ["body 0 (3382,2598) 39°", "body 0 (3382,2599) 39°", "body 0 (3382,2600) 49°", "body 0 (3383,2601) 39°", "body 0 (3384,2601) 49°", "body 0 (3385,2601) 39°"]
+   G-slope100 · 15 outlet paths · max slope over 100 m > 28° **2** · p50 13.4° · max 39.5°
+   G-drained · upstream cells of drained lakes 0 · below L_floor − 1 m on the construction **0**
+   G-tag · tagged falls: head **12** (median 55.3 m, max 383.8 m) · shortage **0** · gorge 2-cell drops over H_f beyond the lip **183**
+   G-area · final non-crater lakes 4289.7 km² · the 14 D8 bodies' final lakes 972.1 km²
+   (922 s)
+
+────────── GORGE v4 ×1.4 (r_world 2, p 0) ──────────
+   construction + plain 114.9 s · ON's construction at ×1.4 113.3 s · added **1.6 s** · 18 kept bodies · 7 tagged falls in the skeleton
+   G-bodies · D8 lakes matched 14 of 14 · distinct bodies 14 · body share > 50 % 14 · lakes split over > 1 body 0 · **1:1 HOLDS** · kept bodies matching no D8 lake: 4 ["body 5 (5.2 km², r 2.00) no ON lake", "body 9 (5.3 km², r 2.00) no ON lake", "body 11 (8.2 km², r 2.00) no ON lake", "body 15 (6.1 km², r 2.00) ON lake 1000016 (20 %)"]
+   G-deposit · bodies with a plain (r_lake > 1): 18 · deposited **0.1326 km³** · the gorge's removal against ON at ×1.4 (construction, land) 450.421 km³ (after the plain 450.421) · deposit / removal **0.0 %**
+      body 0 (lake Some(1)) r 2.00 · spill 145.2 m · raised 1836 cells (4.38 km²) · deepest 35.8 m · 0.0508 km³
+      body 1 (lake Some(2)) r 2.00 · spill 934.5 m · raised 470 cells (1.12 km²) · deepest 95.9 m · 0.0374 km³
+      body 2 (lake Some(3)) r 2.00 · spill 879.8 m · raised 322 cells (0.77 km²) · deepest 14.7 m · 0.0031 km³
+      body 3 (lake Some(4)) r 2.00 · spill 13.4 m · raised 120 cells (0.29 km²) · deepest 11.7 m · 0.0012 km³
+      body 4 (lake Some(7)) r 2.00 · spill 298.3 m · raised 67 cells (0.16 km²) · deepest 11.3 m · 0.0003 km³
+      body 5 (lake None) r 2.00 · spill 1112.5 m · raised 7 cells (0.02 km²) · deepest 1.6 m · 0.0000 km³
+      body 6 (lake Some(8)) r 2.00 · spill 353.5 m · raised 9 cells (0.02 km²) · deepest 5.7 m · 0.0001 km³
+      body 7 (lake Some(10)) r 2.00 · spill 674.3 m · raised 116 cells (0.28 km²) · deepest 6.5 m · 0.0004 km³
+      body 8 (lake Some(9)) r 2.00 · spill 100.8 m · raised 80 cells (0.19 km²) · deepest 16.9 m · 0.0009 km³
+      body 9 (lake None) r 2.00 · spill 551.6 m · raised 2 cells (0.00 km²) · deepest 22.0 m · 0.0001 km³
+      body 10 (lake Some(11)) r 2.00 · spill 32.6 m · raised 1481 cells (3.53 km²) · deepest 8.3 m · 0.0135 km³
+      body 11 (lake None) r 2.00 · spill 1202.7 m · raised 396 cells (0.94 km²) · deepest 7.8 m · 0.0036 km³
+      body 12 (lake Some(12)) r 2.00 · spill 35.8 m · raised 144 cells (0.34 km²) · deepest 15.5 m · 0.0019 km³
+      body 13 (lake Some(13)) r 2.00 · spill 13.9 m · raised 271 cells (0.65 km²) · deepest 5.1 m · 0.0015 km³
+      body 14 (lake Some(15)) r 2.00 · spill 84.2 m · raised 579 cells (1.38 km²) · deepest 20.7 m · 0.0086 km³
+      body 15 (lake None) r 2.00 · spill 99.2 m · raised 0 cells (0.00 km²) · deepest 0.0 m · 0.0000 km³
+      body 16 (lake Some(19)) r 2.00 · spill 8.8 m · raised 10 cells (0.02 km²) · deepest 0.7 m · 0.0000 km³
+      body 17 (lake Some(20)) r 2.00 · spill 21.5 m · raised 505 cells (1.20 km²) · deepest 24.9 m · 0.0092 km³
+   G-pits · (bench) construction + plain: **0** pit cells outside the lakes (deepest 0.0 m) · b0 r 2.00 L(r) 145.2 · ring min 145.2 · lake none · pits 0 (0 levels, 0.0 m) | b1 r 2.00 L(r) 934.5 · ring min 934.5 · lake none · pits 0 (0 levels, 0.0 m) | b2 r 2.00 L(r) 879.8 · ring min 879.8 · lake 879.8 m · pits 0 (0 levels, 0.0 m) | b3 r 2.00 L(r) 13.4 · ring min 13.4 · lake none · pits 0 (0 levels, 0.0 m) | b4 r 2.00 L(r) 298.3 · ring min 298.3 · lake none · pits 0 (0 levels, 0.0 m) | b5 r 2.00 L(r) 1112.5 · ring min 1112.5 · lake 1112.5 m · pits 0 (0 levels, 0.0 m) | b6 r 2.00 L(r) 353.5 · ring min 353.5 · lake none · pits 0 (0 levels, 0.0 m) | b7 r 2.00 L(r) 674.3 · ring min 674.3 · lake none · pits 0 (0 levels, 0.0 m) | b8 r 2.00 L(r) 100.8 · ring min 100.8 · lake none · pits 0 (0 levels, 0.0 m) | b9 r 2.00 L(r) 551.6 · ring min 551.6 · lake none · pits 0 (0 levels, 0.0 m) | b10 r 2.00 L(r) 32.6 · ring min 32.6 · lake none · pits 0 (0 levels, 0.0 m) | b11 r 2.00 L(r) 1202.7 · ring min 1202.7 · lake none · pits 0 (0 levels, 0.0 m) | b12 r 2.00 L(r) 35.8 · ring min 35.8 · lake none · pits 0 (0 levels, 0.0 m) | b13 r 2.00 L(r) 13.9 · ring min 13.9 · lake none · pits 0 (0 levels, 0.0 m) | b14 r 2.00 L(r) 84.2 · ring min 84.2 · lake none · pits 0 (0 levels, 0.0 m) | b15 r 2.00 L(r) 99.2 · ring min 99.2 · lake none · pits 0 (0 levels, 0.0 m) | b16 r 2.00 L(r) 8.8 · ring min 8.8 · lake none · pits 0 (0 levels, 0.0 m) | b17 r 2.00 L(r) 21.5 · ring min 21.5 · lake none · pits 0 (0 levels, 0.0 m)
+   G-pits · (a) construction + plain + rims: **0** pit cells outside the lakes (deepest 0.0 m) · b0 r 2.00 L(r) 145.2 · ring min 145.2 · lake none · pits 0 (0 levels, 0.0 m) | b1 r 2.00 L(r) 934.5 · ring min 934.5 · lake none · pits 0 (0 levels, 0.0 m) | b2 r 2.00 L(r) 879.8 · ring min 879.8 · lake 879.8 m · pits 0 (0 levels, 0.0 m) | b3 r 2.00 L(r) 13.4 · ring min 13.4 · lake none · pits 0 (0 levels, 0.0 m) | b4 r 2.00 L(r) 298.3 · ring min 298.3 · lake none · pits 0 (0 levels, 0.0 m) | b5 r 2.00 L(r) 1112.5 · ring min 1112.5 · lake 1112.5 m · pits 0 (0 levels, 0.0 m) | b6 r 2.00 L(r) 353.5 · ring min 353.5 · lake none · pits 0 (0 levels, 0.0 m) | b7 r 2.00 L(r) 674.3 · ring min 674.3 · lake none · pits 0 (0 levels, 0.0 m) | b8 r 2.00 L(r) 100.8 · ring min 100.8 · lake none · pits 0 (0 levels, 0.0 m) | b9 r 2.00 L(r) 551.6 · ring min 551.6 · lake none · pits 0 (0 levels, 0.0 m) | b10 r 2.00 L(r) 32.6 · ring min 32.6 · lake none · pits 0 (0 levels, 0.0 m) | b11 r 2.00 L(r) 1202.7 · ring min 1202.7 · lake none · pits 0 (0 levels, 0.0 m) | b12 r 2.00 L(r) 35.8 · ring min 35.8 · lake none · pits 0 (0 levels, 0.0 m) | b13 r 2.00 L(r) 13.9 · ring min 13.9 · lake none · pits 0 (0 levels, 0.0 m) | b14 r 2.00 L(r) 84.2 · ring min 84.2 · lake none · pits 0 (0 levels, 0.0 m) | b15 r 2.00 L(r) 99.2 · ring min 99.2 · lake none · pits 0 (0 levels, 0.0 m) | b16 r 2.00 L(r) 8.8 · ring min 8.8 · lake none · pits 0 (0 levels, 0.0 m) | b17 r 2.00 L(r) 21.5 · ring min 21.5 · lake none · pits 0 (0 levels, 0.0 m) · the pipeline's (a) against the bench's construction + plain on the kept bodies: 3824 cells differ (max 28.91 m; by body {13: 2766, 14: 938, 15: 120})
+   G-pits · (b) + light pass: **9215** pit cells outside the lakes (deepest 122.4 m) · b0 r 2.00 L(r) 145.2 · ring min 141.1 · lake none · pits 1733 (14 levels, 13.0 m) | b1 r 2.00 L(r) 934.5 · ring min 930.6 · lake none · pits 457 (6 levels, 10.6 m) | b2 r 2.00 L(r) 879.8 · ring min 817.6 · lake none · pits 540 (74 levels, 79.4 m) | b3 r 2.00 L(r) 13.4 · ring min 13.4 · lake none · pits 216 (7 levels, 33.5 m) | b4 r 2.00 L(r) 298.3 · ring min 136.0 · lake 144.5 m · pits 171 (34 levels, 35.8 m) | b5 r 2.00 L(r) 1112.5 · ring min 724.6 · lake 786.8 m · pits 212 (15 levels, 90.5 m) | b6 r 2.00 L(r) 353.5 · ring min 321.2 · lake none · pits 7 (1 levels, 0.3 m) | b7 r 2.00 L(r) 674.3 · ring min 406.4 · lake 440.6 m · pits 3734 (347 levels, 122.4 m) | b8 r 2.00 L(r) 100.8 · ring min 100.8 · lake none · pits 88 (21 levels, 3.4 m) | b9 r 2.00 L(r) 551.6 · ring min 439.0 · lake none · pits 5 (3 levels, 5.8 m) | b10 r 2.00 L(r) 32.6 · ring min 32.6 · lake none · pits 1273 (12 levels, 32.7 m) | b11 r 2.00 L(r) 1202.7 · ring min 1200.3 · lake none · pits 26 (1 levels, 9.2 m) | b12 r 2.00 L(r) 35.8 · ring min 35.4 · lake none · pits 139 (1 levels, 0.4 m) | b13 r 2.00 L(r) 13.9 · ring min 13.9 · lake none · pits 7 (7 levels, 0.4 m) | b14 r 2.00 L(r) 84.2 · ring min 84.2 · lake none · pits 607 (3 levels, 1.1 m) | b15 r 2.00 L(r) 99.2 · ring min 99.2 · lake none · pits 0 (0 levels, 0.0 m) | b16 r 2.00 L(r) 8.8 · ring min 8.8 · lake none · pits 0 (0 levels, 0.0 m) | b17 r 2.00 L(r) 21.5 · ring min 21.5 · lake none · pits 0 (0 levels, 0.0 m)
+   G-pits · (c) + droplets: **9215** pit cells outside the lakes (deepest 122.4 m) · b0 r 2.00 L(r) 145.2 · ring min 141.1 · lake none · pits 1733 (14 levels, 13.0 m) | b1 r 2.00 L(r) 934.5 · ring min 930.6 · lake none · pits 457 (6 levels, 10.6 m) | b2 r 2.00 L(r) 879.8 · ring min 817.6 · lake none · pits 540 (74 levels, 79.4 m) | b3 r 2.00 L(r) 13.4 · ring min 13.4 · lake none · pits 216 (7 levels, 33.5 m) | b4 r 2.00 L(r) 298.3 · ring min 136.0 · lake 144.5 m · pits 171 (34 levels, 35.8 m) | b5 r 2.00 L(r) 1112.5 · ring min 724.6 · lake 786.8 m · pits 212 (15 levels, 90.5 m) | b6 r 2.00 L(r) 353.5 · ring min 321.2 · lake none · pits 7 (1 levels, 0.3 m) | b7 r 2.00 L(r) 674.3 · ring min 406.4 · lake 440.6 m · pits 3734 (347 levels, 122.4 m) | b8 r 2.00 L(r) 100.8 · ring min 100.8 · lake none · pits 88 (21 levels, 3.4 m) | b9 r 2.00 L(r) 551.6 · ring min 439.0 · lake none · pits 5 (3 levels, 5.8 m) | b10 r 2.00 L(r) 32.6 · ring min 32.6 · lake none · pits 1273 (12 levels, 32.7 m) | b11 r 2.00 L(r) 1202.7 · ring min 1200.3 · lake none · pits 26 (1 levels, 9.2 m) | b12 r 2.00 L(r) 35.8 · ring min 35.4 · lake none · pits 139 (1 levels, 0.4 m) | b13 r 2.00 L(r) 13.9 · ring min 13.9 · lake none · pits 7 (7 levels, 0.4 m) | b14 r 2.00 L(r) 84.2 · ring min 84.2 · lake none · pits 607 (3 levels, 1.1 m) | b15 r 2.00 L(r) 99.2 · ring min 99.2 · lake none · pits 0 (0 levels, 0.0 m) | b16 r 2.00 L(r) 8.8 · ring min 8.8 · lake none · pits 0 (0 levels, 0.0 m) | b17 r 2.00 L(r) 21.5 · ring min 21.5 · lake none · pits 0 (0 levels, 0.0 m)
+   G-pits · (d) + bathymetry (the breach's input): **9215** pit cells outside the lakes (deepest 122.4 m) · b0 r 2.00 L(r) 145.2 · ring min 141.1 · lake none · pits 1733 (14 levels, 13.0 m) | b1 r 2.00 L(r) 934.5 · ring min 930.6 · lake none · pits 457 (6 levels, 10.6 m) | b2 r 2.00 L(r) 879.8 · ring min 817.6 · lake none · pits 540 (74 levels, 79.4 m) | b3 r 2.00 L(r) 13.4 · ring min 13.4 · lake none · pits 216 (7 levels, 33.5 m) | b4 r 2.00 L(r) 298.3 · ring min 136.0 · lake 144.5 m · pits 171 (34 levels, 35.8 m) | b5 r 2.00 L(r) 1112.5 · ring min 724.6 · lake 786.8 m · pits 212 (15 levels, 90.5 m) | b6 r 2.00 L(r) 353.5 · ring min 321.2 · lake none · pits 7 (1 levels, 0.3 m) | b7 r 2.00 L(r) 674.3 · ring min 406.4 · lake 440.6 m · pits 3734 (347 levels, 122.4 m) | b8 r 2.00 L(r) 100.8 · ring min 100.8 · lake none · pits 88 (21 levels, 3.4 m) | b9 r 2.00 L(r) 551.6 · ring min 439.0 · lake none · pits 5 (3 levels, 5.8 m) | b10 r 2.00 L(r) 32.6 · ring min 32.6 · lake none · pits 1273 (12 levels, 32.7 m) | b11 r 2.00 L(r) 1202.7 · ring min 1200.3 · lake none · pits 26 (1 levels, 9.2 m) | b12 r 2.00 L(r) 35.8 · ring min 35.4 · lake none · pits 139 (1 levels, 0.4 m) | b13 r 2.00 L(r) 13.9 · ring min 13.9 · lake none · pits 7 (7 levels, 0.4 m) | b14 r 2.00 L(r) 84.2 · ring min 84.2 · lake none · pits 607 (3 levels, 1.1 m) | b15 r 2.00 L(r) 99.2 · ring min 99.2 · lake none · pits 0 (0 levels, 0.0 m) | b16 r 2.00 L(r) 8.8 · ring min 8.8 · lake none · pits 0 (0 levels, 0.0 m) | b17 r 2.00 L(r) 21.5 · ring min 21.5 · lake none · pits 0 (0 levels, 0.0 m)
+   G-sea · land cells ≤ sea after the breach 292 (ON 292) · added 0 · missing 0 · **EXACTLY ON's**
+   F38 · the run_hd tail completes: the invariant does NOT fire
+   G-levels · kept bodies with an outflow 18 · at L(r) ± 1 m **0** of 0 not drained · drained (r_lake = 2) 18, absent at the end **14**
+      off: body 13 (D8 lake Some(13)) drained, yet final lake 6 covers 60 % at 116.9 m (L_floor 13.9)
+      off: body 14 (D8 lake Some(15)) drained, yet final lake 7 covers 61 % at 122.1 m (L_floor 84.2)
+      off: body 15 (D8 lake None) drained, yet final lake 6 covers 73 % at 116.9 m (L_floor 99.2)
+      off: body 17 (D8 lake Some(20)) drained, yet final lake 13 covers 59 % at 91.4 m (L_floor 21.5)
+   G-rim (r_lake ≤ 1) · 0 bodies · cuts > 10 m below L(r) on the construction **0** · on the eroded world **0**
+   G-ring · ring cells bound by the clamp **3920** · with a slope > 28° to an outside neighbour **95** (worst 82°) ["body 0 (3382,2599) 31°", "body 0 (3382,2600) 31°", "body 0 (3383,2601) 32°", "body 0 (3384,2601) 31°", "body 0 (3385,2602) 31°", "body 2 (4096,3245) 63°"]
+   G-slope100 · 0 outlet paths · max slope over 100 m > 28° **0** · p50 NaN° · max NaN°
+   G-drained · upstream cells of drained lakes 2836332 · below L_floor − 1 m on the construction **2396**
+   G-tag · tagged falls: head **7** (median 125.7 m, max 288.4 m) · shortage **0** · gorge 2-cell drops over H_f beyond the lip **51**
+   G-area · final non-crater lakes 3623.4 km² · the 14 D8 bodies' final lakes 0.0 km²
+   RELIEF paired (n = 11327011): p10/p50/p90 **73.6 / 541.6 / 1501.8 m** · median cut 4.9 m · **+27.7 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       1 ·    17.28 km² · cut p50 **   99.98 m** · fill max **   28.17 m** · fill p50   28.00 m · **deep share   0.0 %** · rim p50  26.5° ⇒ cut  no / over-dug  no
+     body       4 ·    24.29 km² · cut p50 **  262.90 m** · fill max **   42.73 m** · fill p50   41.66 m · **deep share   0.0 %** · rim p50  27.1° ⇒ cut  no / over-dug  no
+     body       5 ·    87.49 km² · cut p50 **   90.45 m** · fill max **   64.42 m** · fill p50   53.06 m · **deep share  53.1 %** · rim p50  27.0° ⇒ cut  no / over-dug  no
+     body       6 ·   117.39 km² · cut p50 **    9.11 m** · fill max **  102.99 m** · fill p50   64.84 m · **deep share  61.0 %** · rim p50  25.3° ⇒ cut  no / over-dug  no
+     body       7 ·    19.59 km² · cut p50 **   25.44 m** · fill max **   37.94 m** · fill p50   26.18 m · **deep share   0.0 %** · rim p50   9.1° ⇒ cut  no / over-dug  no
+     body      12 ·    35.57 km² · cut p50 **  128.05 m** · fill max **   29.63 m** · fill p50   29.42 m · **deep share   0.0 %** · rim p50  26.2° ⇒ cut  no / over-dug  no
+     body      13 ·    27.12 km² · cut p50 **   15.60 m** · fill max **   69.90 m** · fill p50   44.98 m · **deep share  46.9 %** · rim p50  11.9° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2929.81 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  54.4° ⇒ cut YES / over-dug  no
+     body 1000002 ·   459.93 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000008 ·    96.40 km² · cut p50 **    0.00 m** · fill max **   14.46 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   6.4° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   492.79 km² · cut p50 **    0.02 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50  10.9° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.52 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.2° ⇒ cut  no / over-dug  no
+     body 1000013 ·   153.63 km² · cut p50 **    0.00 m** · fill max **    7.29 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.3° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.54 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.1° ⇒ cut  no / over-dug  no
+     body 1000016 ·   500.19 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   7.8° ⇒ cut  no / over-dug  no
+     body 1000017 ·   337.66 km² · cut p50 **    0.00 m** · fill max **   97.19 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   7.1° ⇒ cut  no / over-dug  no
+     body 1000018 ·   185.13 km² · cut p50 **   20.34 m** · fill max **   34.38 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  14.1° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.73 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.7° ⇒ cut  no / over-dug  no
+     Spillway max **94.22 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **20.30 m³/s** · 4 cells · drop **1.5 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **26 bodies · 3623 km² = 13.42 % of 27008 km² of land** · {"Endorheic": 4, "Unresolved": 1, "Exorheic": 21} · OVER-DUG **0 of 19** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 29.6 m³/s · wc==2 cells 380994
+   extras · canyons **0** · spurs near a coastal wall 0.0050 /km · removal (S1 − world, land) **4798.4 km³** (inside the kept bodies 119.3, elsewhere 4679.1) · raise (world − S1, land) 0.77 km³ (inside the kept bodies 0.14) [GORGE v4 ×1.4 (r_world 2, p 0)] · θ on the carved links, construction mask **0.383** [0.375, 0.391] (36345)
+   (1094 s)
+
+────────── ON ×1 (controls) ──────────
+   RELIEF paired (n = 11326995): p10/p50/p90 **78.5 / 546.6 / 1514.5 m** · median cut 0.6 m · **+28.9 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       1 ·   132.84 km² · cut p50 **  -91.43 m** · fill max **  181.59 m** · fill p50   91.41 m · **deep share  73.2 %** · rim p50   3.6° ⇒ cut  no / over-dug  no
+     body       2 ·    35.50 km² · cut p50 **  -55.01 m** · fill max **  356.25 m** · fill p50   54.98 m · **deep share  53.3 %** · rim p50   3.6° ⇒ cut  no / over-dug  no
+     body       3 ·   159.68 km² · cut p50 **  -78.83 m** · fill max **  433.91 m** · fill p50   78.83 m · **deep share  62.6 %** · rim p50   2.7° ⇒ cut  no / over-dug  no
+     body       4 ·    45.76 km² · cut p50 **  -37.67 m** · fill max **  154.38 m** · fill p50   37.68 m · **deep share  40.3 %** · rim p50   2.5° ⇒ cut  no / over-dug  no
+     body       7 ·     5.29 km² · cut p50 **  -26.61 m** · fill max **   83.35 m** · fill p50   26.57 m · **deep share  15.5 %** · rim p50   5.8° ⇒ cut  no / over-dug  no
+     body       8 ·    12.28 km² · cut p50 **  -44.71 m** · fill max **  166.24 m** · fill p50   44.73 m · **deep share  45.7 %** · rim p50   3.3° ⇒ cut  no / over-dug  no
+     body       9 ·    79.74 km² · cut p50 **  -92.78 m** · fill max **  316.02 m** · fill p50   92.76 m · **deep share  71.3 %** · rim p50   4.6° ⇒ cut  no / over-dug  no
+     body      10 ·   249.05 km² · cut p50 **  -86.52 m** · fill max **  299.69 m** · fill p50   86.52 m · **deep share  71.5 %** · rim p50   2.8° ⇒ cut  no / over-dug  no
+     body      11 ·   163.03 km² · cut p50 ** -148.06 m** · fill max **  329.11 m** · fill p50  148.05 m · **deep share  81.5 %** · rim p50   5.8° ⇒ cut  no / over-dug  no
+     body      12 ·    10.16 km² · cut p50 **  -21.14 m** · fill max **   82.21 m** · fill p50   21.14 m · **deep share  14.2 %** · rim p50   3.4° ⇒ cut  no / over-dug  no
+     body      13 ·   133.07 km² · cut p50 ** -102.11 m** · fill max **  224.93 m** · fill p50  102.09 m · **deep share  73.5 %** · rim p50   3.3° ⇒ cut  no / over-dug  no
+     body      15 ·    17.37 km² · cut p50 **  -22.15 m** · fill max **   69.96 m** · fill p50   22.13 m · **deep share   8.2 %** · rim p50   2.5° ⇒ cut  no / over-dug  no
+     body      19 ·    71.98 km² · cut p50 **  -73.63 m** · fill max **  188.49 m** · fill p50   73.61 m · **deep share  63.3 %** · rim p50   4.8° ⇒ cut  no / over-dug  no
+     body      20 ·    33.22 km² · cut p50 **  -23.95 m** · fill max **  105.46 m** · fill p50   23.94 m · **deep share  19.7 %** · rim p50   3.4° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2944.80 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  52.2° ⇒ cut YES / over-dug  no
+     body 1000002 ·   459.71 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000008 ·    96.30 km² · cut p50 **    0.00 m** · fill max **   14.17 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   6.5° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   493.20 km² · cut p50 **    0.02 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50  11.5° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.52 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.2° ⇒ cut  no / over-dug  no
+     body 1000013 ·   152.65 km² · cut p50 **    0.00 m** · fill max **    6.83 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.2° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.44 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.1° ⇒ cut  no / over-dug  no
+     body 1000016 ·   502.00 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   8.3° ⇒ cut  no / over-dug  no
+     body 1000017 ·   337.86 km² · cut p50 **    0.00 m** · fill max **   97.19 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   7.2° ⇒ cut  no / over-dug  no
+     body 1000018 ·   185.33 km² · cut p50 **   20.35 m** · fill max **   31.21 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  14.0° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.90 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.7° ⇒ cut  no / over-dug  no
+     Spillway max **94.70 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.54 m³/s** · 23 cells · drop **48.6 m** · FILL along                  the bed: p50 **10.1596 m** · max **36.8240 m** ⇒ ****IN the class -- the discriminant FAILS****
+   LAKES: **33 bodies · 4445 km² = 16.46 % of 27008 km² of land** · {"Endorheic": 4, "Unresolved": 1, "Exorheic": 28} · OVER-DUG **0 of 26** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 30.0 m³/s · wc==2 cells 381011
+   extras · canyons **0** · spurs near a coastal wall 0.0142 /km · removal (S1 − world, land) **4515.9 km³** (inside the kept bodies -0.0, elsewhere 4515.9) · raise (world − S1, land) 0.66 km³ (inside the kept bodies -0.00) [ON ×1] · θ on the carved links, construction mask **0.493** [0.491, 0.495] (36943)
+
+────────── OFF ×1 (controls) ──────────
+   RELIEF paired (n = 11326996): p10/p50/p90 **76.3 / 515.4 / 1479.9 m** · median cut 5.7 m · **+21.5 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       3 ·    28.38 km² · cut p50 **  -40.10 m** · fill max **  178.03 m** · fill p50   40.09 m · **deep share  32.7 %** · rim p50   4.2° ⇒ cut  no / over-dug  no
+     body       4 ·    32.76 km² · cut p50 **  -28.10 m** · fill max **   63.50 m** · fill p50   28.09 m · **deep share  18.0 %** · rim p50   4.4° ⇒ cut  no / over-dug  no
+     body       6 ·    76.79 km² · cut p50 **  -60.75 m** · fill max **  139.83 m** · fill p50   60.75 m · **deep share  59.6 %** · rim p50   3.4° ⇒ cut  no / over-dug  no
+     body       7 ·    11.73 km² · cut p50 **  -16.53 m** · fill max **   55.48 m** · fill p50   16.53 m · **deep share   0.9 %** · rim p50   2.6° ⇒ cut  no / over-dug  no
+     body      11 ·    37.10 km² · cut p50 **  -26.96 m** · fill max **  111.67 m** · fill p50   26.94 m · **deep share  22.4 %** · rim p50   3.4° ⇒ cut  no / over-dug  no
+     body      12 ·     7.66 km² · cut p50 **   -8.95 m** · fill max **   46.39 m** · fill p50    8.89 m · **deep share   0.0 %** · rim p50   3.2° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2944.79 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  52.1° ⇒ cut YES / over-dug  no
+     body 1000002 ·   460.35 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.6° ⇒ cut  no / over-dug  no
+     body 1000008 ·    96.40 km² · cut p50 **    0.00 m** · fill max **    5.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   6.4° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   494.33 km² · cut p50 **    0.03 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50   7.7° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.70 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.3° ⇒ cut  no / over-dug  no
+     body 1000013 ·   154.08 km² · cut p50 **    0.00 m** · fill max **    6.34 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   3.9° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.96 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.1° ⇒ cut  no / over-dug  no
+     body 1000016 ·   500.80 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   7.6° ⇒ cut  no / over-dug  no
+     body 1000017 ·   338.30 km² · cut p50 **    0.00 m** · fill max **   97.54 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   6.6° ⇒ cut  no / over-dug  no
+     body 1000018 ·   184.00 km² · cut p50 **   20.66 m** · fill max **   62.88 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  12.7° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.18 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.1° ⇒ cut  no / over-dug  no
+     Spillway max **94.64 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **17.69 m³/s** · 149 cells · drop **16.9 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **25 bodies · 3492 km² = 12.93 % of 27008 km² of land** · {"Exorheic": 20, "Endorheic": 4, "Unresolved": 1} · OVER-DUG **0 of 18** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 29.1 m³/s · wc==2 cells 381010
+   extras · canyons **0** · spurs near a coastal wall 0.0142 /km · removal (S1 − world, land) **5321.2 km³** (inside the kept bodies -0.0, elsewhere 5321.2) · raise (world − S1, land) 0.64 km³ (inside the kept bodies -0.00) [OFF ×1] · θ on the carved links, construction mask **0.493** [0.491, 0.495] (34264)
+
+   G-area (p = 0.5) · the 14 D8 bodies' final lakes by age: ×0.7: 1246.3 km² · ×0.85: 1256.9 km² · ×1: 658.1 km² · ×1.2: 141.7 km² · ×1.4: 67.9 km²
+   G-area · non-increasing: **false**
+
+   RULE 18 · ON ×1: 34 lakes, non-crater 4445.0 km²
+   RULE 18 · GORGE v4 ×1 (r_world 1, p 0.5): 34 lakes 3961.7 km² · deposit 0.0603 km³ · canyons **0** · spurs near a coastal wall 0.0142 /km · removal (S1 − world, land) **4634.3 km³** (inside the kept bodies 18.7, elsewhere 4615.7) · raise (world − S1, land) 0.71 km³ (inside the kept bodies 0.08) [GORGE v4 ×1 (r_world 1, p 0.5)] · θ on the carved links, construction mask **0.264** [0.253, 0.274] (36746)
+   RULE 18 · GORGE v4 ×1.4 (r_world 2, p 0): 27 lakes 3623.4 km² · deposit 0.1326 km³ · canyons **0** · spurs near a coastal wall 0.0050 /km · removal (S1 − world, land) **4798.4 km³** (inside the kept bodies 119.3, elsewhere 4679.1) · raise (world − S1, land) 0.77 km³ (inside the kept bodies 0.14) [GORGE v4 ×1.4 (r_world 2, p 0)] · θ on the carved links, construction mask **0.383** [0.375, 0.391] (36345)
+   RULE 18 · ON ×1: 34 lakes 4445.0 km² · canyons **0** · spurs near a coastal wall 0.0142 /km · removal (S1 − world, land) **4515.9 km³** (inside the kept bodies -0.0, elsewhere 4515.9) · raise (world − S1, land) 0.66 km³ (inside the kept bodies -0.00) [ON ×1] · θ on the carved links, construction mask **0.493** [0.491, 0.495] (36943)
+   RULE 18 · OFF ×1: 26 lakes 3491.6 km² · canyons **0** · spurs near a coastal wall 0.0142 /km · removal (S1 − world, land) **5321.2 km³** (inside the kept bodies -0.0, elsewhere 5321.2) · raise (world − S1, land) 0.64 km³ (inside the kept bodies -0.00) [OFF ×1] · θ on the carved links, construction mask **0.493** [0.491, 0.495] (34264)
+
+   SUMMARY · GORGE v4 ×1 (r_world 1, p 0.5): completed · G-bodies 1:1 · G-sea +0/−0 · deposit 0.0603 km³
+   SUMMARY · GORGE v4 ×0.7 (r_world 0, p 0.5): completed · G-bodies 1:1 · G-sea +0/−0 · deposit -0.0000 km³
+   SUMMARY · GORGE v4 ×0.85 (r_world 0.5000001, p 0.5): completed · G-bodies 1:1 · G-sea +0/−0 · deposit -0.0000 km³
+   SUMMARY · GORGE v4 ×1.2 (r_world 1.5000001, p 0.5): completed · G-bodies 1:1 · G-sea +0/−0 · deposit 0.0663 km³
+   SUMMARY · GORGE v4 ×1.4 (r_world 2, p 0.5): completed · G-bodies 1:1 · G-sea +112/−0 · deposit 0.1175 km³
+   SUMMARY · GORGE v4 ×1 (r_world 1, p 0): completed · G-bodies 1:1 · G-sea +0/−0 · deposit -0.0000 km³
+   SUMMARY · GORGE v4 ×1 (r_world 1, p 0.25): completed · G-bodies 1:1 · G-sea +0/−0 · deposit 0.0001 km³
+   SUMMARY · GORGE v4 ×1.4 (r_world 2, p 0): completed · G-bodies 1:1 · G-sea +0/−0 · deposit 0.1326 km³
+
+==========  end Finding 142-G . 8599.7 s  ==========
+

@@ -96,6 +96,17 @@ with the gate on at ×1, p = 0.5.
 
 ### Where it comes from
 
+> **[CORRECTED in F142, after F141.]** Point 3's "where the F139 bench measured 298 km² for the same lake" and the
+> deviation-1 cause below are **false**: body 4 was paired with lake 4 by index. Lake 4 is body 3 (A 300.7 / 298.1 /
+> 305.2 km²). Body 4 is half of the merged below-sea lake 1000011, with A 1 571.3 km² by the inflow too. F141 names
+> the causes:
+> - (α) the merged lake is split into bodies;
+> - (β) a below-sea lake's body is its land fringe, so "drained" means ≈ the sea;
+> - (γ) the breach's ramp is anchored on each pit's floor.
+>
+> The text below is kept as written.
+
+
 **Deviation 1** (A = the col's drained area in the construction) makes r_lake reach ~2 at ×1 for the large outlets.
 - With p = 0.5, F139-R predicted no empty lake at r_world = 1. The construction drains them.
 - The input footprint of lake 4 likely intercepts a large river's path, which the final lake does not. The col's

@@ -1,0 +1,170 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2200:23
+     |
+2200 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2270 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+warning: unused variable: `skn`
+     --> crates\ymir-core\tests\f126_coast.rs:10710:9
+      |
+10710 |     let skn = skeleton(&s1, &ext, &ss, DOMAIN_KM);
+      |         ^^^ help: if this is intentional, prefix it with an underscore: `_skn`
+      |
+      = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `t_on_con` is never read
+     --> crates\ymir-core\tests\f126_coast.rs:11447:24
+      |
+11447 |     let mut t_on_con = 0f64;
+      |                        ^^^^ this value is reassigned later and never used
+...
+11496 |         t_on_con = t.elapsed().as_secs_f64();
+      |         ------------------------------------ `t_on_con` is overwritten here before the previous value is read
+      |
+      = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (test "f126_coast") generated 2 warnings (run `cargo fix --test "f126_coast" -p ymir-core` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.31s
+     Running tests\f126_coast.rs (target_f142\release\deps\f126_coast-78c90b7d7fab281b.exe)
+
+running 1 test
+
+==========  Finding 142-R . the tables re-tabulated as built (14 D8 lakes, the input alone)  ==========
+test f142_r has been running for over 60 seconds
+
+   every body (GORGE skeleton r 1, p 0.5) · its class and its final lakes by overlap (share of the body, share of the lake):
+      body  0 · input lake ·   143.8 km² · ring touches a depression false · the sea false · L_in   342.6 · L_bed   342.4 · L_floor   145.2 · A  1371.7 km² · col (3383,2600) · lake 1 [D8, 132.8 km², level 327.2 m] 92 % / 100 %
+      body  1 · input lake ·    57.8 km² · ring touches a depression false · the sea false · L_in  1339.6 · L_bed  1338.6 · L_floor   934.5 · A   442.7 km² · col (3872,2838) · lake 2 [D8, 35.5 km², level 1292.0 m] 61 % / 100 %
+      body  2 · input lake ·   197.9 km² · ring touches a depression false · the sea false · L_in  1332.4 · L_bed  1331.9 · L_floor   879.8 · A   598.7 km² · col (4100,3249) · lake 3 [D8, 159.7 km², level 1314.5 m] 81 % / 100 %
+      body  3 · input lake ·    49.4 km² · ring touches a depression false · the sea false · L_in   172.1 · L_bed   172.0 · L_floor    13.4 · A   300.7 km² · col (2160,3454) · lake 4 [D8, 45.8 km², level 168.2 m] 93 % / 100 %
+      body  4 · input lake ·    52.4 km² · ring touches a depression true · the sea false · L_in   325.8 · L_bed   325.7 · L_floor   168.9 · A  1571.0 km² · col (4403,3625) · lake 1000011 [below-sea / spillway, 493.2 km², level 459.3 m] 100 % / 11 %
+      body  5 · input lake ·     9.0 km² · ring touches a depression true · the sea false · L_in   396.5 · L_bed   396.3 · L_floor   253.8 · A   317.2 km² · col (4707,3611) · lake 1000011 [below-sea / spillway, 493.2 km², level 459.3 m] 100 % / 2 %
+      body  6 · input lake ·     8.8 km² · ring touches a depression false · the sea false · L_in   412.1 · L_bed   411.7 · L_floor   298.3 · A   244.7 km² · col (1901,3629) · lake 7 [D8, 5.3 km², level 383.4 m] 60 % / 100 %
+      body  7 · input lake ·     5.2 km² · ring touches a depression false · the sea false · L_in  1148.2 · L_bed  1148.0 · L_floor  1112.5 · A    76.3 km² · col (3583,3905) · no final lake
+      body  8 · input lake ·    13.6 km² · ring touches a depression false · the sea false · L_in   527.2 · L_bed   526.8 · L_floor   353.5 · A   156.4 km² · col (4090,4051) · lake 8 [D8, 12.3 km², level 520.5 m] 90 % / 100 %
+      body  9 · input lake ·   287.1 km² · ring touches a depression false · the sea false · L_in  1001.5 · L_bed  1001.1 · L_floor   674.3 · A   819.4 km² · col (2952,3969) · lake 10 [D8, 249.0 km², level 974.5 m] 87 % / 100 %
+      body 10 · input lake ·    87.3 km² · ring touches a depression false · the sea false · L_in   432.6 · L_bed   432.6 · L_floor   100.8 · A   393.3 km² · col (4124,4109) · lake 9 [D8, 79.7 km², level 418.0 m] 91 % / 100 %
+      body 11 · input lake ·     5.3 km² · ring touches a depression false · the sea false · L_in   723.4 · L_bed   723.2 · L_floor   551.6 · A   287.2 km² · col (1634,4156) · no final lake
+      body 12 · input lake ·   179.4 km² · ring touches a depression false · the sea false · L_in   390.4 · L_bed   390.3 · L_floor    32.6 · A   947.1 km² · col (1384,4470) · lake 11 [D8, 163.0 km², level 362.0 m] 91 % / 100 %
+      body 13 · input lake ·     8.2 km² · ring touches a depression false · the sea false · L_in  1257.4 · L_bed  1257.2 · L_floor  1202.7 · A    78.6 km² · col (1853,4554) · no final lake
+      body 14 · input lake ·    11.4 km² · ring touches a depression false · the sea false · L_in   122.8 · L_bed   122.7 · L_floor    35.8 · A   425.1 km² · col (3493,4736) · lake 12 [D8, 10.2 km², level 118.9 m] 89 % / 100 %
+      body 15 · input lake ·   137.5 km² · ring touches a depression false · the sea false · L_in   245.1 · L_bed   245.0 · L_floor    13.9 · A   983.3 km² · col (2485,5212) · lake 13 [D8, 133.1 km², level 239.3 m] 97 % / 100 %
+      body 16 · input lake ·    32.0 km² · ring touches a depression true · the sea false · L_in    91.8 · L_bed    91.8 · L_floor    17.5 · A   180.5 km² · col (3501,4952) · lake 1000016 [below-sea / spillway, 502.0 km², level 115.3 m] 100 % / 6 %
+      body 17 · input lake ·    23.3 km² · ring touches a depression false · the sea false · L_in   169.7 · L_bed   167.7 · L_floor    84.2 · A   416.6 km² · col (2690,5115) · lake 15 [D8, 17.4 km², level 154.9 m] 75 % / 100 %
+      body 18 · input lake ·    85.4 km² · ring touches a depression true · the sea false · L_in   126.1 · L_bed   125.9 · L_floor    27.4 · A   376.5 km² · col (1839,5219) · lake 1000017 [below-sea / spillway, 337.9 km², level 268.8 m] 100 % / 25 %
+      body 19 · input lake ·     5.7 km² · ring touches a depression true · the sea false · L_in   225.1 · L_bed   224.9 · L_floor   139.3 · A   153.6 km² · col (2131,5239) · lake 1000017 [below-sea / spillway, 337.9 km², level 268.8 m] 100 % / 2 %
+      body 20 · input lake ·     6.1 km² · ring touches a depression false · the sea false · L_in   163.7 · L_bed   163.4 · L_floor    99.2 · A  1108.3 km² · col (2577,5230) · lake 1000016 [below-sea / spillway, 502.0 km², level 115.3 m] 20 % / 0 %
+      body 21 · input lake ·     7.5 km² · ring touches a depression true · the sea false · L_in    46.4 · L_bed    46.3 · L_floor    28.2 · A   439.7 km² · col (1496,5411) · lake 1000014 [below-sea / spillway, 628.4 km², level 49.3 m] 100 % / 1 %
+      body 22 · input lake ·    73.0 km² · ring touches a depression false · the sea false · L_in   200.5 · L_bed   200.4 · L_floor     8.8 · A   727.2 km² · col (3466,5935) · lake 19 [D8, 72.0 km², level 197.6 m] 98 % / 99 %
+      body 23 · input lake ·    38.2 km² · ring touches a depression false · the sea false · L_in   135.6 · L_bed   135.2 · L_floor    21.5 · A   227.2 km² · col (1523,5724) · lake 20 [D8, 33.2 km², level 127.6 m] 87 % / 100 %
+      body 24 · input lake ·   107.4 km² · ring touches a depression true · the sea false · L_in   570.2 · L_bed   569.7 · L_floor   286.5 · A   246.3 km² · col (2952,5889) · lake 1000019 [below-sea / spillway, 383.9 km², level 614.9 m] 100 % / 28 %
+      body 25 · depression ·   424.2 km² · ring touches a depression false · the sea true · L_in   174.9 · L_bed    76.3 · L_floor     0.0 · A   964.1 km² · col (2893,3703) · lake 1000002 [below-sea / spillway, 459.7 km², level 76.3 m] 41 % / 38 % · lake 1000008 [below-sea / spillway, 96.3 km², level 76.3 m] 19 % / 85 %
+      body 26 · depression ·   389.0 km² · ring touches a depression false · the sea true · L_in   459.3 · L_bed     1.2 · L_floor     0.1 · A  2264.3 km² · col (4451,3861) · lake 1000011 [below-sea / spillway, 493.2 km², level 459.3 m] 100 % / 79 %
+      body 27 · depression ·   261.7 km² · ring touches a depression false · the sea true · L_in   215.7 · L_bed     4.1 · L_floor     0.0 · A   414.3 km² · col (2474,3850) · lake 1000010 [below-sea / spillway, 44.9 km², level 0.4 m] 1 % / 3 % · lake 1000003 [< 1 km², 0.0 km², level 1.3 m] 0 % / 80 % · lake 1000005 [< 1 km², 0.0 km², level 1.0 m] 0 % / 50 %
+      body 28 · depression ·   115.2 km² · ring touches a depression false · the sea true · L_in   110.2 · L_bed     1.2 · L_floor     0.0 · A   448.8 km² · col (4058,4320) · lake 1000013 [below-sea / spillway, 152.6 km², level 110.2 m] 100 % / 75 %
+      body 29 · depression ·    10.5 km² · ring touches a depression false · the sea true · L_in    22.0 · L_bed     2.3 · L_floor     0.1 · A   161.3 km² · col (4693,4262) · lake 1000012 [below-sea / spillway, 10.5 km², level 22.0 m] 100 % / 100 %
+      body 30 · depression ·   226.7 km² · ring touches a depression false · the sea true · L_in    49.3 · L_bed     6.1 · L_floor     0.0 · A  1061.3 km² · col (1310,4738) · lake 1000014 [below-sea / spillway, 628.4 km², level 49.3 m] 100 % / 36 %
+      body 31 · depression ·   304.4 km² · ring touches a depression false · the sea true · L_in   115.3 · L_bed    19.1 · L_floor     0.0 · A  1805.1 km² · col (2759,5210) · lake 1000016 [below-sea / spillway, 502.0 km², level 115.3 m] 100 % / 61 %
+      body 32 · depression ·   233.9 km² · ring touches a depression false · the sea true · L_in   268.8 · L_bed     2.3 · L_floor     0.0 · A   437.5 km² · col (1906,5134) · lake 1000017 [below-sea / spillway, 337.9 km², level 268.8 m] 100 % / 69 %
+      body 33 · depression ·   166.4 km² · ring touches a depression false · the sea true · L_in   471.2 · L_bed     0.3 · L_floor     0.3 · A   338.3 km² · col (1886,5788) · lake 1000018 [below-sea / spillway, 185.3 km², level 471.8 m] 100 % / 90 %
+      body 34 · depression ·   248.2 km² · ring touches a depression false · the sea true · L_in   614.9 · L_bed     8.8 · L_floor     0.0 · A   393.1 km² · col (2683,5910) · lake 1000019 [below-sea / spillway, 383.9 km², level 614.9 m] 100 % / 65 %
+
+   G-bodies' input · 14 D8 lakes · matched 14 · distinct bodies 14 · body share > 50 %: 14
+
+   T3 (as built: the body's L_in, L_bed, L_floor; the area under L(r) from the lowest cell on S1):
+      lake   1 (body  0, body share 92 %, lake share 100 %) · today's level 327.2 m, area 132.8 km² · L_in 342.6 · L_bed 342.4 (Δ today +15.2) · L_floor 145.2 · r 0/0.5/1/1.5/2: 342.6 m 143.9 km² · 342.5 m 143.8 km² · 342.4 m 143.7 km² · 243.8 m 73.4 km² · 145.2 m 0.0 km²
+      lake   2 (body  1, body share 61 %, lake share 100 %) · today's level 1292.0 m, area 35.5 km² · L_in 1339.6 · L_bed 1338.6 (Δ today +46.6) · L_floor 934.5 · r 0/0.5/1/1.5/2: 1339.6 m 57.8 km² · 1339.1 m 57.5 km² · 1338.6 m 57.2 km² · 1136.5 m 5.5 km² · 934.5 m 0.0 km²
+      lake   3 (body  2, body share 81 %, lake share 100 %) · today's level 1314.5 m, area 159.7 km² · L_in 1332.4 · L_bed 1331.9 (Δ today +17.5) · L_floor 879.8 · r 0/0.5/1/1.5/2: 1332.4 m 197.9 km² · 1332.1 m 197.3 km² · 1331.9 m 196.9 km² · 1105.8 m 27.7 km² · 879.8 m 0.0 km²
+      lake   4 (body  3, body share 93 %, lake share 100 %) · today's level 168.2 m, area 45.8 km² · L_in 172.1 · L_bed 172.0 (Δ today +3.8) · L_floor 13.4 · r 0/0.5/1/1.5/2: 172.1 m 49.4 km² · 172.0 m 49.4 km² · 172.0 m 49.3 km² · 92.7 m 11.2 km² · 13.4 m 0.0 km²
+      lake   7 (body  6, body share 60 %, lake share 100 %) · today's level 383.4 m, area 5.3 km² · L_in 412.1 · L_bed 411.7 (Δ today +28.3) · L_floor 298.3 · r 0/0.5/1/1.5/2: 412.1 m 8.8 km² · 411.9 m 8.7 km² · 411.7 m 8.7 km² · 355.0 m 2.5 km² · 298.3 m 0.0 km²
+      lake   8 (body  8, body share 90 %, lake share 100 %) · today's level 520.5 m, area 12.3 km² · L_in 527.2 · L_bed 526.8 (Δ today +6.3) · L_floor 353.5 · r 0/0.5/1/1.5/2: 527.2 m 13.6 km² · 527.0 m 13.6 km² · 526.8 m 13.5 km² · 440.2 m 3.0 km² · 353.5 m 0.0 km²
+      lake   9 (body 10, body share 91 %, lake share 100 %) · today's level 418.0 m, area 79.7 km² · L_in 432.6 · L_bed 432.6 (Δ today +14.5) · L_floor 100.8 · r 0/0.5/1/1.5/2: 432.6 m 87.3 km² · 432.6 m 87.2 km² · 432.6 m 87.2 km² · 266.7 m 25.0 km² · 100.8 m 0.0 km²
+      lake  10 (body  9, body share 87 %, lake share 100 %) · today's level 974.5 m, area 249.0 km² · L_in 1001.5 · L_bed 1001.1 (Δ today +26.6) · L_floor 674.3 · r 0/0.5/1/1.5/2: 1001.5 m 287.1 km² · 1001.3 m 286.8 km² · 1001.1 m 286.5 km² · 837.7 m 68.9 km² · 674.3 m 0.0 km²
+      lake  11 (body 12, body share 91 %, lake share 100 %) · today's level 362.0 m, area 163.0 km² · L_in 390.4 · L_bed 390.3 (Δ today +28.3) · L_floor 32.6 · r 0/0.5/1/1.5/2: 390.4 m 179.4 km² · 390.3 m 179.4 km² · 390.3 m 179.4 km² · 211.4 m 80.3 km² · 32.6 m 0.0 km²
+      lake  12 (body 14, body share 89 %, lake share 100 %) · today's level 118.9 m, area 10.2 km² · L_in 122.8 · L_bed 122.7 (Δ today +3.8) · L_floor 35.8 · r 0/0.5/1/1.5/2: 122.8 m 11.4 km² · 122.7 m 11.4 km² · 122.7 m 11.4 km² · 79.2 m 2.4 km² · 35.8 m 0.0 km²
+      lake  13 (body 15, body share 97 %, lake share 100 %) · today's level 239.3 m, area 133.1 km² · L_in 245.1 · L_bed 245.0 (Δ today +5.7) · L_floor 13.9 · r 0/0.5/1/1.5/2: 245.1 m 137.5 km² · 245.0 m 137.4 km² · 245.0 m 137.4 km² · 129.5 m 61.9 km² · 13.9 m 0.0 km²
+      lake  15 (body 17, body share 75 %, lake share 100 %) · today's level 154.9 m, area 17.4 km² · L_in 169.7 · L_bed 167.7 (Δ today +12.8) · L_floor 84.2 · r 0/0.5/1/1.5/2: 169.7 m 23.3 km² · 168.7 m 22.8 km² · 167.7 m 22.4 km² · 125.9 m 6.5 km² · 84.2 m 0.0 km²
+      lake  19 (body 22, body share 98 %, lake share 99 %) · today's level 197.6 m, area 72.0 km² · L_in 200.5 · L_bed 200.4 (Δ today +2.8) · L_floor 8.8 · r 0/0.5/1/1.5/2: 200.5 m 73.0 km² · 200.4 m 73.0 km² · 200.4 m 73.0 km² · 104.6 m 28.1 km² · 8.8 m 0.0 km²
+      lake  20 (body 23, body share 87 %, lake share 100 %) · today's level 127.6 m, area 33.2 km² · L_in 135.6 · L_bed 135.2 (Δ today +7.6) · L_floor 21.5 · r 0/0.5/1/1.5/2: 135.6 m 38.2 km² · 135.4 m 38.0 km² · 135.2 m 37.9 km² · 78.4 m 6.8 km² · 21.5 m 0.0 km²
+   T3 · total, the 14: 1308.6 / 1306.5 / 1304.5 / 403.4 / 0.0 · F138-T3: 1308.5 / 1223.6 / 1145.7 / 367.3 / 0.0
+
+   R · A = the col's area (as built) · the 14's median 425.1 km² (lower median, F139's rule) against the declared A_ref 418.7
+      p = 0: r_world 0: 14, 1308.6 km² (F139 14, 1308.5) · r_world 0.5: 14, 1306.5 km² (F139 14, 1223.6) · r_world 1: 14, 1304.5 km² (F139 14, 1145.7) · r_world 1.5: 14, 403.4 km² (F139 14, 367.3) · r_world 2: 0, 0.0 km² (F139 0, 0.0)
+         emptying: 14 lakes, ×1.40–×1.40 (spread 0 %) · 1: ×1.40 · 2: ×1.40 · 3: ×1.40 · 4: ×1.40 · 7: ×1.40 · 8: ×1.40 · 9: ×1.40 · 10: ×1.40 · 11: ×1.40 · 12: ×1.40 · 13: ×1.40 · 15: ×1.40 · 19: ×1.40 · 20: ×1.40
+      p = 0.25: r_world 0: 14, 1308.6 km² (F139 14, 1308.5) · r_world 0.5: 14, 1306.3 km² (F139 14, 1214.3) · r_world 1: 14, 986.6 km² (F139 14, 845.5) · r_world 1.5: 13, 164.9 km² (F139 12, 135.4) · r_world 2: 3, 5.9 km² (F139 3, 5.2)
+         emptying: 8 lakes, ×1.19–×1.40 (spread 29 %) · 1: ×1.19 · 2: ×1.39 · 3: ×1.33 · 4: never (2.17) · 7: never (2.29) · 8: never (2.56) · 9: never (2.03) · 10: ×1.28 · 11: ×1.25 · 12: ×1.40 · 13: ×1.25 · 15: never (2.00) · 19: ×1.30 · 20: never (2.33)
+      p = 0.5: r_world 0: 14, 1308.6 km² (F139 14, 1308.5) · r_world 0.5: 14, 1306.2 km² (F139 14, 1202.7) · r_world 1: 14, 653.4 km² (F139 14, 521.3) · r_world 1.5: 9, 121.1 km² (F139 9, 103.0) · r_world 2: 4, 22.1 km² (F139 4, 19.0)
+         emptying: 8 lakes, ×1.04–×1.39 (spread 50 %) · 1: ×1.04 · 2: ×1.38 · 3: ×1.27 · 4: never (2.36) · 7: never (2.62) · 8: never (3.27) · 9: never (2.06) · 10: ×1.17 · 11: ×1.13 · 12: ×1.39 · 13: ×1.12 · 15: never (2.01) · 19: ×1.21 · 20: never (2.71)
+
+   T4 · r_world 1, p 0 (steepen, m 10) · head falls > 0: 14 · tagged (> H_f): **10** · median 34.2 m · max 463.6 m · shortage falls: 0
+      1: φ 0.19 r 1.00 S 2.36° D_g 342 head 69.1 m TAG short 0
+      2: φ 0.00 r 1.00 S 3.37° D_g 996 head 4.1 m short 0
+      3: φ 0.32 r 1.00 S 2.60° D_g 1331 head 434.8 m TAG short 0
+      4: φ 0.21 r 1.00 S 2.37° D_g 150 head 34.2 m TAG short 0
+      7: φ 0.44 r 1.00 S 2.63° D_g 404 head 178.8 m TAG short 0
+      8: φ 0.30 r 1.00 S 3.29° D_g 86 head 29.9 m TAG short 0
+      9: φ 0.00 r 1.00 S 3.70° D_g 431 head 3.2 m short 0
+      10: φ 0.50 r 1.00 S 2.13° D_g 925 head 463.6 m TAG short 0
+      11: φ 0.00 r 1.00 S 1.45° D_g 384 head 1.7 m short 0
+      12: φ 0.11 r 1.00 S 2.00° D_g 110 head 14.0 m TAG short 0
+      13: φ 0.24 r 1.00 S 1.67° D_g 81 head 21.2 m TAG short 0
+      15: φ 0.20 r 1.00 S 4.31° D_g 149 head 35.5 m TAG short 0
+      19: φ 0.47 r 1.00 S 1.53° D_g 191 head 92.2 m TAG short 0
+      20: φ 0.00 r 1.00 S 2.73° D_g 102 head 3.3 m short 0
+
+   T4 · r_world 1, p 0.5 (steepen, m 10) · head falls > 0: 14 · tagged (> H_f): **9** · median 34.2 m · max 418.0 m · shortage falls: 0
+      1: φ 0.19 r 1.81 S 1.26° D_g 182 head 36.8 m TAG short 0
+      2: φ 0.00 r 1.03 S 3.87° D_g 1144 head 4.7 m short 0
+      3: φ 0.32 r 1.20 S 2.43° D_g 1243 head 406.2 m TAG short 0
+      4: φ 0.21 r 0.85 S 2.37° D_g 150 head 34.2 m TAG short 0
+      7: φ 0.44 r 0.76 S 2.63° D_g 404 head 178.8 m TAG short 0
+      8: φ 0.30 r 0.61 S 3.29° D_g 86 head 29.9 m TAG short 0
+      9: φ 0.00 r 0.97 S 3.70° D_g 431 head 3.2 m short 0
+      10: φ 0.50 r 1.40 S 1.92° D_g 834 head 418.0 m TAG short 0
+      11: φ 0.00 r 1.50 S 1.34° D_g 192 head 1.6 m short 0
+      12: φ 0.11 r 1.01 S 2.00° D_g 109 head 14.0 m TAG short 0
+      13: φ 0.24 r 1.53 S 1.31° D_g -6 head 0.1 m short 0
+      15: φ 0.20 r 1.00 S 4.86° D_g 168 head 40.0 m TAG short 0
+      19: φ 0.47 r 1.32 S 1.53° D_g 124 head 60.4 m TAG short 0
+      20: φ 0.00 r 0.74 S 2.73° D_g 106 head 3.3 m short 0
+
+==========  end Finding 142-R . 1388.0 s  ==========
+
+test f142_r ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 61 filtered out; finished in 1388.05s
+

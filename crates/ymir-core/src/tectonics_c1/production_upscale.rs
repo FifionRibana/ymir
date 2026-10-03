@@ -494,6 +494,11 @@ pub fn upscale_from_c1_with_progress(
         );
         result.heightmap =
             crate::tectonics_c1::valley_construction::carve(&result.heightmap, &sk, vc, ss).0;
+        // ADR Finding 142 -- the minimal plain: a drained bowl's residual hollows filled to their spill, on the
+        // construction's output and before the light pass (the construction's first deposit; gated, v4 only)
+        if vc.gorge_retreat.is_some_and(|g| g.plain) {
+            let _ = crate::tectonics_c1::valley_construction::gorge_plain(&mut result.heightmap, &sk, ss, 1.0);
+        }
         // ADR Finding 140 -- the gorge's tagged falls travel with the terrain (empty when the gate is off)
         result.gorge_falls = sk.gorge_falls.clone();
     }

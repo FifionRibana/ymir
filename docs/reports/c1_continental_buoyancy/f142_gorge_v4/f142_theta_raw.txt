@@ -1,0 +1,164 @@
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.24
+   Compiling cfg-if v1.0.4
+   Compiling zerocopy v0.8.48
+   Compiling serde_core v1.0.228
+   Compiling autocfg v1.5.0
+   Compiling crossbeam-utils v0.8.21
+   Compiling serde v1.0.228
+   Compiling windows-link v0.2.1
+   Compiling getrandom v0.3.4
+   Compiling zmij v1.0.21
+   Compiling simd-adler32 v0.3.9
+   Compiling crc32fast v1.5.0
+   Compiling rayon-core v1.13.0
+   Compiling shlex v1.3.0
+   Compiling find-msvc-tools v0.1.9
+   Compiling adler2 v2.0.1
+   Compiling serde_json v1.0.149
+   Compiling either v1.15.0
+   Compiling memchr v2.8.0
+   Compiling once_cell v1.21.4
+   Compiling rand_core v0.6.4
+   Compiling itoa v1.0.18
+   Compiling regex-syntax v0.8.10
+   Compiling windows-sys v0.61.2
+   Compiling plotters-backend v0.3.7
+   Compiling ciborium-io v0.2.2
+   Compiling miniz_oxide v0.8.9
+   Compiling fdeflate v0.3.7
+   Compiling clap_lex v1.1.0
+   Compiling bitflags v2.11.0
+   Compiling anstyle v1.0.14
+   Compiling pxfm v0.1.28
+   Compiling tracing-core v0.1.36
+   Compiling num-traits v0.2.19
+   Compiling cc v1.2.60
+   Compiling clap_builder v4.6.0
+   Compiling plotters-svg v0.3.7
+   Compiling itertools v0.10.5
+   Compiling rand v0.8.5
+   Compiling rand_xorshift v0.3.0
+   Compiling pin-project-lite v0.2.17
+   Compiling constant_time_eq v0.4.2
+   Compiling byteorder-lite v0.1.0
+   Compiling arrayvec v0.7.6
+   Compiling cast v0.3.0
+   Compiling arrayref v0.3.9
+   Compiling winapi-util v0.1.11
+   Compiling flate2 v1.1.9
+   Compiling cpufeatures v0.3.0
+   Compiling bytemuck v1.25.0
+   Compiling is-terminal v0.4.17
+   Compiling rand_core v0.9.5
+   Compiling oorandom v11.1.5
+   Compiling anes v0.1.6
+   Compiling same-file v1.0.6
+   Compiling regex-automata v0.4.14
+   Compiling walkdir v2.5.0
+   Compiling crossbeam-epoch v0.9.18
+   Compiling blake3 v1.8.4
+   Compiling png v0.18.1
+   Compiling crossbeam-deque v0.8.6
+   Compiling noise v0.9.0
+   Compiling plotters v0.3.7
+   Compiling syn v2.0.117
+   Compiling criterion-plot v0.5.0
+   Compiling rayon v1.11.0
+   Compiling clap v4.6.1
+   Compiling moxcms v0.8.1
+   Compiling regex v1.12.3
+   Compiling zerocopy-derive v0.8.48
+   Compiling serde_derive v1.0.228
+   Compiling tracing-attributes v0.1.31
+   Compiling image v0.25.10
+   Compiling tracing v0.1.44
+   Compiling bincode v1.3.3
+   Compiling tinytemplate v1.2.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling half v2.7.1
+   Compiling ciborium-ll v0.2.2
+   Compiling rand_chacha v0.9.0
+   Compiling ciborium v0.2.2
+   Compiling rand v0.9.3
+   Compiling criterion v0.5.1
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2200:23
+     |
+2200 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2270 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+warning: unused variable: `skn`
+     --> crates\ymir-core\tests\f126_coast.rs:10710:9
+      |
+10710 |     let skn = skeleton(&s1, &ext, &ss, DOMAIN_KM);
+      |         ^^^ help: if this is intentional, prefix it with an underscore: `_skn`
+      |
+      = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `t_on_con` is never read
+     --> crates\ymir-core\tests\f126_coast.rs:11447:24
+      |
+11447 |     let mut t_on_con = 0f64;
+      |                        ^^^^ this value is reassigned later and never used
+...
+11496 |         t_on_con = t.elapsed().as_secs_f64();
+      |         ------------------------------------ `t_on_con` is overwritten here before the previous value is read
+      |
+      = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (test "f126_coast") generated 2 warnings (run `cargo fix --test "f126_coast" -p ymir-core` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 1m 31s
+     Running tests\f126_coast.rs (target_f142c\release\deps\f126_coast-78c90b7d7fab281b.exe)
+
+running 1 test
+test f142_theta has been running for over 60 seconds
+
+=== F142 θ attribution · cells whose base the gorge raises 1684 · lowers 2569429 (of 11327963 land)
+   ON ×1, its own mask: **0.493** [0.491, 0.495] (36943 links)
+   GORGE v4 ×1, its own mask: **0.264** [0.253, 0.274] (36746 links)
+   GORGE v4 ×1, without the links the gorge RAISES: **0.478** [0.474, 0.483] (35468 links)
+   GORGE v4 ×1, without the links the rebase LOWERS: **0.225** [0.212, 0.238] (26953 links)
+   GORGE v4 ×1, without both: **0.493** [0.491, 0.496] (25675 links)
+   ON ×1 on the same links as the last line: **0.493** [0.491, 0.495] (25676 links)
+   GORGE v4 ×1 on the raised links only: **0.482** [0.451, 0.514] (1278 links) · on the lowered links only: **0.435** [0.419, 0.450] (9793 links)
+test f142_theta ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 63 filtered out; finished in 509.08s
+

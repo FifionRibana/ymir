@@ -202,12 +202,26 @@ pub struct GorgeRetreat {
     /// The reference outlet area, km². A DECLARED CONSTANT: 418.7 (MEASURED, F139-R: the median outlet area of
     /// the témoin's 14 D8 lakes), never the current world's, so a lake's retreat does not depend on the others.
     pub a_ref_km2: f32,
+    /// ADR Finding 142 — spec v4's scope: only the bodies that are input lakes standing alone (their ring touches
+    /// no other body's closed-depression cell and no cell under the sea), the construction's proxy for the 14 D8
+    /// lakes. The other bodies keep the extended lake base. `false` = v3 (every body ≥ 1 km²).
+    #[serde(default)]
+    pub d8_scope: bool,
+    /// ADR Finding 142 — spec v4's minimal plain ([`gorge_plain`]): a drained bowl's residual hollows filled to
+    /// their spill. `false` = v3 (none).
+    #[serde(default)]
+    pub plain: bool,
 }
 
 impl GorgeRetreat {
     /// Spec v3's values: m = 10, A_ref = 418.7 km².
     pub fn v3(r_world: f32, p: f32) -> Self {
-        Self { r_world, p, m: 10.0, a_ref_km2: 418.7 }
+        Self { r_world, p, m: 10.0, a_ref_km2: 418.7, d8_scope: false, plain: false }
+    }
+
+    /// Spec v4: v3 with the D8 scope and the minimal plain (`spec_gorge_age_v4.md`).
+    pub fn v4(r_world: f32, p: f32) -> Self {
+        Self { d8_scope: true, plain: true, ..Self::v3(r_world, p) }
     }
 }
 
@@ -260,6 +274,11 @@ pub struct GorgeBody {
     /// The outlet path's length (km) and the number of cells the gorge raised.
     pub path_km: f32,
     pub gorge_cells: u32,
+    /// ADR Finding 142 — an input lake (else a closed-depression component); its outer ring touches a
+    /// closed-depression cell of another body (a merged water body), or a cell under the sea.
+    pub input_lake: bool,
+    pub touches_depression: bool,
+    pub touches_below_sea: bool,
 }
 
 /// ADR Finding 140 — φ, the head fall's share: 0 with probability 1/3, otherwise U[0.1, 0.5], from splitmix64 of
@@ -960,6 +979,22 @@ fn gorge_bodies(
         if (cells.len() as f32) * cell_km2 < 1.0 {
             continue;
         }
+        // ADR Finding 142 -- what the ring touches: another body's depression cell, or the sea
+        let (mut t_dep, mut t_sea) = (false, false);
+        for &c in cells {
+            for k in 0..8 {
+                let m = nb8(c, k);
+                if label[m] == id as u32 {
+                    continue;
+                }
+                t_sea |= !land[m];
+                t_dep |= land[m] && lm[m] == 0 && dep(m);
+            }
+        }
+        // ADR Finding 142 -- spec v4's scope: an input lake standing alone (the D8 lakes' proxy)
+        if g.d8_scope && !(*is_lake && !t_dep && !t_sea) {
+            continue;
+        }
         let bi = bodies.len() as u32;
         for &c in cells {
             body_of[c] = bi;
@@ -1026,11 +1061,106 @@ fn gorge_bodies(
             r_lake,
             level,
             phi: gorge_phi(low as u64),
+            input_lake: *is_lake,
+            touches_depression: t_dep,
+            touches_below_sea: t_sea,
             ..Default::default()
         });
     }
     let _ = vc;
     (body_of, bodies)
+}
+
+/// ADR Finding 142 — one body's minimal plain ([`gorge_plain`]).
+#[derive(Clone, Debug, Default)]
+pub struct GorgePlain {
+    /// The body (index in [`Skeleton::gorge_bodies`]) and its retreat.
+    pub body: u32,
+    pub r_lake: f32,
+    /// The footprint's spill (m): its lowest ring cell, the surface of the lake that is left.
+    pub spill_m: f32,
+    /// Cells raised by more than 1 cm, their area (km²), the deepest fill (m) and the deposited volume (km³).
+    pub cells: u32,
+    pub area_km2: f32,
+    pub max_depth_m: f32,
+    pub volume_km3: f64,
+}
+
+/// ADR Finding 142 — **the minimal plain** (`spec_gorge_age_v4.md` § 2): in every body the gorge has partly or wholly
+/// drained (`r_lake > min_r`; spec v4: 1), the input footprint's cells that are not under the lake left are filled to
+/// their spill. A priority-flood fill restricted to the footprint, seeded on its ring (every outside neighbour at its
+/// height), so the outlet is the lake left or the gorge's head. A cell whose fill level is the footprint's spill (the
+/// lowest ring cell) is the lake's bed, under water: it is left as it is. A cell whose fill level stands higher is a
+/// residual hollow: it is raised to that level.
+///
+/// ⚠️ **The construction's FIRST term that RAISES the terrain**: a deposit (the sediments of the lake's life), not a
+/// cut. [`carve`] still only lowers; this runs after it, on its output, before the light pass
+/// (`production_upscale.rs`). Its volume is published per body (rule 14). Works in normalised units (the metres map is
+/// affine), so the fill copies its spill's exact value and leaves no round-trip micro-pit.
+pub fn gorge_plain(field: &mut GridF32, sk: &Skeleton, ss: &SteinSteinParams, min_r: f32) -> Vec<GorgePlain> {
+    use std::collections::HashSet;
+    let Some(bo) = sk.gorge_body_of.as_deref() else {
+        return Vec::new();
+    };
+    let (w, h) = (sk.width, sk.height);
+    assert_eq!((field.width, field.height), (w, h), "skeleton and field sizes differ");
+    let n = w * h;
+    let cell_km2 = (sk.cell_m / 1000.0) * (sk.cell_m / 1000.0);
+    let m_per_norm = c1_altitude_norm_to_metres(1.0, ss) - c1_altitude_norm_to_metres(0.0, ss);
+    let eps = 0.01 / m_per_norm; // 1 cm
+    let nb8 = |c: usize, k: usize| -> usize {
+        (((c / w) as i32 + D8_DY[k]).rem_euclid(h as i32) as usize) * w + ((c % w) as i32 + D8_DX[k]).rem_euclid(w as i32) as usize
+    };
+    let mut cells: Vec<Vec<usize>> = vec![Vec::new(); sk.gorge_bodies.len()];
+    for c in 0..n {
+        if bo[c] != u32::MAX {
+            cells[bo[c] as usize].push(c);
+        }
+    }
+    let mut out = Vec::new();
+    for (bi, b) in sk.gorge_bodies.iter().enumerate() {
+        if b.r_lake <= min_r || cells[bi].is_empty() {
+            continue;
+        }
+        let me = bi as u32;
+        let mut heap = BinaryHeap::new();
+        let mut ring: HashSet<usize> = HashSet::new();
+        let mut spill = f32::INFINITY;
+        for &c in &cells[bi] {
+            for k in 0..8 {
+                let m = nb8(c, k);
+                if bo[m] != me && ring.insert(m) {
+                    spill = spill.min(field.data[m]);
+                    heap.push(Item(field.data[m], m));
+                }
+            }
+        }
+        let mut done: HashSet<usize> = HashSet::with_capacity(cells[bi].len());
+        let mut rec = GorgePlain { body: me, r_lake: b.r_lake, spill_m: c1_altitude_norm_to_metres(spill, ss), ..Default::default() };
+        while let Some(Item(lev, c)) = heap.pop() {
+            for k in 0..8 {
+                let m = nb8(c, k);
+                if bo[m] != me || !done.insert(m) {
+                    continue;
+                }
+                let z = field.data[m];
+                let l = lev.max(z);
+                if l > z && l > spill + eps {
+                    let d = (l - z) * m_per_norm;
+                    field.data[m] = l;
+                    if d > 0.01 {
+                        rec.cells += 1;
+                    }
+                    rec.max_depth_m = rec.max_depth_m.max(d);
+                    rec.volume_km3 += d as f64 * cell_km2 as f64 * 1e-3;
+                }
+                heap.push(Item(l, m));
+            }
+        }
+        rec.area_km2 = rec.cells as f32 * cell_km2;
+        out.push(rec);
+    }
+    out
 }
 
 /// ADR Finding 128-C — D8-LTD pointers (Orlandini et al. 2003 §2, with λ = 1; Orlandini, Moretti &
@@ -2549,6 +2679,112 @@ mod tests {
         let (old, _) = carve(&f, &sk2, &gorge(2.0), &ss);
         assert!(m(&old, b2.col as usize) <= b2.l_floor + 1.0, "r = 2: the col is cut to the floor ({} m against {} m)", m(&old, b2.col as usize), b2.l_floor);
         assert!(ring_min(&old) >= b2.l_floor - 0.5, "r = 2: no ring cell under the drained level");
+    }
+
+    /// ADR Finding 142, rule 13 — spec v4's minimal plain. The bowl of the gorge test (150 m deep, a present lake)
+    /// carries a second, separate hollow inside its footprint (a 40 m dimple 8 cells from the centre). Drained (r = 2):
+    /// - **negative control first**: without the plain the dimple stays a closed hollow outside the lake (a dry run of
+    ///   the fill would raise cells);
+    /// - with the plain: the fill raises cells, only up (never down), only inside the footprint, by the volume it
+    ///   reports; run again, it raises nothing (no closed hollow left outside the lake).
+    #[test]
+    fn the_minimal_plain_fills_a_drained_bowls_residual_hollows_and_only_raises() {
+        let ss = SteinSteinParams::default();
+        let n = 128usize;
+        let z_m = |x: f32, y: f32| -> f32 {
+            if y >= 120.0 {
+                return -50.0;
+            }
+            let d = ((x - 64.0).powi(2) + (y - 50.0).powi(2)).sqrt();
+            let bowl = if d < 12.0 { 150.0 * (1.0 - (d / 12.0).powi(2)) } else { 0.0 };
+            let e = ((x - 56.0).powi(2) + (y - 50.0).powi(2)).sqrt();
+            let dimple = if e < 2.5 { 40.0 * (1.0 - (e / 2.5).powi(2)) } else { 0.0 };
+            5.0 + 4.0 * (120.0 - y) - bowl - dimple
+        };
+        let f = GridF32 {
+            width: n,
+            height: n,
+            data: (0..n * n).map(|k| c1_metres_to_altitude_norm(z_m((k % n) as f32 + 0.5, (k / n) as f32 + 0.5), &ss)).collect(),
+        };
+        let ext = ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..ValleyConstruction::new(F121_AGE_K, None) };
+        let vc = ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v4(2.0, 0.0)), ..ext };
+        let sk = skeleton(&f, &vc, &ss, 51.2);
+        assert_eq!(sk.gorge_bodies.len(), 1, "the bowl is in v4's scope (an input lake standing alone)");
+        assert!(sk.gorge_bodies[0].r_lake > 1.0, "drained");
+        let (carved, _) = carve(&f, &sk, &vc, &ss);
+        // negative control: the dimple is a residual hollow after the construction alone
+        let mut dry = carved.clone();
+        let rec0 = gorge_plain(&mut dry, &sk, &ss, 1.0);
+        assert_eq!(rec0.len(), 1);
+        assert!(rec0[0].cells > 0 && rec0[0].max_depth_m > 1.0, "negative control: a hollow is left without the plain ({:?})", rec0[0]);
+        // the plain
+        let mut out = carved.clone();
+        let rec = gorge_plain(&mut out, &sk, &ss, 1.0);
+        let bo = sk.gorge_body_of.as_ref().expect("diagnostics");
+        let cell_km2 = (sk.cell_m / 1000.0).powi(2) as f64;
+        let mut vol = 0f64;
+        for k in 0..n * n {
+            assert!(out.data[k] >= carved.data[k], "the plain only raises (cell {k})");
+            if out.data[k] != carved.data[k] {
+                assert_eq!(bo[k], 0, "the plain acts only inside the footprint (cell {k})");
+                vol += ((c1_altitude_norm_to_metres(out.data[k], &ss) - c1_altitude_norm_to_metres(carved.data[k], &ss)) as f64) * cell_km2 * 1e-3;
+            }
+        }
+        assert!((vol - rec[0].volume_km3).abs() <= 1e-6 + 1e-3 * vol, "the reported volume is the raise ({vol} vs {})", rec[0].volume_km3);
+        let again = gorge_plain(&mut out.clone(), &sk, &ss, 1.0);
+        assert_eq!(again[0].cells, 0, "after the plain no closed hollow is left outside the lake");
+        // below the threshold (r ≤ 1) the plain does nothing
+        let young = ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v4(1.0, 0.0)), ..ext };
+        let sky = skeleton(&f, &young, &ss, 51.2);
+        assert!(gorge_plain(&mut carved.clone(), &sky, &ss, 1.0).is_empty(), "r_lake ≤ 1: no plain");
+    }
+
+    /// ADR Finding 142, rule 13 — spec v4's scope. The plane of the gorge test carries an above-sea bowl standing
+    /// alone, and a shallow bowl opening onto the fringe of a below-sea basin (a closed depression of the open-ocean
+    /// flood). Negative control first: v3 treats a body that is not an input lake standing alone. v4 keeps only the
+    /// lone bowl; a dropped body's cells keep the extended lake base, bit for bit as without the gorge.
+    #[test]
+    fn v4_keeps_only_the_input_lakes_standing_alone() {
+        let ss = SteinSteinParams::default();
+        let n = 128usize;
+        let z_m = |x: f32, y: f32| -> f32 {
+            if y >= 120.0 {
+                return -50.0;
+            }
+            let bowl = |cx: f32, cy: f32, r: f32, depth: f32| {
+                let d = ((x - cx).powi(2) + (y - cy).powi(2)).sqrt();
+                if d < r { depth * (1.0 - (d / r).powi(2)) } else { 0.0 }
+            };
+            5.0 + 4.0 * (120.0 - y) - bowl(32.0, 40.0, 10.0, 120.0) - bowl(96.0, 60.0, 14.0, 500.0) - bowl(96.0, 46.0, 7.0, 60.0)
+        };
+        let f = GridF32 {
+            width: n,
+            height: n,
+            data: (0..n * n).map(|k| c1_metres_to_altitude_norm(z_m((k % n) as f32 + 0.5, (k / n) as f32 + 0.5), &ss)).collect(),
+        };
+        let ext = ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..ValleyConstruction::new(F121_AGE_K, None) };
+        let v3 = skeleton(&f, &ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v3(1.0, 0.0)), ..ext }, &ss, 51.2);
+        let v4 = skeleton(&f, &ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v4(1.0, 0.0)), ..ext }, &ss, 51.2);
+        let lone = 40 * n + 32;
+        let lone_ok = |b: &GorgeBody| b.input_lake && !b.touches_depression && !b.touches_below_sea;
+        assert!(v3.gorge_bodies.iter().any(|b| !lone_ok(b)), "negative control: v3 treats a body that is not a lone input lake ({:?})", v3.gorge_bodies);
+        assert!(v3.gorge_body_of.as_ref().unwrap()[lone] != u32::MAX, "v3 treats the lone bowl");
+        let bo4 = v4.gorge_body_of.as_ref().unwrap();
+        assert!(bo4[lone] != u32::MAX, "v4 keeps the lone bowl");
+        assert!(v4.gorge_bodies.iter().all(lone_ok), "v4 keeps only lone input lakes");
+        assert!(v4.gorge_bodies.len() < v3.gorge_bodies.len(), "v4 drops the merged bodies");
+        // a dropped body's cells keep the extended lake base (as without the gorge)
+        let none = skeleton(&f, &ext, &ss, 51.2);
+        let bo3 = v3.gorge_body_of.as_ref().unwrap();
+        for k in 0..n * n {
+            if bo3[k] != u32::MAX && bo4[k] == u32::MAX {
+                assert_eq!(v4.base_alt_m[k].to_bits(), none.base_alt_m[k].to_bits(), "a dropped body's cell keeps the extended base (cell {k})");
+            }
+        }
+        // the key: v4 is not v3
+        let js3 = serde_json::to_string(&ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v3(1.0, 0.5)), ..ext }).unwrap();
+        let js4 = serde_json::to_string(&ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v4(1.0, 0.5)), ..ext }).unwrap();
+        assert_ne!(js3, js4, "v4 must move the key");
     }
 
     /// ADR Finding 133-F, rule 13 — a below-sea basin's lake is a present lake: χ stops at its shore. A plane

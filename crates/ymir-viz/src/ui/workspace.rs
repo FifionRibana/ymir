@@ -1003,7 +1003,7 @@ fn left_panel(
                                     // ADR Finding 140 -- the gorge's retreat: r from the age selector by map (a)
                                     // (×0.7 → 0, ×1 → 1, ×1.4 → 2), p from its selector
                                     gorge_retreat: ws.valley_gorge.then(|| {
-                                        ymir_core::tectonics_c1::valley_construction::GorgeRetreat::v3(
+                                        ymir_core::tectonics_c1::valley_construction::GorgeRetreat::v4(
                                             [0.0f32, 1.0, 2.0][ws.valley_age.min(2)],
                                             [0.0f32, 0.25, 0.5][ws.valley_gorge_p.min(2)],
                                         )

@@ -19564,8 +19564,12 @@ same way with the gate on.
 1. The construction lays no new land cell below the sea (0 cells).
 2. The floor cell is 178.7 m through the construction, the light pass, the droplets and the bathymetry, and
    **−8.4 m after the protected breach**. In ON the breach fills it to 325.8 m (pre-breach lake 5).
-3. **Body 4**: A = 1 571 km² in the construction (the F139 bench: 298 km² for the same lake), so r_lake = 1.94 at ×1
-   and L(r_lake) = 178.7 m, near its floor (168.9).
+3. **Body 4**: A = 1 571 km² in the construction, so r_lake = 1.94 at ×1 and L(r_lake) = 178.7 m, near its floor
+   (168.9).
+   - **[CORRECTED in F142, after F141.]** This line first read "(the F139 bench: 298 km² for the same lake)". **That is
+     false**: an index pairing. The 298 km² is F139's lake 4, which is body 3, and its A agrees under all three
+     definitions (300.7 / 298.1 / 305.2 km²). Body 4 is half of the merged below-sea lake 1000011, and its own A is
+     the same under the inflow definition (1 571.3 km²). The reviewer took the figure up without checking it.
    - The pre-breach drainage holds 0.6 of its 52.4 km² (ON: all).
    - The breach carves the residual pits with ramps that cross the sea: 2 821 land cells ≤ sea (ON: 292).
 4. **A second defect**: a cell of the drained bowl lies at 91.1 m, 78 m under its input floor (the stage is not
@@ -19573,6 +19577,10 @@ same way with the gate on.
 
 **The cause** is deviation 1: the col's area makes r_lake ≈ 2 at ×1 for the large outlets, so the default age
 drains them. The breach is unchanged; it now carves sub-threshold drained bowls.
+- **[CORRECTED in F142, after F141.]** **Deviation 1 is not the cause.** The causes attributed in F141 are:
+  - (α) one merged final lake split into two bodies (1000011 = bodies 26 and 4);
+  - (β) a below-sea lake's body is its land fringe, so "drained" lays it at ≈ the sea;
+  - (γ) the breach's ramp anchored on each pit's floor.
 
 **Not measured**: G-levels, G-rim, G-ring, G-slope100, G-drained, G-area, G-tag, the non-regression, rules 14 and 18,
 the cost. **G-inert HOLDS**: the after-checks' guard reads 6 / 6, field and lakes, with the gate off.
@@ -19589,6 +19597,10 @@ the cost. **G-inert HOLDS**: the after-checks' guard reads 6 / 6, field and lake
 so the author's world cannot crash. The gate stays reachable from code and benches only.
 - **Deviation 1** (A = the col's drained area) changed the quantity F139-R tabulated. The gate run tested another
   setting than the one the author chose.
+  - **[CORRECTED in F142, after F141.]** The example behind this item was false: "lake 4: 1 571 against 298 km²"
+    paired body 4 with lake 4 by index. On the 14 D8 lakes, A agrees under all three definitions, except lake 19
+    (0.51). Deviation 1 does move the five below-sea spillway lakes' A (0.36–0.48). **The rule below stands**: F141
+    found that all five deviations touch tabulated quantities.
   - **Method rule, recorded: a deviation that touches a tabulated quantity is re-tabulated BEFORE the construction.**
 - **The crash will come back at the old ages, even with A corrected.** Eight lakes empty BY DESIGN between ×1.03 and
   ×1.40 at p = 0.5 (F139-R), and an emptied bowl's residual pits are what the breach carves below the sea.
@@ -19669,3 +19681,88 @@ GORGE skeleton** (= stage (a)).
 
 **Method rule, recorded: a pairing across instruments (a body against a lake) is made by footprint overlap, never by
 index.** F140's diagnosis rested on an index pairing.
+
+## Finding 142 — the gorge's retreat v4 (the 14 D8 lakes, the minimal plain), re-tabulated then gated: the construction holds (1:1 bodies, no pits, no new sea in 7 of 8 worlds, F38 never fires, a negligible deposit), but the light pass erodes the tagged head falls and reopens the lakes and plains; θ falls with the decided steepness
+
+**Status: built gated (`GorgeRetreat::v4`, off by default), measured, not promoted.** The viz toggle stays hidden.
+Report, raw outputs and `spec_gorge_age_v4.md`: `docs/reports/c1_continental_buoyancy/f142_gorge_v4/`.
+- F141 was committed (`f4a6a56`).
+- **ADR F140 was corrected in place** (three "[CORRECTED in F142, after F141.]" notes): its "lake 4: 1 571 against 298
+  km²" was an index pairing, and its "the cause is deviation 1" is replaced by F141's α / β / γ.
+
+**The author's decisions (2026-10-02), recorded as given:**
+- « Seulement les 14 lacs D8 (sous la mer inchangés) ».
+- The drained bowl: to « Les deux étant possibles, qu'est-ce qui les discerne ? » the reviewer answered that the
+  plain (the lake's sediments) and the valley (when the outlet goes below the old floor, beyond r ≤ 2) are two
+  stages of one history. He proposed a minimal plain, the valley and the full cover for later. The author:
+  « Ok go ».
+
+**Queue, a named defect (out of this work)**: the breach's ramp starts at each pit's floor and descends 0.113 m per
+cell towards the flood's root, without reading the spill (`flow.rs:1066–1075`).
+- In production it leaves 292 land cells under the sea, all under lake 1000016. **F38 holds by covering.**
+- F142 met it again at ×1.4, p 0.5: 112 ocean-connected cells below drained lake 4.
+
+**R — re-tabulated as built, before building (F141's rule):**
+- **L_bed as built is within 0–2 m of L_in and 2.8–46.6 m above today's level**: deviation 2 is not "the same
+  object". So r ≤ 1 barely shrinks the 14 (1 308.6 → 1 304.5 km², against F138's −12 %).
+- At ×1, p 0.5 the 14 hold 653.4 km² (F139: 521.3), so the author's −55 % becomes −50 %.
+- The emptying ages: 5 of F139's 8 within 0.01. Lake 3 moves +0.05, lake 19 +0.18 (×1.21), lake 15 goes to "never";
+  lake 2 enters at ×1.38.
+- T4: 10 of 14 lakes with φ > 0 as before, but a different 10; 9–10 tagged; no shortage fall.
+
+**Built:**
+- **The scope**: input lakes standing alone (the ring touches no other body's depression cell and no sea cell), a
+  construction-side proxy. It keeps the 14 D8 lakes 1:1 plus 4 small input lakes (three absent from ON's final
+  world, one 20 % under 1000016). **Named for the author.**
+- **The minimal plain** (`gorge_plain`): a footprint-restricted priority fill, after `carve` and before the light
+  pass. **The construction's first raising term**; its volume is published.
+- **Two permanent tests with negative controls** (lib 593 → 595).
+
+**G — eight worlds, each isolated.**
+- **Hold**:
+  - **G-inert** (the guard 6 / 6, field and lakes, gate off; lib 595, viz 30);
+  - G-bodies 1:1 in all eight;
+  - **F38 never fires** (×1.4 at p 0 included);
+  - G-sea holds in 7 of 8;
+  - G-pits = 0 at the construction and at the pipeline's (a), whose plain equals the bench's within 1 cm;
+  - the construction's rim is uncut;
+  - G-drained holds to ×1;
+  - canyons 0;
+  - the deposit is ≤ 0.13 km³ (0.03 % of the construction's removal against ON, mostly the rebase);
+  - no shortage fall.
+- **Fail**:
+  - **G-pits from the light pass on**: up to 80 424 cells and 257 m. The ring's drop follows the head fall: lake 10
+    418 m → −284 m, lake 3 406 → −169, lake 19 60 → −19, lake 1 37 → −7.6, lake 12 14 → −1.8. **The light pass
+    erodes the tagged falls.**
+  - G-rim on the eroded world (12 of 18 at ×0.7);
+  - G-levels at every age (2–9 within ±1 m);
+  - G-ring (95–214 cells, by body 0's col);
+  - G-drained at ×1.2 / ×1.4 (53 / 2 223 / 2 396);
+  - G-tag (11 tagged at ×1 p .5; 51–227 drops > H_f beyond the lip);
+  - G-area not monotone (+10.6 km² from ×0.7 to ×0.85);
+  - G-sea at ×1.4 p .5 (+112, ocean-connected, F141's γ below drained lake 4).
+- **Lake 13** joins 1000016's merged water (116.7 m) once lowered.
+- **θ falls to 0.264** (OFF 0.493). Without the 1 278 gorge links (3.5 %) it is 0.478, and without them and the
+  rebased links 0.493 (= ON). **The steepened gorges (m = 10) are a steeper population at the largest areas.**
+- **Cost**: within the timing noise (median +1.25 s).
+
+**Predictions:**
+- **The reviewer's**: G-bodies, F38, G-ring, G-deposit < 5 % and the meta held. R (±0.03), G-pits, G-sea at every age
+  and G-tag (5–10) were refuted. The cost is not resolved.
+- **Mine**: P-R (the three moved lakes), P-T4, P-G-bodies (extras), P-G-pits (later stage), P-G-ring, F38 and the meta
+  held. P-T3, P-G-deposit > 5 %, P-G-tag, P-G-levels, P-G-area and G-sea were refuted.
+
+**Method rule, recorded: a G instrument that defines "the lake" must follow the lake's own sill, not the
+footprint's ring.** The first G run read every lake held by an inner sill as "pits" (declared, amended, kept).
+
+**Recorded at commit (F143).**
+- **The cause "the light pass erodes the head falls" is CORRELATED over 9 bodies, not yet attributed by a control.**
+- **The light pass is a second age process.** It makes the falls retreat at a grid celerity with no physics (F115:
+  Courant 3 699), while r already encodes the retreat. **The age is counted twice.**
+- **Head falls up to 418 m on large outlets.** That is the objection already raised against the shortage falls,
+  removed in F139. Anchors to source before any use: the great falls of large rivers stay under ~100 m (Victoria,
+  Iguazú, Niagara).
+- **θ**: the gorges are designed breaks and fall outside the graded trunk's θ (a declared instrument correction).
+  **The rebased links' effect (0.478 → 0.493) is not explained**: a displaced base does not change the local slope.
+- **R**: with the rim protected, L_bed as built is 2.8–46.6 m above ON's level. **r = 1 is no longer ON's level**, and
+  the author's −55 % at ×1 becomes −50 %.

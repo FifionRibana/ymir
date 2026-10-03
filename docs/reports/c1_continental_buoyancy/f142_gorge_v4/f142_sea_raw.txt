@@ -1,0 +1,16 @@
+
+=== F142 G-sea attribution · ON ×1: 292 cells
+
+   GORGE v4 ×1.4 p 0.5: 404 cells (added 112, missing 0) · inland 0 · covered by a final lake 0 {} · height before the breach p0/p50/p100 0.8/18.0/31.7 m · bbox x 2035–2128 y 3344–3429
+      outside, 100–109 cells from a body (cap 1000): 10
+      outside, 110–119 cells from a body (cap 1000): 11
+      outside, 120–129 cells from a body (cap 1000): 23
+      outside, 30–39 cells from a body (cap 1000): 8
+      outside, 40–49 cells from a body (cap 1000): 10
+      outside, 50–59 cells from a body (cap 1000): 10
+      outside, 60–69 cells from a body (cap 1000): 10
+      outside, 70–79 cells from a body (cap 1000): 10
+      outside, 80–89 cells from a body (cap 1000): 10
+      outside, 90–99 cells from a body (cap 1000): 10
+
+   GORGE v4 ×1.4 p 0: 292 cells (added 0, missing 0) · inland 0 · covered by a final lake 0 {} · height before the breach p0/p50/p100 NaN/NaN/NaN m · bbox x 0–0 y 0–0
