@@ -19596,3 +19596,76 @@ so the author's world cannot crash. The gate stays reachable from code and bench
   invariant holds by covering, not by construction.**
 - **Option 2** (r_lake ≤ r_world) would cancel the −55 % of area at ×1 the author chose (p = 0.5). It is the
   author's decision, not a fix.
+
+## Finding 141 — F140's crash attributed, nothing corrected: body 4 is half of the merged below-sea lake 1000011, not lake 4; the construction splits that lake into two bodies that retreat apart and lays the drained half at its land fringe's floor (≈ 0.1 m), whose cones reach into body 4; the breach then carves ramps anchored on each pit's FLOOR to the flood's root, below the sea
+
+**Status: diagnosis only; nothing corrected, nothing promoted.** Report and raw outputs:
+`docs/reports/c1_continental_buoyancy/f141_attribution/` (benches `f141_attr`, `f141_b4`).
+- The F140 code is committed with the viz toggle hidden (`f6c1caf`).
+- The guard reads 6 / 6, field and lakes, before and after, with the gate off (C2 /10 col = `a8d2d538d692c2f0`).
+
+**D — the five deviations of spec v3 all touch tabulated quantities**:
+1. A: F139-R, A_ref itself (measured with the other definition), T1, C2–C4 and T4.
+2. L_bed: T3, C1 and R's areas.
+3. φ: T4, C4.
+4. The below-sea lakes without a spillway: C5. **R never tabulated a below-sea lake.**
+5. Off-trunk outlets: R, G-area.
+
+**Three more, undeclared**:
+- (a) the construction's bodies hold land cells only, so a below-sea lake's body is its above-sea fringe;
+- (b) L_floor is read on S1;
+- (c) a merged final lake is several bodies, each retreating on its own.
+
+**A — three definitions** (the col's area (i); F139's instrument (ii); the inflow into the body (iii)), 22 lakes:
+- **(iii) is within ×1.5 of (ii) for 19.**
+- **(i) is beyond ×2 for 5, all below-sea spillway lakes, always smaller (0.36–0.48).** Their bodies are land fringes
+  whose inflow leaves at many points into the below-sea core. The col takes the largest exit's single river, inside
+  the final lake. No outside stream joins any col.
+- **At ×1 every definition drains ≥ 2 lakes**, all below-sea (1000011, 1000016; (ii) adds 1000014, (iii) also
+  lake 1).
+- **F139's lake 4 is body 3** (300.7 / 298.1 / 305.2 km², never empty).
+- **Body 4 belongs to 1000011** (merged, 459.3 m, 493.2 km²). Its A is 1 571.0 by (i) and 1 571.3 by (iii), its
+  whole inflow coming from body 26, 1000011's fringe.
+- **F140's "1 571 against 298 for the same lake" paired body 4 with lake 4 by index. Deviation 1 is not the cause,
+  and option 1 (A = the inflow) would not have prevented the crash.**
+
+**Br — the breach** (an instrumented copy of `breach_monotone_protected`, bit-identical to production in both worlds):
+- **The ramp starts at the pit's FLOOR** (`target = height[nb] − EPS`, `flow.rs` 1070).
+  - It walks the flood's backlinks (1066, 1072–1075), losing 0.113 m per cell, to a base (`z ≤ sea`, including
+    inland below-sea cells, or a lake: 1037) or a lower cell.
+  - **The pit's spill is never read by the ramp.** It carves towards the flood's root, not the pit's spill.
+- **ON**: 292 cells, all inland.
+  - The pits are 7–13 m high, with spills 13.5–16.9 m. The ramps run 61–140 steps towards 1000016's below-sea basin
+    and cross the sea at step 61–111.
+  - **100 % covered, by lake 1000016.**
+- **GORGE ×1**: 2 821 cells, 2 670 on construction bodies.
+  - The pits are the drained below-sea fringes at ≈ the sea (floors 0–2.5 m, spill = floor). Ramps run up to 417
+    steps (416 cells ≤ sea, about −47 m).
+  - Body 26 alone lays 1 070 of the top twelve ramps' 1 795.
+  - One ramp, 118 steps from body 26, ends one cell from F38's floor cell (4379, 3551).
+  - Coverage: ≤ 122 uncovered, deduced from the panic message.
+
+**Z — the cell (4148, 3674)** is 325.6 m on S1 and on the ON construction, and **89.4 m on `carve_diag(S1)` with the
+GORGE skeleton** (= stage (a)).
+- Then 91.1 m after the light pass, the droplets and the bathymetry, and −0.2 m after the breach.
+- **It is laid by `carve_diag`'s nearest-sample floor**, from line 189's sample on a **body-26** cell (base 0.1 m: the
+  drained fringe's L(2) = its lowest land cell, `gorge_bodies`). The sample's zf (89.4 m) lies between body 26's
+  floor and body 4's 178.7 m (`densify`).
+- The line crosses both bodies; body 26 drains into body 4.
+
+**The crash's causes, attributed**:
+- **(α)** the bodies do not follow the final merged lake;
+- **(β)** "drained" for a below-sea lake means its land fringe's lowest cell, ≈ the sea;
+- **(γ)** the breach's ramp anchored on the pit's floor, which already makes ON's 292, held only by coverage.
+
+**Predictions**:
+- **Mine**:
+  - P-A's counts held. "Lake 4 among the divergent" and the intercepted-river cause were **refuted**.
+  - P-Br held. GORGE's source was half-held (fringes, not body 4's bowl).
+  - **P-Z (the light pass) refuted.**
+  - P-D undercounted (four others, not two).
+  - Meta held.
+- **The reviewer's**: A, Br, Z and D all held. **Meta refuted** (none false).
+
+**Method rule, recorded: a pairing across instruments (a body against a lake) is made by footprint overlap, never by
+index.** F140's diagnosis rested on an index pairing.

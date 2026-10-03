@@ -1,0 +1,81 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2200:23
+     |
+2200 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2270 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+warning: unused variable: `skn`
+     --> crates\ymir-core\tests\f126_coast.rs:10710:9
+      |
+10710 |     let skn = skeleton(&s1, &ext, &ss, DOMAIN_KM);
+      |         ^^^ help: if this is intentional, prefix it with an underscore: `_skn`
+      |
+      = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `t_on_con` is never read
+     --> crates\ymir-core\tests\f126_coast.rs:11447:24
+      |
+11447 |     let mut t_on_con = 0f64;
+      |                        ^^^^ this value is reassigned later and never used
+...
+11496 |         t_on_con = t.elapsed().as_secs_f64();
+      |         ------------------------------------ `t_on_con` is overwritten here before the previous value is read
+      |
+      = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (test "f126_coast") generated 2 warnings (run `cargo fix --test "f126_coast" -p ymir-core` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.15s
+     Running tests\f126_coast.rs (target_f141b\release\deps\f126_coast-78c90b7d7fab281b.exe)
+
+running 1 test
+test f141_b4 has been running for over 60 seconds
+
+=== body 4 · 52.4 km² · L_in 325.8 · L_bed 325.7 · L_floor 168.9 · r_lake 1.94 · level 178.7 · (i) 1571.0 km² · (iii) 1571.3 km² · exit (4402,3624) 1568.2 km² · col (4403,3625) 1571.0 km²
+   inflow (4216,3573) · 654.9 km² · from body 26
+   inflow (4384,3546) · 318.4 km² · from body 26
+   inflow (4158,3610) · 191.3 km² · from body 26
+   inflow (4173,3712) · 78.8 km² · from body 26
+   inflow (4300,3547) · 18.1 km² · from body 26
+   col donor (4402,3624) · 1568.2 km² · body 4
+   col donor (4403,3624) · 2.9 km² · body 4
+   body cells whose receiver leaves the body: 4 (largest: 1568.16)
+   ON final lakes on the body: {1000011: 21991}
+   lake 1000011 · 21991 of its 206865 cells on the body · area 493.2 km² · type Unresolved · level 459.3 m · outlet (4451,3861) (receiver None, the outlet's own lake id 1000011) · spillway segments 1 · inflow + area 2409.6 km² · accumulation at the outlet 2196.3 km² · F139's set: spillway
+test f141_b4 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 60 filtered out; finished in 502.85s
+

@@ -1,0 +1,210 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2200:23
+     |
+2200 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2270 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+warning: unused variable: `skn`
+     --> crates\ymir-core\tests\f126_coast.rs:10710:9
+      |
+10710 |     let skn = skeleton(&s1, &ext, &ss, DOMAIN_KM);
+      |         ^^^ help: if this is intentional, prefix it with an underscore: `_skn`
+      |
+      = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `t_on_con` is never read
+     --> crates\ymir-core\tests\f126_coast.rs:11447:24
+      |
+11447 |     let mut t_on_con = 0f64;
+      |                        ^^^^ this value is reassigned later and never used
+...
+11496 |         t_on_con = t.elapsed().as_secs_f64();
+      |         ------------------------------------ `t_on_con` is overwritten here before the previous value is read
+      |
+      = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (test "f126_coast") generated 2 warnings (run `cargo fix --test "f126_coast" -p ymir-core` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.15s
+     Running tests\f126_coast.rs (target_f141\release\deps\f126_coast-78c90b7d7fab281b.exe)
+
+running 1 test
+
+==========  Finding 141 . F140's crash attributed (nothing corrected)  ==========
+test f141_attr has been running for over 60 seconds
+   GORGE ×1 skeleton: 35 bodies · body 4 check: the floor cell (4379,3551) is in body 4
+
+   A · 22 lakes with a body (14 D8, 8 spillway) · without a construction body: [1000001] · p = 0.5, A_ref 418.7 km² · r_lake at ×0.7/×1/×1.2/×1.4
+      lake       1 (D8) · body   0 (143.8 km², construction r_lake 1.81) · (i)  1371.7 · (ii)  1295.9 [path 1293.2, inflow 1295.9] · (iii)  2035.8 km² · (iii)/(ii) 1.57 · (i)/(ii) 1.06
+         r_lake (i) 0.00/1.81/2.00/2.00 · (ii) 0.00/1.76/2.00/2.00 · (iii) 0.00/2.00/2.00/2.00 · emptying (i) ×1.04 · (ii) ×1.05 · (iii) ×0.97
+      lake       2 (D8) · body   1 (57.8 km², construction r_lake 1.03) · (i)   442.7 · (ii)   357.8 [path 357.8, inflow 356.6] · (iii)   491.7 km² · (iii)/(ii) 1.37 · (i)/(ii) 1.24
+         r_lake (i) 0.00/1.03/1.54/2.00 · (ii) 0.00/0.92/1.39/1.85 · (iii) 0.00/1.08/1.63/2.00 · emptying (i) ×1.38 · (ii) never (r_world 2.16) · (iii) ×1.34
+      lake       3 (D8) · body   2 (197.9 km², construction r_lake 1.20) · (i)   598.7 · (ii)   698.6 [path 1.0, inflow 698.6] · (iii)   604.1 km² · (iii)/(ii) 0.86 · (i)/(ii) 0.86
+         r_lake (i) 0.00/1.20/1.79/2.00 · (ii) 0.00/1.29/1.94/2.00 · (iii) 0.00/1.20/1.80/2.00 · emptying (i) ×1.27 · (ii) ×1.22 · (iii) ×1.27
+      lake       4 (D8) · body   3 (49.4 km², construction r_lake 0.85) · (i)   300.7 · (ii)   298.1 [path 298.1, inflow 297.4] · (iii)   305.2 km² · (iii)/(ii) 1.02 · (i)/(ii) 1.01
+         r_lake (i) 0.00/0.85/1.27/1.69 · (ii) 0.00/0.84/1.27/1.69 · (iii) 0.00/0.85/1.28/1.71 · emptying (i) never (r_world 2.36) · (ii) never (r_world 2.37) · (iii) never (r_world 2.34)
+      lake       7 (D8) · body   6 (8.8 km², construction r_lake 0.76) · (i)   244.7 · (ii)   240.4 [path 240.4, inflow 239.5] · (iii)   244.4 km² · (iii)/(ii) 1.02 · (i)/(ii) 1.02
+         r_lake (i) 0.00/0.76/1.15/1.53 · (ii) 0.00/0.76/1.14/1.52 · (iii) 0.00/0.76/1.15/1.53 · emptying (i) never (r_world 2.62) · (ii) never (r_world 2.64) · (iii) never (r_world 2.62)
+      lake       8 (D8) · body   8 (13.6 km², construction r_lake 0.61) · (i)   156.4 · (ii)   153.7 [path 153.7, inflow 153.0] · (iii)   199.2 km² · (iii)/(ii) 1.30 · (i)/(ii) 1.02
+         r_lake (i) 0.00/0.61/0.92/1.22 · (ii) 0.00/0.61/0.91/1.21 · (iii) 0.00/0.69/1.03/1.38 · emptying (i) never (r_world 3.27) · (ii) never (r_world 3.30) · (iii) never (r_world 2.90)
+      lake       9 (D8) · body  10 (87.3 km², construction r_lake 0.97) · (i)   393.3 · (ii)   389.0 [path 389.0, inflow 230.6] · (iii)   393.4 km² · (iii)/(ii) 1.01 · (i)/(ii) 1.01
+         r_lake (i) 0.00/0.97/1.45/1.94 · (ii) 0.00/0.96/1.45/1.93 · (iii) 0.00/0.97/1.45/1.94 · emptying (i) never (r_world 2.06) · (ii) never (r_world 2.08) · (iii) never (r_world 2.06)
+      lake      10 (D8) · body   9 (287.1 km², construction r_lake 1.40) · (i)   819.4 · (ii)   816.7 [path 810.0, inflow 816.7] · (iii)   819.5 km² · (iii)/(ii) 1.00 · (i)/(ii) 1.00
+         r_lake (i) 0.00/1.40/2.00/2.00 · (ii) 0.00/1.40/2.00/2.00 · (iii) 0.00/1.40/2.00/2.00 · emptying (i) ×1.17 · (ii) ×1.17 · (iii) ×1.17
+      lake      11 (D8) · body  12 (179.4 km², construction r_lake 1.50) · (i)   947.1 · (ii)   932.9 [path 932.9, inflow 932.3] · (iii)  1099.4 km² · (iii)/(ii) 1.18 · (i)/(ii) 1.02
+         r_lake (i) 0.00/1.50/2.00/2.00 · (ii) 0.00/1.49/2.00/2.00 · (iii) 0.00/1.62/2.00/2.00 · emptying (i) ×1.13 · (ii) ×1.14 · (iii) ×1.09
+      lake      12 (D8) · body  14 (11.4 km², construction r_lake 1.01) · (i)   425.1 · (ii)   428.8 [path 131.5, inflow 428.8] · (iii)   425.0 km² · (iii)/(ii) 0.99 · (i)/(ii) 0.99
+         r_lake (i) 0.00/1.01/1.51/2.00 · (ii) 0.00/1.01/1.52/2.00 · (iii) 0.00/1.01/1.51/2.00 · emptying (i) ×1.39 · (ii) ×1.39 · (iii) ×1.39
+      lake      13 (D8) · body  15 (137.5 km², construction r_lake 1.53) · (i)   983.3 · (ii)   988.4 [path 1.5, inflow 988.4] · (iii)   983.3 km² · (iii)/(ii) 0.99 · (i)/(ii) 0.99
+         r_lake (i) 0.00/1.53/2.00/2.00 · (ii) 0.00/1.54/2.00/2.00 · (iii) 0.00/1.53/2.00/2.00 · emptying (i) ×1.12 · (ii) ×1.12 · (iii) ×1.12
+      lake      15 (D8) · body  17 (23.3 km², construction r_lake 1.00) · (i)   416.6 · (ii)   418.7 [path 418.7, inflow 418.5] · (iii)   417.9 km² · (iii)/(ii) 1.00 · (i)/(ii) 0.99
+         r_lake (i) 0.00/1.00/1.50/1.99 · (ii) 0.00/1.00/1.50/2.00 · (iii) 0.00/1.00/1.50/2.00 · emptying (i) never (r_world 2.01) · (ii) ×1.40 · (iii) never (r_world 2.00)
+      lake      19 (D8) · body  22 (73.0 km², construction r_lake 1.32) · (i)   727.2 · (ii)  1437.8 [path 270.9, inflow 1437.8] · (iii)  1294.6 km² · (iii)/(ii) 0.90 · (i)/(ii) 0.51
+         r_lake (i) 0.00/1.32/1.98/2.00 · (ii) 0.00/1.85/2.00/2.00 · (iii) 0.00/1.76/2.00/2.00 · emptying (i) ×1.21 · (ii) ×1.03 · (iii) ×1.05
+      lake      20 (D8) · body  23 (38.2 km², construction r_lake 0.74) · (i)   227.2 · (ii)   240.3 [path 226.6, inflow 240.3] · (iii)   323.2 km² · (iii)/(ii) 1.35 · (i)/(ii) 0.95
+         r_lake (i) 0.00/0.74/1.11/1.47 · (ii) 0.00/0.76/1.14/1.52 · (iii) 0.00/0.88/1.32/1.76 · emptying (i) never (r_world 2.71) · (ii) never (r_world 2.64) · (iii) never (r_world 2.28)
+      lake 1000011 (spillway) · body  26 (389.0 km², construction r_lake 2.00) · (i)  2264.3 · (ii)  2409.6 [path 0.1, inflow 2409.6] · (iii)  4304.0 km² · (iii)/(ii) 1.79 · (i)/(ii) 0.94
+         r_lake (i) 0.00/2.00/2.00/2.00 · (ii) 0.00/2.00/2.00/2.00 · (iii) 0.00/2.00/2.00/2.00 · emptying (i) ×0.96 · (ii) ×0.95 · (iii) ×0.89
+      lake 1000012 (spillway) · body  29 (10.5 km², construction r_lake 0.62) · (i)   161.3 · (ii)   308.0 [path 24.6, inflow 308.0] · (iii)   313.7 km² · (iii)/(ii) 1.02 · (i)/(ii) 0.52
+         r_lake (i) 0.00/0.62/0.93/1.24 · (ii) 0.00/0.86/1.29/1.72 · (iii) 0.00/0.87/1.30/1.73 · emptying (i) never (r_world 3.22) · (ii) never (r_world 2.33) · (iii) never (r_world 2.31)
+      lake 1000013 (spillway) · body  28 (115.2 km², construction r_lake 1.04) · (i)   448.8 · (ii)  1263.0 [path 1.8, inflow 1263.0] · (iii)  1231.6 km² · (iii)/(ii) 0.98 · (i)/(ii) 0.36 · **> ×2**
+         r_lake (i) 0.00/1.04/1.55/2.00 · (ii) 0.00/1.74/2.00/2.00 · (iii) 0.00/1.72/2.00/2.00 · emptying (i) ×1.37 · (ii) ×1.06 · (iii) ×1.07
+      lake 1000014 (spillway) · body  30 (226.7 km², construction r_lake 1.59) · (i)  1061.3 · (ii)  2986.6 [path 0.1, inflow 2986.6] · (iii)  3047.2 km² · (iii)/(ii) 1.02 · (i)/(ii) 0.36 · **> ×2**
+         r_lake (i) 0.00/1.59/2.00/2.00 · (ii) 0.00/2.00/2.00/2.00 · (iii) 0.00/2.00/2.00/2.00 · emptying (i) ×1.10 · (ii) ×0.92 · (iii) ×0.92
+      lake 1000016 (spillway) · body  31 (304.4 km², construction r_lake 2.00) · (i)  1805.1 · (ii)  3608.0 [path 0.7, inflow 3608.0] · (iii)  3594.7 km² · (iii)/(ii) 1.00 · (i)/(ii) 0.50
+         r_lake (i) 0.00/2.00/2.00/2.00 · (ii) 0.00/2.00/2.00/2.00 · (iii) 0.00/2.00/2.00/2.00 · emptying (i) ×0.99 · (ii) ×0.90 · (iii) ×0.90
+      lake 1000017 (spillway) · body  32 (233.9 km², construction r_lake 1.02) · (i)   437.5 · (ii)   927.9 [path 3.8, inflow 927.9] · (iii)  1535.8 km² · (iii)/(ii) 1.66 · (i)/(ii) 0.47 · **> ×2**
+         r_lake (i) 0.00/1.02/1.53/2.00 · (ii) 0.00/1.49/2.00/2.00 · (iii) 0.00/1.92/2.00/2.00 · emptying (i) ×1.38 · (ii) ×1.14 · (iii) ×1.02
+      lake 1000018 (spillway) · body  33 (166.4 km², construction r_lake 0.90) · (i)   338.3 · (ii)   701.1 [path 2.4, inflow 701.1] · (iii)   709.2 km² · (iii)/(ii) 1.01 · (i)/(ii) 0.48 · **> ×2**
+         r_lake (i) 0.00/0.90/1.35/1.80 · (ii) 0.00/1.29/1.94/2.00 · (iii) 0.00/1.30/1.95/2.00 · emptying (i) never (r_world 2.22) · (ii) ×1.22 · (iii) ×1.21
+      lake 1000019 (spillway) · body  34 (248.2 km², construction r_lake 0.97) · (i)   393.1 · (ii)  1028.8 [path 0.5, inflow 1028.8] · (iii)  1169.1 km² · (iii)/(ii) 1.14 · (i)/(ii) 0.38 · **> ×2**
+         r_lake (i) 0.00/0.97/1.45/1.94 · (ii) 0.00/1.57/2.00/2.00 · (iii) 0.00/1.67/2.00/2.00 · emptying (i) never (r_world 2.06) · (ii) ×1.11 · (iii) ×1.08
+   A · (iii) within ×1.5 of (ii): **19 of 22** · (i) beyond ×2 of (ii): **5 of 22**
+   A · (i): lakes drained (r_lake = 2) at ×0.7/×1/×1.2/×1.4: [0, 2, 7, 13]
+   A · (ii): lakes drained (r_lake = 2) at ×0.7/×1/×1.2/×1.4: [0, 3, 11, 15]
+   A · (iii): lakes drained (r_lake = 2) at ×0.7/×1/×1.2/×1.4: [0, 4, 11, 15]
+
+   A · the gap's stream (the construction's col and its donors; the body's largest inflow; the final lake's outlet):
+      lake 1000013 (body 28) · exit (4058,4319) 448.8 km² · col (4058,4320) 448.8 km² (in final lake: Some(1000013)) · final outlet (4035,4318) · col ↔ final outlet 1.1 km
+         col donor (4058,4319) · 448.8 km² · IN the body (the exit's flow) · touches a final lake: Some(1000013)
+         largest inflow into the body (4051,4208) · 441.4 km² (36 % of (iii)) · touches the FINAL lake 1000013: true
+         ON world at the construction's col: accumulation 0.0 km² · lake id 1000013 · the final lake's footprint 115.2 km² of the body's 115.2
+      lake 1000014 (body 30) · exit (1310,4737) 1061.3 km² · col (1310,4738) 1061.3 km² (in final lake: Some(1000014)) · final outlet (1624,4665) · col ↔ final outlet 15.7 km
+         col donor (1310,4737) · 1061.3 km² · IN the body (the exit's flow) · touches a final lake: Some(1000014)
+         largest inflow into the body (1310,4723) · 1061.3 km² (35 % of (iii)) · touches the FINAL lake 1000014: true
+         ON world at the construction's col: accumulation 0.1 km² · lake id 1000014 · the final lake's footprint 226.7 km² of the body's 226.7
+      lake 1000017 (body 32) · exit (1907,5134) 437.2 km² · col (1906,5134) 437.5 km² (in final lake: Some(1000017)) · final outlet (1903,5132) · col ↔ final outlet 0.2 km
+         col donor (1907,5134) · 437.2 km² · IN the body (the exit's flow) · touches a final lake: Some(1000017)
+         col donor (1907,5133) · 0.4 km² · IN the body (the exit's flow) · touches a final lake: Some(1000017)
+         largest inflow into the body (1838,5220) · 210.8 km² (14 % of (iii)) · touches the FINAL lake 1000017: true
+         ON world at the construction's col: accumulation 0.6 km² · lake id 1000017 · the final lake's footprint 233.9 km² of the body's 233.9
+      lake 1000018 (body 33) · exit (1887,5787) 337.4 km² · col (1886,5788) 338.3 km² (in final lake: Some(1000018)) · final outlet (1885,5788) · col ↔ final outlet 0.0 km
+         col donor (1887,5787) · 337.4 km² · IN the body (the exit's flow) · touches a final lake: Some(1000018)
+         col donor (1886,5787) · 0.9 km² · IN the body (the exit's flow) · touches a final lake: Some(1000018)
+         largest inflow into the body (2012,5850) · 132.4 km² (19 % of (iii)) · touches the FINAL lake 1000018: true
+         ON world at the construction's col: accumulation 342.8 km² · lake id 1000018 · the final lake's footprint 166.4 km² of the body's 166.4
+      lake 1000019 (body 34) · exit (2684,5909) 393.1 km² · col (2683,5910) 393.1 km² (in final lake: Some(1000019)) · final outlet (2652,5908) · col ↔ final outlet 1.5 km
+         col donor (2684,5909) · 393.1 km² · IN the body (the exit's flow) · touches a final lake: Some(1000019)
+         largest inflow into the body (2953,5890) · 246.0 km² (21 % of (iii)) · touches the FINAL lake 1000019: true
+         ON world at the construction's col: accumulation 0.0 km² · lake id 1000019 · the final lake's footprint 248.2 km² of the body's 248.2
+
+   Br · ON ×1 · the instrumented copy against production: 0 cells differ (bit-identical: the records are readable)
+      land cells (eroded > sea) ≤ sea after the breach: **292** · laid by a ramp: 292 · inland after the breach: 292 · ocean-connected: 0 · on a construction body (GORGE skeleton's bodies): 17
+      covered by a PRE-breach lake: 0
+      covered by a FINAL lake: **292 of 292** (100.0 %) · by lake {1000016: 292} · uncovered and inland: 0
+      ramps that crossed the sea: 102 (crossed cells 292) · pits whose spill is > 0.5 m above their floor: 91
+         stop base at a land cell an earlier ramp lowered ≤ sea: 101 ramps, 291 cells
+         stop base at an inland below-sea cell: 1 ramps, 1 cells
+      ramp steps from the pit at the below-sea cells: min 61 · p50 99 · max 140 (EPS = 1e-5 norm ≈ 0.113 m per step)
+      the top ramps by cells laid ≤ sea:
+         pit (2725,5206) floor 8.0 m · spill (pre-breach filled) 16.9 m · pre-breach lake at the pit 0 · outlet (2726,5205) 8.6 m · 79 steps, the ramp crossed the sea at step 70 · stops at (2805,5214) (a land cell an earlier ramp lowered ≤ sea) · 9 cells ≤ sea · body of the pit 31 · final-lake cover Some(9) · the flood chain's root (3057,5288) (an inland below-sea cell)
+         pit (2842,5209) floor 12.6 m · spill (pre-breach filled) 13.7 m · pre-breach lake at the pit 0 · outlet (2843,5209) 13.7 m · 120 steps, the ramp crossed the sea at step 111 · stops at (2958,5268) (a land cell an earlier ramp lowered ≤ sea) · 9 cells ≤ sea · body of the pit none · final-lake cover Some(9) · the flood chain's root (3057,5288) (an inland below-sea cell)
+         pit (2732,5205) floor 8.5 m · spill (pre-breach filled) 16.9 m · pre-breach lake at the pit 0 · outlet (2733,5205) 9.2 m · 82 steps, the ramp crossed the sea at step 75 · stops at (2815,5213) (a land cell an earlier ramp lowered ≤ sea) · 7 cells ≤ sea · body of the pit 31 · final-lake cover Some(7) · the flood chain's root (3057,5288) (an inland below-sea cell)
+         pit (2752,5208) floor 10.7 m · spill (pre-breach filled) 16.9 m · pre-breach lake at the pit 0 · outlet (2753,5208) 11.3 m · 101 steps, the ramp crossed the sea at step 94 · stops at (2854,5207) (a land cell an earlier ramp lowered ≤ sea) · 7 cells ≤ sea · body of the pit 31 · final-lake cover Some(7) · the flood chain's root (3057,5288) (an inland below-sea cell)
+         pit (2757,5210) floor 11.2 m · spill (pre-breach filled) 16.9 m · pre-breach lake at the pit 0 · outlet (2758,5210) 11.9 m · 105 steps, the ramp crossed the sea at step 98 · stops at (2863,5208) (a land cell an earlier ramp lowered ≤ sea) · 7 cells ≤ sea · body of the pit 31 · final-lake cover Some(7) · the flood chain's root (3057,5288) (an inland below-sea cell)
+         pit (2721,5207) floor 7.7 m · spill (pre-breach filled) 16.9 m · pre-breach lake at the pit 0 · outlet (2722,5206) 8.3 m · 74 steps, the ramp crossed the sea at step 68 · stops at (2796,5214) (a land cell an earlier ramp lowered ≤ sea) · 6 cells ≤ sea · body of the pit 31 · final-lake cover Some(6) · the flood chain's root (3057,5288) (an inland below-sea cell)
+         pit (2763,5212) floor 12.1 m · spill (pre-breach filled) 16.9 m · pre-breach lake at the pit 0 · outlet (2764,5212) 12.8 m · 112 steps, the ramp crossed the sea at step 106 · stops at (2876,5211) (a land cell an earlier ramp lowered ≤ sea) · 6 cells ≤ sea · body of the pit none · final-lake cover Some(6) · the flood chain's root (3057,5288) (an inland below-sea cell)
+         pit (2745,5206) floor 9.7 m · spill (pre-breach filled) 16.9 m · pre-breach lake at the pit 0 · outlet (2746,5206) 10.2 m · 91 steps, the ramp crossed the sea at step 86 · stops at (2837,5209) (a land cell an earlier ramp lowered ≤ sea) · 5 cells ≤ sea · body of the pit 31 · final-lake cover Some(5) · the flood chain's root (3057,5288) (an inland below-sea cell)
+         pit (2718,5208) floor 7.6 m · spill (pre-breach filled) 16.9 m · pre-breach lake at the pit 0 · outlet (2719,5207) 8.0 m · 71 steps, the ramp crossed the sea at step 66 · stops at (2790,5215) (a land cell an earlier ramp lowered ≤ sea) · 5 cells ≤ sea · body of the pit 31 · final-lake cover Some(5) · the flood chain's root (3057,5288) (an inland below-sea cell)
+         pit (2851,5208) floor 12.7 m · spill (pre-breach filled) 13.5 m · pre-breach lake at the pit 0 · outlet (2852,5208) 13.1 m · 116 steps, the ramp crossed the sea at step 111 · stops at (2963,5268) (a land cell an earlier ramp lowered ≤ sea) · 5 cells ≤ sea · body of the pit none · final-lake cover Some(5) · the flood chain's root (3057,5288) (an inland below-sea cell)
+         pit (2710,5211) floor 7.0 m · spill (pre-breach filled) 16.9 m · pre-breach lake at the pit 0 · outlet (2711,5210) 7.4 m · 66 steps, the ramp crossed the sea at step 61 · stops at (2777,5215) (a land cell an earlier ramp lowered ≤ sea) · 5 cells ≤ sea · body of the pit 31 · final-lake cover Some(5) · the flood chain's root (3057,5288) (an inland below-sea cell)
+         pit (2760,5211) floor 11.7 m · spill (pre-breach filled) 16.9 m · pre-breach lake at the pit 0 · outlet (2761,5211) 12.4 m · 108 steps, the ramp crossed the sea at step 103 · stops at (2869,5209) (a land cell an earlier ramp lowered ≤ sea) · 5 cells ≤ sea · body of the pit none · final-lake cover Some(5) · the flood chain's root (3057,5288) (an inland below-sea cell)
+
+   Z · cell (4148,3674) · body 4 (body 4 = 4) · L_in 325.8 · L_bed 325.7 · L_floor 168.9 · L(r) 178.7 m · r_lake 1.94
+      S1 (the construction's input)      z   325.6 m (neighbours' min   324.2) · body 4's lowest   168.9 m at (4344,3579) · body-4 cells > 1 m under L_floor: 0
+      carve_diag(S1), GORGE skeleton     z    89.4 m (neighbours' min     0.1) · body 4's lowest     0.1 m at (4216,3574) · body-4 cells > 1 m under L_floor: 104
+      carve_diag(S1), ON skeleton        z   325.6 m (neighbours' min   324.2) · body 4's lowest   168.9 m at (4344,3579) · body-4 cells > 1 m under L_floor: 0
+      the cell's skeleton: base 178.7 m · χ 0.0 · floor_m 178.7 · area 16.28 km² · rim_floor Some(NaN)
+      who: sample 56244 · line 189 pos 172 of 611 · at (4148.5,3675.5) cell (4148,3675) · zf 89.4 m · half-width 115 m · 49 m from the cell · banded None
+         the sample's cell: base 0.1 · χ 0.0 · floor_m 0.1 · area 15.3 km² · body 26
+         its line: 611 samples, 436 on body-4 cells · from (4082,3684) zf 13.4 to (4298,3600) zf 178.7 · min zf 0.1 · parent Some(Some((141, 1034)))
+      (a) construction + rims            z    89.4 m (neighbours' min     0.1) · body 4's lowest     0.1 m at (4216,3574) · body-4 cells > 1 m under L_floor: 104
+      (b) + light pass                   z    91.1 m (neighbours' min    54.9) · body 4's lowest    10.5 m at (4158,3614) · body-4 cells > 1 m under L_floor: 180
+      (c) + droplets                     z    91.1 m (neighbours' min    54.9) · body 4's lowest    10.5 m at (4158,3614) · body-4 cells > 1 m under L_floor: 180
+      (d) + bathymetry                   z    91.1 m (neighbours' min    54.9) · body 4's lowest    10.5 m at (4158,3614) · body-4 cells > 1 m under L_floor: 180
+
+   Br · GORGE ×1 · the instrumented copy against production: 0 cells differ (bit-identical: the records are readable)
+      land cells (eroded > sea) ≤ sea after the breach: **2821** · laid by a ramp: 2821 · inland after the breach: 2821 · ocean-connected: 0 · on a construction body (GORGE skeleton's bodies): 2670
+      covered by a PRE-breach lake: 0
+      the run_hd tail panics on this world (F140): no final lake map · uncovered by a pre-breach lake and inland: 2821
+      ramps that crossed the sea: 143 (crossed cells 2821) · pits whose spill is > 0.5 m above their floor: 49
+         stop base at a land cell an earlier ramp lowered ≤ sea: 120 ramps, 1202 cells
+         stop base at an inland below-sea cell: 20 ramps, 1391 cells
+         stop base at pre-breach lake 20: 1 ramps, 3 cells
+         stop base at pre-breach lake 3: 1 ramps, 74 cells
+         stop base at pre-breach lake 5: 1 ramps, 151 cells
+      ramp steps from the pit at the below-sea cells: min 0 · p50 59 · max 416 (EPS = 1e-5 norm ≈ 0.113 m per step)
+      the top ramps by cells laid ≤ sea:
+         pit (4732,3663) floor 0.1 m · spill (pre-breach filled) 0.1 m · pre-breach lake at the pit 0 · outlet (4731,3662) 0.1 m · 417 steps, the ramp crossed the sea at step 1 · stops at (4451,3861) (an inland below-sea cell) · 416 cells ≤ sea · body of the pit 26 · final-lake cover None · the flood chain's root (4451,3861) (an inland below-sea cell)
+         pit (2102,5041) floor 2.3 m · spill (pre-breach filled) 2.3 m · pre-breach lake at the pit 0 · outlet (2102,5042) 2.3 m · 271 steps, the ramp crossed the sea at step 19 · stops at (1903,5132) (an inland below-sea cell) · 252 cells ≤ sea · body of the pit 32 · final-lake cover None · the flood chain's root (1903,5132) (an inland below-sea cell)
+         pit (3419,4990) floor 0.0 m · spill (pre-breach filled) 0.0 m · pre-breach lake at the pit 0 · outlet (3419,4991) 0.0 m · 185 steps, the ramp crossed the sea at step 0 · stops at (3472,5175) (an inland below-sea cell) · 185 cells ≤ sea · body of the pit 31 · final-lake cover None · the flood chain's root (3472,5175) (an inland below-sea cell)
+         pit (4291,3849) floor 0.1 m · spill (pre-breach filled) 0.1 m · pre-breach lake at the pit 0 · outlet (4292,3848) 0.1 m · 161 steps, the ramp crossed the sea at step 1 · stops at (4443,3851) (a land cell an earlier ramp lowered ≤ sea) · 160 cells ≤ sea · body of the pit 26 · final-lake cover None · the flood chain's root (4451,3861) (an inland below-sea cell)
+         pit (4610,3846) floor 0.1 m · spill (pre-breach filled) 0.1 m · pre-breach lake at the pit 0 · outlet (4609,3846) 0.1 m · 154 steps, the ramp crossed the sea at step 1 · stops at (4455,3866) (a land cell an earlier ramp lowered ≤ sea) · 153 cells ≤ sea · body of the pit 26 · final-lake cover None · the flood chain's root (4454,3865) (an inland below-sea cell)
+         pit (4145,3675) floor 2.2 m · spill (pre-breach filled) 178.7 m · pre-breach lake at the pit 0 · outlet (4146,3674) 23.6 m · 170 steps, the ramp crossed the sea at step 19 · stops at (4162,3604) (pre-breach lake 5) · 151 cells ≤ sea · body of the pit 26 · final-lake cover None · the flood chain's root (4162,3604) (pre-breach lake 5)
+         pit (4346,3749) floor 0.1 m · spill (pre-breach filled) 0.1 m · pre-breach lake at the pit 0 · outlet (4347,3749) 0.1 m · 117 steps, the ramp crossed the sea at step 1 · stops at (4464,3777) (a land cell an earlier ramp lowered ≤ sea) · 116 cells ≤ sea · body of the pit 26 · final-lake cover None · the flood chain's root (4451,3861) (an inland below-sea cell)
+         pit (3829,4360) floor 1.1 m · spill (pre-breach filled) 1.1 m · pre-breach lake at the pit 0 · outlet (3830,4360) 1.1 m · 121 steps, the ramp crossed the sea at step 10 · stops at (3951,4367) (an inland below-sea cell) · 111 cells ≤ sea · body of the pit 28 · final-lake cover None · the flood chain's root (3951,4367) (an inland below-sea cell)
+         pit (4299,3545) floor 5.0 m · spill (pre-breach filled) 178.7 m · pre-breach lake at the pit 0 · outlet (4300,3546) 46.1 m · 118 steps, the ramp crossed the sea at step 44 · stops at (4379,3550) (pre-breach lake 3) · 74 cells ≤ sea · body of the pit 26 · final-lake cover None · the flood chain's root (4379,3550) (pre-breach lake 3)
+         pit (1844,5223) floor 2.4 m · spill (pre-breach filled) 3.0 m · pre-breach lake at the pit 0 · outlet (1845,5222) 3.0 m · 90 steps, the ramp crossed the sea at step 21 · stops at (1900,5134) (an inland below-sea cell) · 69 cells ≤ sea · body of the pit 32 · final-lake cover None · the flood chain's root (1900,5134) (an inland below-sea cell)
+         pit (2906,5230) floor 1.3 m · spill (pre-breach filled) 11.8 m · pre-breach lake at the pit 0 · outlet (2907,5231) 10.8 m · 67 steps, the ramp crossed the sea at step 11 · stops at (2969,5269) (a land cell an earlier ramp lowered ≤ sea) · 56 cells ≤ sea · body of the pit none · final-lake cover None · the flood chain's root (3057,5288) (an inland below-sea cell)
+         pit (1639,5057) floor 2.5 m · spill (pre-breach filled) 2.5 m · pre-breach lake at the pit 0 · outlet (1638,5056) 2.5 m · 74 steps, the ramp crossed the sea at step 22 · stops at (1564,5066) (an inland below-sea cell) · 52 cells ≤ sea · body of the pit 30 · final-lake cover None · the flood chain's root (1564,5066) (an inland below-sea cell)
+      (e) protected breach               z    -0.2 m (neighbours' min    -0.4) · body 4's lowest   -17.0 m at (4163,3605) · body-4 cells > 1 m under L_floor: 317
+
+==========  end Finding 141 . 1693.5 s  ==========
+
+test f141_attr ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 59 filtered out; finished in 1693.53s
+
