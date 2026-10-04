@@ -1,0 +1,117 @@
+
+==========  Finding 143-L . the exact scope, the localisations, the rebased links, the head falls  ==========
+
+   S · the 14 D8 lakes [1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13, 15, 19, 20] → 14 bodies · the exact list (lowest cells): [20360735, 23179228, 25325689, 29042877, 30033743, 32780258, 33206583, 34376571, 34784695, 38292872, 41298524, 41535879, 47099127, 48588290]
+      DROPPED body 5 at (3549,3970) · 5.2 km² · input lake true · ring touches a depression false · the sea false (why the proxy kept it: a lone input lake) · L_in 1148.2 · A 76.3 km² · in ON: the ring's minimum on the construction 277.0 m (-871.2 vs L_in), on the world (d) 274.7 m (-873.5) · ON's final lakes over it {}
+      DROPPED body 9 at (1668,4125) · 5.3 km² · input lake true · ring touches a depression false · the sea false (why the proxy kept it: a lone input lake) · L_in 723.4 · A 287.2 km² · in ON: the ring's minimum on the construction 400.8 m (-322.6 vs L_in), on the world (d) 458.4 m (-265.1) · ON's final lakes over it {}
+      DROPPED body 11 at (1897,4546) · 8.2 km² · input lake true · ring touches a depression false · the sea false (why the proxy kept it: a lone input lake) · L_in 1257.4 · A 78.6 km² · in ON: the ring's minimum on the construction 131.7 m (-1125.7 vs L_in), on the world (d) 320.8 m (-936.6) · ON's final lakes over it {}
+      DROPPED body 15 at (2541,5265) · 6.1 km² · input lake true · ring touches a depression false · the sea false (why the proxy kept it: a lone input lake) · L_in 163.7 · A 1108.3 km² · in ON: the ring's minimum on the construction 117.8 m (-45.8 vs L_in), on the world (d) 119.9 m (-43.7) · ON's final lakes over it {1000016: 507}
+   S · the exact scope keeps 14 bodies (G-bodies: exactly 14 in 1:1 is checked in f143_c)
+
+   L-ring (×1, p 0.5) · clamped ring cells with a > 28° drop to an outside neighbour: on the construction **68** · the same cells on the light pass's world **70**
+      neighbour cut by the construction · laid by ANOTHER line: 35
+      neighbour cut by the construction · laid by the OUTLET line: 33
+      e.g. body 0 ring (3382,2598) rf 182.6 ↔ (3381,2599) S1 342.8 → 145.9 (the OUTLET line)
+      e.g. body 0 ring (3382,2599) rf 182.6 ↔ (3381,2600) S1 342.7 → 145.9 (the OUTLET line)
+      e.g. body 0 ring (3382,2600) rf 182.6 ↔ (3382,2601) S1 342.6 → 145.9 (the OUTLET line)
+      e.g. body 0 ring (3383,2601) rf 182.6 ↔ (3384,2602) S1 342.7 → 145.9 (the OUTLET line)
+      e.g. body 0 ring (3384,2601) rf 182.6 ↔ (3384,2602) S1 342.7 → 145.9 (the OUTLET line)
+      e.g. body 0 ring (3385,2601) rf 182.6 ↔ (3384,2602) S1 342.7 → 145.9 (the OUTLET line)
+      e.g. body 0 ring (3385,2602) rf 182.6 ↔ (3385,2603) S1 343.0 → 145.9 (the OUTLET line)
+      e.g. body 0 ring (3386,2602) rf 182.6 ↔ (3385,2603) S1 343.0 → 145.9 (the OUTLET line)
+
+   L-tag (×1, p 0.5, the construction) · 2-cell drops > H_f beyond the lip, by body {1: 18, 2: 8, 3: 1, 6: 11, 7: 18, 9: 4}
+      floor flags (false, false, false) · lines ["none", "none", "none"]: 17
+      floor flags (false, false, false) · lines ["none", "none", "other"]: 1
+      floor flags (false, false, false) · lines ["none", "other", "other"]: 1
+      floor flags (false, false, false) · lines ["other", "other", "other"]: 5
+      floor flags (false, false, true) · lines ["other", "other", "other"]: 3
+      floor flags (false, true, true) · lines ["other", "other", "other"]: 2
+      floor flags (true, false, false) · lines ["other", "none", "none"]: 1
+      floor flags (true, false, false) · lines ["other", "other", "other"]: 2
+      floor flags (true, true, false) · lines ["other", "other", "other"]: 3
+      floor flags (true, true, true) · lines ["other", "other", "other"]: 18
+      floor flags (true, true, true) · lines ["outlet", "outlet", "outlet"]: 7
+      e.g. body 1 at 2.98 km from the col (3813,2835) : 1127.1 → 1122.5 → 1116.2 m (H_f 10.1)
+      e.g. body 1 at 3.05 km from the col (3812,2834) : 1122.5 → 1116.2 → 1111.6 m (H_f 10.1)
+      e.g. body 1 at 3.74 km from the col (3802,2824) : 1074.2 → 1069.5 → 1063.3 m (H_f 10.1)
+      e.g. body 1 at 3.81 km from the col (3801,2823) : 1069.5 → 1063.3 → 1058.6 m (H_f 10.1)
+      e.g. body 1 at 4.23 km from the col (3794,2819) : 1043.2 → 1037.9 → 1031.6 m (H_f 10.1)
+      e.g. body 1 at 4.30 km from the col (3793,2818) : 1037.9 → 1031.6 → 1027.0 m (H_f 10.1)
+      e.g. body 1 at 4.44 km from the col (3791,2816) : 1027.0 → 1022.3 → 1016.1 m (H_f 10.1)
+      e.g. body 1 at 5.43 km from the col (3774,2808) : 961.5 → 955.2 → 950.6 m (H_f 10.1)
+      e.g. body 1 at 10.82 km from the col (3696,2730) : 595.7 → 591.1 → 202.4 m (H_f 10.1)
+      e.g. body 1 at 10.89 km from the col (3695,2729) : 591.1 → 202.4 → 201.7 m (H_f 10.1)
+
+   H (×1, p 0.5, the 14) · A, D_g, φ, the head fall, S, H_f · the lip drop in C0 (the ring's minimum on the light pass's world − L(r)):
+      body  0 (lake Some(1), low (3615,2485)) · A  1371.7 km² · D_g  182.0 m · φ 0.19 · head **  36.8 m** · S 1.26° · H_f 10.0 · r_lake 1.81 · lip drop in C0 **-7.6 m**
+      body  1 (lake Some(2), low (4060,2829)) · A   442.7 km² · D_g 1144.4 m · φ 0.00 · head **   4.7 m** · S 3.87° · H_f 10.1 · r_lake 1.03 · lip drop in C0 **-5.5 m**
+      body  2 (lake Some(3), low (4217,3091)) · A   598.7 km² · D_g  917.6 m · φ 0.32 · head ** 299.7 m** · S 1.68° · H_f 10.0 · r_lake 1.20 · lip drop in C0 **-169.4 m**
+      body  3 (lake Some(4), low (2237,3545)) · A   300.7 km² · D_g  150.3 m · φ 0.21 · head **  34.2 m** · S 2.37° · H_f 10.0 · r_lake 0.85 · lip drop in C0 **-76.2 m**
+      body  4 (lake Some(7), low (1871,3666)) · A   244.7 km² · D_g  403.7 m · φ 0.44 · head ** 178.8 m** · S 2.63° · H_f 10.0 · r_lake 0.76 · lip drop in C0 **-86.5 m**
+      body  5 (lake Some(8), low (4066,4001)) · A   156.4 km² · D_g   86.3 m · φ 0.30 · head **  29.9 m** · S 3.29° · H_f 10.0 · r_lake 0.61 · lip drop in C0 **-4.3 m**
+      body  6 (lake Some(10), low (2939,4196)) · A   819.4 km² · D_g  695.8 m · φ 0.50 · head ** 348.6 m** · S 1.44° · H_f 10.0 · r_lake 1.40 · lip drop in C0 **-283.5 m**
+      body  7 (lake Some(9), low (4407,4053)) · A   393.3 km² · D_g  322.3 m · φ 0.00 · head **   1.8 m** · S 2.07° · H_f 10.0 · r_lake 0.97 · lip drop in C0 **-6.0 m**
+      body  8 (lake Some(11), low (1463,4246)) · A   947.1 km² · D_g  140.2 m · φ 0.00 · head **   1.6 m** · S 1.34° · H_f 10.0 · r_lake 1.50 · lip drop in C0 **-0.0 m**
+      body  9 (lake Some(12), low (3464,4674)) · A   425.1 km² · D_g  108.9 m · φ 0.11 · head **  14.0 m** · S 2.00° · H_f 10.0 · r_lake 1.01 · lip drop in C0 **-1.9 m**
+      body 10 (lake Some(13), low (2439,5070)) · A   983.3 km² · D_g  -46.7 m · φ 0.24 · head **  -9.4 m** · S 1.31° · H_f 10.0 · r_lake 1.53 · lip drop in C0 **-0.0 m**
+      body 11 (lake Some(15), low (2652,5041)) · A   416.6 km² · D_g   52.0 m · φ 0.20 · head **  13.0 m** · S 2.02° · H_f 10.0 · r_lake 1.00 · lip drop in C0 **-5.6 m**
+      body 12 (lake Some(19), low (3319,5749)) · A   727.2 km² · D_g  123.9 m · φ 0.47 · head **  60.4 m** · S 1.53° · H_f 10.0 · r_lake 1.32 · lip drop in C0 **-18.8 m**
+      body 13 (lake Some(20), low (1538,5931)) · A   227.2 km² · D_g   53.9 m · φ 0.00 · head **   3.3 m** · S 2.73° · H_f 10.0 · r_lake 0.74 · lip drop in C0 **-45.1 m**
+      cap 50 m: tagged **9** · median 36.8 m · max 50.0 m
+      cap 100 m: tagged **9** · median 36.8 m · max 100.0 m
+      cap 200 m: tagged **9** · median 36.8 m · max 200.0 m
+      cap none: tagged **9** · median 36.8 m · max 348.6 m
+      cap H_cap(A) = 100 m·(A/418.7)^−0.5: tagged **9** · median 36.8 m · max 130.8 m
+      H_cap(A) per body: A 1372 → cap 55 m (head 37) · A 443 → cap 97 m (head 5) · A 599 → cap 84 m (head 300) · A 301 → cap 118 m (head 34) · A 245 → cap 131 m (head 179) · A 156 → cap 164 m (head 30) · A 819 → cap 71 m (head 349) · A 393 → cap 103 m (head 2) · A 947 → cap 66 m (head 2) · A 425 → cap 99 m (head 14) · A 983 → cap 65 m (head -9) · A 417 → cap 100 m (head 13) · A 727 → cap 76 m (head 60) · A 227 → cap 136 m (head 3)
+      lakes with a head fall > 100 m today: 3
+
+   θ · the rebased links (base > 0.5 m under ON's) against the unchanged: S / S_law by distance upstream of the nearest kept body
+      REBASED on the construction: 0–1 km: n 997 · median **1.00** · outside [0.5, 2] 4 % · 1–2 km: n 1064 · median **1.00** · outside [0.5, 2] 4 % · 2–5 km: n 2561 · median **1.00** · outside [0.5, 2] 5 % · 5–10 km: n 4029 · median **1.00** · outside [0.5, 2] 4 % · 10–∞ km: n 1162 · median **1.00** · outside [0.5, 2] 3 %
+      REBASED on the light pass (b): 0–1 km: n 997 · median **1.00** · outside [0.5, 2] 10 % · 1–2 km: n 1064 · median **1.00** · outside [0.5, 2] 10 % · 2–5 km: n 2561 · median **1.00** · outside [0.5, 2] 12 % · 5–10 km: n 4029 · median **1.00** · outside [0.5, 2] 15 % · 10–∞ km: n 1162 · median **1.00** · outside [0.5, 2] 14 %
+      REBASED on the ON construction: 0–1 km: n 997 · median **1.00** · outside [0.5, 2] 4 % · 1–2 km: n 1064 · median **1.00** · outside [0.5, 2] 5 % · 2–5 km: n 2561 · median **1.00** · outside [0.5, 2] 7 % · 5–10 km: n 4029 · median **1.00** · outside [0.5, 2] 4 % · 10–∞ km: n 1162 · median **1.00** · outside [0.5, 2] 3 %
+      unchanged on the construction: 0–1 km: n 522 · median **10.00** · outside [0.5, 2] 61 % · 1–2 km: n 465 · median **1.23** · outside [0.5, 2] 47 % · 2–5 km: n 1716 · median **1.00** · outside [0.5, 2] 27 % · 5–10 km: n 4753 · median **1.00** · outside [0.5, 2] 8 % · 10–∞ km: n 20234 · median **1.00** · outside [0.5, 2] 3 %
+      unchanged on the light pass (b): 0–1 km: n 522 · median **4.61** · outside [0.5, 2] 63 % · 1–2 km: n 465 · median **1.13** · outside [0.5, 2] 51 % · 2–5 km: n 1716 · median **1.03** · outside [0.5, 2] 35 % · 5–10 km: n 4753 · median **1.01** · outside [0.5, 2] 27 % · 10–∞ km: n 20234 · median **1.00** · outside [0.5, 2] 27 %
+      unchanged on the ON construction: 0–1 km: n 522 · median **1.00** · outside [0.5, 2] 7 % · 1–2 km: n 465 · median **1.00** · outside [0.5, 2] 4 % · 2–5 km: n 1716 · median **1.00** · outside [0.5, 2] 4 % · 5–10 km: n 4753 · median **1.00** · outside [0.5, 2] 4 % · 10–∞ km: n 20234 · median **1.00** · outside [0.5, 2] 3 %
+
+   L-drained (×1.2, p 0.5) · upstream of drained bodies, under L_floor − 1 m: at `carve` **35** · after the plain **35**
+      laid by a sample in the SAME drained body · zf above the floor: 13
+      laid by a sample on a line draining ELSEWHERE · zf UNDER the floor: 22
+      e.g. cell (3377,2597) z 113.5 < L_floor 145.2 of body 0 · sample (3383,2595) zf 145.2 · in the SAME drained body
+      e.g. cell (3378,2597) z 114.6 < L_floor 145.2 of body 0 · sample (3383,2595) zf 145.2 · in the SAME drained body
+      e.g. cell (3379,2597) z 114.6 < L_floor 145.2 of body 0 · sample (3383,2595) zf 145.2 · in the SAME drained body
+      e.g. cell (3380,2597) z 115.8 < L_floor 145.2 of body 0 · sample (3383,2595) zf 145.2 · in the SAME drained body
+      e.g. cell (3381,2597) z 135.4 < L_floor 145.2 of body 0 · sample (3383,2595) zf 145.2 · in the SAME drained body
+      e.g. cell (3381,2598) z 135.4 < L_floor 145.2 of body 0 · sample (3383,2600) zf 135.4 · on a line draining ELSEWHERE
+      e.g. cell (2950,3970) z 507.0 < L_floor 674.3 of body 6 · sample (2952,3968) zf 507.0 · on a line draining ELSEWHERE
+      e.g. cell (2948,3971) z 422.6 < L_floor 674.3 of body 6 · sample (2951,3968) zf 422.6 · on a line draining ELSEWHERE
+
+   L-drained (×1.4, p 0) · upstream of drained bodies, under L_floor − 1 m: at `carve` **2207** · after the plain **2207**
+      laid by a sample in the SAME drained body · zf above the floor: 14
+      laid by a sample on a line draining ELSEWHERE · zf UNDER the floor: 2192
+      laid by a sample upstream of the same body · zf above the floor: 1
+      e.g. cell (4297,2562) z 884.3 < L_floor 934.5 of body 1 · sample (4294,2530) zf 121.0 · on a line draining ELSEWHERE
+      e.g. cell (4298,2562) z 884.9 < L_floor 934.5 of body 1 · sample (4295,2530) zf 119.3 · on a line draining ELSEWHERE
+      e.g. cell (4299,2562) z 887.8 < L_floor 934.5 of body 1 · sample (4295,2530) zf 119.3 · on a line draining ELSEWHERE
+      e.g. cell (4296,2563) z 908.1 < L_floor 934.5 of body 1 · sample (4294,2530) zf 121.0 · on a line draining ELSEWHERE
+      e.g. cell (4297,2563) z 910.1 < L_floor 934.5 of body 1 · sample (4294,2530) zf 121.0 · on a line draining ELSEWHERE
+      e.g. cell (4298,2563) z 910.8 < L_floor 934.5 of body 1 · sample (4295,2530) zf 119.3 · on a line draining ELSEWHERE
+      e.g. cell (4299,2563) z 913.5 < L_floor 934.5 of body 1 · sample (4295,2530) zf 119.3 · on a line draining ELSEWHERE
+      e.g. cell (4300,2563) z 917.1 < L_floor 934.5 of body 1 · sample (4295,2530) zf 119.3 · on a line draining ELSEWHERE
+
+   L-sea (×1.4, p 0.5) · the instrumented breach against production: 0 cells differ (bit-identical)
+      added 112 (ocean-connected 112) · their height on the construction p0/p50/p100 1.1/20.4/39.6 m · their distance from the coast of (d): p50 2.64 km · max 4.30 km · pits 11
+      pit (2236,3537) floor 25.5 m · spill 61.8 m · body 3 · the construction there 25.1 m · 1 cells · ramp 226 steps, crossed the sea at step 225 · base the sea at (2034,3343)
+      pit (2236,3538) floor 23.4 m · spill 61.8 m · body 3 · the construction there 22.8 m · 20 cells · ramp 226 steps, crossed the sea at step 206 · base a cell lowered earlier at (2035,3344)
+      pit (2236,3539) floor 22.2 m · spill 61.8 m · body 3 · the construction there 21.8 m · 11 cells · ramp 207 steps, crossed the sea at step 196 · base a cell lowered earlier at (2038,3364)
+      pit (2236,3540) floor 21.4 m · spill 61.8 m · body 3 · the construction there 21.0 m · 5 cells · ramp 193 steps, crossed the sea at step 188 · base a cell lowered earlier at (2052,3379)
+      pit (2237,3540) floor 21.9 m · spill 61.8 m · body 3 · the construction there 21.7 m · 4 cells · ramp 197 steps, crossed the sea at step 193 · base a cell lowered earlier at (2048,3375)
+      pit (2237,3541) floor 19.7 m · spill 61.8 m · body 3 · the construction there 19.4 m · 15 cells · ramp 189 steps, crossed the sea at step 174 · base a cell lowered earlier at (2057,3384)
+      pit (2237,3542) floor 17.6 m · spill 61.8 m · body 3 · the construction there 17.2 m · 20 cells · ramp 175 steps, crossed the sea at step 155 · base a cell lowered earlier at (2072,3399)
+      pit (2237,3543) floor 15.6 m · spill 61.8 m · body 3 · the construction there 15.1 m · 19 cells · ramp 156 steps, crossed the sea at step 137 · base a cell lowered earlier at (2092,3414)
+      pit (2237,3544) floor 14.5 m · spill 61.8 m · body 3 · the construction there 14.0 m · 11 cells · ramp 138 steps, crossed the sea at step 127 · base a cell lowered earlier at (2111,3418)
+      pit (2237,3545) floor 13.8 m · spill 61.8 m · body 3 · the construction there 13.4 m · 2 cells · ramp 124 steps, crossed the sea at step 122 · base a cell lowered earlier at (2126,3428)
+      pit (2238,3545) floor 14.1 m · spill 61.8 m · body 3 · the construction there 13.7 m · 4 cells · ramp 128 steps, crossed the sea at step 124 · base a cell lowered earlier at (2122,3425)
+
+==========  end Finding 143-L . 1632.4 s  ==========
+

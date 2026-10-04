@@ -19766,3 +19766,82 @@ footprint's ring.** The first G run read every lake held by an inner sill as "pi
   **The rebased links' effect (0.478 → 0.493) is not explained**: a displaced base does not change the local slope.
 - **R**: with the rim protected, L_bed as built is 2.8–46.6 m above ON's level. **r = 1 is no longer ON's level**, and
   the author's −55 % at ×1 becomes −50 %.
+
+## Finding 143 — F142's failures attributed by control: freezing the design through the light pass removes G-pits, G-rim and G-levels at ×1, φ = 0 does not; the head falls make G-ring and G-slope100; G-drained, G-sea at ×1.4, G-tag and θ are born at the construction; the scope is now exactly 14
+
+**Status: diagnosis plus the round's one fix (the exact scope, gated).** Report and raw outputs:
+`docs/reports/c1_continental_buoyancy/f143_controls/`.
+- F142 was committed (`7a91ea0`), with five items added to its ADR entry.
+
+**S — the exact scope.** `GorgeRetreat::scope_lows` is a per-world list of the bodies to keep, measured by footprint
+on ON's 14 D8 lakes. It replaces the proxy, and is skipped in the key when absent.
+- **The 4 extra bodies**: 5, 9 and 11 are input lakes ON's own construction drains (the rim is cut by 265–1 126 m);
+  15 lies under 1000016. The proxy kept them as lone input lakes.
+- **The construction knows no final lake**, so no construction-side criterion gives the 14.
+- G-bodies is exactly 14 in 1:1 in all twelve worlds.
+- A permanent test with its negative control (lib 595 → 596).
+- The bench options φ = 0 and `freeze_design` were built alongside, off and absent from the key.
+
+**C — the controls** (×1 p .5, ×1.4 p .5, ×1.4 p 0; C0, C1 φ = 0, C2 the design frozen through the light pass, C3
+both; every gate on the construction and on the final world). **F38 fired nowhere.** G-inert holds (the guard 6 / 6, gate off; lib 596, viz 30).
+- **Under C2, G-pits goes to 0 everywhere, and G-rim and G-levels at ×1 come back to the construction's values
+  (0/6, 12/14).** The light pass is the cause, attributed by control.
+- **Under C1, G-pits (43 078 at ×1), G-levels (8/14) and G-rim (3/6) stay.** The head falls are not what the light
+  pass erodes; F142's correlation is refuted.
+- **C1 removes G-ring at the construction (68 → 0) and G-slope100 (68° → 27°).** They are the head fall's lip beside
+  the clamped ring.
+- **Born at the construction**, untouched by C1 / C2:
+  - G-drained at ×1.4 (2 205 / 2 207, other lines' cones; the light pass multiplies it ×5–6);
+  - G-sea at ×1.4 p .5 (+111 on the construction's breach; a 4.3 km sea inlet from lake 4's emptied bowl);
+  - G-levels at ×1.4 (1/6);
+  - G-tag;
+  - θ (0.284 at ×1 against ON's 0.493).
+- **C2 makes its own walls** at the mask's edge (G-ring 305–520, G-slope100 57°).
+- **The light pass lowers θ even without the gorge** (ON 0.423 and OFF 0.436 on the eroded world, against 0.493 on
+  the construction).
+
+**L — located:**
+- **G-ring**: the clamp beside cells the construction cut, by the outlet line's lip (33) or another line (35).
+- **G-drained**: `carve_diag`'s nearest-sample cone from a line draining elsewhere, with zf up to ~800 m below the
+  floor (2 192 of 2 207 at ×1.4 p 0).
+- **G-tag**: mostly the instrument. F140's threshold, H_f = 1.5·S·100 m, is below the designed slope's drop over two
+  cells, so a straight gorge fails it. A few real hanging junctions (591 → 202 m in one cell).
+- **G-sea**: 112 ocean-connected cells from 11 pits in lake 4's bowl (13.8–25.5 m). The breach's ramps reach the sea
+  up to 4.3 km inland.
+
+**θ**: at the construction the rebased links lie on their law (S / S_law median 1.00, 3–5 % outside [0.5, 2], as
+ON). The light pass spreads them (10–15 %). The construction's departure is the gorge corridors (median 10.0 within
+1 km of the bodies). F142's θ = 0.435 for the rebased links stays unexplained.
+
+**H**: at ×1 p .5 the 14's heads include 348.6, 299.7 and 178.8 m (3 lakes over 100 m).
+- No cap (50 / 100 / 200 m, H_cap(A)) changes the tagged count (9).
+- The C0 lip drop is 48–81 % of the large falls, but also 76 m and 45 m on lakes 4 and 20, whose falls are 34 and
+  3 m.
+
+**Predictions:**
+- **The reviewer's**: G-ring at the construction, C1 at ×1.4, θ (the rebased links), H and the meta held. C1 at ×1,
+  C2 ("all but G-ring") and G-drained in the light pass were refuted.
+- **Mine**: P-S, P-C2 (mostly), P-C3, P-L-drained, P-L-sea and the H counts held. P-C1's G-pits fall, G-sea before the
+  light pass, P-L-ring, P-L-tag, P-θ and the lip-drop rule were refuted.
+
+**Options named for the author, none applied:**
+- no light pass over the designed geometry (with a transition);
+- a smaller m;
+- a cap on the head falls;
+- a line's cones limited to its catchment;
+- the queued breach defect;
+- G-tag's threshold, and θ against OFF's eroded θ.
+
+**Recorded at commit (F144).**
+- **F142's correlation "the light pass erodes the falls" is refuted by C1.** The reviewer had taken it up in his review
+  of F142. The cause, established by C2, is the light pass acting on the lips and the gorges.
+- **A hard mask is not a fix**: C2 makes walls at its edge (G-ring 305–520, up to 57°).
+- **The pattern "one invariant, two paths"**: the construction applies the rim's and the gorge's invariant; the light
+  pass does not.
+- **The list of 14 depended on ON's defect**: bodies 5, 9 and 11 are ordinary lakes that ON drains by cutting their
+  rim (265–1 126 m; F136-K7's mechanism).
+- **A probable specification error**: L(r) can go below the base the outlet reaches (the 4.3 km sea inlet from
+  drained lake 4).
+- **Instruments**:
+  - H_f is probably computed with 10·S_loi instead of the real slope;
+  - θ on the eroded world compares with OFF's eroded θ (0.436).

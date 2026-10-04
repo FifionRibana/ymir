@@ -211,12 +211,30 @@ pub struct GorgeRetreat {
     /// their spill. `false` = v3 (none).
     #[serde(default)]
     pub plain: bool,
+    /// ADR Finding 143 — the EXACT scope: the lowest cells of the bodies to keep (`u32::MAX` pads), a per-world list
+    /// measured on ON's final lakes (the témoin's 14 D8 lakes, by footprint). It replaces the proxy test. The
+    /// construction knows no final lake, so no construction-side criterion gives the exact set (F143-S). `None` = the
+    /// proxy (v4). Skipped in the key when `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_lows: Option<[u32; 16]>,
+    /// ADR Finding 143-C1 — BENCH OPTION: φ = 0 (no head fall). Skipped in the key when `false`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub phi_zero: bool,
+    /// ADR Finding 143-C2 — BENCH OPTION: the light pass does not modify the designed geometry (the kept bodies'
+    /// footprints, their rings, and the gorge's corridor: its path cells and their radius-2 neighbourhood); those
+    /// cells are restored after it (`production_upscale.rs`). Skipped in the key when `false`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub freeze_design: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl GorgeRetreat {
     /// Spec v3's values: m = 10, A_ref = 418.7 km².
     pub fn v3(r_world: f32, p: f32) -> Self {
-        Self { r_world, p, m: 10.0, a_ref_km2: 418.7, d8_scope: false, plain: false }
+        Self { r_world, p, m: 10.0, a_ref_km2: 418.7, d8_scope: false, plain: false, scope_lows: None, phi_zero: false, freeze_design: false }
     }
 
     /// Spec v4: v3 with the D8 scope and the minimal plain (`spec_gorge_age_v4.md`).
@@ -484,6 +502,9 @@ pub struct Skeleton {
     /// ADR Finding 140 — the present lakes it treated, and each cell's body (`u32::MAX` none), for the benches.
     pub gorge_bodies: Vec<GorgeBody>,
     pub gorge_body_of: Option<Vec<u32>>,
+    /// ADR Finding 143 — the gorge's designed path: each kept body's outlet cells from the col to where the gorge
+    /// meets the law below (empty when off).
+    pub gorge_path: Vec<u32>,
 }
 
 impl Skeleton {
@@ -713,6 +734,7 @@ pub fn skeleton_patched(
     }
 
     // ADR Finding 140 -- the gorge: the invariant on the outlet path's floor, the rim clamp, the falls
+    let mut gorge_path: Vec<u32> = Vec::new();
     let (rim_floor_m, gorge_falls, gorge_bodies_out, gorge_body_of) = match gorge {
         Some((body_of, mut bodies)) => {
             let g = vc.gorge_retreat.expect("the gate");
@@ -818,6 +840,7 @@ pub fn skeleton_patched(
                         height_m: short,
                     });
                 }
+                gorge_path.extend(path[..end].iter().map(|&c| c as u32));
                 (b.slope, b.d_g, b.head_fall_m, b.shortage_m, b.path_km, b.gorge_cells) =
                     (sg, dg, head, short, s_end / 1000.0, raised);
             }
@@ -910,6 +933,7 @@ pub fn skeleton_patched(
         gorge_falls,
         gorge_bodies: gorge_bodies_out,
         gorge_body_of,
+        gorge_path,
     }
 }
 
@@ -991,15 +1015,25 @@ fn gorge_bodies(
                 t_dep |= land[m] && lm[m] == 0 && dep(m);
             }
         }
-        // ADR Finding 142 -- spec v4's scope: an input lake standing alone (the D8 lakes' proxy)
-        if g.d8_scope && !(*is_lake && !t_dep && !t_sea) {
-            continue;
+        let low = *cells.iter().min_by(|&&a, &&b| z(a).total_cmp(&z(b))).expect("non-empty");
+        match g.scope_lows {
+            // ADR Finding 143 -- the exact scope: the listed bodies only
+            Some(list) => {
+                if !list.contains(&(low as u32)) {
+                    continue;
+                }
+            }
+            // ADR Finding 142 -- spec v4's scope: an input lake standing alone (the D8 lakes' proxy)
+            None => {
+                if g.d8_scope && !(*is_lake && !t_dep && !t_sea) {
+                    continue;
+                }
+            }
         }
         let bi = bodies.len() as u32;
         for &c in cells {
             body_of[c] = bi;
         }
-        let low = *cells.iter().min_by(|&&a, &&b| z(a).total_cmp(&z(b))).expect("non-empty");
         let l_in = if *is_lake { lv[cells[0]] } else { spill_m(low) };
         let l_floor = z(low);
         // the outflow: the largest-area cell whose receiver leaves the body
@@ -1060,7 +1094,7 @@ fn gorge_bodies(
             a_out_km2: a_out,
             r_lake,
             level,
-            phi: gorge_phi(low as u64),
+            phi: if g.phi_zero { 0.0 } else { gorge_phi(low as u64) },
             input_lake: *is_lake,
             touches_depression: t_dep,
             touches_below_sea: t_sea,
@@ -1161,6 +1195,38 @@ pub fn gorge_plain(field: &mut GridF32, sk: &Skeleton, ss: &SteinSteinParams, mi
         out.push(rec);
     }
     out
+}
+
+/// ADR Finding 143-C2 — the gorge's designed geometry, for the bench option `freeze_design`: the kept bodies'
+/// footprints, their rings (8-neighbours), and the gorge's corridor (the path cells and their Chebyshev radius-2
+/// neighbourhood). Empty grid when the gate is off.
+pub fn gorge_design_mask(sk: &Skeleton) -> Vec<bool> {
+    let (w, h) = (sk.width, sk.height);
+    let n = w * h;
+    let mut m = vec![false; n];
+    let Some(bo) = sk.gorge_body_of.as_deref() else {
+        return m;
+    };
+    let at = |c: usize, dx: i32, dy: i32| -> usize {
+        (((c / w) as i32 + dy).rem_euclid(h as i32) as usize) * w + ((c % w) as i32 + dx).rem_euclid(w as i32) as usize
+    };
+    for c in 0..n {
+        if bo[c] != u32::MAX {
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    m[at(c, dx, dy)] = true;
+                }
+            }
+        }
+    }
+    for &c in &sk.gorge_path {
+        for dy in -2..=2 {
+            for dx in -2..=2 {
+                m[at(c as usize, dx, dy)] = true;
+            }
+        }
+    }
+    m
 }
 
 /// ADR Finding 128-C — D8-LTD pointers (Orlandini et al. 2003 §2, with λ = 1; Orlandini, Moretti &
@@ -2452,6 +2518,7 @@ mod tests {
             gorge_falls: Vec::new(),
             gorge_bodies: Vec::new(),
             gorge_body_of: None,
+            gorge_path: Vec::new(),
         };
         (f, sk, ss)
     }
@@ -2785,6 +2852,62 @@ mod tests {
         let js3 = serde_json::to_string(&ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v3(1.0, 0.5)), ..ext }).unwrap();
         let js4 = serde_json::to_string(&ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v4(1.0, 0.5)), ..ext }).unwrap();
         assert_ne!(js3, js4, "v4 must move the key");
+    }
+
+    /// ADR Finding 143, rule 13 — the exact scope. Two above-sea bowls stand alone on the plane of the gorge test.
+    /// Negative control first: v4's proxy keeps both. With `scope_lows` listing only the first bowl's lowest cell,
+    /// only it is kept; the other bowl's cells keep the extended lake base bit for bit (as without the gorge). The
+    /// list moves the key, and v4 without it serialises as before (no `scope_lows`). The bench options φ = 0 and the
+    /// frozen design move the key too and are absent when off.
+    #[test]
+    fn the_exact_scope_keeps_only_the_listed_bodies() {
+        let ss = SteinSteinParams::default();
+        let n = 128usize;
+        let z_m = |x: f32, y: f32| -> f32 {
+            if y >= 120.0 {
+                return -50.0;
+            }
+            let bowl = |cx: f32, cy: f32, r: f32, depth: f32| {
+                let d = ((x - cx).powi(2) + (y - cy).powi(2)).sqrt();
+                if d < r { depth * (1.0 - (d / r).powi(2)) } else { 0.0 }
+            };
+            5.0 + 4.0 * (120.0 - y) - bowl(32.0, 40.0, 10.0, 120.0) - bowl(96.0, 40.0, 10.0, 120.0)
+        };
+        let f = GridF32 {
+            width: n,
+            height: n,
+            data: (0..n * n).map(|k| c1_metres_to_altitude_norm(z_m((k % n) as f32 + 0.5, (k / n) as f32 + 0.5), &ss)).collect(),
+        };
+        let ext = ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..ValleyConstruction::new(F121_AGE_K, None) };
+        let proxy = skeleton(&f, &ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v4(1.0, 0.0)), ..ext }, &ss, 51.2);
+        assert_eq!(proxy.gorge_bodies.len(), 2, "negative control: the proxy keeps both lone bowls ({:?})", proxy.gorge_bodies);
+        let (a, b) = (40 * n + 32, 40 * n + 96);
+        let bo_p = proxy.gorge_body_of.as_ref().unwrap();
+        let low_a = proxy.gorge_bodies[bo_p[a] as usize].low;
+        let mut list = [u32::MAX; 16];
+        list[0] = low_a;
+        let exact = GorgeRetreat { scope_lows: Some(list), ..GorgeRetreat::v4(1.0, 0.0) };
+        let sk = skeleton(&f, &ValleyConstruction { gorge_retreat: Some(exact), ..ext }, &ss, 51.2);
+        assert_eq!(sk.gorge_bodies.len(), 1, "the exact scope keeps the listed body only");
+        assert_eq!(sk.gorge_bodies[0].low, low_a);
+        let bo = sk.gorge_body_of.as_ref().unwrap();
+        assert!(bo[a] != u32::MAX && bo[b] == u32::MAX, "bowl A kept, bowl B dropped");
+        let none = skeleton(&f, &ext, &ss, 51.2);
+        for k in 0..n * n {
+            if bo_p[k] != u32::MAX && bo[k] == u32::MAX {
+                assert_eq!(sk.base_alt_m[k].to_bits(), none.base_alt_m[k].to_bits(), "a dropped body's cell keeps the extended base (cell {k})");
+            }
+        }
+        // the key
+        let js = |g: GorgeRetreat| serde_json::to_string(&ValleyConstruction { gorge_retreat: Some(g), ..ext }).unwrap();
+        let v4 = js(GorgeRetreat::v4(1.0, 0.0));
+        assert!(!v4.contains("scope_lows") && !v4.contains("phi_zero") && !v4.contains("freeze_design"), "v4 serialises as before: {v4}");
+        assert_ne!(js(exact), v4, "the list moves the key");
+        assert_ne!(js(GorgeRetreat { phi_zero: true, ..GorgeRetreat::v4(1.0, 0.0) }), v4, "φ = 0 moves the key");
+        assert_ne!(js(GorgeRetreat { freeze_design: true, ..GorgeRetreat::v4(1.0, 0.0) }), v4, "the frozen design moves the key");
+        // φ = 0: no head fall's share
+        let z = skeleton(&f, &ValleyConstruction { gorge_retreat: Some(GorgeRetreat { phi_zero: true, ..GorgeRetreat::v4(1.0, 0.0) }), ..ext }, &ss, 51.2);
+        assert!(z.gorge_bodies.iter().all(|b| b.phi == 0.0), "φ = 0 on every body");
     }
 
     /// ADR Finding 133-F, rule 13 — a below-sea basin's lake is a present lake: χ stops at its shore. A plane
