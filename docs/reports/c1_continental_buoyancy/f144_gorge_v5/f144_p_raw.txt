@@ -1,0 +1,511 @@
+
+==========  Finding 144 . spec v5: S, B, H, Z and phase 1 of P0–P3  ==========
+   ON ×1's breach set 292 cells · OFF ×1's θ on the eroded world 0.436 [0.428, 0.444] (32450 links)
+
+   S · v5 keeps **18** bodies · of F143's 14: 14 kept, missing [] · beyond the 14: ["(3549,3970)", "(1668,4125)", "(1897,4546)", "(2541,5265)"]
+      input lake at (3615,2485) · 143.8 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (4060,2829) · 57.8 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (4217,3091) · 197.9 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (2237,3545) · 49.4 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (4344,3579) · 52.4 km² · in a depression true · under the sea false · ring touches a depression true · v5 dropped
+      input lake at (4735,3564) · 9.0 km² · in a depression true · under the sea false · ring touches a depression true · v5 dropped
+      input lake at (1871,3666) · 8.8 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (3549,3970) · 5.2 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (4066,4001) · 13.6 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (2939,4196) · 287.1 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (4407,4053) · 87.3 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (1668,4125) · 5.3 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (1463,4246) · 179.4 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (1897,4546) · 8.2 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (3464,4674) · 11.4 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (2439,5070) · 137.5 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (3721,4958) · 32.0 km² · in a depression true · under the sea false · ring touches a depression true · v5 dropped
+      input lake at (2652,5041) · 23.3 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (1796,5239) · 85.4 km² · in a depression true · under the sea false · ring touches a depression true · v5 dropped
+      input lake at (2154,5284) · 5.7 km² · in a depression true · under the sea false · ring touches a depression true · v5 dropped
+      input lake at (2541,5265) · 6.1 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (1523,5500) · 7.5 km² · in a depression true · under the sea false · ring touches a depression true · v5 dropped
+      input lake at (3319,5749) · 73.0 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (1538,5931) · 38.2 km² · in a depression false · under the sea false · ring touches a depression false · v5 KEPT
+      input lake at (3112,6002) · 107.4 km² · in a depression true · under the sea false · ring touches a depression true · v5 dropped
+
+   B · the bodies the outlet's base raises (spec level → level, B):
+      ×0.7 p 0.5: 0 raised [] · lake 4: r 0.00 · L_floor 13.4 · B 0.5 · level 172.1 · bounded false
+      ×0.85 p 0.5: 0 raised [] · lake 4: r 0.42 · L_floor 13.4 · B 0.5 · level 172.1 · bounded false
+      ×1 p 0.5: 1 raised ["(2439,5070) r 1.53 → 123.1 (B 123.1, L_floor 13.9)"] · lake 4: r 0.85 · L_floor 13.4 · B 0.5 · level 172.0 · bounded false
+      ×1.2 p 0.5: 3 raised ["(1463,4246) r 2.00 → 49.3 (B 49.3, L_floor 32.6)", "(2439,5070) r 2.00 → 115.3 (B 115.3, L_floor 13.9)", "(2541,5265) r 2.00 → 115.3 (B 115.3, L_floor 99.2)"] · lake 4: r 1.27 · L_floor 13.4 · B 0.5 · level 129.0 · bounded false
+      ×1.4 p 0.5: 4 raised ["(1463,4246) r 2.00 → 49.3 (B 49.3, L_floor 32.6)", "(2439,5070) r 2.00 → 115.3 (B 115.3, L_floor 13.9)", "(2652,5041) r 1.99 → 115.3 (B 115.3, L_floor 84.2)", "(2541,5265) r 2.00 → 115.3 (B 115.3, L_floor 99.2)"] · lake 4: r 1.69 · L_floor 13.4 · B 0.5 · level 61.8 · bounded false
+      ×1 p 0: 0 raised [] · lake 4: r 1.00 · L_floor 13.4 · B 0.5 · level 172.0 · bounded false
+      ×1 p 0.25: 0 raised [] · lake 4: r 0.92 · L_floor 13.4 · B 0.5 · level 172.0 · bounded false
+      ×1.4 p 0: 6 raised ["(4407,4053) r 2.00 → 110.2 (B 110.2, L_floor 100.8)", "(1463,4246) r 2.00 → 49.3 (B 49.3, L_floor 32.6)", "(2439,5070) r 2.00 → 115.3 (B 115.3, L_floor 13.9)", "(2652,5041) r 2.00 → 115.3 (B 115.3, L_floor 84.2)", "(2541,5265) r 2.00 → 115.3 (B 115.3, L_floor 99.2)", "(1538,5931) r 2.00 → 49.3 (B 49.3, L_floor 21.5)"] · lake 4: r 2.00 · L_floor 13.4 · B 0.5 · level 13.4 · bounded false
+
+   H (×1, p 0.5) · A, D_g, φ, the head fall (capped), the cap, S, H_f:
+      (3615,2485) · A  1371.7 · D_g  182.0 · φ 0.19 · head   36.8 m (cap 55) · S 1.26° · H_f 10.0 TAG
+      (4060,2829) · A   442.7 · D_g 1144.4 · φ 0.00 · head    4.7 m (cap 97) · S 3.87° · H_f 10.1
+      (4217,3091) · A   598.7 · D_g  917.6 · φ 0.32 · head   85.7 m (cap 84) · S 1.68° · H_f 10.0 TAG
+      (2237,3545) · A   300.7 · D_g  150.3 · φ 0.21 · head   34.2 m (cap 118) · S 2.37° · H_f 10.0 TAG
+      (1871,3666) · A   244.7 · D_g  403.7 · φ 0.44 · head  133.1 m (cap 131) · S 2.63° · H_f 10.0 TAG
+      (3549,3970) · A    76.3 · D_g  958.4 · φ 0.32 · head  239.9 m (cap 234) · S 4.70° · H_f 12.3 TAG
+      (4066,4001) · A   156.4 · D_g   86.3 · φ 0.30 · head   29.9 m (cap 164) · S 3.29° · H_f 10.0 TAG
+      (2939,4196) · A   819.4 · D_g  695.8 · φ 0.50 · head   74.0 m (cap 71) · S 2.06° · H_f 10.0 TAG
+      (4407,4053) · A   393.3 · D_g  322.3 · φ 0.00 · head    1.8 m (cap 103) · S 2.07° · H_f 10.0
+      (1668,4125) · A   287.2 · D_g  513.0 · φ 0.39 · head  131.8 m (cap 121) · S 9.11° · H_f 24.1 TAG
+      (1463,4246) · A   947.1 · D_g  140.2 · φ 0.00 · head    1.6 m (cap 66) · S 1.34° · H_f 10.0
+      (1897,4546) · A    78.6 · D_g 1208.1 · φ 0.00 · head    7.1 m (cap 231) · S 5.89° · H_f 15.5
+      (3464,4674) · A   425.1 · D_g  108.9 · φ 0.11 · head   14.0 m (cap 99) · S 2.00° · H_f 10.0 TAG
+      (2439,5070) · A   983.3 · D_g   -5.0 · φ 0.24 · head    0.4 m (cap 65) · S 1.31° · H_f 10.0
+      (2652,5041) · A   416.6 · D_g   52.0 · φ 0.20 · head   13.0 m (cap 100) · S 2.02° · H_f 10.0 TAG
+      (2541,5265) · A  1108.3 · D_g    6.0 · φ 0.18 · head    2.1 m (cap 61) · S 1.24° · H_f 10.0
+      (3319,5749) · A   727.2 · D_g  123.9 · φ 0.47 · head   60.4 m (cap 76) · S 1.53° · H_f 10.0 TAG
+      (1538,5931) · A   227.2 · D_g   53.9 · φ 0.00 · head    3.3 m (cap 136) · S 2.73° · H_f 10.0
+   H · tagged **11** of 18 · median 60.4 m · max 239.9 m · G-tag on the construction: old instrument **203** · corrected **82** · (H_f in the code: `(1.5 * sg * 100.0).max(10.0)` with sg = slope_for(top), the real slope)
+
+   Z (×1.4, p 0.5) · G-drained's violators: 2174 of 2190 laid by a cone (99.3 %) outside their catchment (+ 0 without a laying sample)
+      the drained bowls' footprints: 40128 of 221699 laid by a cone (18.1 %) outside their catchment (+ 237188 without a laying sample)
+      the cells upstream of the drained bowls: 226858 of 810276 laid by a cone (28.0 %) outside their catchment (+ 1341060 without a laying sample)
+      every carved cell of the world: 917177 of 2516993 laid by a cone (36.4 %) outside their catchment (+ 0 without a laying sample)
+
+   Z (×1.4, p 0) · G-drained's violators: 2179 of 2318 laid by a cone (94.0 %) outside their catchment (+ 0 without a laying sample)
+      the drained bowls' footprints: 44609 of 263204 laid by a cone (16.9 %) outside their catchment (+ 296001 without a laying sample)
+      the cells upstream of the drained bowls: 251402 of 958767 laid by a cone (26.2 %) outside their catchment (+ 1877565 without a laying sample)
+      every carved cell of the world: 921422 of 2541143 laid by a cone (36.3 %) outside their catchment (+ 0 without a laying sample)
+
+────────── P0 ×1 (r_world 1, p 0.5) ──────────
+   RELIEF paired (n = 11326995): p10/p50/p90 **78.9 / 541.7 / 1507.9 m** · median cut 1.4 m · **+27.7 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       1 ·    51.37 km² · cut p50 **  -61.67 m** · fill max **  391.43 m** · fill p50   61.70 m · **deep share  57.9 %** · rim p50   2.4° ⇒ cut  no / over-dug  no
+     body       2 ·    85.33 km² · cut p50 **  -85.00 m** · fill max **  362.88 m** · fill p50   84.99 m · **deep share  64.2 %** · rim p50   3.3° ⇒ cut  no / over-dug  no
+     body       3 ·    47.98 km² · cut p50 **  -37.39 m** · fill max **  156.79 m** · fill p50   37.40 m · **deep share  40.0 %** · rim p50   2.4° ⇒ cut  no / over-dug  no
+     body       6 ·     7.94 km² · cut p50 **  -34.48 m** · fill max **  105.47 m** · fill p50   34.40 m · **deep share  32.0 %** · rim p50   5.5° ⇒ cut  no / over-dug  no
+     body       7 ·    13.51 km² · cut p50 **  -45.08 m** · fill max **  172.35 m** · fill p50   45.07 m · **deep share  46.2 %** · rim p50   3.0° ⇒ cut  no / over-dug  no
+     body       8 ·    87.64 km² · cut p50 **  -96.17 m** · fill max **  330.47 m** · fill p50   96.14 m · **deep share  71.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body       9 ·    95.27 km² · cut p50 **  -54.81 m** · fill max **  189.15 m** · fill p50   54.81 m · **deep share  53.3 %** · rim p50   2.6° ⇒ cut  no / over-dug  no
+     body      10 ·    80.47 km² · cut p50 **  -98.22 m** · fill max **  177.11 m** · fill p50   98.22 m · **deep share  74.9 %** · rim p50   5.1° ⇒ cut  no / over-dug  no
+     body      11 ·     7.62 km² · cut p50 **  -25.00 m** · fill max **   53.41 m** · fill p50   24.99 m · **deep share   5.2 %** · rim p50   3.5° ⇒ cut  no / over-dug  no
+     body      12 ·    11.22 km² · cut p50 **  -21.57 m** · fill max **   85.34 m** · fill p50   21.57 m · **deep share  15.3 %** · rim p50   3.4° ⇒ cut  no / over-dug  no
+     body      13 ·    76.62 km² · cut p50 **  -34.68 m** · fill max **  113.63 m** · fill p50   34.67 m · **deep share  36.5 %** · rim p50  13.0° ⇒ cut  no / over-dug  no
+     body      15 ·    21.73 km² · cut p50 **  -26.64 m** · fill max **   80.66 m** · fill p50   26.64 m · **deep share  16.9 %** · rim p50   2.4° ⇒ cut  no / over-dug  no
+     body      19 ·    36.71 km² · cut p50 **  -26.71 m** · fill max **  111.11 m** · fill p50   26.71 m · **deep share  22.2 %** · rim p50   3.4° ⇒ cut  no / over-dug  no
+     body      20 ·    43.07 km² · cut p50 **  -51.83 m** · fill max **  130.34 m** · fill p50   51.82 m · **deep share  51.6 %** · rim p50   3.8° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2944.80 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  52.2° ⇒ cut YES / over-dug  no
+     body 1000002 ·   459.71 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000008 ·    95.62 km² · cut p50 **    0.00 m** · fill max **    8.16 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   6.7° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   492.84 km² · cut p50 **    0.02 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50  11.3° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.52 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.2° ⇒ cut  no / over-dug  no
+     body 1000013 ·   152.88 km² · cut p50 **    0.00 m** · fill max **    6.83 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.4° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.71 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.0° ⇒ cut  no / over-dug  no
+     body 1000016 ·   502.15 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   8.1° ⇒ cut  no / over-dug  no
+     body 1000017 ·   337.86 km² · cut p50 **    0.00 m** · fill max **   97.19 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   7.2° ⇒ cut  no / over-dug  no
+     body 1000018 ·   185.33 km² · cut p50 **   20.35 m** · fill max **   31.21 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  14.0° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.90 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.7° ⇒ cut  no / over-dug  no
+     Spillway max **94.35 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.39 m³/s** · 11 cells · drop **6.9 m** · FILL along                  the bed: p50 **0.0000 m** · max **6.8020 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **33 bodies · 3962 km² = 14.67 % of 27008 km² of land** · {"Exorheic": 24, "Unresolved": 5, "Endorheic": 4} · OVER-DUG **0 of 26** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 56.7 m³/s · wc==2 cells 381011
+   **5 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "G-rim", "G-ring", "G-slope100", "G-tag", "θ", "edge"]) · 18 kept bodies · G-bodies 11/18 · G-pits 43190 · G-levels 7/18 · drained absent 0/0 · G-rim 5 · G-ring 99 · G-slope100 1/14 (max 31.5°) · G-drained 0 · G-tag (corrected) 194 (construction 82) · tagged 11 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.444 [0.436, 0.452] vs OFF eroded [0.428, 0.444] OUT · edge 573 (construction 220) · G-area 1168.6 km² · plain 0.0603 km³ · build 140 s · canyons **0** · coast 0.0142 /km · removal 4624.4 km³ (kept bodies 18.1) · raise 0.71 km³ (kept bodies 0.08) [P0 ×1 (r_world 1, p 0.5)]
+      off: (3615,2485) r 1.81 L 182.6: no lake
+      off: (2237,3545) r 0.85 L 172.0 final 170.6
+      off: (1871,3666) r 0.76 L 411.8 final 405.5
+      off: (3549,3970) r 0.43 L 1148.1: no lake
+      off: (2939,4196) r 1.40 L 870.8 final 864.0
+      off: (1668,4125) r 0.83 L 723.3: no lake
+      off: (1897,4546) r 0.43 L 1257.4 final 1256.1
+      off: (2439,5070) r 1.53 L 123.1 final 128.0
+      off: (2652,5041) r 1.00 L 167.7 final 165.6
+      off: (2541,5265) r 1.63 L 123.1 final 115.3
+      off: (1538,5931) r 0.74 L 135.3 final 133.2
+   (584 s)
+
+────────── C2-for-d_t ×1 (r_world 1, p 0.5) ──────────
+   d_t · C2's steep share minus P0's, by band (cells): 1: -2.46 pp · 2: +0.00 pp · 3: +0.00 pp · 4: +0.00 pp · 5: +0.00 pp · 6: +0.00 pp · 7: +0.00 pp · 8: +0.00 pp · 9: +0.00 pp · 10: +0.00 pp · 11: +0.00 pp · 12: +0.00 pp · 13: +0.00 pp · 14: +0.00 pp · 15: +0.00 pp · 16: +0.00 pp · 17: +0.00 pp · 18: +0.00 pp · 19: +0.00 pp · 20: +0.00 pp · **d_t = 1 cells = 49 m**
+
+────────── P1 ×1 (r_world 1, p 0.5) ──────────
+   RELIEF paired (n = 11326995): p10/p50/p90 **78.9 / 541.8 / 1507.9 m** · median cut 1.1 m · **+27.7 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       1 ·    50.92 km² · cut p50 **  -62.43 m** · fill max **  391.43 m** · fill p50   62.39 m · **deep share  58.4 %** · rim p50   2.7° ⇒ cut  no / over-dug  no
+     body       2 ·    84.98 km² · cut p50 **  -85.50 m** · fill max **  362.88 m** · fill p50   85.49 m · **deep share  64.4 %** · rim p50   3.6° ⇒ cut  no / over-dug  no
+     body       3 ·    49.30 km² · cut p50 **  -37.31 m** · fill max **  158.18 m** · fill p50   37.30 m · **deep share  40.0 %** · rim p50   2.4° ⇒ cut  no / over-dug  no
+     body       6 ·     8.73 km² · cut p50 **  -36.64 m** · fill max **  111.74 m** · fill p50   36.60 m · **deep share  35.4 %** · rim p50   8.5° ⇒ cut  no / over-dug  no
+     body       7 ·     5.14 km² · cut p50 **   -5.71 m** · fill max **  256.77 m** · fill p50    9.16 m · **deep share  11.5 %** · rim p50   1.8° ⇒ cut  no / over-dug  no
+     body       8 ·    13.55 km² · cut p50 **  -45.29 m** · fill max **  172.67 m** · fill p50   45.26 m · **deep share  46.3 %** · rim p50   3.6° ⇒ cut  no / over-dug  no
+     body       9 ·    87.23 km² · cut p50 **  -96.71 m** · fill max **  330.57 m** · fill p50   96.70 m · **deep share  71.4 %** · rim p50   6.4° ⇒ cut  no / over-dug  no
+     body      10 ·   103.00 km² · cut p50 **  -55.64 m** · fill max **  195.94 m** · fill p50   55.62 m · **deep share  53.7 %** · rim p50   2.5° ⇒ cut  no / over-dug  no
+     body      11 ·     5.32 km² · cut p50 **  -42.81 m** · fill max **  170.25 m** · fill p50   44.51 m · **deep share  45.3 %** · rim p50   7.3° ⇒ cut  no / over-dug  no
+     body      12 ·    79.71 km² · cut p50 **  -99.08 m** · fill max **  177.11 m** · fill p50   99.07 m · **deep share  75.6 %** · rim p50   7.3° ⇒ cut  no / over-dug  no
+     body      13 ·     8.16 km² · cut p50 **  -24.26 m** · fill max **   54.67 m** · fill p50   24.22 m · **deep share   6.5 %** · rim p50   3.3° ⇒ cut  no / over-dug  no
+     body      14 ·    11.13 km² · cut p50 **  -21.85 m** · fill max **   85.34 m** · fill p50   21.84 m · **deep share  15.4 %** · rim p50   3.3° ⇒ cut  no / over-dug  no
+     body      15 ·    75.94 km² · cut p50 **  -35.18 m** · fill max **  113.63 m** · fill p50   35.18 m · **deep share  36.8 %** · rim p50  22.2° ⇒ cut  no / over-dug  no
+     body      17 ·    22.41 km² · cut p50 **  -27.84 m** · fill max **   82.81 m** · fill p50   27.82 m · **deep share  18.7 %** · rim p50   3.4° ⇒ cut  no / over-dug  no
+     body      21 ·    37.94 km² · cut p50 **  -27.89 m** · fill max **  113.21 m** · fill p50   27.87 m · **deep share  23.1 %** · rim p50   3.9° ⇒ cut  no / over-dug  no
+     body      22 ·    42.24 km² · cut p50 **  -52.77 m** · fill max **  130.34 m** · fill p50   52.76 m · **deep share  52.7 %** · rim p50   5.4° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2944.80 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  52.2° ⇒ cut YES / over-dug  no
+     body 1000002 ·   459.71 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000008 ·    94.70 km² · cut p50 **    0.00 m** · fill max **   40.21 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   7.0° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   492.67 km² · cut p50 **    0.02 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50  11.4° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.52 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.2° ⇒ cut  no / over-dug  no
+     body 1000013 ·   152.71 km² · cut p50 **    0.00 m** · fill max **    6.83 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.4° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.65 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.0° ⇒ cut  no / over-dug  no
+     body 1000016 ·   502.25 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   8.3° ⇒ cut  no / over-dug  no
+     body 1000017 ·   337.86 km² · cut p50 **    0.00 m** · fill max **   97.19 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   7.2° ⇒ cut  no / over-dug  no
+     body 1000018 ·   185.33 km² · cut p50 **   20.35 m** · fill max **   31.21 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  14.0° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.90 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.7° ⇒ cut  no / over-dug  no
+     Spillway max **94.36 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.41 m³/s** · 5 cells · drop **0.0 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **35 bodies · 3980 km² = 14.74 % of 27008 km² of land** · {"Exorheic": 26, "Unresolved": 5, "Endorheic": 4} · OVER-DUG **0 of 28** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 59.9 m³/s · wc==2 cells 381011
+   **6 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "G-ring", "G-slope100", "G-tag", "θ", "edge"]) · 18 kept bodies · G-bodies 13/18 · G-pits 1792 · G-levels 15/18 · drained absent 0/0 · G-rim 0 · G-ring 308 · G-slope100 4/16 (max 52.4°) · G-drained 0 · G-tag (corrected) 94 (construction 82) · tagged 11 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.445 [0.437, 0.453] vs OFF eroded [0.428, 0.444] OUT · edge 4936 (construction 220) · G-area 1188.0 km² · plain 0.0603 km³ · build 156 s · canyons **0** · coast 0.0142 /km · removal 4618.1 km³ (kept bodies 14.0) · raise 0.71 km³ (kept bodies 0.08) [P1 ×1 (r_world 1, p 0.5)]
+      off: (3615,2485) r 1.81 L 182.6: no lake
+      off: (2439,5070) r 1.53 L 123.1 final 128.0
+      off: (2541,5265) r 1.63 L 123.1 final 115.3
+   (639 s)
+
+────────── P2 ×1 (r_world 1, p 0.5) · d_t 49 m ──────────
+   RELIEF paired (n = 11326995): p10/p50/p90 **78.9 / 541.8 / 1507.9 m** · median cut 1.1 m · **+27.7 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       1 ·    50.92 km² · cut p50 **  -62.43 m** · fill max **  391.43 m** · fill p50   62.39 m · **deep share  58.4 %** · rim p50   2.7° ⇒ cut  no / over-dug  no
+     body       2 ·    84.98 km² · cut p50 **  -85.50 m** · fill max **  362.88 m** · fill p50   85.49 m · **deep share  64.4 %** · rim p50   3.6° ⇒ cut  no / over-dug  no
+     body       3 ·    49.30 km² · cut p50 **  -37.31 m** · fill max **  158.18 m** · fill p50   37.30 m · **deep share  40.0 %** · rim p50   2.4° ⇒ cut  no / over-dug  no
+     body       6 ·     8.73 km² · cut p50 **  -36.64 m** · fill max **  111.74 m** · fill p50   36.60 m · **deep share  35.4 %** · rim p50   8.5° ⇒ cut  no / over-dug  no
+     body       7 ·     5.14 km² · cut p50 **   -5.71 m** · fill max **  256.77 m** · fill p50    9.16 m · **deep share  11.5 %** · rim p50   1.8° ⇒ cut  no / over-dug  no
+     body       8 ·    13.55 km² · cut p50 **  -45.29 m** · fill max **  172.67 m** · fill p50   45.26 m · **deep share  46.3 %** · rim p50   3.6° ⇒ cut  no / over-dug  no
+     body       9 ·    87.23 km² · cut p50 **  -96.71 m** · fill max **  330.57 m** · fill p50   96.70 m · **deep share  71.4 %** · rim p50   6.4° ⇒ cut  no / over-dug  no
+     body      10 ·   103.00 km² · cut p50 **  -55.64 m** · fill max **  195.94 m** · fill p50   55.62 m · **deep share  53.7 %** · rim p50   2.5° ⇒ cut  no / over-dug  no
+     body      11 ·     5.32 km² · cut p50 **  -42.81 m** · fill max **  170.25 m** · fill p50   44.51 m · **deep share  45.3 %** · rim p50   7.3° ⇒ cut  no / over-dug  no
+     body      12 ·    79.71 km² · cut p50 **  -99.08 m** · fill max **  177.11 m** · fill p50   99.07 m · **deep share  75.6 %** · rim p50   7.3° ⇒ cut  no / over-dug  no
+     body      13 ·     8.16 km² · cut p50 **  -24.26 m** · fill max **   54.67 m** · fill p50   24.22 m · **deep share   6.5 %** · rim p50   3.3° ⇒ cut  no / over-dug  no
+     body      14 ·    11.13 km² · cut p50 **  -21.85 m** · fill max **   85.34 m** · fill p50   21.84 m · **deep share  15.4 %** · rim p50   3.3° ⇒ cut  no / over-dug  no
+     body      15 ·    75.94 km² · cut p50 **  -35.18 m** · fill max **  113.63 m** · fill p50   35.18 m · **deep share  36.8 %** · rim p50  22.2° ⇒ cut  no / over-dug  no
+     body      17 ·    22.41 km² · cut p50 **  -27.84 m** · fill max **   82.81 m** · fill p50   27.82 m · **deep share  18.7 %** · rim p50   3.4° ⇒ cut  no / over-dug  no
+     body      21 ·    37.94 km² · cut p50 **  -27.89 m** · fill max **  113.21 m** · fill p50   27.87 m · **deep share  23.1 %** · rim p50   3.9° ⇒ cut  no / over-dug  no
+     body      22 ·    42.24 km² · cut p50 **  -52.77 m** · fill max **  130.34 m** · fill p50   52.76 m · **deep share  52.7 %** · rim p50   5.4° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2944.80 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  52.2° ⇒ cut YES / over-dug  no
+     body 1000002 ·   459.71 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000008 ·    94.70 km² · cut p50 **    0.00 m** · fill max **   40.21 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   7.0° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   492.67 km² · cut p50 **    0.02 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50  11.4° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.52 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.2° ⇒ cut  no / over-dug  no
+     body 1000013 ·   152.71 km² · cut p50 **    0.00 m** · fill max **    6.83 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.4° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.65 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.0° ⇒ cut  no / over-dug  no
+     body 1000016 ·   502.25 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   8.3° ⇒ cut  no / over-dug  no
+     body 1000017 ·   337.86 km² · cut p50 **    0.00 m** · fill max **   97.19 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   7.2° ⇒ cut  no / over-dug  no
+     body 1000018 ·   185.33 km² · cut p50 **   20.35 m** · fill max **   31.21 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  14.0° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.90 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.7° ⇒ cut  no / over-dug  no
+     Spillway max **94.36 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.41 m³/s** · 5 cells · drop **0.0 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **35 bodies · 3980 km² = 14.74 % of 27008 km² of land** · {"Exorheic": 26, "Endorheic": 4, "Unresolved": 5} · OVER-DUG **0 of 28** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 59.9 m³/s · wc==2 cells 381011
+   **6 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "G-ring", "G-slope100", "G-tag", "θ", "edge"]) · 18 kept bodies · G-bodies 13/18 · G-pits 1792 · G-levels 15/18 · drained absent 0/0 · G-rim 0 · G-ring 308 · G-slope100 4/16 (max 52.4°) · G-drained 0 · G-tag (corrected) 94 (construction 82) · tagged 11 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.445 [0.437, 0.453] vs OFF eroded [0.428, 0.444] OUT · edge 4936 (construction 220) · G-area 1188.0 km² · plain 0.0603 km³ · build 153 s · canyons **0** · coast 0.0142 /km · removal 4618.1 km³ (kept bodies 14.0) · raise 0.71 km³ (kept bodies 0.08) [P2 ×1 (r_world 1, p 0.5) · d_t 49 m]
+      off: (3615,2485) r 1.81 L 182.6: no lake
+      off: (2439,5070) r 1.53 L 123.1 final 128.0
+      off: (2541,5265) r 1.63 L 123.1 final 115.3
+   (632 s)
+
+────────── P3 ×1 (r_world 1, p 0.5) ──────────
+   RELIEF paired (n = 11326995): p10/p50/p90 **78.7 / 538.8 / 1507.8 m** · median cut 1.2 m · **+27.0 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       1 ·    50.92 km² · cut p50 **  -62.43 m** · fill max **  391.43 m** · fill p50   62.37 m · **deep share  58.4 %** · rim p50   2.7° ⇒ cut  no / over-dug  no
+     body       2 ·    84.98 km² · cut p50 **  -85.50 m** · fill max **  362.88 m** · fill p50   85.49 m · **deep share  64.4 %** · rim p50   3.6° ⇒ cut  no / over-dug  no
+     body       3 ·    49.30 km² · cut p50 **  -37.31 m** · fill max **  158.18 m** · fill p50   37.30 m · **deep share  40.0 %** · rim p50   2.4° ⇒ cut  no / over-dug  no
+     body       6 ·     8.73 km² · cut p50 **  -36.64 m** · fill max **  111.74 m** · fill p50   36.60 m · **deep share  35.4 %** · rim p50  10.8° ⇒ cut  no / over-dug  no
+     body       7 ·     5.14 km² · cut p50 **   -5.70 m** · fill max **  271.30 m** · fill p50    9.16 m · **deep share  11.6 %** · rim p50  73.2° ⇒ cut  no / over-dug YES
+     body       8 ·    13.55 km² · cut p50 **  -45.29 m** · fill max **  172.67 m** · fill p50   45.26 m · **deep share  46.3 %** · rim p50   3.7° ⇒ cut  no / over-dug  no
+     body       9 ·    87.23 km² · cut p50 **  -96.71 m** · fill max **  330.57 m** · fill p50   96.70 m · **deep share  71.4 %** · rim p50   7.0° ⇒ cut  no / over-dug  no
+     body      10 ·   103.00 km² · cut p50 **  -55.64 m** · fill max **  195.94 m** · fill p50   55.62 m · **deep share  53.7 %** · rim p50   2.5° ⇒ cut  no / over-dug  no
+     body      11 ·     5.32 km² · cut p50 **  -42.91 m** · fill max **  170.25 m** · fill p50   44.71 m · **deep share  45.6 %** · rim p50  13.0° ⇒ cut  no / over-dug  no
+     body      12 ·    79.71 km² · cut p50 **  -99.08 m** · fill max **  177.11 m** · fill p50   99.07 m · **deep share  75.6 %** · rim p50   7.3° ⇒ cut  no / over-dug  no
+     body      13 ·     8.17 km² · cut p50 **  -24.23 m** · fill max **   54.70 m** · fill p50   24.22 m · **deep share   6.7 %** · rim p50   6.5° ⇒ cut  no / over-dug  no
+     body      14 ·    11.13 km² · cut p50 **  -21.85 m** · fill max **   85.34 m** · fill p50   21.84 m · **deep share  15.4 %** · rim p50   3.3° ⇒ cut  no / over-dug  no
+     body      15 ·    75.94 km² · cut p50 **  -35.18 m** · fill max **  113.63 m** · fill p50   35.18 m · **deep share  36.8 %** · rim p50  22.2° ⇒ cut  no / over-dug  no
+     body      17 ·    22.41 km² · cut p50 **  -27.84 m** · fill max **   82.81 m** · fill p50   27.82 m · **deep share  18.7 %** · rim p50   3.4° ⇒ cut  no / over-dug  no
+     body      21 ·    37.94 km² · cut p50 **  -27.89 m** · fill max **  113.21 m** · fill p50   27.87 m · **deep share  23.1 %** · rim p50   3.9° ⇒ cut  no / over-dug  no
+     body      22 ·    42.24 km² · cut p50 **  -52.77 m** · fill max **  130.34 m** · fill p50   52.76 m · **deep share  52.7 %** · rim p50   5.4° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2944.80 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  52.2° ⇒ cut YES / over-dug  no
+     body 1000002 ·   459.71 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000008 ·    95.38 km² · cut p50 **    0.00 m** · fill max **   96.72 m** · fill p50    0.00 m · **deep share   0.5 %** · rim p50   7.8° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   492.77 km² · cut p50 **    0.02 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50  12.1° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.52 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.2° ⇒ cut  no / over-dug  no
+     body 1000013 ·   152.64 km² · cut p50 **    0.00 m** · fill max **    6.83 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.3° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.20 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.0° ⇒ cut  no / over-dug  no
+     body 1000016 ·   502.25 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   8.3° ⇒ cut  no / over-dug  no
+     body 1000017 ·   337.86 km² · cut p50 **    0.00 m** · fill max **   97.19 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   7.2° ⇒ cut  no / over-dug  no
+     body 1000018 ·   185.33 km² · cut p50 **   20.35 m** · fill max **   31.21 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  14.0° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.90 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.7° ⇒ cut  no / over-dug  no
+     Spillway max **94.36 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.41 m³/s** · 5 cells · drop **0.0 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **35 bodies · 3980 km² = 14.74 % of 27008 km² of land** · {"Endorheic": 4, "Exorheic": 25, "Unresolved": 6} · OVER-DUG **1 of 28** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 64.1 m³/s · wc==2 cells 381011
+   **6 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "G-ring", "G-slope100", "G-tag", "canyons", "edge"]) · 18 kept bodies · G-bodies 13/18 · G-pits 187 · G-levels 15/18 · drained absent 0/0 · G-rim 0 · G-ring 561 · G-slope100 7/16 (max 80.1°) · G-drained 0 · G-tag (corrected) 84 (construction 82) · tagged 11 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.442 [0.433, 0.450] vs OFF eroded [0.428, 0.444] IN · edge 8369 (construction 220) · G-area 1188.0 km² · plain 0.0603 km³ · build 329 s · canyons **1** · coast 0.0142 /km · removal 4674.5 km³ (kept bodies 14.0) · raise 0.71 km³ (kept bodies 0.08) [P3 ×1 (r_world 1, p 0.5)]
+      off: (3615,2485) r 1.81 L 182.6: no lake
+      off: (2439,5070) r 1.53 L 123.1 final 128.0
+      off: (2541,5265) r 1.63 L 123.1 final 115.3
+   (40793 s)
+
+────────── P0 ×1.4 (r_world 2, p 0.5) ──────────
+   RELIEF paired (n = 11327011): p10/p50/p90 **76.2 / 544.8 / 1504.1 m** · median cut 4.0 m · **+28.4 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       3 ·     7.65 km² · cut p50 **  -37.67 m** · fill max **  133.97 m** · fill p50   37.63 m · **deep share  38.1 %** · rim p50   3.4° ⇒ cut  no / over-dug  no
+     body       4 ·    20.20 km² · cut p50 **  263.65 m** · fill max **   41.53 m** · fill p50   22.18 m · **deep share   0.0 %** · rim p50  27.1° ⇒ cut  no / over-dug  no
+     body       5 ·    80.97 km² · cut p50 **   64.94 m** · fill max **   64.25 m** · fill p50   46.00 m · **deep share   7.6 %** · rim p50  27.0° ⇒ cut  no / over-dug  no
+     body       6 ·     7.80 km² · cut p50 **  -25.21 m** · fill max **   54.26 m** · fill p50   25.17 m · **deep share   6.3 %** · rim p50   3.4° ⇒ cut  no / over-dug  no
+     body       7 ·    74.34 km² · cut p50 **  -30.46 m** · fill max **  107.76 m** · fill p50   30.46 m · **deep share  32.4 %** · rim p50  15.4° ⇒ cut  no / over-dug  no
+     body       9 ·    14.15 km² · cut p50 **   14.65 m** · fill max **   37.25 m** · fill p50    6.84 m · **deep share   0.0 %** · rim p50   7.3° ⇒ cut  no / over-dug  no
+     body      13 ·    35.57 km² · cut p50 **  128.05 m** · fill max **   29.63 m** · fill p50   29.42 m · **deep share   0.0 %** · rim p50  26.2° ⇒ cut  no / over-dug  no
+     body      14 ·    20.47 km² · cut p50 **   -1.82 m** · fill max **   69.70 m** · fill p50   10.42 m · **deep share   3.5 %** · rim p50  11.3° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2929.81 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  54.4° ⇒ cut YES / over-dug  no
+     body 1000002 ·   459.91 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000008 ·    94.65 km² · cut p50 **    0.00 m** · fill max **   16.32 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   5.6° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   492.79 km² · cut p50 **    0.02 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50  10.9° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.52 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.2° ⇒ cut  no / over-dug  no
+     body 1000013 ·   153.63 km² · cut p50 **    0.00 m** · fill max **    7.29 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.3° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.81 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.0° ⇒ cut  no / over-dug  no
+     body 1000016 ·   501.69 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   7.8° ⇒ cut  no / over-dug  no
+     body 1000017 ·   337.70 km² · cut p50 **    0.00 m** · fill max **   97.19 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   7.1° ⇒ cut  no / over-dug  no
+     body 1000018 ·   185.13 km² · cut p50 **   20.34 m** · fill max **   34.38 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  14.1° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.73 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.7° ⇒ cut  no / over-dug  no
+     Spillway max **94.45 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.87 m³/s** · 12 cells · drop **1.7 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **27 bodies · 3556 km² = 13.17 % of 27008 km² of land** · {"Exorheic": 21, "Endorheic": 4, "Unresolved": 2} · OVER-DUG **0 of 20** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 30.7 m³/s · wc==2 cells 380994
+   **3 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "drained", "G-rim", "G-ring", "G-slope100", "G-drained", "G-tag", "G-sea", "edge"]) · 18 kept bodies · G-bodies 11/18 · G-pits 6461 · G-levels 2/9 · drained absent 8/9 · G-rim 1 · G-ring 103 · G-slope100 1/5 (max 32.6°) · G-drained 9781 · G-tag (corrected) 110 (construction 18) · tagged 7 · G-sea +112/−0 · F38 no · θ (corridors excluded) 0.440 [0.433, 0.448] vs OFF eroded [0.428, 0.444] IN · edge 500 (construction 221) · G-area 70.3 km² · plain 0.0938 km³ · build 215 s · canyons **0** · coast 0.0050 /km · removal 4723.0 km³ (kept bodies 108.0) · raise 0.74 km³ (kept bodies 0.10) [P0 ×1.4 (r_world 2, p 0.5)]
+      off: (2237,3545) r 1.69 L 61.8: no lake
+      off: (1871,3666) r 1.53 L 351.7: no lake
+      off: (3549,3970) r 0.85 L 1148.1: no lake
+      off: (4407,4053) r 1.94 L 121.2 final 143.5
+      off: (1668,4125) r 1.66 L 610.5: no lake
+      off: (2652,5041) r 1.99 L 115.3 final 122.2
+      off: (1538,5931) r 1.47 L 81.4 final 91.8
+   (821 s)
+
+────────── P1 ×1.4 (r_world 2, p 0.5) ──────────
+   RELIEF paired (n = 11327011): p10/p50/p90 **76.4 / 544.9 / 1504.1 m** · median cut 2.9 m · **+28.5 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       3 ·     5.79 km² · cut p50 **  159.60 m** · fill max **  146.55 m** · fill p50   51.75 m · **deep share  51.4 %** · rim p50  18.5° ⇒ cut  no / over-dug  no
+     body       4 ·     5.11 km² · cut p50 **   -5.70 m** · fill max **  276.97 m** · fill p50    9.50 m · **deep share  12.6 %** · rim p50   1.9° ⇒ cut  no / over-dug  no
+     body       5 ·     7.54 km² · cut p50 **  -38.40 m** · fill max **  133.97 m** · fill p50   38.29 m · **deep share  38.7 %** · rim p50   4.8° ⇒ cut  no / over-dug  no
+     body       6 ·    19.71 km² · cut p50 **  263.37 m** · fill max **   41.53 m** · fill p50   22.22 m · **deep share   0.0 %** · rim p50  27.2° ⇒ cut  no / over-dug  no
+     body       7 ·    79.12 km² · cut p50 **   56.20 m** · fill max **   64.25 m** · fill p50   46.31 m · **deep share   7.8 %** · rim p50  27.4° ⇒ cut  no / over-dug  no
+     body       8 ·     8.14 km² · cut p50 **  -24.24 m** · fill max **   54.59 m** · fill p50   24.21 m · **deep share   6.4 %** · rim p50   3.2° ⇒ cut  no / over-dug  no
+     body       9 ·    73.47 km² · cut p50 **  -31.14 m** · fill max **  107.79 m** · fill p50   31.13 m · **deep share  32.8 %** · rim p50  23.1° ⇒ cut  no / over-dug  no
+     body      11 ·    13.68 km² · cut p50 **   14.54 m** · fill max **   37.42 m** · fill p50    7.01 m · **deep share   0.0 %** · rim p50  14.2° ⇒ cut  no / over-dug  no
+     body      15 ·    34.45 km² · cut p50 **  129.79 m** · fill max **   29.63 m** · fill p50   29.51 m · **deep share   0.0 %** · rim p50  27.1° ⇒ cut  no / over-dug  no
+     body      16 ·    20.34 km² · cut p50 **   -2.02 m** · fill max **   69.70 m** · fill p50   10.42 m · **deep share   3.5 %** · rim p50  16.5° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2929.81 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  54.4° ⇒ cut YES / over-dug  no
+     body 1000002 ·   459.91 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000008 ·    94.64 km² · cut p50 **    0.00 m** · fill max **   16.32 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   5.6° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   492.79 km² · cut p50 **    0.02 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50  10.9° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.52 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.2° ⇒ cut  no / over-dug  no
+     body 1000013 ·   153.63 km² · cut p50 **    0.00 m** · fill max **    7.29 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.3° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.74 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.1° ⇒ cut  no / over-dug  no
+     body 1000016 ·   501.60 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   7.9° ⇒ cut  no / over-dug  no
+     body 1000017 ·   337.70 km² · cut p50 **    0.00 m** · fill max **   97.19 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   7.1° ⇒ cut  no / over-dug  no
+     body 1000018 ·   185.13 km² · cut p50 **   20.34 m** · fill max **   34.38 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  14.1° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.73 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.7° ⇒ cut  no / over-dug  no
+     Spillway max **94.45 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.89 m³/s** · 12 cells · drop **1.7 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **29 bodies · 3562 km² = 13.19 % of 27008 km² of land** · {"Endorheic": 4, "Unresolved": 2, "Exorheic": 23} · OVER-DUG **0 of 22** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 31.2 m³/s · wc==2 cells 380994
+   **4 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "drained", "G-ring", "G-slope100", "G-drained", "G-tag", "G-sea", "edge"]) · 18 kept bodies · G-bodies 12/18 · G-pits 2330 · G-levels 3/9 · drained absent 8/9 · G-rim 0 · G-ring 550 · G-slope100 2/6 (max 48.1°) · G-drained 7241 · G-tag (corrected) 31 (construction 18) · tagged 7 · G-sea +118/−0 · F38 no · θ (corridors excluded) 0.441 [0.433, 0.448] vs OFF eroded [0.428, 0.444] IN · edge 6242 (construction 221) · G-area 74.5 km² · plain 0.0938 km³ · build 207 s · canyons **0** · coast 0.0050 /km · removal 4708.3 km³ (kept bodies 95.1) · raise 0.74 km³ (kept bodies 0.10) [P1 ×1.4 (r_world 2, p 0.5)]
+      off: (2237,3545) r 1.69 L 61.8: no lake
+      off: (1871,3666) r 1.53 L 351.7: no lake
+      off: (4407,4053) r 1.94 L 121.2 final 143.5
+      off: (1668,4125) r 1.66 L 610.5: no lake
+      off: (2652,5041) r 1.99 L 115.3 final 122.3
+      off: (1538,5931) r 1.47 L 81.4 final 91.8
+   (812 s)
+
+────────── P2 ×1.4 (r_world 2, p 0.5) · d_t 49 m ──────────
+   RELIEF paired (n = 11327011): p10/p50/p90 **76.4 / 544.9 / 1504.1 m** · median cut 2.9 m · **+28.5 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       3 ·     5.79 km² · cut p50 **  159.60 m** · fill max **  146.55 m** · fill p50   51.75 m · **deep share  51.4 %** · rim p50  18.5° ⇒ cut  no / over-dug  no
+     body       4 ·     5.11 km² · cut p50 **   -5.70 m** · fill max **  276.97 m** · fill p50    9.50 m · **deep share  12.6 %** · rim p50   1.9° ⇒ cut  no / over-dug  no
+     body       5 ·     7.54 km² · cut p50 **  -38.40 m** · fill max **  133.97 m** · fill p50   38.29 m · **deep share  38.7 %** · rim p50   4.8° ⇒ cut  no / over-dug  no
+     body       6 ·    19.71 km² · cut p50 **  263.37 m** · fill max **   41.53 m** · fill p50   22.22 m · **deep share   0.0 %** · rim p50  27.2° ⇒ cut  no / over-dug  no
+     body       7 ·    79.12 km² · cut p50 **   56.20 m** · fill max **   64.25 m** · fill p50   46.31 m · **deep share   7.8 %** · rim p50  27.4° ⇒ cut  no / over-dug  no
+     body       8 ·     8.14 km² · cut p50 **  -24.24 m** · fill max **   54.59 m** · fill p50   24.21 m · **deep share   6.4 %** · rim p50   3.2° ⇒ cut  no / over-dug  no
+     body       9 ·    73.47 km² · cut p50 **  -31.14 m** · fill max **  107.79 m** · fill p50   31.13 m · **deep share  32.8 %** · rim p50  23.1° ⇒ cut  no / over-dug  no
+     body      11 ·    13.68 km² · cut p50 **   14.54 m** · fill max **   37.42 m** · fill p50    7.01 m · **deep share   0.0 %** · rim p50  14.2° ⇒ cut  no / over-dug  no
+     body      15 ·    34.45 km² · cut p50 **  129.79 m** · fill max **   29.63 m** · fill p50   29.51 m · **deep share   0.0 %** · rim p50  27.1° ⇒ cut  no / over-dug  no
+     body      16 ·    20.34 km² · cut p50 **   -2.02 m** · fill max **   69.70 m** · fill p50   10.42 m · **deep share   3.5 %** · rim p50  16.5° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2929.81 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  54.4° ⇒ cut YES / over-dug  no
+     body 1000002 ·   459.91 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000008 ·    94.64 km² · cut p50 **    0.00 m** · fill max **   16.32 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   5.6° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   492.79 km² · cut p50 **    0.02 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50  10.9° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.52 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.2° ⇒ cut  no / over-dug  no
+     body 1000013 ·   153.63 km² · cut p50 **    0.00 m** · fill max **    7.29 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.3° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.74 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.1° ⇒ cut  no / over-dug  no
+     body 1000016 ·   501.60 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   7.9° ⇒ cut  no / over-dug  no
+     body 1000017 ·   337.70 km² · cut p50 **    0.00 m** · fill max **   97.19 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   7.1° ⇒ cut  no / over-dug  no
+     body 1000018 ·   185.13 km² · cut p50 **   20.34 m** · fill max **   34.38 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  14.1° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.73 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.7° ⇒ cut  no / over-dug  no
+     Spillway max **94.45 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.89 m³/s** · 12 cells · drop **1.7 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **29 bodies · 3562 km² = 13.19 % of 27008 km² of land** · {"Endorheic": 4, "Exorheic": 23, "Unresolved": 2} · OVER-DUG **0 of 22** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 31.2 m³/s · wc==2 cells 380994
+   **4 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "drained", "G-ring", "G-slope100", "G-drained", "G-tag", "G-sea", "edge"]) · 18 kept bodies · G-bodies 12/18 · G-pits 2330 · G-levels 3/9 · drained absent 8/9 · G-rim 0 · G-ring 550 · G-slope100 2/6 (max 48.1°) · G-drained 7241 · G-tag (corrected) 31 (construction 18) · tagged 7 · G-sea +118/−0 · F38 no · θ (corridors excluded) 0.441 [0.433, 0.448] vs OFF eroded [0.428, 0.444] IN · edge 6242 (construction 221) · G-area 74.5 km² · plain 0.0938 km³ · build 188 s · canyons **0** · coast 0.0050 /km · removal 4708.3 km³ (kept bodies 95.1) · raise 0.74 km³ (kept bodies 0.10) [P2 ×1.4 (r_world 2, p 0.5) · d_t 49 m]
+      off: (2237,3545) r 1.69 L 61.8: no lake
+      off: (1871,3666) r 1.53 L 351.7: no lake
+      off: (4407,4053) r 1.94 L 121.2 final 143.5
+      off: (1668,4125) r 1.66 L 610.5: no lake
+      off: (2652,5041) r 1.99 L 115.3 final 122.3
+      off: (1538,5931) r 1.47 L 81.4 final 91.8
+   (696 s)
+
+────────── P3 ×1.4 (r_world 2, p 0.5) ──────────
+   RELIEF paired (n = 11327011): p10/p50/p90 **76.3 / 542.9 / 1504.1 m** · median cut 3.1 m · **+28.0 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       3 ·     6.42 km² · cut p50 **  158.41 m** · fill max **  159.61 m** · fill p50   54.55 m · **deep share  53.2 %** · rim p50  18.8° ⇒ cut  no / over-dug  no
+     body       4 ·     5.13 km² · cut p50 **   -5.66 m** · fill max **  287.38 m** · fill p50    9.50 m · **deep share  12.7 %** · rim p50  68.8° ⇒ cut  no / over-dug YES
+     body       5 ·     7.54 km² · cut p50 **  -38.40 m** · fill max **  133.97 m** · fill p50   38.29 m · **deep share  38.7 %** · rim p50   4.8° ⇒ cut  no / over-dug  no
+     body       6 ·    20.13 km² · cut p50 **  264.87 m** · fill max **   41.53 m** · fill p50   22.19 m · **deep share   0.0 %** · rim p50  27.3° ⇒ cut  no / over-dug  no
+     body       7 ·    79.95 km² · cut p50 **   61.64 m** · fill max **   64.25 m** · fill p50   46.19 m · **deep share   7.7 %** · rim p50  27.5° ⇒ cut  no / over-dug  no
+     body       8 ·     8.14 km² · cut p50 **  -24.24 m** · fill max **   54.62 m** · fill p50   24.24 m · **deep share   6.6 %** · rim p50   5.4° ⇒ cut  no / over-dug  no
+     body       9 ·    73.47 km² · cut p50 **  -31.14 m** · fill max **  107.79 m** · fill p50   31.13 m · **deep share  32.8 %** · rim p50  23.1° ⇒ cut  no / over-dug  no
+     body      11 ·    13.68 km² · cut p50 **   14.54 m** · fill max **   37.42 m** · fill p50    7.01 m · **deep share   0.0 %** · rim p50  14.2° ⇒ cut  no / over-dug  no
+     body      15 ·    34.45 km² · cut p50 **  129.79 m** · fill max **   29.63 m** · fill p50   29.51 m · **deep share   0.0 %** · rim p50  27.1° ⇒ cut  no / over-dug  no
+     body      16 ·    20.34 km² · cut p50 **   -2.02 m** · fill max **   69.70 m** · fill p50   10.42 m · **deep share   3.5 %** · rim p50  16.5° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2929.81 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  54.4° ⇒ cut YES / over-dug  no
+     body 1000002 ·   459.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000008 ·    95.76 km² · cut p50 **    0.00 m** · fill max **   23.56 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   7.3° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   492.79 km² · cut p50 **    0.02 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50  10.9° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.52 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.2° ⇒ cut  no / over-dug  no
+     body 1000013 ·   153.63 km² · cut p50 **    0.00 m** · fill max **    7.29 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.3° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.29 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.1° ⇒ cut  no / over-dug  no
+     body 1000016 ·   501.60 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   7.9° ⇒ cut  no / over-dug  no
+     body 1000017 ·   337.70 km² · cut p50 **    0.00 m** · fill max **   97.19 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   7.1° ⇒ cut  no / over-dug  no
+     body 1000018 ·   185.13 km² · cut p50 **   20.34 m** · fill max **   34.38 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  14.1° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.73 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.7° ⇒ cut  no / over-dug  no
+     Spillway max **94.45 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.88 m³/s** · 12 cells · drop **1.7 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **29 bodies · 3564 km² = 13.20 % of 27008 km² of land** · {"Endorheic": 4, "Unresolved": 3, "Exorheic": 22} · OVER-DUG **1 of 22** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 33.7 m³/s · wc==2 cells 380994
+   **2 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "drained", "G-ring", "G-slope100", "G-drained", "G-tag", "G-sea", "canyons", "θ", "edge"]) · 18 kept bodies · G-bodies 12/18 · G-pits 2037 · G-levels 3/9 · drained absent 8/9 · G-rim 0 · G-ring 790 · G-slope100 3/6 (max 76.2°) · G-drained 9186 · G-tag (corrected) 22 (construction 18) · tagged 7 · G-sea +118/−0 · F38 no · θ (corridors excluded) 0.444 [0.437, 0.451] vs OFF eroded [0.428, 0.444] OUT · edge 8152 (construction 221) · G-area 75.0 km² · plain 0.0938 km³ · build 269 s · canyons **1** · coast 0.0050 /km · removal 4744.0 km³ (kept bodies 95.1) · raise 0.74 km³ (kept bodies 0.10) [P3 ×1.4 (r_world 2, p 0.5)]
+      off: (2237,3545) r 1.69 L 61.8: no lake
+      off: (1871,3666) r 1.53 L 351.7: no lake
+      off: (4407,4053) r 1.94 L 121.2 final 143.5
+      off: (1668,4125) r 1.66 L 610.5: no lake
+      off: (2652,5041) r 1.99 L 115.3 final 122.3
+      off: (1538,5931) r 1.47 L 81.4 final 91.8
+   (732 s)
+
+────────── P0 ×1.4 (r_world 2, p 0) ──────────
+   RELIEF paired (n = 11327011): p10/p50/p90 **75.6 / 543.9 / 1503.4 m** · median cut 4.4 m · **+28.2 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       1 ·    17.28 km² · cut p50 **   99.98 m** · fill max **   28.17 m** · fill p50   28.00 m · **deep share   0.0 %** · rim p50  26.5° ⇒ cut  no / over-dug  no
+     body       4 ·    22.61 km² · cut p50 **  263.66 m** · fill max **   33.30 m** · fill p50   32.65 m · **deep share   0.0 %** · rim p50  27.2° ⇒ cut  no / over-dug  no
+     body       5 ·    80.97 km² · cut p50 **   64.95 m** · fill max **   64.25 m** · fill p50   46.00 m · **deep share   7.6 %** · rim p50  27.0° ⇒ cut  no / over-dug  no
+     body       6 ·    74.34 km² · cut p50 **  -30.46 m** · fill max **  107.76 m** · fill p50   30.46 m · **deep share  32.4 %** · rim p50  15.4° ⇒ cut  no / over-dug  no
+     body       8 ·    14.15 km² · cut p50 **   14.65 m** · fill max **   37.25 m** · fill p50    6.84 m · **deep share   0.0 %** · rim p50   7.3° ⇒ cut  no / over-dug  no
+     body      12 ·    35.57 km² · cut p50 **  128.05 m** · fill max **   29.63 m** · fill p50   29.42 m · **deep share   0.0 %** · rim p50  26.2° ⇒ cut  no / over-dug  no
+     body      13 ·    24.25 km² · cut p50 **   10.20 m** · fill max **   69.49 m** · fill p50   38.09 m · **deep share   2.9 %** · rim p50  11.9° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2929.81 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  54.4° ⇒ cut YES / over-dug  no
+     body 1000002 ·   459.94 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000008 ·    94.65 km² · cut p50 **    0.00 m** · fill max **   16.32 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   5.6° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   492.79 km² · cut p50 **    0.02 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50  10.9° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.52 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.2° ⇒ cut  no / over-dug  no
+     body 1000013 ·   153.63 km² · cut p50 **    0.00 m** · fill max **    7.29 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.3° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.55 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.1° ⇒ cut  no / over-dug  no
+     body 1000016 ·   501.69 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   7.8° ⇒ cut  no / over-dug  no
+     body 1000017 ·   337.70 km² · cut p50 **    0.00 m** · fill max **   97.19 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   7.1° ⇒ cut  no / over-dug  no
+     body 1000018 ·   185.13 km² · cut p50 **   20.34 m** · fill max **   34.38 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  14.1° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.73 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.7° ⇒ cut  no / over-dug  no
+     Spillway max **94.45 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.82 m³/s** · 12 cells · drop **1.7 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **26 bodies · 3564 km² = 13.19 % of 27008 km² of land** · {"Unresolved": 1, "Endorheic": 4, "Exorheic": 21} · OVER-DUG **0 of 19** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 29.6 m³/s · wc==2 cells 380994
+   **7 of 14 held** (failed ["G-bodies", "G-pits", "drained", "G-ring", "G-drained", "G-tag", "edge"]) · 18 kept bodies · G-bodies 15/18 · G-pits 6336 · G-levels 0/0 · drained absent 15/18 · G-rim 0 · G-ring 105 · G-slope100 0/0 (max NaN°) · G-drained 14366 · G-tag (corrected) 107 (construction 18) · tagged 7 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.442 [0.434, 0.450] vs OFF eroded [0.428, 0.444] IN · edge 523 (construction 209) · G-area 0.0 km² · plain 0.0999 km³ · build 139 s · canyons **0** · coast 0.0050 /km · removal 4744.2 km³ (kept bodies 111.7) · raise 0.74 km³ (kept bodies 0.10) [P0 ×1.4 (r_world 2, p 0)]
+   (592 s)
+
+────────── P1 ×1.4 (r_world 2, p 0) ──────────
+   RELIEF paired (n = 11327011): p10/p50/p90 **75.8 / 544.0 / 1503.4 m** · median cut 3.2 m · **+28.2 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       1 ·    17.06 km² · cut p50 **  100.24 m** · fill max **   28.17 m** · fill p50   28.04 m · **deep share   0.0 %** · rim p50  27.1° ⇒ cut  no / over-dug  no
+     body       4 ·    22.20 km² · cut p50 **  263.61 m** · fill max **   33.30 m** · fill p50   32.72 m · **deep share   0.0 %** · rim p50  27.3° ⇒ cut  no / over-dug  no
+     body       5 ·    79.15 km² · cut p50 **   56.48 m** · fill max **   64.25 m** · fill p50   46.31 m · **deep share   7.8 %** · rim p50  27.4° ⇒ cut  no / over-dug  no
+     body       6 ·    73.47 km² · cut p50 **  -31.14 m** · fill max **  107.79 m** · fill p50   31.13 m · **deep share  32.8 %** · rim p50  23.1° ⇒ cut  no / over-dug  no
+     body       8 ·    13.68 km² · cut p50 **   14.54 m** · fill max **   37.42 m** · fill p50    7.01 m · **deep share   0.0 %** · rim p50  14.2° ⇒ cut  no / over-dug  no
+     body      12 ·    34.45 km² · cut p50 **  129.79 m** · fill max **   29.63 m** · fill p50   29.51 m · **deep share   0.0 %** · rim p50  27.1° ⇒ cut  no / over-dug  no
+     body      13 ·    24.04 km² · cut p50 **   10.03 m** · fill max **   69.49 m** · fill p50   38.58 m · **deep share   2.9 %** · rim p50  15.1° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2929.81 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  54.4° ⇒ cut YES / over-dug  no
+     body 1000002 ·   459.94 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000008 ·    94.64 km² · cut p50 **    0.00 m** · fill max **   16.32 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   5.6° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   492.79 km² · cut p50 **    0.02 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50  10.9° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.52 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.2° ⇒ cut  no / over-dug  no
+     body 1000013 ·   153.63 km² · cut p50 **    0.00 m** · fill max **    7.29 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.3° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.55 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.1° ⇒ cut  no / over-dug  no
+     body 1000016 ·   501.60 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   7.9° ⇒ cut  no / over-dug  no
+     body 1000017 ·   337.70 km² · cut p50 **    0.00 m** · fill max **   97.19 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   7.1° ⇒ cut  no / over-dug  no
+     body 1000018 ·   185.13 km² · cut p50 **   20.34 m** · fill max **   34.38 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  14.1° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.73 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.7° ⇒ cut  no / over-dug  no
+     Spillway max **94.45 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.83 m³/s** · 12 cells · drop **1.7 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **26 bodies · 3558 km² = 13.18 % of 27008 km² of land** · {"Endorheic": 4, "Unresolved": 1, "Exorheic": 21} · OVER-DUG **0 of 19** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 29.6 m³/s · wc==2 cells 380994
+   **7 of 14 held** (failed ["G-bodies", "G-pits", "drained", "G-ring", "G-drained", "G-tag", "edge"]) · 18 kept bodies · G-bodies 15/18 · G-pits 2487 · G-levels 0/0 · drained absent 15/18 · G-rim 0 · G-ring 586 · G-slope100 0/0 (max NaN°) · G-drained 11272 · G-tag (corrected) 36 (construction 18) · tagged 7 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.443 [0.435, 0.451] vs OFF eroded [0.428, 0.444] IN · edge 6367 (construction 209) · G-area 0.0 km² · plain 0.0999 km³ · build 140 s · canyons **0** · coast 0.0050 /km · removal 4728.4 km³ (kept bodies 97.8) · raise 0.74 km³ (kept bodies 0.11) [P1 ×1.4 (r_world 2, p 0)]
+   (589 s)
+
+────────── P2 ×1.4 (r_world 2, p 0) · d_t 49 m ──────────
+   RELIEF paired (n = 11327011): p10/p50/p90 **75.8 / 544.0 / 1503.4 m** · median cut 3.2 m · **+28.2 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       1 ·    17.06 km² · cut p50 **  100.24 m** · fill max **   28.17 m** · fill p50   28.04 m · **deep share   0.0 %** · rim p50  27.1° ⇒ cut  no / over-dug  no
+     body       4 ·    22.20 km² · cut p50 **  263.61 m** · fill max **   33.30 m** · fill p50   32.72 m · **deep share   0.0 %** · rim p50  27.3° ⇒ cut  no / over-dug  no
+     body       5 ·    79.15 km² · cut p50 **   56.48 m** · fill max **   64.25 m** · fill p50   46.31 m · **deep share   7.8 %** · rim p50  27.4° ⇒ cut  no / over-dug  no
+     body       6 ·    73.47 km² · cut p50 **  -31.14 m** · fill max **  107.79 m** · fill p50   31.13 m · **deep share  32.8 %** · rim p50  23.1° ⇒ cut  no / over-dug  no
+     body       8 ·    13.68 km² · cut p50 **   14.54 m** · fill max **   37.42 m** · fill p50    7.01 m · **deep share   0.0 %** · rim p50  14.2° ⇒ cut  no / over-dug  no
+     body      12 ·    34.45 km² · cut p50 **  129.79 m** · fill max **   29.63 m** · fill p50   29.51 m · **deep share   0.0 %** · rim p50  27.1° ⇒ cut  no / over-dug  no
+     body      13 ·    24.04 km² · cut p50 **   10.03 m** · fill max **   69.49 m** · fill p50   38.58 m · **deep share   2.9 %** · rim p50  15.1° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2929.81 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  54.4° ⇒ cut YES / over-dug  no
+     body 1000002 ·   459.94 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000008 ·    94.64 km² · cut p50 **    0.00 m** · fill max **   16.32 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   5.6° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   492.79 km² · cut p50 **    0.02 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50  10.9° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.52 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.2° ⇒ cut  no / over-dug  no
+     body 1000013 ·   153.63 km² · cut p50 **    0.00 m** · fill max **    7.29 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.3° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.55 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.1° ⇒ cut  no / over-dug  no
+     body 1000016 ·   501.60 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   7.9° ⇒ cut  no / over-dug  no
+     body 1000017 ·   337.70 km² · cut p50 **    0.00 m** · fill max **   97.19 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   7.1° ⇒ cut  no / over-dug  no
+     body 1000018 ·   185.13 km² · cut p50 **   20.34 m** · fill max **   34.38 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  14.1° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.73 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.7° ⇒ cut  no / over-dug  no
+     Spillway max **94.45 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.83 m³/s** · 12 cells · drop **1.7 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **26 bodies · 3558 km² = 13.18 % of 27008 km² of land** · {"Endorheic": 4, "Unresolved": 1, "Exorheic": 21} · OVER-DUG **0 of 19** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 29.6 m³/s · wc==2 cells 380994
+   **7 of 14 held** (failed ["G-bodies", "G-pits", "drained", "G-ring", "G-drained", "G-tag", "edge"]) · 18 kept bodies · G-bodies 15/18 · G-pits 2487 · G-levels 0/0 · drained absent 15/18 · G-rim 0 · G-ring 586 · G-slope100 0/0 (max NaN°) · G-drained 11272 · G-tag (corrected) 36 (construction 18) · tagged 7 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.443 [0.435, 0.451] vs OFF eroded [0.428, 0.444] IN · edge 6367 (construction 209) · G-area 0.0 km² · plain 0.0999 km³ · build 147 s · canyons **0** · coast 0.0050 /km · removal 4728.4 km³ (kept bodies 97.8) · raise 0.74 km³ (kept bodies 0.11) [P2 ×1.4 (r_world 2, p 0) · d_t 49 m]
+   (588 s)
+
+────────── P3 ×1.4 (r_world 2, p 0) ──────────
+   RELIEF paired (n = 11327011): p10/p50/p90 **75.7 / 542.0 / 1503.4 m** · median cut 3.3 m · **+27.8 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     body       1 ·    17.06 km² · cut p50 **  100.24 m** · fill max **   28.17 m** · fill p50   28.04 m · **deep share   0.0 %** · rim p50  27.1° ⇒ cut  no / over-dug  no
+     body       4 ·     5.01 km² · cut p50 **  209.83 m** · fill max **  127.44 m** · fill p50   46.24 m · **deep share  47.1 %** · rim p50  19.6° ⇒ cut  no / over-dug  no
+     body       5 ·    22.52 km² · cut p50 **  264.63 m** · fill max **   33.30 m** · fill p50   32.67 m · **deep share   0.0 %** · rim p50  27.4° ⇒ cut  no / over-dug  no
+     body       6 ·    79.97 km² · cut p50 **   61.67 m** · fill max **   64.25 m** · fill p50   46.19 m · **deep share   7.7 %** · rim p50  27.5° ⇒ cut  no / over-dug  no
+     body       7 ·    73.47 km² · cut p50 **  -31.14 m** · fill max **  107.79 m** · fill p50   31.13 m · **deep share  32.8 %** · rim p50  23.1° ⇒ cut  no / over-dug  no
+     body       9 ·    13.68 km² · cut p50 **   14.54 m** · fill max **   37.42 m** · fill p50    7.01 m · **deep share   0.0 %** · rim p50  14.2° ⇒ cut  no / over-dug  no
+     body      13 ·    34.45 km² · cut p50 **  129.79 m** · fill max **   29.63 m** · fill p50   29.51 m · **deep share   0.0 %** · rim p50  27.1° ⇒ cut  no / over-dug  no
+     body      14 ·    24.04 km² · cut p50 **   10.03 m** · fill max **   69.49 m** · fill p50   38.58 m · **deep share   2.9 %** · rim p50  15.1° ⇒ cut  no / over-dug  no
+     body 1000001 ·     1.19 km² · cut p50 ** 2929.81 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  54.4° ⇒ cut YES / over-dug  no
+     body 1000002 ·   459.88 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000008 ·    95.76 km² · cut p50 **    0.00 m** · fill max **   23.56 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   7.3° ⇒ cut  no / over-dug  no
+     body 1000010 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000011 ·   492.79 km² · cut p50 **    0.02 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.3 %** · rim p50  10.9° ⇒ cut  no / over-dug  no
+     body 1000012 ·    10.52 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.2° ⇒ cut  no / over-dug  no
+     body 1000013 ·   153.63 km² · cut p50 **    0.00 m** · fill max **    7.29 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.3° ⇒ cut  no / over-dug  no
+     body 1000014 ·   628.35 km² · cut p50 **    0.00 m** · fill max **   17.63 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.1° ⇒ cut  no / over-dug  no
+     body 1000016 ·   501.60 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   7.9° ⇒ cut  no / over-dug  no
+     body 1000017 ·   337.70 km² · cut p50 **    0.00 m** · fill max **   97.19 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   7.1° ⇒ cut  no / over-dug  no
+     body 1000018 ·   185.13 km² · cut p50 **   20.34 m** · fill max **   34.38 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  14.1° ⇒ cut  no / over-dug  no
+     body 1000019 ·   383.73 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.1 %** · rim p50  13.7° ⇒ cut  no / over-dug  no
+     Spillway max **94.45 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.82 m³/s** · 12 cells · drop **1.7 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **27 bodies · 3565 km² = 13.20 % of 27008 km² of land** · {"Endorheic": 4, "Exorheic": 22, "Unresolved": 1} · OVER-DUG **0 of 20** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 29.6 m³/s · wc==2 cells 380994
+   **6 of 14 held** (failed ["G-bodies", "G-pits", "drained", "G-ring", "G-drained", "G-tag", "θ", "edge"]) · 18 kept bodies · G-bodies 15/18 · G-pits 2234 · G-levels 0/0 · drained absent 15/18 · G-rim 0 · G-ring 850 · G-slope100 0/0 (max NaN°) · G-drained 15920 · G-tag (corrected) 22 (construction 18) · tagged 7 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.446 [0.438, 0.454] vs OFF eroded [0.428, 0.444] OUT · edge 8230 (construction 209) · G-area 0.0 km² · plain 0.0999 km³ · build 259 s · canyons **0** · coast 0.0050 /km · removal 4762.3 km³ (kept bodies 97.8) · raise 0.74 km³ (kept bodies 0.10) [P3 ×1.4 (r_world 2, p 0)]
+   (705 s)
+
+   PHASE 1 · held of 42 (14 gates × 3 worlds) · G-ring cells · G-pits in every world:
+      P0: **15** held · G-ring 307 · G-pits everywhere false
+      P1: **17** held · G-ring 1444 · G-pits everywhere false
+      P2: **17** held · G-ring 1444 · G-pits everywhere false
+      P3: **14** held · G-ring 2201 · G-pits everywhere false
+   SELECTION (declared rule) · NO candidate holds G-pits in all three worlds: REPORT AND STOP (no phase 2)
+
+   SUMMARY · P0 ×1 (r_world 1, p 0.5): **5 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "G-rim", "G-ring", "G-slope100", "G-tag", "θ", "edge"]) · 18 kept bodies · G-bodies 11/18 · G-pits 43190 · G-levels 7/18 · drained absent 0/0 · G-rim 5 · G-ring 99 · G-slope100 1/14 (max 31.5°) · G-drained 0 · G-tag (corrected) 194 (construction 82) · tagged 11 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.444 [0.436, 0.452] vs OFF eroded [0.428, 0.444] OUT · edge 573 (construction 220) · G-area 1168.6 km² · plain 0.0603 km³ · build 140 s · canyons **0** · coast 0.0142 /km · removal 4624.4 km³ (kept bodies 18.1) · raise 0.71 km³ (kept bodies 0.08) [P0 ×1 (r_world 1, p 0.5)]
+   SUMMARY · P1 ×1 (r_world 1, p 0.5): **6 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "G-ring", "G-slope100", "G-tag", "θ", "edge"]) · 18 kept bodies · G-bodies 13/18 · G-pits 1792 · G-levels 15/18 · drained absent 0/0 · G-rim 0 · G-ring 308 · G-slope100 4/16 (max 52.4°) · G-drained 0 · G-tag (corrected) 94 (construction 82) · tagged 11 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.445 [0.437, 0.453] vs OFF eroded [0.428, 0.444] OUT · edge 4936 (construction 220) · G-area 1188.0 km² · plain 0.0603 km³ · build 156 s · canyons **0** · coast 0.0142 /km · removal 4618.1 km³ (kept bodies 14.0) · raise 0.71 km³ (kept bodies 0.08) [P1 ×1 (r_world 1, p 0.5)]
+   SUMMARY · P2 ×1 (r_world 1, p 0.5) · d_t 49 m: **6 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "G-ring", "G-slope100", "G-tag", "θ", "edge"]) · 18 kept bodies · G-bodies 13/18 · G-pits 1792 · G-levels 15/18 · drained absent 0/0 · G-rim 0 · G-ring 308 · G-slope100 4/16 (max 52.4°) · G-drained 0 · G-tag (corrected) 94 (construction 82) · tagged 11 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.445 [0.437, 0.453] vs OFF eroded [0.428, 0.444] OUT · edge 4936 (construction 220) · G-area 1188.0 km² · plain 0.0603 km³ · build 153 s · canyons **0** · coast 0.0142 /km · removal 4618.1 km³ (kept bodies 14.0) · raise 0.71 km³ (kept bodies 0.08) [P2 ×1 (r_world 1, p 0.5) · d_t 49 m]
+   SUMMARY · P3 ×1 (r_world 1, p 0.5): **6 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "G-ring", "G-slope100", "G-tag", "canyons", "edge"]) · 18 kept bodies · G-bodies 13/18 · G-pits 187 · G-levels 15/18 · drained absent 0/0 · G-rim 0 · G-ring 561 · G-slope100 7/16 (max 80.1°) · G-drained 0 · G-tag (corrected) 84 (construction 82) · tagged 11 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.442 [0.433, 0.450] vs OFF eroded [0.428, 0.444] IN · edge 8369 (construction 220) · G-area 1188.0 km² · plain 0.0603 km³ · build 329 s · canyons **1** · coast 0.0142 /km · removal 4674.5 km³ (kept bodies 14.0) · raise 0.71 km³ (kept bodies 0.08) [P3 ×1 (r_world 1, p 0.5)]
+   SUMMARY · P0 ×1.4 (r_world 2, p 0.5): **3 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "drained", "G-rim", "G-ring", "G-slope100", "G-drained", "G-tag", "G-sea", "edge"]) · 18 kept bodies · G-bodies 11/18 · G-pits 6461 · G-levels 2/9 · drained absent 8/9 · G-rim 1 · G-ring 103 · G-slope100 1/5 (max 32.6°) · G-drained 9781 · G-tag (corrected) 110 (construction 18) · tagged 7 · G-sea +112/−0 · F38 no · θ (corridors excluded) 0.440 [0.433, 0.448] vs OFF eroded [0.428, 0.444] IN · edge 500 (construction 221) · G-area 70.3 km² · plain 0.0938 km³ · build 215 s · canyons **0** · coast 0.0050 /km · removal 4723.0 km³ (kept bodies 108.0) · raise 0.74 km³ (kept bodies 0.10) [P0 ×1.4 (r_world 2, p 0.5)]
+   SUMMARY · P1 ×1.4 (r_world 2, p 0.5): **4 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "drained", "G-ring", "G-slope100", "G-drained", "G-tag", "G-sea", "edge"]) · 18 kept bodies · G-bodies 12/18 · G-pits 2330 · G-levels 3/9 · drained absent 8/9 · G-rim 0 · G-ring 550 · G-slope100 2/6 (max 48.1°) · G-drained 7241 · G-tag (corrected) 31 (construction 18) · tagged 7 · G-sea +118/−0 · F38 no · θ (corridors excluded) 0.441 [0.433, 0.448] vs OFF eroded [0.428, 0.444] IN · edge 6242 (construction 221) · G-area 74.5 km² · plain 0.0938 km³ · build 207 s · canyons **0** · coast 0.0050 /km · removal 4708.3 km³ (kept bodies 95.1) · raise 0.74 km³ (kept bodies 0.10) [P1 ×1.4 (r_world 2, p 0.5)]
+   SUMMARY · P2 ×1.4 (r_world 2, p 0.5) · d_t 49 m: **4 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "drained", "G-ring", "G-slope100", "G-drained", "G-tag", "G-sea", "edge"]) · 18 kept bodies · G-bodies 12/18 · G-pits 2330 · G-levels 3/9 · drained absent 8/9 · G-rim 0 · G-ring 550 · G-slope100 2/6 (max 48.1°) · G-drained 7241 · G-tag (corrected) 31 (construction 18) · tagged 7 · G-sea +118/−0 · F38 no · θ (corridors excluded) 0.441 [0.433, 0.448] vs OFF eroded [0.428, 0.444] IN · edge 6242 (construction 221) · G-area 74.5 km² · plain 0.0938 km³ · build 188 s · canyons **0** · coast 0.0050 /km · removal 4708.3 km³ (kept bodies 95.1) · raise 0.74 km³ (kept bodies 0.10) [P2 ×1.4 (r_world 2, p 0.5) · d_t 49 m]
+   SUMMARY · P3 ×1.4 (r_world 2, p 0.5): **2 of 14 held** (failed ["G-bodies", "G-pits", "G-levels", "drained", "G-ring", "G-slope100", "G-drained", "G-tag", "G-sea", "canyons", "θ", "edge"]) · 18 kept bodies · G-bodies 12/18 · G-pits 2037 · G-levels 3/9 · drained absent 8/9 · G-rim 0 · G-ring 790 · G-slope100 3/6 (max 76.2°) · G-drained 9186 · G-tag (corrected) 22 (construction 18) · tagged 7 · G-sea +118/−0 · F38 no · θ (corridors excluded) 0.444 [0.437, 0.451] vs OFF eroded [0.428, 0.444] OUT · edge 8152 (construction 221) · G-area 75.0 km² · plain 0.0938 km³ · build 269 s · canyons **1** · coast 0.0050 /km · removal 4744.0 km³ (kept bodies 95.1) · raise 0.74 km³ (kept bodies 0.10) [P3 ×1.4 (r_world 2, p 0.5)]
+   SUMMARY · P0 ×1.4 (r_world 2, p 0): **7 of 14 held** (failed ["G-bodies", "G-pits", "drained", "G-ring", "G-drained", "G-tag", "edge"]) · 18 kept bodies · G-bodies 15/18 · G-pits 6336 · G-levels 0/0 · drained absent 15/18 · G-rim 0 · G-ring 105 · G-slope100 0/0 (max NaN°) · G-drained 14366 · G-tag (corrected) 107 (construction 18) · tagged 7 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.442 [0.434, 0.450] vs OFF eroded [0.428, 0.444] IN · edge 523 (construction 209) · G-area 0.0 km² · plain 0.0999 km³ · build 139 s · canyons **0** · coast 0.0050 /km · removal 4744.2 km³ (kept bodies 111.7) · raise 0.74 km³ (kept bodies 0.10) [P0 ×1.4 (r_world 2, p 0)]
+   SUMMARY · P1 ×1.4 (r_world 2, p 0): **7 of 14 held** (failed ["G-bodies", "G-pits", "drained", "G-ring", "G-drained", "G-tag", "edge"]) · 18 kept bodies · G-bodies 15/18 · G-pits 2487 · G-levels 0/0 · drained absent 15/18 · G-rim 0 · G-ring 586 · G-slope100 0/0 (max NaN°) · G-drained 11272 · G-tag (corrected) 36 (construction 18) · tagged 7 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.443 [0.435, 0.451] vs OFF eroded [0.428, 0.444] IN · edge 6367 (construction 209) · G-area 0.0 km² · plain 0.0999 km³ · build 140 s · canyons **0** · coast 0.0050 /km · removal 4728.4 km³ (kept bodies 97.8) · raise 0.74 km³ (kept bodies 0.11) [P1 ×1.4 (r_world 2, p 0)]
+   SUMMARY · P2 ×1.4 (r_world 2, p 0) · d_t 49 m: **7 of 14 held** (failed ["G-bodies", "G-pits", "drained", "G-ring", "G-drained", "G-tag", "edge"]) · 18 kept bodies · G-bodies 15/18 · G-pits 2487 · G-levels 0/0 · drained absent 15/18 · G-rim 0 · G-ring 586 · G-slope100 0/0 (max NaN°) · G-drained 11272 · G-tag (corrected) 36 (construction 18) · tagged 7 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.443 [0.435, 0.451] vs OFF eroded [0.428, 0.444] IN · edge 6367 (construction 209) · G-area 0.0 km² · plain 0.0999 km³ · build 147 s · canyons **0** · coast 0.0050 /km · removal 4728.4 km³ (kept bodies 97.8) · raise 0.74 km³ (kept bodies 0.11) [P2 ×1.4 (r_world 2, p 0) · d_t 49 m]
+   SUMMARY · P3 ×1.4 (r_world 2, p 0): **6 of 14 held** (failed ["G-bodies", "G-pits", "drained", "G-ring", "G-drained", "G-tag", "θ", "edge"]) · 18 kept bodies · G-bodies 15/18 · G-pits 2234 · G-levels 0/0 · drained absent 15/18 · G-rim 0 · G-ring 850 · G-slope100 0/0 (max NaN°) · G-drained 15920 · G-tag (corrected) 22 (construction 18) · tagged 7 · G-sea +0/−0 · F38 no · θ (corridors excluded) 0.446 [0.438, 0.454] vs OFF eroded [0.428, 0.444] OUT · edge 8230 (construction 209) · G-area 0.0 km² · plain 0.0999 km³ · build 259 s · canyons **0** · coast 0.0050 /km · removal 4762.3 km³ (kept bodies 97.8) · raise 0.74 km³ (kept bodies 0.10) [P3 ×1.4 (r_world 2, p 0)]
+
+==========  end Finding 144 phase 1 . 50956.1 s  ==========
+

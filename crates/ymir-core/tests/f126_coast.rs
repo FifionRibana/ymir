@@ -15129,3 +15129,775 @@ fn f143_c() {
     eprintln!("\n   SUMMARY · {}", summary.join("\n   SUMMARY · "));
     eprintln!("\n==========  end Finding 143-C . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
 }
+
+/// ADR Finding 144 — spec v5: the scope computed on the input (S), the outlet-base bound (B), the capped head falls
+/// (H), the catchment of the laying cones (Z), then phase 1 of the light pass's candidates P0–P3 on ×1 (p 0.5), ×1.4
+/// (p 0.5) and ×1.4 (p 0), with the selection rule declared in `f144_declared.md`.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored --exact f144_p --nocapture
+#[test]
+#[ignore]
+fn f144_p() {
+    use common::{build_world, viz_dcfg, viz_hd_lakes_on};
+    use std::collections::{BTreeMap, HashMap, HashSet};
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use ymir_core::tectonics_c1::closures::volcanism::crater_protect_mask;
+    use ymir_core::tectonics_c1::drainage::C1_SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::valley_construction::{GorgeRetreat, LakeBase, carve_diag, gorge_design_distance_m, gorge_design_mask, gorge_plain, ocean_flood};
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE, breach_monotone_protected};
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    let n2m = c1_altitude_norm_to_metres(1.0, &ss) - c1_altitude_norm_to_metres(0.0, &ss);
+    let cell_km2 = CELL_KM * CELL_KM;
+    let tan28 = 28f32.to_radians().tan();
+    let vd = viz_dcfg();
+    eprintln!("\n==========  Finding 144 . spec v5: S, B, H, Z and phase 1 of P0–P3  ==========");
+    let metres = |g: &GridF32| -> Vec<f32> { g.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect() };
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let pre = build_field_seed(Knobs::no_incision(), PSEED);
+    let (w, h) = (s1.width, s1.height);
+    let n = w * h;
+    let zs1 = metres(&s1);
+    let xy = |c: usize| format!("({},{})", c % w, c / w);
+    let nbt = |c: usize, k: usize| ((c / w) as i32 + D8_DY[k]).rem_euclid(h as i32) as usize * w + ((c % w) as i32 + D8_DX[k]).rem_euclid(w as i32) as usize;
+    let (lm_in, dep) = {
+        let d = c1_drainage_windowed(&s1, None, &C1DrainageConfig::default(), &ss, DOMAIN_KM);
+        let bf = breach_monotone(&s1, &d.flow.filled, &d.lake_map, C1_SEA_LEVEL_NORM, w, h);
+        let spill = ocean_flood(&bf);
+        let eps = 0.01 / c1_altitude_norm_to_metres(1.0, &ss).max(1.0);
+        let dep: Vec<bool> = (0..n).map(|k| bf.data[k] > C1_SEA_LEVEL_NORM && spill[k] > bf.data[k] + eps).collect();
+        (d.lake_map, dep)
+    };
+    let fill_pre = {
+        let cl = c1_climate_placed(&pre, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+        let dc = DrainageClimate { precip_internal: &cl.precipitation, temperature: &cl.temperature };
+        fill_field_m(&pre, &vd, &ss, &dc, DOMAIN_KM).0
+    };
+    let off = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let links = trunk_links(&skeleton(&s1, &off, &ss, DOMAIN_KM));
+    let lb: Vec<bool> = links.iter().map(|l| lm_in[l.0] != 0 || dep[l.0] || lm_in[l.1] != 0 || dep[l.1]).collect();
+    let kn = |vc: ValleyConstruction| Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) };
+    let map_a = |age: f32| if age <= 1.0 { (age - 0.7) / 0.3 } else { 1.0 + (age - 1.0) / 0.4 };
+    let on_at = |age: f32| ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..ValleyConstruction::new(F121_AGE_K * age, Some(0.1)) };
+    let on = on_at(1.0);
+    let v5 = |age: f32, p: f32| ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v5(map_a(age), p)), ..on_at(age) };
+    let q = |v: &mut Vec<f32>, p: f32| -> f32 {
+        if v.is_empty() {
+            return f32::NAN;
+        }
+        v.sort_by(f32::total_cmp);
+        v[((v.len() - 1) as f32 * p) as usize]
+    };
+    let msg = |e: Box<dyn std::any::Any + Send>| -> String {
+        e.downcast_ref::<String>().cloned().or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_else(|| "non-string panic".to_string())
+    };
+    let breach_set = |wd: &common::World| -> Vec<usize> {
+        let g = &wd.heightmap;
+        let d = c1_drainage_windowed(g, None, &vd, &ss, DOMAIN_KM);
+        let prot = wd.volc.enabled.then(|| crater_protect_mask(&wd.craters, w, h));
+        let c = breach_monotone_protected(g, &d.flow.filled, &d.lake_map, 0.5, w, h, prot.as_deref());
+        (0..n).filter(|&k| g.data[k] > SEA && c.data[k] <= SEA).collect()
+    };
+    let theta_fit = |z: &[f32], carved: &[bool], excl: &dyn Fn(usize) -> bool| -> (f64, f64, f64, usize) {
+        let zk: Vec<f32> = links.iter().map(|l| z[l.0]).collect();
+        let zr: Vec<f32> = links.iter().map(|l| z[l.1]).collect();
+        let t = theta_links(&links, &zk, &zr, &|i| carved[links[i].0] && carved[links[i].1] && !lb[i] && !excl(i));
+        (t.0 as f64, t.1 as f64, t.2 as f64, t.3 as usize)
+    };
+    let extras = |label: &str, vc: ValleyConstruction, g: &GridF32, cond: &GridF32, bodies_cells: &[bool]| -> (usize, String) {
+        let cl_e = c1_climate_placed(g, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+        let dc_e = DrainageClimate { precip_internal: &cl_e.precipitation, temperature: &cl_e.temperature };
+        let (fill_del, _) = fill_field_m(g, &vd, &ss, &dc_e, DOMAIN_KM);
+        set_dump(true);
+        let _cr = f95_criteria(g, cond, &pre, DELIVERED_P50_M, &ss, &vd, cell_km2, n2m, w, h);
+        set_dump(false);
+        let mut canyons = 0;
+        for b in take_bodies() {
+            let floor = *b.cells.iter().min_by(|&&a, &&c| g.data[a].total_cmp(&g.data[c])).expect("body");
+            if over_dug_depression(fill_del[floor] - fill_pre[floor], b.rim) {
+                canyons += 1;
+            }
+        }
+        let skp = skeleton(&pre, &vc, &ss, DOMAIN_KM);
+        let (_, mkp) = carve(&pre, &skp, &vc, &ss);
+        let sea: Vec<bool> = (0..n).map(|k| g.data[k] <= SEA).collect();
+        let dsea = dist_from(&sea, w, h);
+        let cw: Vec<bool> = (0..n).map(|k| mkp.carved[k] && !mkp.floor[k] && g.data[k] > SEA && dsea[k] <= 3).collect();
+        let dwall = dist_from(&cw, w, h);
+        let co = coast(g, &ss, &dwall, 2.0 / CELL_KM);
+        let rn = co.near.iter().filter(|&&b| b).count() as f32 / co.l_near_km.max(1e-6);
+        let eo = metres(g);
+        let rem = |sel: &dyn Fn(usize) -> bool| -> f64 { (0..n).filter(|&k| s1.data[k] > SEA && sel(k)).map(|k| ((zs1[k] - eo[k]).max(0.0) as f64) * cell_km2 as f64 * 1e-3).sum() };
+        let rai = |sel: &dyn Fn(usize) -> bool| -> f64 { (0..n).filter(|&k| s1.data[k] > SEA && sel(k)).map(|k| ((eo[k] - zs1[k]).max(0.0) as f64) * cell_km2 as f64 * 1e-3).sum() };
+        (
+            canyons,
+            format!(
+                "canyons **{canyons}** · coast {rn:.4} /km · removal {:.1} km³ (kept bodies {:.1}) · raise {:.2} km³ (kept bodies {:.2}) [{label}]",
+                rem(&|_| true),
+                rem(&|k| bodies_cells[k]),
+                rai(&|_| true),
+                rai(&|k| bodies_cells[k])
+            ),
+        )
+    };
+    // ── references: ON ×1 (G-sea) and OFF ×1 (θ on the eroded world)
+    let sea_on: HashSet<usize> = {
+        let wd = build_world(kn(on), None, PSEED, None);
+        breach_set(&wd).into_iter().collect()
+    };
+    let off_ci = {
+        let wd = build_world(kn(off), None, PSEED, None);
+        let sk = skeleton(&s1, &off, &ss, DOMAIN_KM);
+        let (_, mk) = carve(&s1, &sk, &off, &ss);
+        theta_fit(&metres(&wd.heightmap), &mk.carved, &|_| false)
+    };
+    eprintln!("   ON ×1's breach set {} cells · OFF ×1's θ on the eroded world {:.3} [{:.3}, {:.3}] ({} links)", sea_on.len(), off_ci.0, off_ci.1, off_ci.2, off_ci.3);
+    // ── S
+    {
+        let list14: [u32; 14] = [20360735, 23179228, 25325689, 29042877, 30033743, 32780258, 33206583, 34376571, 34784695, 38292872, 41298524, 41535879, 47099127, 48588290];
+        let sk5 = skeleton(&s1, &v5(1.0, 0.5), &ss, DOMAIN_KM);
+        let sk3 = skeleton(&s1, &ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v3(1.0, 0.5)), ..on }, &ss, DOMAIN_KM);
+        let kept: Vec<u32> = sk5.gorge_bodies.iter().map(|b| b.low).collect();
+        eprintln!(
+            "\n   S · v5 keeps **{}** bodies · of F143's 14: {} kept, missing {:?} · beyond the 14: {:?}",
+            kept.len(),
+            list14.iter().filter(|l| kept.contains(l)).count(),
+            list14.iter().filter(|l| !kept.contains(l)).map(|&l| xy(l as usize)).collect::<Vec<_>>(),
+            kept.iter().filter(|l| !list14.contains(l)).map(|&l| xy(l as usize)).collect::<Vec<_>>()
+        );
+        for b in sk3.gorge_bodies.iter().filter(|b| b.input_lake) {
+            eprintln!(
+                "      input lake at {} · {:.1} km² · in a depression {} · under the sea {} · ring touches a depression {} · v5 {}",
+                xy(b.low as usize),
+                b.cells as f32 * cell_km2,
+                b.in_depression,
+                b.in_sea,
+                b.touches_depression,
+                if kept.contains(&b.low) { "KEPT" } else { "dropped" }
+            );
+        }
+    }
+    // ── B (the constructions' bodies at every age)
+    eprintln!("\n   B · the bodies the outlet's base raises (spec level → level, B):");
+    for (age, p) in [(0.7f32, 0.5f32), (0.85, 0.5), (1.0, 0.5), (1.2, 0.5), (1.4, 0.5), (1.0, 0.0), (1.0, 0.25), (1.4, 0.0)] {
+        let sk = skeleton(&s1, &v5(age, p), &ss, DOMAIN_KM);
+        let b4 = sk.gorge_bodies.iter().find(|b| b.low == 29042877);
+        let raised: Vec<String> = sk
+            .gorge_bodies
+            .iter()
+            .filter(|b| b.bounded)
+            .map(|b| format!("{} r {:.2} → {:.1} (B {:.1}, L_floor {:.1})", xy(b.low as usize), b.r_lake, b.level, b.b_out, b.l_floor))
+            .collect();
+        eprintln!(
+            "      ×{age} p {p}: {} raised {:?} · lake 4: {}",
+            raised.len(),
+            raised,
+            b4.map_or("not kept".to_string(), |b| format!("r {:.2} · L_floor {:.1} · B {:.1} · level {:.1} · bounded {}", b.r_lake, b.l_floor, b.b_out, b.level, b.bounded))
+        );
+    }
+    // ── H and the G-tag instrument (×1, p 0.5, the construction)
+    {
+        let vc = v5(1.0, 0.5);
+        let sk = skeleton(&s1, &vc, &ss, DOMAIN_KM);
+        let (b0, _) = carve(&s1, &sk, &vc, &ss);
+        let mut bp = b0;
+        let _ = gorge_plain(&mut bp, &sk, &ss, 1.0);
+        let zb = metres(&bp);
+        let bo = sk.gorge_body_of.clone().unwrap();
+        eprintln!("\n   H (×1, p 0.5) · A, D_g, φ, the head fall (capped), the cap, S, H_f:");
+        let (mut tagged, mut heads) = (0usize, Vec::new());
+        let (mut old_n, mut new_n) = (0usize, 0usize);
+        for b in &sk.gorge_bodies {
+            let hf = (1.5 * b.slope * 100.0).max(10.0);
+            let tag = b.head_fall_m > hf;
+            if tag {
+                tagged += 1;
+                heads.push(b.head_fall_m);
+            }
+            eprintln!(
+                "      {} · A {:>7.1} · D_g {:>6.1} · φ {:.2} · head {:>6.1} m (cap {:.0}) · S {:.2}° · H_f {hf:.1}{}",
+                xy(b.low as usize),
+                b.a_out_km2,
+                b.d_g,
+                b.phi,
+                b.head_fall_m,
+                b.head_cap_m,
+                b.slope.atan().to_degrees(),
+                if tag { " TAG" } else { "" }
+            );
+            if b.col == u32::MAX {
+                continue;
+            }
+            let glen = if b.slope > 0.0 { (b.d_g / b.slope / 1000.0).min(20.0) } else { 0.0 };
+            let (mut gp, mut sd) = (vec![b.col as usize], vec![0f32]);
+            let mut c = b.col as usize;
+            while *sd.last().unwrap() < glen {
+                let d = sk.direction[c];
+                if d == DIR_NONE {
+                    break;
+                }
+                let r2 = nbt(c, d as usize);
+                if s1.data[r2] <= SEA || bo[r2] != u32::MAX {
+                    break;
+                }
+                sd.push(sd.last().unwrap() + CELL_KM * if d % 2 == 1 { std::f32::consts::SQRT_2 } else { 1.0 });
+                gp.push(r2);
+                c = r2;
+            }
+            for i in 1..gp.len().saturating_sub(2) {
+                let dz = zb[gp[i]] - zb[gp[i + 2]];
+                if dz > hf {
+                    old_n += 1;
+                }
+                if dz - b.slope * (sd[i + 2] - sd[i]) * 1000.0 > hf {
+                    new_n += 1;
+                }
+            }
+        }
+        heads.sort_by(f32::total_cmp);
+        eprintln!(
+            "   H · tagged **{tagged}** of {} · median {:.1} m · max {:.1} m · G-tag on the construction: old instrument **{old_n}** · corrected **{new_n}** · (H_f in the code: `(1.5 * sg * 100.0).max(10.0)` with sg = slope_for(top), the real slope)",
+            sk.gorge_bodies.len(),
+            if heads.is_empty() { f32::NAN } else { heads[heads.len() / 2] },
+            heads.last().copied().unwrap_or(f32::NAN)
+        );
+    }
+    // ── Z (×1.4, p 0.5 and p 0): the laying cone's catchment
+    for (age, p) in [(1.4f32, 0.5f32), (1.4, 0.0)] {
+        let vc = v5(age, p);
+        let sk = skeleton(&s1, &vc, &ss, DOMAIN_KM);
+        let (co, mk, dg) = carve_diag(&s1, &sk, &vc, &ss);
+        let mut bp = co;
+        let _ = gorge_plain(&mut bp, &sk, &ss, 1.0);
+        let zp = metres(&bp);
+        drop(bp);
+        let bo = sk.gorge_body_of.clone().unwrap();
+        let owner = sk.line_owner.clone().unwrap();
+        let dir = &sk.direction;
+        // the first line met down the D8 path (memoised)
+        let mut first = vec![u32::MAX - 1; n];
+        let mut path = Vec::new();
+        for s in 0..n {
+            if first[s] != u32::MAX - 1 {
+                continue;
+            }
+            path.clear();
+            let mut c = s;
+            let v0;
+            loop {
+                if first[c] != u32::MAX - 1 {
+                    v0 = first[c];
+                    break;
+                }
+                if owner[c] != u32::MAX {
+                    v0 = owner[c];
+                    break;
+                }
+                path.push(c);
+                let d = dir[c];
+                if d == DIR_NONE || path.len() > 50_000 {
+                    v0 = u32::MAX;
+                    break;
+                }
+                c = nbt(c, d as usize);
+            }
+            for &q2 in &path {
+                first[q2] = v0;
+            }
+        }
+        let chain_has = |start: u32, target: u32| -> bool {
+            let mut l = start;
+            for _ in 0..sk.polylines.len() + 1 {
+                if l == u32::MAX {
+                    return false;
+                }
+                if l == target {
+                    return true;
+                }
+                match sk.line_parent.get(l as usize).copied().flatten() {
+                    Some((pl, _)) => l = pl,
+                    None => return false,
+                }
+            }
+            false
+        };
+        let cone_line = |c: usize| -> Option<u32> {
+            let s = dg.banded.as_ref().map(|b| b[c]).filter(|&s| s != u32::MAX).unwrap_or(dg.who[c]);
+            (s != u32::MAX).then(|| dg.line_of[s as usize])
+        };
+        let outside = |c: usize| -> Option<bool> {
+            let l = cone_line(c)?;
+            let f = if owner[c] != u32::MAX { owner[c] } else { first[c] };
+            Some(!chain_has(f, l))
+        };
+        // up_body for G-drained
+        let mut up_body = vec![u32::MAX - 1; n];
+        for s in 0..n {
+            if up_body[s] != u32::MAX - 1 {
+                continue;
+            }
+            path.clear();
+            let mut c = s;
+            let v0;
+            loop {
+                if up_body[c] != u32::MAX - 1 {
+                    v0 = up_body[c];
+                    break;
+                }
+                if bo[c] != u32::MAX && c != s {
+                    v0 = bo[c];
+                    break;
+                }
+                path.push(c);
+                let d = dir[c];
+                if d == DIR_NONE || s1.data[c] <= SEA || path.len() > 50_000 {
+                    v0 = u32::MAX;
+                    break;
+                }
+                c = nbt(c, d as usize);
+            }
+            for &q2 in &path {
+                up_body[q2] = v0;
+            }
+        }
+        let drained: Vec<bool> = sk.gorge_bodies.iter().map(|b| b.r_lake >= 1.999).collect();
+        let share = |sel: &dyn Fn(usize) -> bool| -> String {
+            let (mut t, mut o, mut nos) = (0usize, 0usize, 0usize);
+            for c in 0..n {
+                if !sel(c) {
+                    continue;
+                }
+                match outside(c) {
+                    Some(true) => {
+                        t += 1;
+                        o += 1;
+                    }
+                    Some(false) => t += 1,
+                    None => nos += 1,
+                }
+            }
+            format!("{o} of {t} laid by a cone ({:.1} %) outside their catchment (+ {nos} without a laying sample)", if t > 0 { 100.0 * o as f64 / t as f64 } else { 0.0 })
+        };
+        let viol = |c: usize| -> bool {
+            let ub = up_body[c];
+            ub != u32::MAX && ub != u32::MAX - 1 && drained[ub as usize] && zp[c] < sk.gorge_bodies[ub as usize].l_floor - 1.0
+        };
+        eprintln!("\n   Z (×{age}, p {p}) · G-drained's violators: {}", share(&viol));
+        eprintln!("      the drained bowls' footprints: {}", share(&|c| bo[c] != u32::MAX && drained[bo[c] as usize]));
+        eprintln!("      the cells upstream of the drained bowls: {}", share(&|c| up_body[c] != u32::MAX && up_body[c] != u32::MAX - 1 && drained[up_body[c] as usize]));
+        eprintln!("      every carved cell of the world: {}", share(&|c| mk.carved[c]));
+    }
+    // ── P, phase 1
+    let mut held_by: BTreeMap<String, (usize, usize, bool)> = BTreeMap::new(); // (held, G-ring cells, G-pits in every world)
+    let mut summary: Vec<String> = Vec::new();
+    let mut d_t_m: f32 = 0.0;
+    let mut p0_x1_eo: Option<Vec<f32>> = None;
+    for (age, p) in [(1.0f32, 0.5f32), (1.4, 0.5), (1.4, 0.0)] {
+        for cand in ["P0", "C2-for-d_t", "P1", "P2", "P3"] {
+            if cand == "C2-for-d_t" && age != 1.0 {
+                continue;
+            }
+            let mode: u8 = match cand {
+                "P1" => 1,
+                "P2" => 2,
+                "P3" => 3,
+                _ => 0,
+            };
+            let base = GorgeRetreat::v5(map_a(age), p);
+            let g5 = GorgeRetreat { light_mode: mode, light_dt_m: if mode == 2 { d_t_m } else { 0.0 }, freeze_design: cand == "C2-for-d_t", ..base };
+            let vc = ValleyConstruction { gorge_retreat: Some(g5), ..on_at(age) };
+            let label = format!("{cand} ×{age} (r_world {}, p {p}){}", map_a(age), if mode == 2 { format!(" · d_t {d_t_m:.0} m") } else { String::new() });
+            eprintln!("\n────────── {label} ──────────");
+            let t = Instant::now();
+            if cand == "C2-for-d_t" {
+                // d_t: the width of C2's walls against P0, by distance band outside the design mask
+                let sk = skeleton(&s1, &vc, &ss, DOMAIN_KM);
+                let mask = gorge_design_mask(&sk);
+                let dist = gorge_design_distance_m(&mask, &sk);
+                drop(sk);
+                let wd = build_world(kn(vc), None, PSEED, None);
+                let ec2 = metres(&wd.heightmap);
+                let e0 = p0_x1_eo.take().expect("P0 ×1 first");
+                let steep = |z: &[f32], c: usize| -> bool {
+                    (0..8).any(|k| {
+                        let m = nbt(c, k);
+                        let dd = CELL_KM * 1000.0 * if k % 2 == 1 { std::f32::consts::SQRT_2 } else { 1.0 };
+                        (z[c] - z[m]) / dd > tan28
+                    })
+                };
+                let mut band = vec![(0usize, 0usize, 0usize); 21];
+                for c in 0..n {
+                    let j = (dist[c] / (CELL_KM * 1000.0)).round() as usize;
+                    if (1..=20).contains(&j) {
+                        band[j].0 += 1;
+                        band[j].1 += steep(&ec2, c) as usize;
+                        band[j].2 += steep(&e0, c) as usize;
+                    }
+                }
+                let mut chosen = 0usize;
+                let mut rows = Vec::new();
+                for j in 1..=20 {
+                    let (tot, s2, s0) = band[j];
+                    let ex = if tot > 0 { 100.0 * (s2 as f64 - s0 as f64) / tot as f64 } else { 0.0 };
+                    rows.push(format!("{j}: {ex:+.2} pp"));
+                    if chosen == 0 && ex < 0.5 {
+                        chosen = j;
+                    }
+                }
+                d_t_m = chosen.max(1) as f32 * CELL_KM * 1000.0;
+                eprintln!("   d_t · C2's steep share minus P0's, by band (cells): {} · **d_t = {} cells = {d_t_m:.0} m**", rows.join(" · "), chosen.max(1));
+                continue;
+            }
+            let res = catch_unwind(AssertUnwindSafe(|| -> (Vec<bool>, usize, String, Option<Vec<f32>>) {
+                let sk = skeleton(&s1, &vc, &ss, DOMAIN_KM);
+                let (built0, mk) = carve(&s1, &sk, &vc, &ss);
+                let mut built = built0;
+                let plain = gorge_plain(&mut built, &sk, &ss, 1.0);
+                let zb = metres(&built);
+                let bo = sk.gorge_body_of.clone().expect("the gate is on");
+                let bodies = sk.gorge_bodies.clone();
+                let rf = sk.rim_floor_m.clone().expect("the gate is on");
+                let dir_sk = sk.direction.clone();
+                let mask = gorge_design_mask(&sk);
+                let mut corridor = vec![false; n];
+                for &c in &sk.gorge_path {
+                    for dy in -2i32..=2 {
+                        for dx in -2i32..=2 {
+                            corridor[((c as usize / w) as i32 + dy).rem_euclid(h as i32) as usize * w + ((c as usize % w) as i32 + dx).rem_euclid(w as i32) as usize] = true;
+                        }
+                    }
+                }
+                drop(sk);
+                let mut cells: Vec<Vec<usize>> = vec![Vec::new(); bodies.len()];
+                for k in 0..n {
+                    if bo[k] != u32::MAX {
+                        cells[bo[k] as usize].push(k);
+                    }
+                }
+                let bcells: Vec<bool> = (0..n).map(|k| bo[k] != u32::MAX).collect();
+                let rings: Vec<Vec<usize>> = (0..bodies.len())
+                    .map(|bi| {
+                        let mut r: Vec<usize> = cells[bi].iter().flat_map(|&c| (0..8).map(move |k| (c, k))).map(|(c, k)| nbt(c, k)).filter(|&m| bo[m] == u32::MAX && s1.data[m] > SEA).collect();
+                        r.sort_unstable();
+                        r.dedup();
+                        r
+                    })
+                    .collect();
+                let mut up_body = vec![u32::MAX - 1; n];
+                let mut path = Vec::new();
+                for s in 0..n {
+                    if up_body[s] != u32::MAX - 1 {
+                        continue;
+                    }
+                    path.clear();
+                    let mut c = s;
+                    let v0;
+                    loop {
+                        if up_body[c] != u32::MAX - 1 {
+                            v0 = up_body[c];
+                            break;
+                        }
+                        if bo[c] != u32::MAX && c != s {
+                            v0 = bo[c];
+                            break;
+                        }
+                        path.push(c);
+                        let d = dir_sk[c];
+                        if d == DIR_NONE || s1.data[c] <= SEA || path.len() > 50_000 {
+                            v0 = u32::MAX;
+                            break;
+                        }
+                        c = nbt(c, d as usize);
+                    }
+                    for &q2 in &path {
+                        up_body[q2] = v0;
+                    }
+                }
+                // the geometric gates on a field
+                let geom = |z: &[f32]| -> (usize, usize, usize, usize) {
+                    let (mut ring_viol, mut drn_bad, mut tag_new, mut edge) = (0usize, 0usize, 0usize, 0usize);
+                    for (bi, b) in bodies.iter().enumerate() {
+                        if b.col == u32::MAX {
+                            continue;
+                        }
+                        for &c in &rings[bi] {
+                            if rf[c].is_finite() && (zb[c] - rf[c]).abs() < 0.05 && zs1[c] > rf[c] + 0.05 && c != b.col as usize {
+                                for k in 0..8 {
+                                    let m = nbt(c, k);
+                                    if bo[m] != u32::MAX || rf[m].is_finite() {
+                                        continue;
+                                    }
+                                    let dist = CELL_KM * 1000.0 * if k % 2 == 1 { std::f32::consts::SQRT_2 } else { 1.0 };
+                                    if (z[c] - z[m]) / dist > tan28 {
+                                        ring_viol += 1;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if b.r_lake >= 1.999 {
+                            for k in 0..n {
+                                if up_body[k] == bi as u32 && z[k] < b.l_floor - 1.0 {
+                                    drn_bad += 1;
+                                }
+                            }
+                        }
+                        let hf = (1.5 * b.slope * 100.0).max(10.0);
+                        let glen = if b.slope > 0.0 { (b.d_g / b.slope / 1000.0).min(20.0) } else { 0.0 };
+                        let (mut gp, mut sd) = (vec![b.col as usize], vec![0f32]);
+                        let mut c = b.col as usize;
+                        while *sd.last().unwrap() < glen {
+                            let d = dir_sk[c];
+                            if d == DIR_NONE {
+                                break;
+                            }
+                            let r2 = nbt(c, d as usize);
+                            if s1.data[r2] <= SEA || bo[r2] != u32::MAX {
+                                break;
+                            }
+                            sd.push(sd.last().unwrap() + CELL_KM * if d % 2 == 1 { std::f32::consts::SQRT_2 } else { 1.0 });
+                            gp.push(r2);
+                            c = r2;
+                        }
+                        for i in 1..gp.len().saturating_sub(2) {
+                            if (z[gp[i]] - z[gp[i + 2]]) - b.slope * (sd[i + 2] - sd[i]) * 1000.0 > hf {
+                                tag_new += 1;
+                            }
+                        }
+                    }
+                    for c in 0..n {
+                        if !mask[c] {
+                            continue;
+                        }
+                        if (0..8).any(|k| {
+                            let m = nbt(c, k);
+                            let dd = CELL_KM * 1000.0 * if k % 2 == 1 { std::f32::consts::SQRT_2 } else { 1.0 };
+                            !mask[m] && (z[c] - z[m]) / dd > tan28
+                        }) {
+                            edge += 1;
+                        }
+                    }
+                    (ring_viol, drn_bad, tag_new, edge)
+                };
+                let pits = |g: &GridF32| -> usize {
+                    use std::cmp::Reverse;
+                    use std::collections::BinaryHeap;
+                    let mut tot = 0usize;
+                    for (bi, b) in bodies.iter().enumerate() {
+                        if b.r_lake <= 1.0 || cells[bi].is_empty() {
+                            continue;
+                        }
+                        let me = bi as u32;
+                        let mut fill: HashMap<usize, f32> = HashMap::with_capacity(cells[bi].len());
+                        let mut heap: BinaryHeap<Reverse<(u32, usize)>> = BinaryHeap::new();
+                        let mut seen: HashSet<usize> = HashSet::new();
+                        for &c in &cells[bi] {
+                            for k in 0..8 {
+                                let m = nbt(c, k);
+                                if bo[m] != me && seen.insert(m) {
+                                    heap.push(Reverse((g.data[m].to_bits(), m)));
+                                }
+                            }
+                        }
+                        while let Some(Reverse((lb_, c))) = heap.pop() {
+                            let lev = f32::from_bits(lb_);
+                            for k in 0..8 {
+                                let m = nbt(c, k);
+                                if bo[m] != me || fill.contains_key(&m) {
+                                    continue;
+                                }
+                                let l = lev.max(g.data[m]);
+                                fill.insert(m, l);
+                                heap.push(Reverse((l.to_bits(), m)));
+                            }
+                        }
+                        let low = *cells[bi].iter().min_by(|&&a, &&c| g.data[a].total_cmp(&g.data[c])).expect("cells");
+                        let lake = ((fill[&low] - g.data[low]) * n2m > 0.1).then(|| fill[&low]);
+                        for &c in &cells[bi] {
+                            let d = (fill[&c] - g.data[c]) * n2m;
+                            if d > 0.1 && lake.is_none_or(|ll| ((fill[&c] - ll) * n2m).abs() > 0.01) {
+                                tot += 1;
+                            }
+                        }
+                    }
+                    tot
+                };
+                let (_, _, tag_c, edge_c) = geom(&zb);
+                let tb = Instant::now();
+                let wd = build_world(kn(vc), None, PSEED, None);
+                let t_build = tb.elapsed().as_secs_f64();
+                let eo = metres(&wd.heightmap);
+                let sw: HashSet<usize> = breach_set(&wd).into_iter().collect();
+                let (added, missing) = (sw.difference(&sea_on).count(), sea_on.difference(&sw).count());
+                let pits_w = pits(&wd.heightmap);
+                let (rv, db, tg, edge) = geom(&eo);
+                let tail = catch_unwind(AssertUnwindSafe(|| viz_hd_lakes_on(&wd, kn(vc), PSEED, 45.0, 40.0)));
+                let v = match tail {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let m = msg(e);
+                        eprintln!("   F38 · **THE INVARIANT FIRES**: {m}");
+                        let held = vec![false; 14];
+                        return (held, rv, format!("{label}: F38 FIRED · G-pits {pits_w} · G-sea +{added}/−{missing}"), None);
+                    }
+                };
+                let lm = &v.drainage.lake_map;
+                let lakes = &v.drainage.lakes;
+                let cn = metres(&v.conditioned);
+                let lvl_of: HashMap<u32, (f32, f32, usize)> = lakes.iter().map(|l| (l.base.id, (l.level_m, l.area_km2, l.base.outlet.1 as usize * w + l.base.outlet.0 as usize))).collect();
+                let rcv = |c: usize| -> Option<usize> {
+                    let d = v.drainage.flow.direction[c];
+                    if d == DIR_NONE {
+                        return None;
+                    }
+                    let (x, y) = ((c % w) as i32 + D8_DX[d as usize], (c / w) as i32 + D8_DY[d as usize]);
+                    if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 { None } else { Some(y as usize * w + x as usize) }
+                };
+                let (mut ok_lv, mut und, mut dr, mut dr_ok, mut s_bad, mut s_n) = (0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
+                let (mut gb_ok, mut gb_n) = (0usize, 0usize);
+                let mut used: HashSet<u32> = HashSet::new();
+                let mut area = 0f64;
+                let mut rim_bad = 0usize;
+                let mut s_list: Vec<f32> = Vec::new();
+                let mut off_lv: Vec<String> = Vec::new();
+                for (bi, b) in bodies.iter().enumerate() {
+                    let mut ov: HashMap<u32, usize> = HashMap::new();
+                    for &c in &cells[bi] {
+                        if lm[c] != 0 {
+                            *ov.entry(lm[c]).or_insert(0) += 1;
+                        }
+                    }
+                    let best = ov.iter().max_by_key(|e| (*e.1, std::cmp::Reverse(*e.0))).map(|(&id, &c)| (id, c));
+                    gb_n += 1;
+                    if b.r_lake >= 1.999 {
+                        dr += 1;
+                        if best.is_none_or(|(_, c)| 2 * c < cells[bi].len()) {
+                            dr_ok += 1;
+                            gb_ok += 1;
+                        }
+                        continue;
+                    }
+                    und += 1;
+                    if b.r_lake <= 1.0 && b.col != u32::MAX && b.level - rings[bi].iter().map(|&c| eo[c]).fold(f32::INFINITY, f32::min) > 10.0 {
+                        rim_bad += 1;
+                    }
+                    let Some((id, c)) = best else {
+                        off_lv.push(format!("{} r {:.2} L {:.1}: no lake", xy(b.low as usize), b.r_lake, b.level));
+                        continue;
+                    };
+                    if 2 * c > cells[bi].len() && used.insert(id) {
+                        gb_ok += 1;
+                    }
+                    let Some(&(lv, ar, o)) = lvl_of.get(&id) else { continue };
+                    area += ar as f64;
+                    if (lv - b.level).abs() <= 1.0 {
+                        ok_lv += 1;
+                    } else {
+                        off_lv.push(format!("{} r {:.2} L {:.1} final {lv:.1}", xy(b.low as usize), b.r_lake, b.level));
+                    }
+                    if let Some(col) = rcv(o) {
+                        let (mut pth, mut dd) = (vec![col], vec![0f32]);
+                        let mut c = col;
+                        while *dd.last().unwrap() < 10.5 && cn[c] > 0.0 {
+                            let Some(r2) = rcv(c) else { break };
+                            if lm[r2] != 0 && lm[r2] != id {
+                                break;
+                            }
+                            dd.push(dd.last().unwrap() + CELL_KM * if (c % w != r2 % w) && (c / w != r2 / w) { std::f32::consts::SQRT_2 } else { 1.0 });
+                            pth.push(r2);
+                            c = r2;
+                        }
+                        let mut ms = 0f32;
+                        for i in 0..pth.len() {
+                            if dd[i] > 10.0 {
+                                break;
+                            }
+                            if let Some(j) = (i..pth.len()).find(|&j| dd[j] >= dd[i] + 0.1) {
+                                ms = ms.max((cn[pth[i]] - cn[pth[j]]) / ((dd[j] - dd[i]) * 1000.0));
+                            }
+                        }
+                        s_n += 1;
+                        s_list.push(ms.atan().to_degrees());
+                        if ms > tan28 {
+                            s_bad += 1;
+                        }
+                    }
+                }
+                let th = theta_fit(&eo, &mk.carved, &|i| corridor[links[i].0] || corridor[links[i].1]);
+                let th_in = th.0 >= off_ci.1 && th.0 <= off_ci.2;
+                let (canyons, ex) = extras(&label, vc, &wd.heightmap, &v.conditioned, &bcells);
+                let dep_total: f64 = plain.iter().map(|p| p.volume_km3).sum();
+                let held = vec![
+                    gb_ok == gb_n,
+                    pits_w == 0,
+                    ok_lv == und,
+                    dr_ok == dr,
+                    rim_bad == 0,
+                    rv == 0,
+                    s_bad == 0,
+                    db == 0,
+                    tg == 0,
+                    added == 0 && missing == 0,
+                    true,
+                    canyons == 0,
+                    th_in,
+                    edge == 0,
+                ];
+                let names = ["G-bodies", "G-pits", "G-levels", "drained", "G-rim", "G-ring", "G-slope100", "G-drained", "G-tag", "G-sea", "F38", "canyons", "θ", "edge"];
+                let failed: Vec<&str> = held.iter().zip(names.iter()).filter(|(h2, _)| !**h2).map(|(_, nm)| *nm).collect();
+                let line = format!(
+                    "**{} of 14 held** (failed {:?}) · {} kept bodies · G-bodies {gb_ok}/{gb_n} · G-pits {pits_w} · G-levels {ok_lv}/{und} · drained absent {dr_ok}/{dr} · G-rim {rim_bad} · G-ring {rv} · G-slope100 {s_bad}/{s_n} (max {:.1}°) · G-drained {db} · G-tag (corrected) {tg} (construction {tag_c}) · tagged {} · G-sea +{added}/−{missing} · F38 no · θ (corridors excluded) {:.3} [{:.3}, {:.3}] vs OFF eroded [{:.3}, {:.3}] {} · edge {edge} (construction {edge_c}) · G-area {area:.1} km² · plain {dep_total:.4} km³ · build {t_build:.0} s · {ex}",
+                    held.iter().filter(|x| **x).count(),
+                    failed,
+                    bodies.len(),
+                    q(&mut s_list, 1.0),
+                    wd.gorge_falls.len(),
+                    th.0,
+                    th.1,
+                    th.2,
+                    off_ci.1,
+                    off_ci.2,
+                    if th_in { "IN" } else { "OUT" }
+                );
+                eprintln!("   {line}");
+                for o in off_lv.iter().take(12) {
+                    eprintln!("      off: {o}");
+                }
+                let keep_eo = (age == 1.0 && cand == "P0").then_some(eo);
+                (held, rv, line, keep_eo)
+            }));
+            let (held, rv, line) = match res {
+                Ok((hd, rv, l, keep)) => {
+                    if keep.is_some() {
+                        p0_x1_eo = keep;
+                    }
+                    (hd, rv, l)
+                }
+                Err(e) => {
+                    let m = msg(e);
+                    eprintln!("   **THE WORLD PANICKED**: {m}");
+                    (vec![false; 14], 0, format!("{label}: PANICKED · {}", m.chars().take(160).collect::<String>()))
+                }
+            };
+            eprintln!("   ({:.0} s)", t.elapsed().as_secs_f64());
+            let e = held_by.entry(cand.to_string()).or_insert((0, 0, true));
+            e.0 += held.iter().filter(|x| **x).count();
+            e.1 += rv;
+            e.2 &= held[1];
+            summary.push(format!("{label}: {line}"));
+        }
+    }
+    eprintln!("\n   PHASE 1 · held of 42 (14 gates × 3 worlds) · G-ring cells · G-pits in every world:");
+    for (c, (hd, rg, pits_all)) in &held_by {
+        eprintln!("      {c}: **{hd}** held · G-ring {rg} · G-pits everywhere {pits_all}");
+    }
+    let cands: Vec<(&String, &(usize, usize, bool))> = held_by.iter().filter(|e| e.0 != "P0").collect();
+    let any_pits = cands.iter().any(|e| e.1.2);
+    let best = cands.iter().max_by(|a, b| a.1.0.cmp(&b.1.0).then(b.1.1.cmp(&a.1.1)));
+    eprintln!(
+        "   SELECTION (declared rule) · {}",
+        if !any_pits { "NO candidate holds G-pits in all three worlds: REPORT AND STOP (no phase 2)".to_string() } else { format!("selected **{}**", best.map_or("—".to_string(), |e| e.0.clone())) }
+    );
+    eprintln!("\n   SUMMARY · {}", summary.join("\n   SUMMARY · "));
+    eprintln!("\n==========  end Finding 144 phase 1 . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}

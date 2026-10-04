@@ -225,19 +225,54 @@ pub struct GorgeRetreat {
     /// cells are restored after it (`production_upscale.rs`). Skipped in the key when `false`.
     #[serde(default, skip_serializing_if = "is_false")]
     pub freeze_design: bool,
+    /// ADR Finding 144-S — spec v5's scope, computed on the input: every input-lake body none of whose cells lies in a
+    /// `basin_base` closed depression (a merged water body, F38) or under the sea. It replaces the proxy (not the list).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub input_scope: bool,
+    /// ADR Finding 144-B — L(r) bounded by the outlet's base: `L = min(L_in, max(L(r), B))`, B the next base on the
+    /// outlet path (the sea's `base_m`, a basin's spill, another lake's level, a land terminal's height).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub bound_b: bool,
+    /// ADR Finding 144-H — the head fall capped: `min(φ·D_g, H_cap(A))`, H_cap(A) = 100 m·(A/A_ref)^−0.5 (PROXY: the
+    /// shape mirrors S_loi; the 100 m is the order of the large rivers' falls, not yet sourced). The gorge takes the rest.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub head_cap: bool,
+    /// ADR Finding 144-P — BENCH OPTION, how the light pass meets the designed geometry: 0 free (P0), 1 a floor at the
+    /// construction on the design (P1), 2 its erosion weighted by w(d) = min(1, d/`light_dt_m`) from the design (P2),
+    /// 3 the light pass on the construction without gorge, rim and plain, the design laid after it (P3).
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    pub light_mode: u8,
+    #[serde(default, skip_serializing_if = "is_zero_f32")]
+    pub light_dt_m: f32,
+    /// ADR Finding 144-P3 — internal: the construction without the gorge's invariant and the rim clamp.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub bare: bool,
 }
 
 fn is_false(b: &bool) -> bool {
     !*b
 }
 
+fn is_zero_u8(x: &u8) -> bool {
+    *x == 0
+}
+
+fn is_zero_f32(x: &f32) -> bool {
+    *x == 0.0
+}
+
 impl GorgeRetreat {
     /// Spec v3's values: m = 10, A_ref = 418.7 km².
     pub fn v3(r_world: f32, p: f32) -> Self {
-        Self { r_world, p, m: 10.0, a_ref_km2: 418.7, d8_scope: false, plain: false, scope_lows: None, phi_zero: false, freeze_design: false }
+        Self { r_world, p, m: 10.0, a_ref_km2: 418.7, d8_scope: false, plain: false, scope_lows: None, phi_zero: false, freeze_design: false, input_scope: false, bound_b: false, head_cap: false, light_mode: 0, light_dt_m: 0.0, bare: false }
     }
 
     /// Spec v4: v3 with the D8 scope and the minimal plain (`spec_gorge_age_v4.md`).
+    /// Spec v5: v4 with the input scope, the outlet-base bound and the capped head fall (`spec_gorge_age_v5.md`).
+    pub fn v5(r_world: f32, p: f32) -> Self {
+        Self { input_scope: true, bound_b: true, head_cap: true, ..Self::v4(r_world, p) }
+    }
+
     pub fn v4(r_world: f32, p: f32) -> Self {
         Self { d8_scope: true, plain: true, ..Self::v3(r_world, p) }
     }
@@ -297,6 +332,13 @@ pub struct GorgeBody {
     pub input_lake: bool,
     pub touches_depression: bool,
     pub touches_below_sea: bool,
+    /// ADR Finding 144 — a cell of the body in a closed depression / under the sea; the outlet's next base B (m) and
+    /// whether it raised the level; the head fall's cap (m).
+    pub in_depression: bool,
+    pub in_sea: bool,
+    pub b_out: f32,
+    pub bounded: bool,
+    pub head_cap_m: f32,
 }
 
 /// ADR Finding 140 — φ, the head fall's share: 0 with probability 1/3, otherwise U[0.1, 0.5], from splitmix64 of
@@ -505,6 +547,8 @@ pub struct Skeleton {
     /// ADR Finding 143 — the gorge's designed path: each kept body's outlet cells from the col to where the gorge
     /// meets the law below (empty when off).
     pub gorge_path: Vec<u32>,
+    /// ADR Finding 144-Z — the raw trunk line owning each cell (`u32::MAX` none), kept only when the gorge is on.
+    pub line_owner: Option<Vec<u32>>,
 }
 
 impl Skeleton {
@@ -796,7 +840,7 @@ pub fn skeleton_patched(
                     Some(i) => lv - lawv[i],
                     None => s0 * s_end,
                 };
-                let top = lv - b.phi * dg;
+                let top = lv - (b.phi * dg).min(b.head_cap_m); // ADR Finding 144-H -- the capped head fall
                 let sg = slope_for(top);
                 let mut raised = 0u32;
                 let mut end = path.len();
@@ -806,7 +850,7 @@ pub fn skeleton_patched(
                         end = i;
                         break;
                     }
-                    if chi[c].is_finite() && z - vc.age_k * chi[c] > base[c] {
+                    if !g.bare && chi[c].is_finite() && z - vc.age_k * chi[c] > base[c] {
                         base[c] = z - vc.age_k * chi[c];
                         raised += 1;
                     }
@@ -844,7 +888,7 @@ pub fn skeleton_patched(
                 (b.slope, b.d_g, b.head_fall_m, b.shortage_m, b.path_km, b.gorge_cells) =
                     (sg, dg, head, short, s_end / 1000.0, raised);
             }
-            (Some(rf), falls, bodies, Some(body_of))
+            ((!g.bare).then_some(rf), falls, bodies, Some(body_of))
         }
         None => (None, Vec::new(), Vec::new(), None),
     };
@@ -886,6 +930,8 @@ pub fn skeleton_patched(
             raw_lines.push(line);
         }
     }
+    // ADR Finding 144-Z -- the raw line owning each cell, for the benches (only when the gorge is on)
+    let line_owner: Option<Vec<u32>> = vc.gorge_retreat.map(|_| owner.iter().map(|o| o.0).collect());
     let (polylines, trace_stats, line_parent) = match vc.skeleton_trace {
         None => {
             let (polylines, dense_at): (Vec<_>, Vec<_>) = raw_lines
@@ -934,6 +980,7 @@ pub fn skeleton_patched(
         gorge_bodies: gorge_bodies_out,
         gorge_body_of,
         gorge_path,
+        line_owner,
     }
 }
 
@@ -1016,6 +1063,8 @@ fn gorge_bodies(
             }
         }
         let low = *cells.iter().min_by(|&&a, &&b| z(a).total_cmp(&z(b))).expect("non-empty");
+        let in_dep = cells.iter().any(|&c| dep(c));
+        let in_sea = cells.iter().any(|&c| !land[c]);
         match g.scope_lows {
             // ADR Finding 143 -- the exact scope: the listed bodies only
             Some(list) => {
@@ -1023,9 +1072,14 @@ fn gorge_bodies(
                     continue;
                 }
             }
-            // ADR Finding 142 -- spec v4's scope: an input lake standing alone (the D8 lakes' proxy)
             None => {
-                if g.d8_scope && !(*is_lake && !t_dep && !t_sea) {
+                if g.input_scope {
+                    // ADR Finding 144-S -- spec v5's scope: an input lake in no closed depression and above the sea
+                    if !(*is_lake && !in_dep && !in_sea) {
+                        continue;
+                    }
+                } else if g.d8_scope && !(*is_lake && !t_dep && !t_sea) {
+                    // ADR Finding 142 -- spec v4's scope: an input lake standing alone (the D8 lakes' proxy)
                     continue;
                 }
             }
@@ -1098,10 +1152,60 @@ fn gorge_bodies(
             input_lake: *is_lake,
             touches_depression: t_dep,
             touches_below_sea: t_sea,
+            in_depression: in_dep,
+            in_sea,
+            b_out: f32::NAN,
+            head_cap_m: if g.head_cap { 100.0 * (a_out.max(vc.a_c_km2) / g.a_ref_km2).powf(-0.5) } else { f32::INFINITY },
             ..Default::default()
         });
     }
-    let _ = vc;
+    // ADR Finding 144-B -- the outlet's next base bounds the level: walk the skeleton's D8 from the col to the first base
+    // (as the χ walk would), iterated so that a lake draining into a bounded lake sees its final level
+    if g.bound_b {
+        let spec: Vec<f32> = bodies.iter().map(|b| b.level).collect();
+        for _ in 0..8 {
+            let mut moved = false;
+            for bi in 0..bodies.len() {
+                let col = bodies[bi].col;
+                if col == u32::MAX {
+                    continue;
+                }
+                let mut c = col as usize;
+                let mut steps = 0usize;
+                let b_out = loop {
+                    if !land[c] {
+                        break if dep(c) { spill_m(c) } else { vc.base_m };
+                    }
+                    if body_of[c] != u32::MAX && body_of[c] != bi as u32 {
+                        break bodies[body_of[c] as usize].level;
+                    }
+                    if lm[c] != 0 {
+                        break lv[c];
+                    }
+                    if dep(c) {
+                        break spill_m(c);
+                    }
+                    match recv(dir, c, w, h) {
+                        Some(r) if steps < n => {
+                            c = r;
+                            steps += 1;
+                        }
+                        _ => break z(c),
+                    }
+                };
+                let lvl = spec[bi].max(b_out).min(bodies[bi].l_in);
+                if (lvl - bodies[bi].level).abs() > 1e-4 || bodies[bi].b_out.is_nan() {
+                    moved |= (lvl - bodies[bi].level).abs() > 1e-4;
+                    bodies[bi].level = lvl;
+                    bodies[bi].b_out = b_out;
+                    bodies[bi].bounded = b_out > spec[bi];
+                }
+            }
+            if !moved {
+                break;
+            }
+        }
+    }
     (body_of, bodies)
 }
 
@@ -1227,6 +1331,32 @@ pub fn gorge_design_mask(sk: &Skeleton) -> Vec<bool> {
         }
     }
     m
+}
+
+/// ADR Finding 144-P2 — the distance (m) of every cell from the designed geometry ([`gorge_design_mask`]): a
+/// multi-source 8-connected BFS, one cell per step (Chebyshev), times the cell size. 0 on the design.
+pub fn gorge_design_distance_m(mask: &[bool], sk: &Skeleton) -> Vec<f32> {
+    use std::collections::VecDeque;
+    let (w, h) = (sk.width, sk.height);
+    let n = w * h;
+    let mut d = vec![u32::MAX; n];
+    let mut q = VecDeque::new();
+    for k in 0..n {
+        if mask[k] {
+            d[k] = 0;
+            q.push_back(k);
+        }
+    }
+    while let Some(c) = q.pop_front() {
+        for k in 0..8 {
+            let m = (((c / w) as i32 + D8_DY[k]).rem_euclid(h as i32) as usize) * w + ((c % w) as i32 + D8_DX[k]).rem_euclid(w as i32) as usize;
+            if d[m] == u32::MAX {
+                d[m] = d[c] + 1;
+                q.push_back(m);
+            }
+        }
+    }
+    d.iter().map(|&x| if x == u32::MAX { f32::INFINITY } else { x as f32 * sk.cell_m }).collect()
 }
 
 /// ADR Finding 128-C — D8-LTD pointers (Orlandini et al. 2003 §2, with λ = 1; Orlandini, Moretti &
@@ -2519,6 +2649,7 @@ mod tests {
             gorge_bodies: Vec::new(),
             gorge_body_of: None,
             gorge_path: Vec::new(),
+            line_owner: None,
         };
         (f, sk, ss)
     }
@@ -2908,6 +3039,48 @@ mod tests {
         // φ = 0: no head fall's share
         let z = skeleton(&f, &ValleyConstruction { gorge_retreat: Some(GorgeRetreat { phi_zero: true, ..GorgeRetreat::v4(1.0, 0.0) }), ..ext }, &ss, 51.2);
         assert!(z.gorge_bodies.iter().all(|b| b.phi == 0.0), "φ = 0 on every body");
+    }
+
+    /// ADR Finding 144-S, rule 13 — spec v5's scope, computed on the input. A plateau sloping gently to the sea carries a
+    /// lone bowl and a wide basin whose core lies under the sea; the basin's land fringe is a closed-depression body of
+    /// `basin_base` (a merged water body). Negative control first: v3 treats that fringe body (in a depression). v5 keeps
+    /// the lone bowl and drops the fringe; every kept body is an input lake with no cell in a depression and none under
+    /// the sea. (An input lake NESTED in such a depression, the case v5 adds over v4, does not arise from the synthetic
+    /// pre-drainage; F144's bench checks it on the témoin.) The scope moves the key and is absent when off.
+    #[test]
+    fn v5_keeps_the_input_lakes_outside_the_basins() {
+        let ss = SteinSteinParams::default();
+        let n = 128usize;
+        let z_m = |x: f32, y: f32| -> f32 {
+            if y >= 120.0 {
+                return -50.0;
+            }
+            let bowl = |cx: f32, cy: f32, r: f32, depth: f32| {
+                let d = ((x - cx).powi(2) + (y - cy).powi(2)).sqrt();
+                if d < r { depth * (1.0 - (d / r).powi(2)) } else { 0.0 }
+            };
+            300.0 + 0.5 * (120.0 - y) - bowl(12.0, 12.0, 8.0, 120.0) - bowl(64.0, 64.0, 40.0, 400.0)
+        };
+        let f = GridF32 {
+            width: n,
+            height: n,
+            data: (0..n * n).map(|k| c1_metres_to_altitude_norm(z_m((k % n) as f32 + 0.5, (k / n) as f32 + 0.5), &ss)).collect(),
+        };
+        let ext = ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..ValleyConstruction::new(F121_AGE_K, None) };
+        let (lone, fringe) = (12 * n + 12, 34 * n + 64);
+        let v3 = skeleton(&f, &ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v3(1.0, 0.0)), ..ext }, &ss, 51.2);
+        let bo3 = v3.gorge_body_of.as_ref().unwrap();
+        assert!(bo3[fringe] != u32::MAX, "negative control: v3 treats the basin's fringe");
+        let fb = &v3.gorge_bodies[bo3[fringe] as usize];
+        assert!(fb.in_depression, "the fringe lies in a closed depression ({fb:?})");
+        let v5 = skeleton(&f, &ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v5(1.0, 0.0)), ..ext }, &ss, 51.2);
+        let bo5 = v5.gorge_body_of.as_ref().unwrap();
+        assert!(bo5[lone] != u32::MAX, "v5 keeps the lone bowl");
+        assert!(bo5[fringe] == u32::MAX, "v5 drops the basin's fringe");
+        assert!(v5.gorge_bodies.iter().all(|b| b.input_lake && !b.in_depression && !b.in_sea), "v5 keeps only input lakes outside the basins");
+        let js = |g: GorgeRetreat| serde_json::to_string(&ValleyConstruction { gorge_retreat: Some(g), ..ext }).unwrap();
+        assert!(!js(GorgeRetreat::v4(1.0, 0.0)).contains("input_scope"), "absent when off");
+        assert_ne!(js(GorgeRetreat::v5(1.0, 0.0)), js(GorgeRetreat::v4(1.0, 0.0)), "v5 moves the key");
     }
 
     /// ADR Finding 133-F, rule 13 — a below-sea basin's lake is a present lake: χ stops at its shore. A plane

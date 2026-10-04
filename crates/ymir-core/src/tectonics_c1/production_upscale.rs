@@ -484,10 +484,16 @@ pub fn upscale_from_c1_with_progress(
     // ADR Finding 121 -- the valley construction (bench / viz seam, `None` in production). It
     // runs on the field the incision would receive (FBM + C-2 craters), and the stream-power block
     // below then runs ONE light pass, or none, instead of the shipped incision.
-    // ADR Finding 143-C2 -- the designed geometry the light pass must not modify (a bench option, `None` otherwise)
+    // ADR Finding 143-C2 / 144-P -- how the light pass meets the designed geometry (bench options, `None` otherwise):
+    // `design_mask` + `design_floor` None = restore (C2), Some = a floor at the construction (P1, P3); `design_dist` = the
+    // transition (P2)
     let mut design_mask: Option<Vec<bool>> = None;
+    let mut design_floor: Option<GridF32> = None;
+    let mut design_dist: Option<(Vec<f32>, f32)> = None;
     if let Some(vc) = &cfg.valley_construction {
         let domain_km = cfg.sample_size as f32 * volcanism.domain_km;
+        let p3 = vc.gorge_retreat.filter(|g| g.light_mode == 3);
+        let field_pre = p3.map(|_| result.heightmap.clone());
         let sk = crate::tectonics_c1::valley_construction::skeleton(
             &result.heightmap,
             vc,
@@ -503,6 +509,28 @@ pub fn upscale_from_c1_with_progress(
         }
         if vc.gorge_retreat.is_some_and(|g| g.freeze_design) {
             design_mask = Some(crate::tectonics_c1::valley_construction::gorge_design_mask(&sk));
+        }
+        // ADR Finding 144-P -- the light pass's candidates
+        if let Some(g) = vc.gorge_retreat.filter(|g| g.light_mode != 0 && !g.freeze_design) {
+            let mask = crate::tectonics_c1::valley_construction::gorge_design_mask(&sk);
+            match g.light_mode {
+                2 => {
+                    design_dist = Some((crate::tectonics_c1::valley_construction::gorge_design_distance_m(&mask, &sk), g.light_dt_m))
+                }
+                _ => {
+                    design_floor = Some(result.heightmap.clone());
+                    design_mask = Some(mask);
+                }
+            }
+            // P3 -- the light pass runs on the construction without the gorge's invariant, the rim and the plain
+            if let (Some(pre), Some(g3)) = (field_pre.as_ref(), p3) {
+                let vb = crate::tectonics_c1::valley_construction::ValleyConstruction {
+                    gorge_retreat: Some(crate::tectonics_c1::valley_construction::GorgeRetreat { bare: true, plain: false, ..g3 }),
+                    ..*vc
+                };
+                let skb = crate::tectonics_c1::valley_construction::skeleton(pre, &vb, ss, domain_km);
+                result.heightmap = crate::tectonics_c1::valley_construction::carve(pre, &skb, &vb, ss).0;
+            }
         }
         // ADR Finding 140 -- the gorge's tagged falls travel with the terrain (empty when the gate is off)
         result.gorge_falls = sk.gorge_falls.clone();
@@ -562,14 +590,37 @@ pub fn upscale_from_c1_with_progress(
                     light.slope_floor_uk = Some(s_eq);
                     light.depression_floor = true;
                 }
-                let before = design_mask.as_ref().map(|_| result.heightmap.clone());
+                let before = (design_mask.is_some() || design_dist.is_some()).then(|| result.heightmap.clone());
                 result.heightmap = once(&result.heightmap, &light);
-                // ADR Finding 143-C2 -- the bench option: the designed geometry comes through the light pass unchanged
-                if let (Some(m), Some(b)) = (design_mask.as_ref(), before) {
-                    for (k, &frozen) in m.iter().enumerate() {
-                        if frozen {
-                            result.heightmap.data[k] = b.data[k];
+                if let Some(b) = before {
+                    match (design_mask.as_ref(), design_floor.as_ref(), design_dist.as_ref()) {
+                        // ADR Finding 144-P1 / P3 -- the design is a floor (deposition stays allowed)
+                        (Some(m), Some(fl), _) => {
+                            for (k, &d) in m.iter().enumerate() {
+                                if d {
+                                    result.heightmap.data[k] = result.heightmap.data[k].max(fl.data[k]);
+                                }
+                            }
                         }
+                        // ADR Finding 143-C2 -- the bench option: the designed geometry comes through unchanged
+                        (Some(m), None, _) => {
+                            for (k, &frozen) in m.iter().enumerate() {
+                                if frozen {
+                                    result.heightmap.data[k] = b.data[k];
+                                }
+                            }
+                        }
+                        // ADR Finding 144-P2 -- the light pass's erosion weighted by w(d) = min(1, d / d_t)
+                        (None, _, Some((dist, dt))) => {
+                            for (k, &d) in dist.iter().enumerate() {
+                                let (z0, z1) = (b.data[k], result.heightmap.data[k]);
+                                if z1 < z0 {
+                                    let wgt = if *dt > 0.0 { (d / dt).min(1.0) } else { 1.0 };
+                                    result.heightmap.data[k] = z0 - wgt * (z0 - z1);
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }

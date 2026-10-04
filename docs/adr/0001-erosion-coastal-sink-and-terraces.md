@@ -19845,3 +19845,70 @@ ON). The light pass spreads them (10–15 %). The construction's departure is th
 - **Instruments**:
   - H_f is probably computed with 10·S_loi instead of the real slope;
   - θ on the eroded world compares with OFF's eroded θ (0.436).
+
+## Finding 144 — spec v5 (the input scope, the outlet-base bound, the capped falls) and phase 1 of the light pass's candidates: the scope keeps 18; the bound stops four lakes at a merged below-sea level, not lake 4; no candidate holds G-pits in the three worlds, all make walls, the order (P3) costs a second construction; report and stop
+
+**Status: built gated (`GorgeRetreat::v5`, off), measured, not promoted.** The declared rule stopped the round after
+phase 1. Report and raw outputs: `docs/reports/c1_continental_buoyancy/f144_gorge_v5/`.
+- F143 was committed (`2adba34`), with six items added to its ADR entry.
+
+**The author's decisions (2026-10-02), recorded as given:**
+- « le recul de la gorge s'applique à tous les lacs d'entrée hors des bassins sous la mer (17) »;
+- « la hauteur des chutes de sortie : plafond selon la taille de la rivière (~70–130 m) ».
+
+**S — the input scope** (an input lake with no cell in a `basin_base` closed depression and none under the sea):
+- **18 bodies**: the 14, plus 5, 9, 11 **and 15**. The 7 input lakes inside merged below-sea water bodies are dropped.
+- **Body 15 lies in no depression on the input**; ON's construction lowers it under 1000016. The author's 17 is 18 by
+  this criterion. **Named for the author.**
+- A permanent test with its negative control (lib 596 → 597). The nested-lake case could not be built synthetically;
+  the témoin carries it.
+
+**B — the outlet-base bound**:
+- **Four lakes stop at a merged below-sea water level**: lake 11 at 49.3 m (1000014); lakes 13, 15 and body 15 at
+  115.3 m (1000016). Lake 13 is bound from ×1.
+- **Lake 4's base is the sea (0.5 m), below its floor (13.4 m): not bound. The 4.3 km sea inlet stays** (+112 at ×1.4
+  p .5). It is the breach's ramp (F141's γ), not a level error.
+
+**H — the capped falls**: 11 tagged on 18 at ×1, max 239.9 m. H_cap reaches ~240 m on the smallest outlets; the
+author's ~70–130 m holds on the 14.
+- **H_f already used the real slope** (`(1.5 * sg * 100.0).max(10.0)`). The F143-commit item was wrong.
+- **G-tag's defect is its two-cell span.** Corrected, 82 drops remain on the construction: hanging junctions.
+
+**G-inert holds** (the guard 6 / 6, gate off; lib 597, viz 30).
+
+**P — phase 1** (×1 p .5, ×1.4 p .5, ×1.4 p 0; 14 gates each):
+- the totals out of 42: P0 15, **P1 17**, **P2 17**, P3 14;
+- **no candidate holds G-pits in all three worlds** (P1 / P2 1 792 / 2 330 / 2 487; P3 187 / 2 037 / 2 234; P0
+  43 190 / 6 461 / 6 336). **The declared rule: report and stop.**
+- **Every candidate makes walls at the design's edge**: edge cells ×9–16, G-ring ×3–8, slopes to 48–80°.
+- **d_t measured to 1 cell (49 m)**: the instrument counted drops from outside the mask, blind to C2's walls. So P2 =
+  P1, and a real transition was not tested.
+- **P3 costs +54 to +189 s per world** (a second, bare construction) **against a run_hd of ~250 s: a red flag.**
+- G-sea at ×1.4 p .5 and G-drained at ×1.4 stay under every candidate.
+- θ (corridors excluded) sits on OFF's eroded CI's edge (0.440–0.446 against [0.428, 0.444]).
+
+**Z — measured, unchanged**: G-drained's violators are laid by a cone from outside their catchment at **99.3 % /
+94.0 %** (×1.4 p .5 / p 0). The drained bowls' footprints 17–18 %, their upstream 26–28 %, every carved cell 36 % (an
+upper bound mixing defects and legitimate divide walls).
+
+**The cost, recorded at the author's request**: world generation time is a standing red flag. The reference is the
+viz `run_hd` TOTAL 249.8 s (eroded 149.2 s, breach 46.3 s, drainage 30.8 s), already high.
+- v5 ≈ +1 s;
+- P1 / P2 within noise;
+- **P3 +54 to +189 s.**
+- **Method rule, recorded: every new stage reports its added seconds per world against that reference; a second
+  skeleton + carve is a red flag before it is proposed.**
+
+**Predictions:**
+- **The reviewer's**: H's count, P1's walls, Z and the meta held. S (17), B (the inlet disappears), H's "none above
+  131 m" and "no corrected drop", P3 selected, and θ in the CI were refuted.
+- **Mine**: S (18), B, H, P1's and P3's walls, G-sea under P, Z's violators and the meta held. "All candidates hold
+  G-pits", "P2 selected", part of θ and Z's world share were refuted.
+
+**Options named for the author, none applied:**
+- an invariant inside the light pass;
+- P2 with a d_t measured from the mask outwards;
+- no light pass on the kept catchments;
+- cones limited to their catchment;
+- the queued breach defect;
+- body 15 by decision.
