@@ -428,6 +428,9 @@ fn default_layers(w: usize, h: usize) -> Vec<Layer> {
     let flow_accumulation = raster("flow_accumulation", "flow_accumulation.f32", "f32");
 
     let rivers = vector("rivers", "rivers.json");
+    // ADR Finding 146 -- the rivers for Living Landz: main stems smoothed in their valley (`docs/rivers_ll_format.md`)
+    let mut rivers_ll = vector("rivers_ll", "rivers_ll.json");
+    rivers_ll.geometry = Some("linestring".to_string());
     let lakes = vector("lakes", "lakes.json");
 
     let lake_mask = raster("lake_mask", "lake_mask.u32", "u32");
@@ -453,6 +456,7 @@ fn default_layers(w: usize, h: usize) -> Vec<Layer> {
         cliffs,
         flow_accumulation,
         rivers,
+        rivers_ll,
         lakes,
         lake_mask,
         biome,

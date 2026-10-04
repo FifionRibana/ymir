@@ -207,6 +207,12 @@ struct WorkspaceState {
     /// Strahler order, colour by navigability — ORPHAN reaches (no downstream,
     /// not ending at a sink) drawn RED so they stand out for validation.
     river_overlay: bool,
+    /// ADR Finding 146 -- the "Rivières LL" layer: the smoothed main stems of `rivers_ll.json`, filtered by length
+    /// (km), catchment (km²) and Strahler order (the selection is the author's; nothing is fixed).
+    rll_overlay: bool,
+    rll_min_len_km: f32,
+    rll_min_area_km2: f32,
+    rll_min_strahler: u8,
     inspector_open: bool,
     // Expert params (exposed, wiring deferred — tagged in the UI).
     climat_open: bool,
@@ -399,6 +405,10 @@ impl Default for WorkspaceState {
             mode: Mode::Standard,
             layer: HdLayer::Relief,
             river_overlay: false,
+            rll_overlay: false,
+            rll_min_len_km: 0.0,
+            rll_min_area_km2: 0.0,
+            rll_min_strahler: 1,
             inspector_open: true,
             climat_open: true,
             relief_open: false,
@@ -2805,6 +2815,20 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         }
     }
 
+    // ADR Finding 146 -- the "Rivières LL" layer: the smoothed main stems passing the filters, stroke ∝ the bankfull width
+    if ws.rll_overlay {
+        let to_screen_f = |x: f32, y: f32| -> egui::Pos2 {
+            map_min + egui::vec2(x / w as f32, (h as f32 - y) / h as f32) * map_px
+        };
+        for r in hd.rivers_ll.iter().filter(|r| rll_keep(ws, r)) {
+            let pts: Vec<egui::Pos2> = r.points.iter().map(|p| to_screen_f(p[0], p[1])).collect();
+            if pts.len() >= 2 {
+                let wdt = (0.6 + 0.35 * r.width_m.max(1.0).log2()).clamp(0.8, 3.5);
+                pnt.add(egui::Shape::line(pts, egui::Stroke::new(wdt, C::from_rgb(0x4a, 0xa8, 0xf0))));
+            }
+        }
+    }
+
     // C-2 volcano markers — shown when the "Symboles" toggle is on (default). A
     // triangle at each crater: red = active/degassing, grey = extinct. The selected
     // one is enlarged with a white ring. A selected volcano stays ringed even with
@@ -2889,6 +2913,12 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     }
 }
 
+/// ADR Finding 146 -- does a Living Landz river pass the layer's selection filters? A spillway has no Strahler
+/// order and passes that filter.
+fn rll_keep(ws: &WorkspaceState, r: &ymir_core::export::rivers_ll::RiverLl) -> bool {
+    r.length_km >= ws.rll_min_len_km && r.catchment_km2 >= ws.rll_min_area_km2 && r.strahler.is_none_or(|s| s >= ws.rll_min_strahler)
+}
+
 /// Floating canvas tool bar (mock): SELECT (microscope) / PAN (hand) tools, plus the hydro
 /// overlay and minimap toggles. Painted as a small pill at the canvas top-left.
 fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) {
@@ -2927,6 +2957,24 @@ fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) 
                         ws.texture = None;
                     }
                     ui.checkbox(&mut ws.minimap, egui::RichText::new("Minimap").size(11.0));
+                    // ADR Finding 146 -- the rivers for Living Landz, with their selection filters
+                    ui.checkbox(&mut ws.rll_overlay, egui::RichText::new("Rivières LL").size(11.0))
+                        .on_hover_text("Rivières pour Living Landz : cours principaux lissés dans leur vallée (rivers_ll.json)");
+                    if ws.rll_overlay {
+                        ui.menu_button(egui::RichText::new("filtres ▾").size(11.0), |ui| {
+                            ui.set_min_width(300.0);
+                            ui.add(egui::Slider::new(&mut ws.rll_min_len_km, 0.0..=100.0).logarithmic(true).text("longueur min (km)"));
+                            ui.add(egui::Slider::new(&mut ws.rll_min_area_km2, 0.0..=5000.0).logarithmic(true).text("aire min (km²)"));
+                            ui.add(egui::Slider::new(&mut ws.rll_min_strahler, 1..=8).text("Strahler min"));
+                            if let Some(hd) = ws.current.as_ref() {
+                                let kept = hd.rivers_ll.iter().filter(|r| rll_keep(ws, r)).count();
+                                let km: f32 = hd.rivers_ll.iter().filter(|r| rll_keep(ws, r)).map(|r| r.length_km).sum();
+                                let edges: u32 = hd.rivers_ll.iter().filter(|r| rll_keep(ws, r)).map(|r| r.hex_edges).sum();
+                                ui.label(format!("{kept} rivières retenues sur {} · {km:.0} km · {edges} bords d'hex", hd.rivers_ll.len()));
+                            }
+                            ui.label(egui::RichText::new("Grille Living Landz : hex 40 m flat-top, axial, origine en bas à gauche").weak());
+                        });
+                    }
                     ui.checkbox(&mut ws.show_symbols, egui::RichText::new("Symboles").size(11.0))
                         .on_hover_text(
                             "Marqueurs sur la carte (volcans : ▲ rouge actif / gris éteint)",
@@ -7095,6 +7143,7 @@ mod f124_objects {
             bench_guard: ymir_core::tectonics_c1::bench_guard::GuardStatus::NoReference { viz: String::new() },
             lake_guard: ymir_core::tectonics_c1::bench_guard::GuardStatus::NoReference { viz: String::new() },
             gorge_falls: Vec::new(),
+            rivers_ll: Vec::new(),
             km_per_cell: 1.0,
         };
         let wcs = aggregate_watercourses(&hd, w as f32, 1.0);

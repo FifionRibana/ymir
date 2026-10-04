@@ -1,0 +1,136 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2200:23
+     |
+2200 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2270 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+warning: unused variable: `skn`
+     --> crates\ymir-core\tests\f126_coast.rs:10710:9
+      |
+10710 |     let skn = skeleton(&s1, &ext, &ss, DOMAIN_KM);
+      |         ^^^ help: if this is intentional, prefix it with an underscore: `_skn`
+      |
+      = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `t_on_con` is never read
+     --> crates\ymir-core\tests\f126_coast.rs:11447:24
+      |
+11447 |     let mut t_on_con = 0f64;
+      |                        ^^^^ this value is reassigned later and never used
+...
+11496 |         t_on_con = t.elapsed().as_secs_f64();
+      |         ------------------------------------ `t_on_con` is overwritten here before the previous value is read
+      |
+      = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `ci`, `floor`, `stop`, and `crossed` are never read
+     --> crates\ymir-core\tests\f126_coast.rs:13985:9
+      |
+13983 |     struct Ev {
+      |            -- fields in this struct
+13984 |         pit: usize,
+13985 |         ci: usize,
+      |         ^^
+13986 |         floor: f32,
+      |         ^^^^^
+13987 |         steps: u32,
+13988 |         stop: u8, // 0 a base, 1 a cell already lower than the ramp, 2 the chain's end
+      |         ^^^^
+13989 |         stop_cell: usize,
+13990 |         crossed: u32,
+      |         ^^^^^^^
+      |
+      = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `step_of` and `backlink` are never read
+     --> crates\ymir-core\tests\f126_coast.rs:13996:9
+      |
+13993 |     struct Br {
+      |            -- fields in this struct
+...
+13996 |         step_of: Vec<u32>,
+      |         ^^^^^^^
+13997 |         backlink: Vec<usize>,
+      |         ^^^^^^^^
+
+warning: `ymir-core` (test "f126_coast") generated 4 warnings (run `cargo fix --test "f126_coast" -p ymir-core` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.14s
+     Running tests\f126_coast.rs (target_f146\release\deps\f126_coast-78c90b7d7fab281b.exe)
+
+running 1 test
+
+==========  Finding 146 . the rivers for Living Landz (témoin C2 /10 col)  ==========
+test f146_rivers has been running for over 60 seconds
+   16226 segments → **9786 rivers** · 112698 smoothed points · rivers_ll.json 5.1 MB · rivers.json 35.6 MB, byte-identical before/after the build: true
+   COST · build 0.43 s + serialize 0.01 s per world (against run_hd 249.8 s)
+
+   L · terrain − bed (m), samples every 0.25 cell: p50 / p99 / max · share of length above the 1 m tolerance
+      raw D8 trace (negative control): 0.00 / 12.28 / 559.43 m · **17.27 %**
+      smoothed, before the constraint: 0.04 / 14.38 / 561.80 m · **23.33 %**
+      smoothed, after the constraint: 0.13 / 12.05 / 575.95 m · **10.69 %**
+   L · vertices pulled back by the constraint 738869 of 3193952 (23.1 %) · ridge crossings: raw 640 of 1854451 samples · smoothed **1** of 3576377 · lateral deviation from the trace p50 0.000 · p99 0.094 cell · stair index (turns ≥ 45°): raw 0.194 → smoothed 0.045
+   L · crossings between two rivers away from a confluence: raw 574 · smoothed **662** · self-intersections: raw 613 · smoothed **271**
+
+   P · parallel pairs (within 2 cells over > 2 km, no shared confluence): **1599** · their runs 5353.8 km
+      by the smaller river's catchment: ["10–100 km²: 1465 pairs, 4952.0 km", "1–10 km²: 84 pairs, 187.0 km", "≥ 100 km²: 50 pairs, 214.8 km"]
+      where the runs lie: ["construction planar wall (F124): 3.9 %", "construction valley floor: 5.3 %", "elsewhere: 88.1 %", "volcanic edifice (≤ 4 crater radii): 2.7 %"]
+      e.g. rivers 6206 (4673.6 km², 46.73 m³/s) and 9779 (4673.6 km², 2591.27 m³/s) · run 19.6 km at (3879,4480)
+      e.g. rivers 8472 (8665.3 km², 135.37 m³/s) and 9785 (8701.5 km², 994.38 m³/s) · run 15.8 km at (3031,5783)
+      e.g. rivers 2176 (42.9 km², 0.99 m³/s) and 2180 (63.3 km², 1.30 m³/s) · run 13.6 km at (3796,3387)
+      e.g. rivers 2508 (3608.8 km², 33.01 m³/s) and 2515 (11.4 km², 0.14 m³/s) · run 12.5 km at (2281,3497)
+      e.g. rivers 2508 (3608.8 km², 33.01 m³/s) and 2509 (11.8 km², 0.15 m³/s) · run 9.3 km at (2281,3497)
+      e.g. rivers 4950 (34.6 km², 0.35 m³/s) and 4956 (30.6 km², 0.31 m³/s) · run 9.3 km at (3739,4212)
+      e.g. rivers 6721 (61.4 km², 1.17 m³/s) and 6742 (41.7 km², 0.75 m³/s) · run 9.3 km at (2734,4666)
+      e.g. rivers 5726 (60.8 km², 0.72 m³/s) and 5759 (33.8 km², 0.36 m³/s) · run 8.7 km at (3636,4376)
+   P · rule (a) merge each pair into its higher-discharge river: removes 921 rivers, 3431 km
+   P · rule (b) drop the rivers under 1 km²: removes 0 rivers, -0 km · parallel pairs left 1599
+   P · rule (b) drop the rivers under 3 km²: removes 1 rivers, 0 km · parallel pairs left 1599
+   P · rule (b) drop the rivers under 10 km²: removes 3015 rivers, 1581 km · parallel pairs left 1515
+
+   A · length km p10/p50/p90/max 0.18/1.19/5.18/59.2 · catchment km² p10/p50/p90/max 6.71/15.56/303.6/72522 · ends {"confluence": 7524, "endorheic lake": 409, "lake": 1767, "sea": 82, "terminal": 4} · Strahler {"1": 9269, "2": 419, "3": 70, "4": 13, "spillway": 15} · rivers crossing a lake 25 · long (≥ p90 length 5.2 km) and small (< 10 km²): **0** · median catchment 15.56 km²
+      e.g. length ≥ 5 km and catchment ≥ 0 km²: 1036 rivers
+      e.g. length ≥ 10 km and catchment ≥ 0 km²: 275 rivers
+      e.g. length ≥ 0 km and catchment ≥ 10 km²: 6771 rivers
+      e.g. length ≥ 0 km and catchment ≥ 100 km²: 1653 rivers
+      e.g. length ≥ 10 km and catchment ≥ 10 km²: 275 rivers
+
+==========  end Finding 146 . 396.1 s  ==========
+
+test f146_rivers ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 70 filtered out; finished in 396.18s
+

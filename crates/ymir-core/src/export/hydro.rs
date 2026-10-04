@@ -165,6 +165,27 @@ mod tests {
     use crate::terrain::flow::{FlowResult, RiverNetwork, RiverSegment};
     use serde_json::Value;
 
+    /// ADR Finding 146 — `rivers_ll` is a NEW layer: building it leaves `rivers.json` byte-identical, and the single
+    /// reach becomes one river keeping its endpoints and its attributes.
+    #[test]
+    fn rivers_ll_is_a_new_layer_and_leaves_rivers_json_byte_identical() {
+        let d = synthetic_drainage();
+        let before = rivers_json(&d, 1.0);
+        let field = GridF32::new(d.width, d.height, 0.6);
+        let ss = crate::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams::default();
+        let (r, _) = crate::export::rivers_ll::build_rivers_ll(&d, &field, &ss, 1.0, Default::default(), false);
+        assert_eq!(rivers_json(&d, 1.0), before, "rivers.json is untouched");
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].points.first(), Some(&[1.5, 1.5]));
+        assert_eq!(r[0].points.last(), Some(&[3.5, 3.5]));
+        assert_eq!(r[0].strahler, Some(4));
+        assert!((r[0].discharge_m3s - 520.0).abs() < 1e-3 && (r[0].catchment_km2 - 1_440_000.0).abs() < 1.0);
+        let js = crate::export::rivers_ll::rivers_ll_json(&r, 1.0, None);
+        let v: Value = serde_json::from_slice(&js).unwrap();
+        assert_eq!(v["format_version"], crate::export::rivers_ll::RIVERS_LL_FORMAT_VERSION);
+        assert_eq!(v["rivers"][0]["falls"].as_array().map(|a| a.len()), Some(0), "falls empty while the gorge is paused");
+    }
+
     fn synthetic_drainage() -> C1DrainageResult {
         let seg = RiverSegment {
             points: vec![(1, 1), (2, 2), (3, 3)],

@@ -318,6 +318,8 @@ pub struct HdResult {
     /// ADR Finding 140 -- the gorge's tagged falls, each with the final lake at its outflow (if any). Empty when the
     /// gate is off.
     pub gorge_falls: Vec<(ymir_core::tectonics_c1::valley_construction::GorgeFall, Option<u32>)>,
+    /// ADR Finding 146 -- the rivers for Living Landz: main stems smoothed in their valley (the `rivers_ll.json` layer).
+    pub rivers_ll: Vec<ymir_core::export::rivers_ll::RiverLl>,
     /// Physical km per HD cell (`sample_size · domain_km / width`) — for the basal-disc
     /// radius of the volcaniclastic overlay.
     pub km_per_cell: f32,
@@ -1242,6 +1244,28 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             (*f, (lk != 0).then_some(lk))
         })
         .collect();
+    // ADR Finding 146 -- the rivers for Living Landz (timed: the cost principle)
+    let t_rll = Instant::now();
+    let (mut rivers_ll, _) = ymir_core::export::rivers_ll::build_rivers_ll(
+        &drainage,
+        &eroded,
+        &ss,
+        (window_km / eroded.width as f32).powi(2),
+        ymir_core::export::rivers_ll::RiversLlParams::default(),
+        false,
+    );
+    // ADR Finding 146-H -- each river's hex-edge count on Living Landz's grid, for the layer's selection counts
+    let _ = ymir_core::export::rivers_ll::river_hex_edges(
+        &mut rivers_ll,
+        &drainage,
+        &eroded,
+        &ss,
+        (window_km / eroded.width as f32).powi(2),
+        &ymir_core::export::rivers_ll::HexGrid::living_landz(),
+        200.0 / 10f32.powf(0.3),
+        0.3,
+    );
+    eprintln!("[HD timing] rivers_ll {} rivers ({:.2}s)", rivers_ll.len(), t_rll.elapsed().as_secs_f32());
     let result = Arc::new(HdResult {
         width: eroded.width,
         height: eroded.height,
@@ -1260,6 +1284,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         bench_guard,
         lake_guard,
         gorge_falls: gorge_falls_res,
+        rivers_ll,
     });
     eprintln!(
         "[HD timing] run_hd TOTAL {:.1}s (render is separate, on the UI thread)",
@@ -1385,6 +1410,20 @@ fn export_ymir_container(
     // ADR Finding 140 -- the gorge's tagged falls ride on the segments; none → rivers_json's bytes
     let rivers = hydro::rivers_json_with_falls(drainage, cell_km2, gorge_falls);
     writer.add_vector_file("rivers", "rivers.json", &rivers)?;
+    // ADR Finding 146 -- the rivers for Living Landz (a NEW layer; rivers.json above is unchanged)
+    let (mut rivers_ll, _) = ymir_core::export::rivers_ll::build_rivers_ll(
+        drainage,
+        eroded,
+        ss,
+        cell_km2,
+        ymir_core::export::rivers_ll::RiversLlParams::default(),
+        false,
+    );
+    // ADR Finding 146-H -- the hex edges on Living Landz's grid (40 m flat-top, axial); W(A) is the témoin's law
+    let grid = ymir_core::export::rivers_ll::HexGrid::living_landz();
+    let edges = ymir_core::export::rivers_ll::river_hex_edges(&mut rivers_ll, drainage, eroded, ss, cell_km2, &grid, 200.0 / 10f32.powf(0.3), 0.3);
+    let rivers_ll_bytes = ymir_core::export::rivers_ll::rivers_ll_json(&rivers_ll, cell_km2.sqrt(), Some((&grid, &edges)));
+    writer.add_vector_file("rivers_ll", "rivers_ll.json", &rivers_ll_bytes)?;
     let lakes = hydro::lakes_json(drainage);
     writer.add_vector_file("lakes", "lakes.json", &lakes)?;
 

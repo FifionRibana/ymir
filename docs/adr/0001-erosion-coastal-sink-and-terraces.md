@@ -19980,3 +19980,103 @@ hidden). The base is treated, starting with the cones.
 - C1 with a divide transition;
 - a cone limited to its basin and its own wall's reach;
 - or keep the walls' intersection as the ridge, the captures being small.
+
+**Recorded at commit (F146).** **The cones are closed as an ACCEPTED defect** (the author, 2026-10-04), entered in
+`docs/adr/accepted_defects.md` (§ 1). The reasons:
+- the "defect" is measured against the divides of before the carving;
+- 64 % of its cells lie within 2 cells of the old divide, where the ridge becomes the intersection of the two valleys'
+  28° walls: the normal geometry of a dissected range;
+- the captures (~70 km²) are below the measure's noise;
+- C1 adds a seam (walls ×1.49).
+- **The one exception is the drained bowls (F144-Z)**, which belong to the paused gorge.
+
+## Finding 146 — the rivers for Living Landz, round 1 of 2: `rivers_ll.json` (main stems smoothed in their valley, selection attributes) and a viz layer, at 0.4 s per world; the stairs go (turns ≥ 45° 19 % → 4.5 %) within 0.1 cell of the D8 trace; the hex edges on the author's 40 m flat-top axial grid; open: the 1 m bed instrument fails its negative control, and the D8 network's X-crossings (574 → 662)
+
+**Status: built and measured; nothing selected (the author's).** Report, raw output and the format
+`docs/rivers_ll_format.md`: `docs/reports/c1_continental_buoyancy/f146_rivers_ll/`.
+- F145 was committed (`5132caf`).
+- The cones were closed as an accepted defect (`docs/adr/accepted_defects.md` § 1, created).
+
+**The author's criterion, recorded as given:**
+- Rendu : « Polylignes lissées en SDF (comme les routes) ».
+- Rôle en jeu : « Obstacle, gué, bonus (bords d'hex) ».
+- Sélection : « Pour l'instant pas décidé. Certainement les grandes et celles qui ont un intérêt. Long cours d'eau
+  même petit peut avoir un intérêt. À voir une fois la carte rendue dans LL. »
+- **Critère d'acceptation** (the reviewer's, to be validated by the author at round 2): in Living Landz the rivers
+  shown follow their valley floor, with no staircase blocks and no bundles of parallel traces, and the selection is
+  tuned without remaking the world.
+- Limit: 2 rounds. Cost principle: seconds per world against 249.8 s.
+
+**The author's decisions (2026-10-04), recorded as given:**
+- the order of work, with round limits: the cones, the rivers, geology v1, lakes / gorges / falls resumed,
+  resources;
+- the three answers on the rivers, above.
+
+**Q:**
+- `rivers.json`'s segments are D8 cell chains (`flow.rs`, `trace_segment`) cut at junctions. **The staircase is born
+  there.**
+- Living Landz has no code in Ymir, only consumer notes.
+- **Ymir does not know Living Landz's hex grid** (only `km_per_cell` "≈ one hex"), so the hex edges are stopped and
+  the parameters asked of the author.
+
+**Built:**
+- `export::rivers_ll`:
+  - main stems (Hack: the largest-catchment upstream reach continues);
+  - Chaikin ×3 with fixed endpoints and confluence points;
+  - a valley constraint (≤ 1 m above the nearest trace point's bed, else pulled back);
+  - RDP ε 0.1 cell;
+  - per river: length, catchment, Strahler max, discharge, width, end (sea / lake / endorheic lake / confluence /
+    terminal), lakes touched, falls (empty, gorge paused), length rank in its mouth basin.
+- **`rivers_ll.json`**, format 0.1.0: a new container layer. **`rivers.json` is byte-identical** (tested).
+- The viz layer "Rivières LL" with min length / catchment / Strahler filters and counts.
+- Tests: lib 597 → 601.
+
+**L** (the témoin; 16 226 segments → 9 786 rivers):
+- the stair index (turns ≥ 45°) goes from 0.194 to 0.045;
+- lateral deviation from the D8 trace: p99 0.094 cell;
+- ridge crossings: 640 raw, 1 smoothed.
+- **The 1 m bed instrument fails its own negative control**: the raw trace is 17.3 % above it, because bilinear
+  terrain reaches the walls of one-cell floors. Smoothed after the constraint: 10.7 %.
+- **The D8 network already crosses itself** (diagonal X's): 574 crossings raw, 662 smoothed. The acceptance's "no
+  crossing" fails as built; open for round 2.
+
+**P** (k = 2 cells, L = 2 km):
+- 1 599 parallel pairs (5 354 km), 92 % between rivers of 10–100 km² (the head threshold is near 7 km²);
+- 88 % on uncarved terrain, 3.9 % on the construction's planar walls, 2.7 % on volcanic edifices;
+- some are a spillway retracing a watercourse.
+- Rule (a), merging each pair into the higher discharge, removes 921 rivers (3 431 km). Rule (b), dropping < 10 km²,
+  removes 3 015 rivers but leaves 1 515 pairs.
+
+**A**:
+- lengths p50 1.2 km, max 59 km; catchments p50 16 km²;
+- 82 rivers reach the sea, 2 176 a lake, 7 524 a confluence;
+- no river ≥ 5.2 km is under 10 km².
+
+**H — the hex edges**, after the author gave the grid mid-round (2026-10-05): « 40 m de rayon environ ; flat top ;
+l'origine est en bas à gauche ; axial ». Read as: the radius centre to corner; hex (0, 0) centred on the bottom-left
+corner (to confirm).
+- `river_hex_edges`: every crossing with the two hexes, the river, its catchment, discharge, local slope and W(A),
+  columnar in `rivers_ll.json` 0.2.0.
+- On the témoin: **395 399 crossings, all between neighbours**, 18 per km of river. The JSON goes from 5.1 to 31.9 MB.
+
+**The cost: ~0.6 s per world** (0.43 s rivers + 0.15 s hex edges; +0.2 % of 249.8 s).
+
+**Predictions:**
+- **The reviewer's (hypotheses to check)**: Q.3, the cost and the meta held. L (> 99 % in tolerance, no ridge
+  crossing) and P (mostly < 10 km², > half on planar slopes or cones) were refuted as measured.
+- **Mine**: the ridge crossings after the constraint, "≥ 1 crossing", the cost and the meta held. L's shares, the
+  lateral deviation's size, P and "long-and-small exist" were refuted.
+
+**For round 2:**
+- confirm the hex origin (the centre or the corner of hex (0, 0));
+- the author's look in Living Landz;
+- the decisions on rule (a) and the retracing spillways;
+- on Ymir's side, the X-crossings and a better bed instrument.
+
+**Recorded at commit (F147).**
+- **W(A) is the construction's valley-FLOOR width** (200 m at 10 km²), not a channel width. Exported on the hex edges, it
+  would have made every brook a 200 m obstacle.
+- **The discharge at a crossing, prorated by the catchment, assumes a uniform runoff**: a PROXY, to replace if a
+  per-cell accumulated discharge exists.
+- **The hex grid lives in Living Landz** (the author's decision). The H computation becomes a test reference.
+- **The "1 m above the bed" criterion judges the valley floor badly**; it is replaced.
