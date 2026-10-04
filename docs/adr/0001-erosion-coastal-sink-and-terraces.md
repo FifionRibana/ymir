@@ -19844,6 +19844,9 @@ ON). The light pass spreads them (10–15 %). The construction's departure is th
   drained lake 4).
 - **Instruments**:
   - H_f is probably computed with 10·S_loi instead of the real slope;
+    - **[CORRECTED in F145, after F144.]** **False**: H_f already used the gorge's real slope
+      (`(1.5 * sg * 100.0).max(10.0)`, `sg = slope_for(top)`). G-tag's defect was its two-cell span (F144-H). The
+      line was a reviewer's hypothesis entered as a fact.
   - θ on the eroded world compares with OFF's eroded θ (0.436).
 
 ## Finding 144 — spec v5 (the input scope, the outlet-base bound, the capped falls) and phase 1 of the light pass's candidates: the scope keeps 18; the bound stops four lakes at a merged below-sea level, not lake 4; no candidate holds G-pits in the three worlds, all make walls, the order (P3) costs a second construction; report and stop
@@ -19912,3 +19915,68 @@ viz `run_hd` TOTAL 249.8 s (eroded 149.2 s, breach 46.3 s, drainage 30.8 s), alr
 - cones limited to their catchment;
 - the queued breach defect;
 - body 15 by decision.
+
+## Finding 145 — the base's first defect measured: `carve_diag`'s cones lay 18–23 % of the carved cells from a line of another basin, almost all deepened (divides lowered, p50 ~420 m); the captures it causes are small and not separated from the measure's noise; C1 (the own-basin carve) costs nothing and keeps θ, R8 and canyons, but raises the walls across the divides ×1.5–3.9
+
+**Status: measured; a candidate in a bench; no production code; nothing promoted.** Report, raw outputs and the
+one-page state `etat_au_F144.md`: `docs/reports/c1_continental_buoyancy/f145_cones/`.
+- F144 was committed (`9c4deb5`).
+- **F143's line "H_f is probably computed with 10·S_loi" was corrected in place** (false; the span was the defect).
+
+**Method rule, recorded: a reviewer's hypothesis enters the ADR labelled "hypothesis to check", never as a fact.** Two
+false lines in four rounds came from hypotheses written as facts: F140's index pairing and F143's H_f.
+
+**The author's decisions (2026-10-04), recorded as given**: **the gorge is paused** (committed, gated, viz toggle
+hidden). The base is treated, starting with the cones.
+- Proposed by the reviewer, not contested by the author:
+  - the scope gives 18 bodies (body 15 meets the author's criterion on the input);
+  - the fall cap rises towards ~240 m on small outlets («selon la taille de la rivière»).
+- **The cost principle** stands (F144): unless a correlation or a feature is added, a world's generation time must not
+  rise appreciably (reference 249.8 s). Every new stage reports its seconds per world.
+
+**The paused gorge's state, for whoever resumes it:**
+- **holds**: the construction leaves no hollow; the production plain equals the bench's; bodies 1:1; F38 never fires;
+- **fails**: G-pits after the light pass; walls at the designed geometry's edge; G-drained; G-sea at ×1.4;
+- **the three base defects behind these**: the cones (this finding), the light pass as a second age, and the breach's
+  ramp;
+- P3 is ruled out by its cost; P2 was never really tested (d_t degenerate);
+- θ and the 82 hanging junctions are to resume.
+
+**Q — the code**:
+- **who**: `carve_diag` gives a cell its NEAREST sample whose 28° cone lies below the terrain (seeding 2191–2201, the
+  front 2202–2223, the cross-line minimum 2306–2322).
+- **Nothing bounds a cone but the terrain**: no radius and no basin.
+- **A basin label exists for free**: `compute_flow` returns `basins` (`flow.rs:136`, 237). The skeleton drops them.
+
+**M** (the construction; the témoin = C2 /10 col; a test-only copy of `carve_diag`, bit-identical with its filter off):
+- **M1**: foreign-basin lines lay 18.3 % (témoin), 23.2 % (ON extended) and 10.2 % (B2 → A_c) of the carved cells.
+  - **The real defect (Δz < −1 m against the own-basin carve) is 18.2 %, 23.0 % and 9.4 %**, with Δz p50 −568 / −559 /
+    −159 m. 64 % of those cells lie within 2 cells of a divide.
+  - **The ridges become the intersection of two valleys' 28° walls.** "Legitimate" (|Δz| ≤ 1 m) is 0.2 %.
+- **M2**: none of F127's four cols is a defect cell (all own-basin, Δz 0).
+- **M3**:
+  - divides lowered: 225 961 cells, p50 425 m, p90 1 702 m (témoin);
+  - captures: the raw count (thousands of km²) is the coast's mini-basins (37 099 basins, 184 ≥ 10 km²). Refined to
+    basins ≥ 10 km²: 171.5 km² (témoin) / 197.8 km² (ON) against noise floors of 141.8 / 161.1 km², the largest pairs
+    still adjacent mouths;
+  - **real distant-outlet captures are ~70 km² (~0.3 % of the land).** The stop rule does not trigger.
+
+**C1, the own-basin carve** (a cell no own-basin sample reaches keeps its terrain), against the témoin's carve:
+- canyons 0 → 0;
+- θ +0.001 / +0.002 (inside ±0.01);
+- R8 network ±0.003; the coast unchanged; relief +2–3 %;
+- F127's cols unchanged;
+- **cost ±0 s** (the carve is 1.6–11 s; the labels are free);
+- **walls across the divides ×1.49 (témoin, ON) and ×3.85 (B2 → A_c)**, R8 terrain 0.145 → 0.170 at A_c. **A hard basin
+  boundary is a seam**, F143 / F144's pattern.
+
+**Predictions:**
+- **The reviewer's (hypotheses to check)**: canyons, the cost, the meta and (in kind) a capture held. M1's 3–10 % and
+  its > 60 % legitimate, M2's ≥ 3 dams, C1's dam decrease and its walls > ×2 (except B2) were refuted.
+- **Mine**: P-M2, the stop rule, canyons, θ, the cost, "most deepened" and the meta held. The defect's 5–15 % (témoin,
+  ON), walls > ×2 (témoin, ON) and "captures fall to ~0" were refuted.
+
+**Candidates named for the author, none built:**
+- C1 with a divide transition;
+- a cone limited to its basin and its own wall's reach;
+- or keep the walls' intersection as the ridge, the captures being small.

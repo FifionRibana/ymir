@@ -1,0 +1,53 @@
+### `carve_diag` — ADR 10 hits · code 4 hits
+- earliest ADR hit: ADR line 18709 (## Finding 130 — the restricted clause returns the raised cells to the floor but not θ to ): - New gated code, bit-neutral when off: `trunk_band_downstream`, `Skeleton::line_parent`, `carve_diag`,
+- first code hit: crates/ymir-core/src\tectonics_c1\valley_construction.rs:2110: let (out, masks, _) = carve_diag(field, sk, vc, ss);
+### `cône` — ADR 0 hits · code 0 hits · **NOTHING FOUND**
+### `cone` — ADR 45 hits · code 49 hits
+- earliest ADR hit: ADR line 119 (## Finding 3 — Droplet erosion cannot make a dendritic network here (algorithm limit, not ): cone at production parameters, surface roughness barely changed (0.00005 → 0.00006):
+- first code hit: crates/ymir-core/src\erosion\hydraulic.rs:405: fn cone_erosion_carves_valleys() {
+### `geo(` — ADR 0 hits · code 4 hits
+- first code hit: crates/ymir-core/src\tectonics_c1\valley_construction.rs:2195: let (d, v, _, _) = geo(i, c);
+### `who` — ADR 237 hits · code 229 hits
+- earliest ADR hit: ADR line 139 (## Finding 3 — Droplet erosion cannot make a dendritic network here (algorithm limit, not ): hierarchy is imposed by construction. Two pitfalls for whoever implements it:
+- first code hit: crates/ymir-core/src\cache.rs:2: //! step whose inputs are unchanged.
+### `échantillon le plus proche` — ADR 0 hits · code 0 hits · **NOTHING FOUND**
+### `nearest sample` — ADR 5 hits · code 4 hits
+- earliest ADR hit: ADR line 18570 (## Finding 127 — the foot clause returns B1's teeth to the profile's own; the off-grid tra): - By the code: `carve` lays a cell from its NEAREST sample. A 0.1 km² tributary's floor rises about 11 m
+- first code hit: crates/ymir-core/src\tectonics_c1\valley_construction.rs:139: /// from its NEAREST sample, with a minimum across different lines only among the 8 neighbours'
+### `minimum entre deux lignes` — ADR 0 hits · code 0 hits · **NOTHING FOUND**
+### `cross-line minimum` — ADR 4 hits · code 0 hits
+- earliest ADR hit: ADR line 19084 (## Finding 134 — the guard covers the lakes; the ocean moves by a tenth of a millimetre th): sample on one side; 22 share the sample (cross-line minimum).
+### `bassin versant` — ADR 0 hits · code 1 hits
+- first code hit: crates/ymir-viz/src\ui\workspace.rs:1941: kv(ui, "Bassin versant", format!("{:.0} km²", r.drainage_km2));
+### `watershed` — ADR 2 hits · code 0 hits
+- earliest ADR hit: ADR line 8200 (## Finding 73 — the fourth construction WORKS and it refutes the machinery: `runoff_accumu): below-sea cell carries label **0**: the watershed came back empty and (a) read 0.00 m³/s. Left
+### `basin id` — ADR 2 hits · code 1 hits
+- earliest ADR hit: ADR line 6985 (## Finding 63 — the closed-form ceiling FAILS by 27 %, and the failure is a population mis): to the HD grid, take the **modal HD basin id**, then compare each basin's own maximum
+- first code hit: crates/ymir-core/src\terrain\flow.rs:1155: // Determine basin ID
+### `basin_id` — ADR 1 hits · code 31 hits
+- earliest ADR hit: ADR line 17198 (## Finding 108 — the class is DIFFERENTIAL, the archetype belongs to the BREACH, and the w): > introduced between the two runs: a two-hop lookup through `Lake::basin_id` that resolved
+- first code hit: crates/ymir-core/src\export\hydro.rs:174: basin_id: 7,
+### `ligne de partage` — ADR 0 hits · code 0 hits · **NOTHING FOUND**
+### `divide` — ADR 22 hits · code 26 hits
+- earliest ADR hit: ADR line 1557 (## Finding 37c — Spillways follow the DOWNHILL flow from the escape saddle, not the ocean ): escape neighbour (the far side of the divide). The spillway starts at the saddle, steps to that escape cell,
+- first code hit: crates/ymir-core/src\export\height.rs:71: // Degenerate (perfectly flat) field: avoid a zero span / divide-by-zero.
+### `capture` — ADR 13 hits · code 145 hits
+- earliest ADR hit: ADR line 6 (?): `cargo test -p ymir-core --test terrace_diagnosis --release -- --ignored --nocapture`.
+- first code hit: crates/ymir-core/src\bin\gen_bench_data.rs:1: //! `gen_bench_data` — Step 8.5a Phase 0 capture driver.
+### `Finding 127` — ADR 9 hits · code 17 hits
+- earliest ADR hit: ADR line 7115 (## Finding 63 — the closed-form ceiling FAILS by 27 %, and the failure is a population mis): ### Method rule 11c — every grep on the dossier covers its TYPOGRAPHIC variants (added at Finding 127)
+- first code hit: crates/ymir-core/src\tectonics_c1\cached_product.rs:915: // ADR Finding 127 -- a gated field NESTED in the profile is skipped as well, so the key of
+### `F127` — ADR 1 hits · code 3 hits
+- earliest ADR hit: ADR line 18523 (## Finding 127 — the foot clause returns B1's teeth to the profile's own; the off-grid tra): section. Report and raw outputs: `docs/reports/c1_continental_buoyancy/f127_foot_trace_sill/`. One
+- first code hit: crates/ymir-core/src\tectonics_c1\valley_construction.rs:397: pub fn f127(interp: TraceInterp) -> Self {
+### `priorité par aire` — ADR 0 hits · code 0 hits · **NOTHING FOUND**
+### `largest drained area` — ADR 1 hits · code 1 hits
+- earliest ADR hit: ADR line 18617 (## Finding 128 — the confluence clause removes every canyon but fails its concavity contro): LINE with the largest drained area lays the cell from its nearest covering sample: not a minimum, and
+- first code hit: crates/ymir-core/src\tectonics_c1\valley_construction.rs:2225: // with the largest covering half-width (the largest drained area, W being monotone in A) and, of
+### `F135-C` — ADR 0 hits · code 0 hits · **NOTHING FOUND**
+### `Finding 135-C` — ADR 0 hits · code 0 hits · **NOTHING FOUND**
+### `F141-Z` — ADR 0 hits · code 0 hits · **NOTHING FOUND**
+### `Finding 141` — ADR 1 hits · code 2 hits
+- earliest ADR hit: ADR line 19612 (## Finding 141 — F140's crash attributed, nothing corrected: body 4 is half of the merged ): ## Finding 141 — F140's crash attributed, nothing corrected: body 4 is half of the merged below-sea lake 1000011, not lake 4; the construction splits that lake 
+- first code hit: crates/ymir-viz/src\ui\workspace.rs:132: /// ADR Finding 141 -- the gorge's retreat toggle (Finding 140) stays hidden until its crash is fixed.
+### `F144-Z` — ADR 0 hits · code 0 hits · **NOTHING FOUND**

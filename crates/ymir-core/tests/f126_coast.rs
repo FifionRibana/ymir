@@ -15901,3 +15901,708 @@ fn f144_p() {
     eprintln!("\n   SUMMARY · {}", summary.join("\n   SUMMARY · "));
     eprintln!("\n==========  end Finding 144 phase 1 . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
 }
+
+/// ADR Finding 145 — the base's first defect: `carve_diag`'s cones laying cells outside their line's basin. M1 (Δz of
+/// the foreign-laid cells against the own-basin carve), M2 (F127's dams), M3 (lowered divides, artificial captures),
+/// then the candidate C1 (the own-basin carve) against the témoin at the construction stage. A test-only copy of
+/// `carve_diag` for this configuration, checked bit for bit with its filter off. Declared in `f145_declared.md`.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored --exact f145_m --nocapture
+#[test]
+#[ignore]
+fn f145_m() {
+    use common::viz_dcfg;
+    use std::collections::{BTreeMap, BinaryHeap};
+    use ymir_core::tectonics_c1::drainage::C1_SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::production_upscale::c1_metres_to_altitude_norm;
+    use ymir_core::tectonics_c1::valley_construction::{LakeBase, carve_diag};
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE, FlowConfig, compute_flow};
+
+    // the heap item of carve_diag (min-heap on the distance, ties on the cell index), verbatim
+    struct It(f32, usize);
+    impl PartialEq for It {
+        fn eq(&self, o: &Self) -> bool {
+            self.cmp(o) == std::cmp::Ordering::Equal
+        }
+    }
+    impl Eq for It {}
+    impl PartialOrd for It {
+        fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(o))
+        }
+    }
+    impl Ord for It {
+        fn cmp(&self, o: &Self) -> std::cmp::Ordering {
+            o.0.total_cmp(&self.0).then_with(|| o.1.cmp(&self.1))
+        }
+    }
+    /// `carve_diag`'s path for a configuration with no confluence band, no wall profile, no wall-sea floor and no rim,
+    /// with an optional filter: a sample may lay a cell only if its line's basin is the cell's basin.
+    fn carve_own(field: &GridF32, sk: &Skeleton, vc: &ValleyConstruction, ss: &SteinSteinParams, filt: Option<(&[u32], &[u32])>) -> (GridF32, Vec<bool>) {
+        assert!(!vc.trunk_band && vc.wall_profile.is_none() && vc.wall_sea_floor_m.is_none() && sk.rim_floor_m.is_none(), "the copy covers this configuration only");
+        let (w, h) = (sk.width, sk.height);
+        let n = w * h;
+        let tan = vc.wall_deg.to_radians().tan();
+        let zfield: Vec<f32> = field.data.iter().map(|&v| c1_altitude_norm_to_metres(v, ss)).collect();
+        let mut src: Vec<(f32, f32, f32, f32)> = Vec::new();
+        let mut line_of: Vec<u32> = Vec::new();
+        for (li, l) in sk.polylines.iter().enumerate() {
+            for &p in l.iter() {
+                src.push(p);
+                line_of.push(li as u32);
+            }
+        }
+        let ok = |s: usize, c: usize| -> bool { filt.is_none_or(|(cell_b, line_b)| line_b[line_of[s] as usize] == cell_b[c]) };
+        let foot = 0.0f32;
+        let geo = |s: usize, c: usize| -> (f32, f32, bool, f32) {
+            let (sx, sy, zf, hw) = src[s];
+            let (cx, cy) = ((c % w) as f32 + 0.5, (c / w) as f32 + 0.5);
+            let mut dx = (cx - sx).rem_euclid(w as f32);
+            if dx > w as f32 / 2.0 {
+                dx -= w as f32;
+            }
+            let mut dy = (cy - sy).rem_euclid(h as f32);
+            if dy > h as f32 / 2.0 {
+                dy -= h as f32;
+            }
+            let d = (dx * dx + dy * dy).sqrt() * sk.cell_m;
+            let u = (d - hw).max(0.0);
+            let rise = if foot > 0.0 && u < foot { tan * u * u / (2.0 * foot) } else { tan * (u - 0.5 * foot) };
+            (d, zf + rise, d <= hw, u)
+        };
+        let mut bestd = vec![f32::INFINITY; n];
+        let mut who = vec![u32::MAX; n];
+        let mut heap = BinaryHeap::new();
+        for (i, sp) in src.iter().enumerate() {
+            let cx = (sp.0.floor() as i64).rem_euclid(w as i64) as usize;
+            let cy = (sp.1.floor() as i64).rem_euclid(h as i64) as usize;
+            let c = cy * w + cx;
+            let (d, v, _, _) = geo(i, c);
+            if d < bestd[c] && v < zfield[c] && ok(i, c) {
+                bestd[c] = d;
+                who[c] = i as u32;
+                heap.push(It(d, c));
+            }
+        }
+        while let Some(It(d, c)) = heap.pop() {
+            if d > bestd[c] {
+                continue;
+            }
+            let s = who[c] as usize;
+            let (x, y) = ((c % w) as i32, (c / w) as i32);
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let nb = (y + dy).rem_euclid(h as i32) as usize * w + (x + dx).rem_euclid(w as i32) as usize;
+                    let (dd, vv, _, _) = geo(s, nb);
+                    if dd < bestd[nb] && vv < zfield[nb] && ok(s, nb) {
+                        bestd[nb] = dd;
+                        who[nb] = s as u32;
+                        heap.push(It(dd, nb));
+                    }
+                }
+            }
+        }
+        let mut out = field.clone();
+        let mut carved = vec![false; n];
+        for c in 0..n {
+            if who[c] == u32::MAX {
+                continue;
+            }
+            let me = who[c] as usize;
+            let (x, y) = ((c % w) as i32, (c / w) as i32);
+            let (_, mut v, _, _) = geo(me, c);
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    let nb = (y + dy).rem_euclid(h as i32) as usize * w + (x + dx).rem_euclid(w as i32) as usize;
+                    let o = who[nb];
+                    if o != u32::MAX && line_of[o as usize] != line_of[me] && ok(o as usize, c) {
+                        let (_, vv, _, _) = geo(o as usize, c);
+                        if vv < v {
+                            v = vv;
+                        }
+                    }
+                }
+            }
+            if v < zfield[c] {
+                let nv = c1_metres_to_altitude_norm(v, ss);
+                if nv < out.data[c] {
+                    out.data[c] = nv;
+                    carved[c] = true;
+                }
+            }
+        }
+        (out, carved)
+    }
+
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    let n2m = c1_altitude_norm_to_metres(1.0, &ss) - c1_altitude_norm_to_metres(0.0, &ss);
+    let cell_km2 = CELL_KM * CELL_KM;
+    let tan28 = 28f32.to_radians().tan();
+    let vd = viz_dcfg();
+    eprintln!("\n==========  Finding 145 . the cones outside their basin (M1–M3, C1 at the construction)  ==========");
+    let metres = |g: &GridF32| -> Vec<f32> { g.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect() };
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let pre = build_field_seed(Knobs::no_incision(), PSEED);
+    let (w, h) = (s1.width, s1.height);
+    let n = w * h;
+    let xy = |c: usize| format!("({},{})", c % w, c / w);
+    let nbt = |c: usize, k: usize| ((c / w) as i32 + D8_DY[k]).rem_euclid(h as i32) as usize * w + ((c % w) as i32 + D8_DX[k]).rem_euclid(w as i32) as usize;
+    let fill_pre = {
+        let cl = c1_climate_placed(&pre, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+        let dc = DrainageClimate { precip_internal: &cl.precipitation, temperature: &cl.temperature };
+        fill_field_m(&pre, &vd, &ss, &dc, DOMAIN_KM).0
+    };
+    let temoin = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let links = trunk_links(&skeleton(&s1, &temoin, &ss, DOMAIN_KM));
+    // the route of every cell on a field: the skeleton's flow chain, labelled by the last land cell on its D8 path
+    let routes = |f: &GridF32| -> Vec<u32> {
+        let dcfg = C1DrainageConfig::default();
+        let d = c1_drainage_windowed(f, None, &dcfg, &ss, DOMAIN_KM);
+        let bf = breach_monotone(f, &d.flow.filled, &d.lake_map, C1_SEA_LEVEL_NORM, w, h);
+        let fl = compute_flow(&bf, &FlowConfig { sea_level: C1_SEA_LEVEL_NORM, flat_perturbation: dcfg.flat_perturbation.clone(), dinf: dcfg.dinf });
+        let land: Vec<bool> = bf.data.iter().map(|&v| v > C1_SEA_LEVEL_NORM).collect();
+        let mut lab = vec![u32::MAX - 1; n];
+        let mut path = Vec::new();
+        for s in 0..n {
+            if lab[s] != u32::MAX - 1 {
+                continue;
+            }
+            path.clear();
+            let mut c = s;
+            let v0;
+            loop {
+                if !land[c] {
+                    v0 = path.last().map_or(u32::MAX, |&p| p as u32);
+                    break;
+                }
+                if lab[c] != u32::MAX - 1 {
+                    v0 = lab[c];
+                    break;
+                }
+                path.push(c);
+                let dd = fl.direction[c];
+                if dd == DIR_NONE || path.len() > 100_000 {
+                    v0 = c as u32;
+                    break;
+                }
+                c = nbt(c, dd as usize);
+            }
+            for &q in &path {
+                lab[q] = v0;
+            }
+            if !land[s] {
+                lab[s] = u32::MAX;
+            }
+        }
+        lab
+    };
+    // the extras on a field (canyons, the relief via F95's dump, the coast)
+    let extras = |label: &str, vc: ValleyConstruction, g: &GridF32| -> (usize, String) {
+        let cl_e = c1_climate_placed(g, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+        let dc_e = DrainageClimate { precip_internal: &cl_e.precipitation, temperature: &cl_e.temperature };
+        let (fill_del, _) = fill_field_m(g, &vd, &ss, &dc_e, DOMAIN_KM);
+        let cond = {
+            let d = c1_drainage_windowed(g, None, &vd, &ss, DOMAIN_KM);
+            breach_monotone(g, &d.flow.filled, &d.lake_map, 0.5, w, h)
+        };
+        eprintln!("   [F95 dump for {label}]");
+        set_dump(true);
+        let _cr = f95_criteria(g, &cond, &pre, DELIVERED_P50_M, &ss, &vd, cell_km2, n2m, w, h);
+        set_dump(false);
+        let mut canyons = 0;
+        for b in take_bodies() {
+            let floor = *b.cells.iter().min_by(|&&a, &&c| g.data[a].total_cmp(&g.data[c])).expect("body");
+            if over_dug_depression(fill_del[floor] - fill_pre[floor], b.rim) {
+                canyons += 1;
+            }
+        }
+        let skp = skeleton(&pre, &vc, &ss, DOMAIN_KM);
+        let (_, mkp) = carve(&pre, &skp, &vc, &ss);
+        let sea: Vec<bool> = (0..n).map(|k| g.data[k] <= SEA).collect();
+        let dsea = dist_from(&sea, w, h);
+        let cw: Vec<bool> = (0..n).map(|k| mkp.carved[k] && !mkp.floor[k] && g.data[k] > SEA && dsea[k] <= 3).collect();
+        let dwall = dist_from(&cw, w, h);
+        let co = coast(g, &ss, &dwall, 2.0 / CELL_KM);
+        let rn = co.near.iter().filter(|&&b| b).count() as f32 / co.l_near_km.max(1e-6);
+        (canyons, format!("canyons **{canyons}** · coast: spurs near a coastal wall {rn:.4} /km"))
+    };
+    let r8_net = |g: &GridF32| -> f32 {
+        let d = c1_drainage_windowed(g, None, &vd, &ss, DOMAIN_KM);
+        let segs = &d.rivers.segments;
+        let pts: Vec<&[(u32, u32)]> = (0..segs.len()).filter(|&i| d.segment_kind[i] == SegmentKind::Watercourse && segs[i].points.len() >= 2).map(|i| segs[i].points.as_slice()).collect();
+        r8_chords(&pts, 8)
+    };
+    let route_in = routes(&s1);
+    let cols = [(3852usize, 2337usize), (4551, 3280), (2253, 4495), (1805, 4580)];
+    for (wname, vc) in [
+        ("the témoin (C2 /10 col)", temoin),
+        ("ON extended", ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..temoin }),
+        ("B2 → A_c (F127's canyons)", ValleyConstruction { a_min_km2: 0.1, ..temoin }),
+    ] {
+        eprintln!("\n────────── {wname} ──────────");
+        let sk = skeleton(&s1, &vc, &ss, DOMAIN_KM);
+        // the basin label: the last land cell on the skeleton's D8 path (= the route on the input)
+        let basin = &route_in;
+        // the line's basin: the majority over its sample cells
+        let line_b: Vec<u32> = sk
+            .polylines
+            .iter()
+            .map(|l| {
+                let mut cnt: BTreeMap<u32, usize> = BTreeMap::new();
+                for p in l {
+                    let c = (p.1.floor() as i64).rem_euclid(h as i64) as usize * w + (p.0.floor() as i64).rem_euclid(w as i64) as usize;
+                    *cnt.entry(basin[c]).or_insert(0) += 1;
+                }
+                cnt.into_iter().max_by_key(|e| (e.1, std::cmp::Reverse(e.0))).map_or(u32::MAX, |e| e.0)
+            })
+            .collect();
+        let tp = Instant::now();
+        let (g_prod, mk, dg) = carve_diag(&s1, &sk, &vc, &ss);
+        let t_prod = tp.elapsed().as_secs_f64();
+        let (g_copy, _) = carve_own(&s1, &sk, &vc, &ss, None);
+        let diff = (0..n).filter(|&k| g_copy.data[k].to_bits() != g_prod.data[k].to_bits()).count();
+        eprintln!("   the copy (filter off) against production carve_diag: {diff} cells differ{}", if diff == 0 { " (bit-identical: read)" } else { " — NOT READ" });
+        drop(g_copy);
+        if diff != 0 {
+            continue;
+        }
+        let to = Instant::now();
+        let (g_own, carved_own) = carve_own(&s1, &sk, &vc, &ss, Some((basin.as_slice(), line_b.as_slice())));
+        let t_own = to.elapsed().as_secs_f64();
+        let zp = metres(&g_prod);
+        let zo = metres(&g_own);
+        let carved_n = mk.carved.iter().filter(|&&x| x).count();
+        let line_at = |c: usize| -> Option<u32> { (dg.who[c] != u32::MAX).then(|| dg.line_of[dg.who[c] as usize]) };
+        let land: Vec<bool> = (0..n).map(|k| s1.data[k] > SEA).collect();
+        let divide: Vec<bool> = (0..n).map(|c| land[c] && (0..8).any(|k| { let m = nbt(c, k); land[m] && basin[m] != basin[c] })).collect();
+        let ddiv = dist_from(&divide, w, h);
+        // M1
+        let mut dz_all: Vec<f32> = Vec::new();
+        let mut by_band: [(usize, usize, usize); 3] = [(0, 0, 0); 3]; // (foreign, deepened < −1, |Δz| ≤ 1)
+        let (mut foreign, mut defect, mut legit) = (0usize, 0usize, 0usize);
+        for c in 0..n {
+            if !mk.carved[c] {
+                continue;
+            }
+            let Some(l) = line_at(c) else { continue };
+            if line_b[l as usize] == basin[c] {
+                continue;
+            }
+            foreign += 1;
+            let dz = zp[c] - zo[c];
+            dz_all.push(dz);
+            let b = if ddiv[c] <= 2 { 0 } else if ddiv[c] <= 10 { 1 } else { 2 };
+            by_band[b].0 += 1;
+            if dz < -1.0 {
+                defect += 1;
+                by_band[b].1 += 1;
+            }
+            if dz.abs() <= 1.0 {
+                by_band[b].2 += 1;
+                if ddiv[c] <= 2 {
+                    legit += 1;
+                }
+            }
+        }
+        let mut s = dz_all.clone();
+        s.sort_by(f32::total_cmp);
+        let pc = |p: f64| if s.is_empty() { f32::NAN } else { s[((s.len() - 1) as f64 * p) as usize] };
+        eprintln!(
+            "   M1 · carved cells {carved_n} · laid by a FOREIGN-basin line **{foreign}** ({:.1} %) · Δz p5/p25/p50/p75/p95 {:.1}/{:.1}/{:.1}/{:.1}/{:.1} m",
+            100.0 * foreign as f64 / carved_n.max(1) as f64,
+            pc(0.05),
+            pc(0.25),
+            pc(0.5),
+            pc(0.75),
+            pc(0.95)
+        );
+        for (i, nm) in ["0–2 cells from a divide", "3–10", "> 10"].iter().enumerate() {
+            let (f, dd, l) = by_band[i];
+            eprintln!("      {nm}: {f} foreign · deepened (Δz < −1 m) {dd} · |Δz| ≤ 1 m {l}");
+        }
+        eprintln!(
+            "   M1 · **THE REAL DEFECT (Δz < −1 m): {defect} cells = {:.2} % of the carved cells** · the legitimate (≤ 2 cells from a divide, |Δz| ≤ 1 m): {legit} = {:.1} % of the foreign-laid",
+            100.0 * defect as f64 / carved_n.max(1) as f64,
+            100.0 * legit as f64 / foreign.max(1) as f64
+        );
+        // M2: F127's cols (B2 → A_c)
+        if wname.starts_with("B2") {
+            for &(x, y) in &cols {
+                let c = y * w + x;
+                let l = line_at(c);
+                eprintln!(
+                    "   M2 · col {} · carved {} · laid by line {:?} ({}) · z_prod {:.1} m · z_own {:.1} m · Δz {:+.1} m · real defect {}",
+                    xy(c),
+                    mk.carved[c],
+                    l,
+                    match l {
+                        Some(l) if line_b[l as usize] != basin[c] => "FOREIGN",
+                        Some(_) => "own basin",
+                        None => "no sample",
+                    },
+                    zp[c],
+                    zo[c],
+                    zp[c] - zo[c],
+                    l.is_some_and(|l| line_b[l as usize] != basin[c]) && zp[c] - zo[c] < -1.0
+                );
+            }
+        }
+        // M3: lowered divides and artificial captures
+        let mut low: Vec<f32> = (0..n).filter(|&c| divide[c] && zp[c] < zo[c] - 1.0).map(|c| zo[c] - zp[c]).collect();
+        low.sort_by(f32::total_cmp);
+        let rp = routes(&g_prod);
+        let ro = routes(&g_own);
+        let mut cap = 0usize;
+        let mut pairs: BTreeMap<(u32, u32), usize> = BTreeMap::new();
+        let mut cap_own = 0usize;
+        for c in 0..n {
+            if !land[c] || route_in[c] == u32::MAX {
+                continue;
+            }
+            let to_in = |r: u32| if r == u32::MAX || r == u32::MAX - 1 { u32::MAX } else { route_in[r as usize] };
+            let (a, b, o) = (route_in[c], to_in(rp[c]), to_in(ro[c]));
+            if b != a && o == a {
+                cap += 1;
+                *pairs.entry((a, b)).or_insert(0) += 1;
+            }
+            if o != a {
+                cap_own += 1;
+            }
+        }
+        let mut pv: Vec<((u32, u32), usize)> = pairs.into_iter().collect();
+        pv.sort_by(|x, y| y.1.cmp(&x.1));
+        eprintln!(
+            "   M3 · divide cells lowered > 1 m by the cones the own-basin carve does not lay: **{}** · lowering p50 {:.1} m · p90 {:.1} m",
+            low.len(),
+            if low.is_empty() { f32::NAN } else { low[low.len() / 2] },
+            if low.is_empty() { f32::NAN } else { low[(low.len() - 1) * 9 / 10] }
+        );
+        eprintln!(
+            "   M3 · **ARTIFICIAL CAPTURES** (route changed under the témoin's carve, kept under the own-basin carve): **{cap} cells = {:.1} km²** in {} basin pairs · cells whose route changes even under the own-basin carve: {cap_own}",
+            cap as f32 * cell_km2,
+            pv.len()
+        );
+        for ((a, b), k) in pv.iter().take(6) {
+            eprintln!("      {k} cells ({:.2} km²) from the basin of {} to that of {}", *k as f32 * cell_km2, xy(*a as usize), if *b == u32::MAX { "—".to_string() } else { xy(*b as usize) });
+        }
+        let stop = (defect as f64) < 0.01 * carved_n as f64 && cap == 0;
+        eprintln!("   STOP RULE · real defect < 1 % and no capture: {}", if stop { "**TRIGGERED — C is not run on this world**" } else { "not triggered" });
+        if stop {
+            continue;
+        }
+        // C1 against the témoin's carve (rule 18), at the construction
+        let walls = |z: &[f32]| -> usize {
+            let mut k_ = 0usize;
+            for c in 0..n {
+                if !land[c] {
+                    continue;
+                }
+                for k in [0usize, 1, 2, 3] {
+                    let m = nbt(c, k);
+                    if land[m] && basin[m] != basin[c] {
+                        let dd = CELL_KM * 1000.0 * if k % 2 == 1 { std::f32::consts::SQRT_2 } else { 1.0 };
+                        if ((z[c] - z[m]) / dd).abs() > tan28 {
+                            k_ += 1;
+                        }
+                    }
+                }
+            }
+            k_
+        };
+        let th = |z: &[f32], carved: &[bool]| -> String {
+            let zk: Vec<f32> = links.iter().map(|l| z[l.0]).collect();
+            let zr: Vec<f32> = links.iter().map(|l| z[l.1]).collect();
+            let t = theta_links(&links, &zk, &zr, &|i| carved[links[i].0] && carved[links[i].1]);
+            format!("{:.3} [{:.3}, {:.3}]", t.0, t.1, t.2)
+        };
+        let cls = classes(&pre, &sk, &mk);
+        let (cy_p, ex_p) = extras(&format!("{wname}, the témoin's carve"), vc, &g_prod);
+        let (cy_o, ex_o) = extras(&format!("{wname}, C1"), vc, &g_own);
+        let _ = (cy_p, cy_o);
+        eprintln!(
+            "   C · the témoin's carve: walls across the divides **{}** · θ {} · R8 terrain {:.4} · R8 network {:.4} · {ex_p}",
+            walls(&zp),
+            th(&zp, &mk.carved),
+            r8_terrain(&g_prod, &cls, 16),
+            r8_net(&g_prod)
+        );
+        eprintln!(
+            "   C · C1 (the own-basin carve): walls across the divides **{}** · θ {} · R8 terrain {:.4} · R8 network {:.4} · {ex_o} · captures under C1 (route changed against the input) {}",
+            walls(&zo),
+            th(&zo, &carved_own),
+            r8_terrain(&g_own, &cls, 16),
+            r8_net(&g_own),
+            cap_own
+        );
+        if wname.starts_with("B2") {
+            for &(x, y) in &cols {
+                let c = y * w + x;
+                eprintln!("   C · F127 col {} · the témoin's carve {:.1} m · C1 {:.1} m", xy(c), zp[c], zo[c]);
+            }
+        }
+        eprintln!(
+            "   C · COST · production carve {t_prod:.1} s · the bench's filtered carve {t_own:.1} s ({:+.1} s; the basin labels come free from compute_flow in production) · against run_hd 249.8 s",
+            t_own - t_prod
+        );
+    }
+    eprintln!("\n==========  end Finding 145 . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+
+/// ADR Finding 145-M3, amendment — the artificial captures refined: only between input basins of at least 10 km²,
+/// against the own-basin carve's noise floor. Declared in `f145_declared.md` (amendment, non-blind).
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored --exact f145_cap --nocapture
+#[test]
+#[ignore]
+fn f145_cap() {
+    use std::collections::{BTreeMap, BinaryHeap, HashMap};
+    use ymir_core::tectonics_c1::drainage::C1_SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::production_upscale::c1_metres_to_altitude_norm;
+    use ymir_core::tectonics_c1::valley_construction::{LakeBase, carve_diag};
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE, FlowConfig, compute_flow};
+    // the heap item of carve_diag (min-heap on the distance, ties on the cell index), verbatim
+    struct It(f32, usize);
+    impl PartialEq for It {
+        fn eq(&self, o: &Self) -> bool {
+            self.cmp(o) == std::cmp::Ordering::Equal
+        }
+    }
+    impl Eq for It {}
+    impl PartialOrd for It {
+        fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(o))
+        }
+    }
+    impl Ord for It {
+        fn cmp(&self, o: &Self) -> std::cmp::Ordering {
+            o.0.total_cmp(&self.0).then_with(|| o.1.cmp(&self.1))
+        }
+    }
+    /// `carve_diag`'s path for a configuration with no confluence band, no wall profile, no wall-sea floor and no rim,
+    /// with an optional filter: a sample may lay a cell only if its line's basin is the cell's basin.
+    fn carve_own(field: &GridF32, sk: &Skeleton, vc: &ValleyConstruction, ss: &SteinSteinParams, filt: Option<(&[u32], &[u32])>) -> (GridF32, Vec<bool>) {
+        assert!(!vc.trunk_band && vc.wall_profile.is_none() && vc.wall_sea_floor_m.is_none() && sk.rim_floor_m.is_none(), "the copy covers this configuration only");
+        let (w, h) = (sk.width, sk.height);
+        let n = w * h;
+        let tan = vc.wall_deg.to_radians().tan();
+        let zfield: Vec<f32> = field.data.iter().map(|&v| c1_altitude_norm_to_metres(v, ss)).collect();
+        let mut src: Vec<(f32, f32, f32, f32)> = Vec::new();
+        let mut line_of: Vec<u32> = Vec::new();
+        for (li, l) in sk.polylines.iter().enumerate() {
+            for &p in l.iter() {
+                src.push(p);
+                line_of.push(li as u32);
+            }
+        }
+        let ok = |s: usize, c: usize| -> bool { filt.is_none_or(|(cell_b, line_b)| line_b[line_of[s] as usize] == cell_b[c]) };
+        let foot = 0.0f32;
+        let geo = |s: usize, c: usize| -> (f32, f32, bool, f32) {
+            let (sx, sy, zf, hw) = src[s];
+            let (cx, cy) = ((c % w) as f32 + 0.5, (c / w) as f32 + 0.5);
+            let mut dx = (cx - sx).rem_euclid(w as f32);
+            if dx > w as f32 / 2.0 {
+                dx -= w as f32;
+            }
+            let mut dy = (cy - sy).rem_euclid(h as f32);
+            if dy > h as f32 / 2.0 {
+                dy -= h as f32;
+            }
+            let d = (dx * dx + dy * dy).sqrt() * sk.cell_m;
+            let u = (d - hw).max(0.0);
+            let rise = if foot > 0.0 && u < foot { tan * u * u / (2.0 * foot) } else { tan * (u - 0.5 * foot) };
+            (d, zf + rise, d <= hw, u)
+        };
+        let mut bestd = vec![f32::INFINITY; n];
+        let mut who = vec![u32::MAX; n];
+        let mut heap = BinaryHeap::new();
+        for (i, sp) in src.iter().enumerate() {
+            let cx = (sp.0.floor() as i64).rem_euclid(w as i64) as usize;
+            let cy = (sp.1.floor() as i64).rem_euclid(h as i64) as usize;
+            let c = cy * w + cx;
+            let (d, v, _, _) = geo(i, c);
+            if d < bestd[c] && v < zfield[c] && ok(i, c) {
+                bestd[c] = d;
+                who[c] = i as u32;
+                heap.push(It(d, c));
+            }
+        }
+        while let Some(It(d, c)) = heap.pop() {
+            if d > bestd[c] {
+                continue;
+            }
+            let s = who[c] as usize;
+            let (x, y) = ((c % w) as i32, (c / w) as i32);
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let nb = (y + dy).rem_euclid(h as i32) as usize * w + (x + dx).rem_euclid(w as i32) as usize;
+                    let (dd, vv, _, _) = geo(s, nb);
+                    if dd < bestd[nb] && vv < zfield[nb] && ok(s, nb) {
+                        bestd[nb] = dd;
+                        who[nb] = s as u32;
+                        heap.push(It(dd, nb));
+                    }
+                }
+            }
+        }
+        let mut out = field.clone();
+        let mut carved = vec![false; n];
+        for c in 0..n {
+            if who[c] == u32::MAX {
+                continue;
+            }
+            let me = who[c] as usize;
+            let (x, y) = ((c % w) as i32, (c / w) as i32);
+            let (_, mut v, _, _) = geo(me, c);
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    let nb = (y + dy).rem_euclid(h as i32) as usize * w + (x + dx).rem_euclid(w as i32) as usize;
+                    let o = who[nb];
+                    if o != u32::MAX && line_of[o as usize] != line_of[me] && ok(o as usize, c) {
+                        let (_, vv, _, _) = geo(o as usize, c);
+                        if vv < v {
+                            v = vv;
+                        }
+                    }
+                }
+            }
+            if v < zfield[c] {
+                let nv = c1_metres_to_altitude_norm(v, ss);
+                if nv < out.data[c] {
+                    out.data[c] = nv;
+                    carved[c] = true;
+                }
+            }
+        }
+        (out, carved)
+    }
+
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    let cell_km2 = CELL_KM * CELL_KM;
+    eprintln!("\n==========  Finding 145-M3 amendment . the captures between basins of at least 10 km²  ==========");
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let (w, h) = (s1.width, s1.height);
+    let n = w * h;
+    let xy = |c: usize| format!("({},{})", c % w, c / w);
+    let nbt = |c: usize, k: usize| ((c / w) as i32 + D8_DY[k]).rem_euclid(h as i32) as usize * w + ((c % w) as i32 + D8_DX[k]).rem_euclid(w as i32) as usize;
+    // the route of every cell on a field: the skeleton's flow chain, labelled by the last land cell on its D8 path
+    let routes = |f: &GridF32| -> Vec<u32> {
+        let dcfg = C1DrainageConfig::default();
+        let d = c1_drainage_windowed(f, None, &dcfg, &ss, DOMAIN_KM);
+        let bf = breach_monotone(f, &d.flow.filled, &d.lake_map, C1_SEA_LEVEL_NORM, w, h);
+        let fl = compute_flow(&bf, &FlowConfig { sea_level: C1_SEA_LEVEL_NORM, flat_perturbation: dcfg.flat_perturbation.clone(), dinf: dcfg.dinf });
+        let land: Vec<bool> = bf.data.iter().map(|&v| v > C1_SEA_LEVEL_NORM).collect();
+        let mut lab = vec![u32::MAX - 1; n];
+        let mut path = Vec::new();
+        for s in 0..n {
+            if lab[s] != u32::MAX - 1 {
+                continue;
+            }
+            path.clear();
+            let mut c = s;
+            let v0;
+            loop {
+                if !land[c] {
+                    v0 = path.last().map_or(u32::MAX, |&p| p as u32);
+                    break;
+                }
+                if lab[c] != u32::MAX - 1 {
+                    v0 = lab[c];
+                    break;
+                }
+                path.push(c);
+                let dd = fl.direction[c];
+                if dd == DIR_NONE || path.len() > 100_000 {
+                    v0 = c as u32;
+                    break;
+                }
+                c = nbt(c, dd as usize);
+            }
+            for &q in &path {
+                lab[q] = v0;
+            }
+            if !land[s] {
+                lab[s] = u32::MAX;
+            }
+        }
+        lab
+    };
+    let route_in = routes(&s1);
+    let mut area: HashMap<u32, usize> = HashMap::new();
+    for &r in &route_in {
+        if r != u32::MAX {
+            *area.entry(r).or_insert(0) += 1;
+        }
+    }
+    let big = |r: u32| r != u32::MAX && area.get(&r).copied().unwrap_or(0) as f32 * cell_km2 >= 10.0;
+    eprintln!("   input basins: {} · of them ≥ 10 km²: {} (holding {:.1} % of the land)", area.len(), area.keys().filter(|&&r| big(r)).count(),
+        100.0 * area.iter().filter(|e| big(*e.0)).map(|e| *e.1).sum::<usize>() as f64 / area.values().sum::<usize>().max(1) as f64);
+    let temoin = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    for (wname, vc) in [("the témoin (C2 /10 col)", temoin), ("ON extended", ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..temoin })] {
+        eprintln!("\n────────── {wname} ──────────");
+        let sk = skeleton(&s1, &vc, &ss, DOMAIN_KM);
+        let line_b: Vec<u32> = sk
+            .polylines
+            .iter()
+            .map(|l| {
+                let mut cnt: BTreeMap<u32, usize> = BTreeMap::new();
+                for p in l {
+                    let c = (p.1.floor() as i64).rem_euclid(h as i64) as usize * w + (p.0.floor() as i64).rem_euclid(w as i64) as usize;
+                    *cnt.entry(route_in[c]).or_insert(0) += 1;
+                }
+                cnt.into_iter().max_by_key(|e| (e.1, std::cmp::Reverse(e.0))).map_or(u32::MAX, |e| e.0)
+            })
+            .collect();
+        let (g_prod, _, _) = carve_diag(&s1, &sk, &vc, &ss);
+        let (g_own, _) = carve_own(&s1, &sk, &vc, &ss, Some((route_in.as_slice(), line_b.as_slice())));
+        drop(sk);
+        let rp = routes(&g_prod);
+        let ro = routes(&g_own);
+        let to_in = |r: u32| if r == u32::MAX || r == u32::MAX - 1 { u32::MAX } else { route_in[r as usize] };
+        let (mut cap, mut noise, mut raw) = (0usize, 0usize, 0usize);
+        let mut pairs: BTreeMap<(u32, u32), usize> = BTreeMap::new();
+        for c in 0..n {
+            let a = route_in[c];
+            if !big(a) {
+                continue;
+            }
+            let (b, o) = (to_in(rp[c]), to_in(ro[c]));
+            if b != a {
+                raw += 1;
+            }
+            if b != a && big(b) && o == a {
+                cap += 1;
+                *pairs.entry((a, b)).or_insert(0) += 1;
+            }
+            if o != a && big(o) {
+                noise += 1;
+            }
+        }
+        let mut pv: Vec<((u32, u32), usize)> = pairs.into_iter().collect();
+        pv.sort_by(|x, y| y.1.cmp(&x.1));
+        eprintln!(
+            "   cells of basins ≥ 10 km² routed elsewhere under the témoin's carve: {raw} · **captured into another basin ≥ 10 km² and kept by the own-basin carve: {cap} cells = {:.1} km²** in {} pairs · the noise floor (the own-basin carve moving cells between basins ≥ 10 km²): {noise} cells = {:.1} km²",
+            cap as f32 * cell_km2,
+            pv.len(),
+            noise as f32 * cell_km2
+        );
+        for ((a, b), k) in pv.iter().take(10) {
+            eprintln!(
+                "      {:.2} km² from the basin of {} ({:.1} km²) to that of {} ({:.1} km²)",
+                *k as f32 * cell_km2,
+                xy(*a as usize),
+                area[a] as f32 * cell_km2,
+                xy(*b as usize),
+                area[b] as f32 * cell_km2
+            );
+        }
+    }
+    eprintln!("\n==========  end Finding 145-M3 amendment . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}

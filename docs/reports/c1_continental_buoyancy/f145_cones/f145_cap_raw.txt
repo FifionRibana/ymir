@@ -1,0 +1,32 @@
+
+==========  Finding 145-M3 amendment . the captures between basins of at least 10 km²  ==========
+   input basins: 37099 · of them ≥ 10 km²: 184 (holding 75.4 % of the land)
+
+────────── the témoin (C2 /10 col) ──────────
+   cells of basins ≥ 10 km² routed elsewhere under the témoin's carve: 2877045 · **captured into another basin ≥ 10 km² and kept by the own-basin carve: 71923 cells = 171.5 km²** in 30 pairs · the noise floor (the own-basin carve moving cells between basins ≥ 10 km²): 59463 cells = 141.8 km²
+      78.73 km² from the basin of (3282,2955) (78.7 km²) to that of (3281,2956) (10.9 km²)
+      20.10 km² from the basin of (3231,3737) (20.8 km²) to that of (3231,3736) (10.7 km²)
+      9.16 km² from the basin of (2651,5908) (255.0 km²) to that of (2758,5210) (1805.0 km²)
+      7.21 km² from the basin of (4274,1946) (11.0 km²) to that of (4100,1749) (49.9 km²)
+      7.00 km² from the basin of (3288,2697) (1372.8 km²) to that of (3524,2083) (88.1 km²)
+      6.29 km² from the basin of (4058,4319) (448.8 km²) to that of (3978,4335) (108.4 km²)
+      6.00 km² from the basin of (3522,2088) (17.3 km²) to that of (3524,2083) (88.1 km²)
+      5.58 km² from the basin of (2473,3851) (414.3 km²) to that of (2758,5210) (1805.0 km²)
+      5.30 km² from the basin of (2571,3986) (36.2 km²) to that of (2473,3851) (414.3 km²)
+      5.00 km² from the basin of (1674,4701) (83.8 km²) to that of (2758,5210) (1805.0 km²)
+
+────────── ON extended ──────────
+   cells of basins ≥ 10 km² routed elsewhere under the témoin's carve: 2642385 · **captured into another basin ≥ 10 km² and kept by the own-basin carve: 82951 cells = 197.8 km²** in 37 pairs · the noise floor (the own-basin carve moving cells between basins ≥ 10 km²): 67581 cells = 161.1 km²
+      78.73 km² from the basin of (3282,2955) (78.7 km²) to that of (3281,2956) (10.9 km²)
+      28.07 km² from the basin of (3410,3645) (143.0 km²) to that of (3482,3595) (169.3 km²)
+      12.37 km² from the basin of (3488,5227) (262.8 km²) to that of (3484,5226) (11.0 km²)
+      9.21 km² from the basin of (2651,5908) (255.0 km²) to that of (2758,5210) (1805.0 km²)
+      7.95 km² from the basin of (4058,4319) (448.8 km²) to that of (3978,4335) (108.4 km²)
+      7.55 km² from the basin of (3288,2697) (1372.8 km²) to that of (3524,2083) (88.1 km²)
+      7.21 km² from the basin of (4274,1946) (11.0 km²) to that of (4100,1749) (49.9 km²)
+      6.00 km² from the basin of (3522,2088) (17.3 km²) to that of (3524,2083) (88.1 km²)
+      5.44 km² from the basin of (2571,3986) (36.2 km²) to that of (2473,3851) (414.3 km²)
+      5.25 km² from the basin of (2473,3851) (414.3 km²) to that of (2758,5210) (1805.0 km²)
+
+==========  end Finding 145-M3 amendment . 1590.5 s  ==========
+
