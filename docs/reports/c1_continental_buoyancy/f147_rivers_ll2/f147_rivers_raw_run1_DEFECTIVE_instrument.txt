@@ -1,0 +1,144 @@
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2200:23
+     |
+2200 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2270 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+warning: unused variable: `skn`
+     --> crates\ymir-core\tests\f126_coast.rs:10710:9
+      |
+10710 |     let skn = skeleton(&s1, &ext, &ss, DOMAIN_KM);
+      |         ^^^ help: if this is intentional, prefix it with an underscore: `_skn`
+      |
+      = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `t_on_con` is never read
+     --> crates\ymir-core\tests\f126_coast.rs:11447:24
+      |
+11447 |     let mut t_on_con = 0f64;
+      |                        ^^^^ this value is reassigned later and never used
+...
+11496 |         t_on_con = t.elapsed().as_secs_f64();
+      |         ------------------------------------ `t_on_con` is overwritten here before the previous value is read
+      |
+      = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `ci`, `floor`, `stop`, and `crossed` are never read
+     --> crates\ymir-core\tests\f126_coast.rs:13985:9
+      |
+13983 |     struct Ev {
+      |            -- fields in this struct
+13984 |         pit: usize,
+13985 |         ci: usize,
+      |         ^^
+13986 |         floor: f32,
+      |         ^^^^^
+13987 |         steps: u32,
+13988 |         stop: u8, // 0 a base, 1 a cell already lower than the ramp, 2 the chain's end
+      |         ^^^^
+13989 |         stop_cell: usize,
+13990 |         crossed: u32,
+      |         ^^^^^^^
+      |
+      = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `step_of` and `backlink` are never read
+     --> crates\ymir-core\tests\f126_coast.rs:13996:9
+      |
+13993 |     struct Br {
+      |            -- fields in this struct
+...
+13996 |         step_of: Vec<u32>,
+      |         ^^^^^^^
+13997 |         backlink: Vec<usize>,
+      |         ^^^^^^^^
+
+warning: `ymir-core` (test "f126_coast") generated 4 warnings (run `cargo fix --test "f126_coast" -p ymir-core` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 1m 32s
+     Running tests\f126_coast.rs (target_f147\release\deps\f126_coast-78c90b7d7fab281b.exe)
+
+running 1 test
+
+==========  Finding 147 . the rivers for Living Landz, format 0.3.0 (témoin C2 /10 col)  ==========
+test f147_rivers has been running for over 60 seconds
+   16226 segments → **9786 rivers** · 122840 vertices · per-vertex arrays aligned: true · instrumented build identical: true · rivers.json byte-identical: true
+   V · **rivers_ll.json 10.85 MB** (format 0.3.0, no hex edge)
+   COST · build 0.34 s + serialize 0.02 s per world (against run_hd 249.8 s)
+
+   T · lateral deviation from the D8 trace, final polyline: p50 0.083 · p99 **42.737** · max 136.000 cell (1836557 samples every 0.25 cell) · Chaikin before the constraint p99 0.094 · max 0.399
+   T · ridge crossings: raw D8 trace 640 of 1854451 samples · final **23** of 1836557 · vertices pulled back by the 0.5-cell bound 0 of 3307233 · stair index (turns ≥ 45°): raw 0.194 → final 0.093
+   T · (F146's retired instrument, for the record) terrain − bed > 1 m: raw 17.27 % · Chaikin 22.66 % · final 36.12 %
+
+   X · F146's instrument (any intersection away from a river's end): 1183 · of which not a touch at a shared vertex: **69** · shared vertex runs 8014: crossing through the run **5**, touching 5 · self-intersections **88**
+   X · the crossings left (proper + through a run), by class: {"two watercourses · no shared cell · not joined": 3, "two watercourses · sharing trace cells · a confluence pair": 71}
+      e.g. two watercourses · sharing trace cells · a confluence pair: rivers 8740 (Watercourse, 9 pts) / 8781 (Watercourse, 182 pts) at (1415.73,5676.73)
+      e.g. two watercourses · sharing trace cells · a confluence pair: rivers 8781 (Watercourse, 182 pts) / 8843 (Watercourse, 15 pts) at (1388.88,5678.50)
+      e.g. two watercourses · sharing trace cells · a confluence pair: rivers 8731 (Watercourse, 11 pts) / 8781 (Watercourse, 182 pts) at (1418.42,5677.42)
+      e.g. two watercourses · sharing trace cells · a confluence pair: rivers 2639 (Watercourse, 3 pts) / 2708 (Watercourse, 130 pts) at (4992.50,3566.66)
+      e.g. two watercourses · sharing trace cells · a confluence pair: rivers 2652 (Watercourse, 3 pts) / 2708 (Watercourse, 130 pts) at (4993.50,3560.73)
+      e.g. two watercourses · sharing trace cells · a confluence pair: rivers 2667 (Watercourse, 3 pts) / 2708 (Watercourse, 130 pts) at (4994.50,3554.81)
+      e.g. two watercourses · sharing trace cells · a confluence pair: rivers 8781 (Watercourse, 182 pts) / 8843 (Watercourse, 15 pts) at (1338.50,5678.50)
+      e.g. two watercourses · sharing trace cells · a confluence pair: rivers 1372 (Watercourse, 7 pts) / 1386 (Watercourse, 14 pts) at (3498.65,3024.65)
+      e.g. two watercourses · sharing trace cells · a confluence pair: rivers 16 (Watercourse, 25 pts) / 19 (Watercourse, 8 pts) at (4098.50,1824.86)
+      e.g. two watercourses · sharing trace cells · a confluence pair: rivers 8755 (Watercourse, 13 pts) / 8781 (Watercourse, 182 pts) at (1327.21,5653.85)
+      e.g. two watercourses · sharing trace cells · a confluence pair: rivers 690 (Watercourse, 35 pts) / 982 (Watercourse, 167 pts) at (4555.50,2539.65)
+      e.g. two watercourses · sharing trace cells · a confluence pair: rivers 8781 (Watercourse, 182 pts) / 8843 (Watercourse, 15 pts) at (1335.82,5681.18)
+   X · spillway trace points spliced onto a watercourse's vertices: 850 of 1175 (72.3 %)
+
+   V · discharge: accumulated (segment_discharge_profile_m3s) against the prorata (mouth Q × A/A_mouth): **18.5 %** of the 122840 vertices differ by > 20 % · prorata/accumulated p10/p50/p90 0.63/0.96/1.00 · vertices with no accumulated discharge 2888 · by kind ["Spillway: 73.1 % of 672", "Watercourse: 18.2 % of 119280"]
+   V · per vertex p10/p50/p90/max · catchment km² 6.84/54.05/2847.0/72520 · discharge m³/s 0.075/1.047/49.19/5300 · slope 0.0060/0.0505/0.4992 (negative 0.7 %) · valley width m 178/332/1090/2879 · bed width m (a = 5) 1.4/5.1/35.1/364
+   V · bed width w = a·Q^0.5, all rivers (21755 km): share of km wider than 69.3 m (radius at the corner) / 80 m (radius at the edge)
+      a = 2.5: **0.35 %** / **0.13 %** (76.3 / 28.1 km) · needs Q > 768 / 1024 m³/s
+      a = 3.5: **0.62 %** / **0.47 %** (135.5 / 102.6 km) · needs Q > 392 / 522 m³/s
+      a = 5.0: **1.10 %** / **0.81 %** (239.1 / 176.8 km) · needs Q > 192 / 256 m³/s
+      a = 7.0: **2.27 %** / **1.69 %** (494.6 / 368.0 km) · needs Q > 98 / 131 m³/s
+   V · bed width w = a·Q^0.5, watercourses only (no spillway) (21689 km): share of km wider than 69.3 m (radius at the corner) / 80 m (radius at the edge)
+      a = 2.5: **0.14 %** / **0.00 %** (31.1 / 0.0 km) · needs Q > 768 / 1024 m³/s
+      a = 3.5: **0.39 %** / **0.24 %** (84.2 / 51.3 km) · needs Q > 392 / 522 m³/s
+      a = 5.0: **0.87 %** / **0.58 %** (187.7 / 125.4 km) · needs Q > 192 / 256 m³/s
+      a = 7.0: **2.02 %** / **1.44 %** (438.5 / 311.9 km) · needs Q > 98 / 131 m³/s
+
+   F · parallel pairs (≤ 2 cells over > 2 km, no shared confluence, no spillway with the watercourse it retraces): **1590** · rivers with a parallel_of 1389 · fusion candidates **914** (3334 km) · retracing spillways **5** of 15 spillways (53 km)
+   F · both filters on: 8867 rivers left of 9786 · 18368 km of 21755 km
+
+==========  end Finding 147 . 255.0 s  ==========
+
+test f147_rivers ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 74 filtered out; finished in 255.09s
+

@@ -20038,7 +20038,10 @@ hidden). The base is treated, starting with the cones.
 - **The 1 m bed instrument fails its own negative control**: the raw trace is 17.3 % above it, because bilinear
   terrain reaches the walls of one-cell floors. Smoothed after the constraint: 10.7 %.
 - **The D8 network already crosses itself** (diagonal X's): 574 crossings raw, 662 smoothed. The acceptance's "no
-  crossing" fails as built; open for round 2.
+  crossing" fails as built; open for round 2. **[CORRECTED in F147: there was no D8 X. Of the 662, 583 were a spillway
+  retracing a watercourse and 76 two watercourses sharing trace cells. A chaining defect (T3b: a reach joining its
+  receiver below its head was chained onto it, and the trace jumped back) made the loops and the 271
+  self-intersections. F147 brings all to 0.]**
 
 **P** (k = 2 cells, L = 2 km):
 - 1 599 parallel pairs (5 354 km), 92 % between rivers of 10–100 km² (the head threshold is near 7 km²);
@@ -20080,3 +20083,125 @@ corner (to confirm).
   per-cell accumulated discharge exists.
 - **The hex grid lives in Living Landz** (the author's decision). The H computation becomes a test reference.
 - **The "1 m above the bed" criterion judges the valley floor badly**; it is replaced.
+
+## Finding 147 — the rivers for Living Landz, round 2 of 2 (Ymir's side): `rivers_ll.json` 0.3.0 without hex edges, with per-vertex attributes (the accumulated discharge, the bed width a·Q^0.5); 0 crossings and 0 self-intersections once a defect of F146's chaining (T3b) is fixed; lateral p99 0.133 cell; the ridge gate fails on corner touches (1 → 23); 0.40 s per world
+
+**Status: built and measured; nothing selected (the author's); not committed.** Report and raw outputs:
+`docs/reports/c1_continental_buoyancy/f147_rivers_ll2/` (`finding_147.md`). Also: the format `docs/rivers_ll_format.md`
+(0.3.0) and the hex reference `docs/rivers_ll_hex_reference.json`.
+- F146 was committed (`1026b63`) with its "Recorded at commit" items.
+- Instruments declared before measuring (`f147_declared.md`), with **two amendments, both NOT blind**. The defective
+  and superseded runs are kept.
+
+**The round's brief, recorded:**
+- remove the hex edges (Living Landz computes them, the grid lives in one place);
+- per-vertex attributes, with the accumulated discharge if it exists (else the prorata labelled PROXY);
+- a bed width a·Q^0.5 with b ANCHORED and a a DECISION;
+- the crossings resolved in the exported geometry only;
+- the annotations `parallel_of` / `fusion_candidate` / `retraces_spillway` and a viz filter;
+- the valley-floor instrument replaced by the lateral deviation and the ridge crossings;
+- a hex reference file whose assumptions the author confirms.
+
+**X — what the crossings were** (a diagnosis of F146's build, before any fix). Of the 662:
+- 583 a spillway retracing a watercourse;
+- 76 two watercourses sharing trace cells;
+- 3 other;
+- **0 true D8 X.** F146's reading is corrected in place.
+
+**X — the method** (the drainage untouched; geometry only):
+- **the spillways' runs over watercourse cells are spliced onto the watercourses' own vertices** (an exact overlap; 72 %
+  of the spillway trace points);
+- **the confluence neighbourhoods are frozen**: the receiver's trace points either side of the confluence point, and
+  the tributary's second-to-last point. A Chaikin step between two fixed vertices stays the straight D8 step (tested,
+  with a negative control). So a tributary meets its receiver only at the confluence vertex.
+- **a 0.5-cell lateral bound** replaces "1 m above the bed".
+
+**Amendment 1 (the instrument)**: run 1 read a final lateral p99 of 42.7 cells.
+- The cause: the instruments searched the trace near ONE vertex's origin, and after the simplification an edge spans
+  origins far apart.
+- F146 measured BEFORE the simplification, so the exported polyline had never been measured.
+- The window became the edge's origin span.
+
+**Amendment 2 — a defect of F146's export**: run 2 left 74 crossings, 88 self-intersections and 23 ridge crossings. A
+local dump showed traces that jump back.
+- `cont_up` chained a reach onto its receiver by the largest catchment even when the reach joins it **below its head**
+  (the drainage's T3b confluence).
+- The trace then jumped back to the receiver's head and walked its head reach again, a loop crossing the tributaries
+  there.
+- Fixed: only a reach joining at the head continues its receiver; the others end in a confluence on it. A permanent
+  test with a negative control.
+- **2 261 such junctions; at 831 the larger stream ends on the smaller** (Hack's convention broken). The alternative
+  splits the receiver's reach and breaks the segments' 1 : 1 partition: the author's decision.
+- Rivers: 9 786 → 10 246.
+
+**Results** (the témoin, run 5):
+- **0 crossings** away from a river's end (not a touch at a shared vertex);
+- **0 crossings through a shared run** (8 566 runs);
+- **0 self-intersections** (F146: 271);
+- lateral deviation from the D8 trace on the final polyline: p50 0.000, **p99 0.133**, max 0.221 cell;
+- the stair index 0.193 raw → 0.089 (F146: 0.045). The frozen D8 steps cost half of F146's smoothing at confluences.
+- **Ridge crossings 23 (F146: 1): the declared gate (≤ 1) FAILS.**
+  - All 23 samples are off the trace, and 21 lie within 0.02 cell of a cell corner (16 exactly on one).
+  - A straight diagonal D8 step passes exactly through the corner of four cells, which the instrument's `floor` gives
+    to a cell off the trace.
+  - A touch of zero length, not a line out of its valley. The instrument's amendment is the reviewer's.
+
+**V — format 0.3.0:**
+- **The discharge is the accumulated one**: `segment_discharge_profile_m3s`, the climate runoff accumulated per trace
+  point (drainage.rs:363).
+- **18.1 % of the vertices differ from F146's prorata by > 20 %** (watercourses 17.8 %, spillways 73.1 %; ratio p50
+  0.96). The prorata was a PROXY indeed.
+- Per vertex: catchment, discharge, slope (0.0 % negative), valley width W(A), bed width.
+- **The bed width w = a·Q^0.5**: b = 0.5 ANCHORED (Leopold & Maddock 1953, USGS Professional Paper 252); **a a
+  DECISION**, default 5 (Ymir's channel width) in the header.
+- The share of river km with a bed wider than one hex, flat to flat:
+
+  | a | > 69.3 m (radius at the corner) | > 80 m (radius at the edge) |
+  |---|---|---|
+  | 2.5 | 0.35 % | 0.13 % |
+  | 3.5 | 0.63 % | 0.48 % |
+  | 5 | 1.11 % | 0.82 % |
+  | 7 | 2.26 % | 1.68 % |
+
+  Watercourses alone are lower (a = 5: 0.87 % / 0.59 %).
+- **The file: 11.05 MB** (F146: 5.1 MB without edges, 31.9 MB with). The per-vertex arrays make most of it.
+
+**F (nothing removed):**
+- 1 631 parallel pairs;
+- 938 fusion candidates (3 448 km);
+- 5 of the 15 spillways retrace watercourses.
+- Viz filters: « masquer les candidats à la fusion (n) » and « masquer les déversoirs retracés (n) ». Both on, 9 303
+  of 10 246 rivers are left.
+
+**R:** `docs/rivers_ll_hex_reference.json` gives 5 rivers, their polylines (cells and metres) and the hex edges F146-H
+expects.
+- Its assumptions are written in it: the 40 m radius centre to corner; hex (0, 0) centred on the bottom-left corner;
+  flat-top; axial.
+- **The author must confirm the radius reading and the origin.**
+
+**The cost: 0.40 s per world** (0.37 s build + 0.03 s serialization; +0.16 % of 249.8 s). F146's hex edges (0.15 s)
+are gone.
+
+**Predictions:**
+- **The reviewer's (hypotheses to check)**:
+  - held: 0 crossings, the prorata gap ≥ 10 % (18.1 %), the bed width < 5 % (≤ 2.26 %), the cost < 1 s;
+  - refuted: "no new ridge" (on the declared instrument), < 10 MB (11.05).
+- **Mine**:
+  - held: mostly not true X's, the accumulated discharge exists, < 2 % at a = 5, the meta;
+  - refuted: true X's 20–40 % (0), > 30 % gap (18.1 %), < 10 MB, the cost 0.6–1.5 s (0.40), the lateral p99 < 0.1
+    (0.133), ridges ≤ 1.
+- The T3b defect was foreseen by no one.
+
+**Tests:**
+- lib + 4: Chaikin's straight fixed step; the T3b junction; the parallel pairs; the rounding.
+- The export test is extended: the header's law, no hex edge, one attribute per vertex.
+
+**Checks after:** `cargo check --workspace` clean; lib 605 passed; viz 30 passed; the guard 6 / 6 (field and lakes) through `run_hd`, C2 /10 col = `a8d2d538d692c2f0`.
+
+**For the author:**
+- the coefficient a;
+- the radius reading and the hex origin;
+- the selection;
+- the 831 T3b junctions (split or keep);
+- the corner-touch ridge instrument;
+- your look in Living Landz.

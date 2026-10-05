@@ -1246,24 +1246,13 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         .collect();
     // ADR Finding 146 -- the rivers for Living Landz (timed: the cost principle)
     let t_rll = Instant::now();
-    let (mut rivers_ll, _) = ymir_core::export::rivers_ll::build_rivers_ll(
+    let (rivers_ll, _) = ymir_core::export::rivers_ll::build_rivers_ll(
         &drainage,
         &eroded,
         &ss,
         (window_km / eroded.width as f32).powi(2),
         ymir_core::export::rivers_ll::RiversLlParams::default(),
         false,
-    );
-    // ADR Finding 146-H -- each river's hex-edge count on Living Landz's grid, for the layer's selection counts
-    let _ = ymir_core::export::rivers_ll::river_hex_edges(
-        &mut rivers_ll,
-        &drainage,
-        &eroded,
-        &ss,
-        (window_km / eroded.width as f32).powi(2),
-        &ymir_core::export::rivers_ll::HexGrid::living_landz(),
-        200.0 / 10f32.powf(0.3),
-        0.3,
     );
     eprintln!("[HD timing] rivers_ll {} rivers ({:.2}s)", rivers_ll.len(), t_rll.elapsed().as_secs_f32());
     let result = Arc::new(HdResult {
@@ -1411,18 +1400,10 @@ fn export_ymir_container(
     let rivers = hydro::rivers_json_with_falls(drainage, cell_km2, gorge_falls);
     writer.add_vector_file("rivers", "rivers.json", &rivers)?;
     // ADR Finding 146 -- the rivers for Living Landz (a NEW layer; rivers.json above is unchanged)
-    let (mut rivers_ll, _) = ymir_core::export::rivers_ll::build_rivers_ll(
-        drainage,
-        eroded,
-        ss,
-        cell_km2,
-        ymir_core::export::rivers_ll::RiversLlParams::default(),
-        false,
-    );
-    // ADR Finding 146-H -- the hex edges on Living Landz's grid (40 m flat-top, axial); W(A) is the témoin's law
-    let grid = ymir_core::export::rivers_ll::HexGrid::living_landz();
-    let edges = ymir_core::export::rivers_ll::river_hex_edges(&mut rivers_ll, drainage, eroded, ss, cell_km2, &grid, 200.0 / 10f32.powf(0.3), 0.3);
-    let rivers_ll_bytes = ymir_core::export::rivers_ll::rivers_ll_json(&rivers_ll, cell_km2.sqrt(), Some((&grid, &edges)));
+    // ADR Finding 147 -- format 0.3.0: per-vertex attributes, no hex edge (Living Landz owns its grid)
+    let rll_params = ymir_core::export::rivers_ll::RiversLlParams::default();
+    let (rivers_ll, _) = ymir_core::export::rivers_ll::build_rivers_ll(drainage, eroded, ss, cell_km2, rll_params, false);
+    let rivers_ll_bytes = ymir_core::export::rivers_ll::rivers_ll_json(&rivers_ll, cell_km2.sqrt(), &rll_params);
     writer.add_vector_file("rivers_ll", "rivers_ll.json", &rivers_ll_bytes)?;
     let lakes = hydro::lakes_json(drainage);
     writer.add_vector_file("lakes", "lakes.json", &lakes)?;

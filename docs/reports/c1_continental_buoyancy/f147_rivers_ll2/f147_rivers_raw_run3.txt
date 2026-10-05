@@ -1,0 +1,133 @@
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2200:23
+     |
+2200 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2270 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+warning: unused variable: `skn`
+     --> crates\ymir-core\tests\f126_coast.rs:10710:9
+      |
+10710 |     let skn = skeleton(&s1, &ext, &ss, DOMAIN_KM);
+      |         ^^^ help: if this is intentional, prefix it with an underscore: `_skn`
+      |
+      = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `t_on_con` is never read
+     --> crates\ymir-core\tests\f126_coast.rs:11447:24
+      |
+11447 |     let mut t_on_con = 0f64;
+      |                        ^^^^ this value is reassigned later and never used
+...
+11496 |         t_on_con = t.elapsed().as_secs_f64();
+      |         ------------------------------------ `t_on_con` is overwritten here before the previous value is read
+      |
+      = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `ci`, `floor`, `stop`, and `crossed` are never read
+     --> crates\ymir-core\tests\f126_coast.rs:13985:9
+      |
+13983 |     struct Ev {
+      |            -- fields in this struct
+13984 |         pit: usize,
+13985 |         ci: usize,
+      |         ^^
+13986 |         floor: f32,
+      |         ^^^^^
+13987 |         steps: u32,
+13988 |         stop: u8, // 0 a base, 1 a cell already lower than the ramp, 2 the chain's end
+      |         ^^^^
+13989 |         stop_cell: usize,
+13990 |         crossed: u32,
+      |         ^^^^^^^
+      |
+      = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `step_of` and `backlink` are never read
+     --> crates\ymir-core\tests\f126_coast.rs:13996:9
+      |
+13993 |     struct Br {
+      |            -- fields in this struct
+...
+13996 |         step_of: Vec<u32>,
+      |         ^^^^^^^
+13997 |         backlink: Vec<usize>,
+      |         ^^^^^^^^
+
+warning: `ymir-core` (test "f126_coast") generated 4 warnings (run `cargo fix --test "f126_coast" -p ymir-core` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 1m 43s
+     Running tests\f126_coast.rs (target_f147\release\deps\f126_coast-78c90b7d7fab281b.exe)
+
+running 1 test
+
+==========  Finding 147 . the rivers for Living Landz, format 0.3.0 (témoin C2 /10 col)  ==========
+test f147_rivers has been running for over 60 seconds
+   16226 segments → **10246 rivers** · 122868 vertices · per-vertex arrays aligned: true · instrumented build identical: true · rivers.json byte-identical: true
+   V · **rivers_ll.json 11.05 MB** (format 0.3.0, no hex edge)
+   X · reaches joining their receiver below its head (T3b), now ending in a confluence: 2261 · of them larger than the receiver's reach above the junction (Hack's convention broken there): 831
+   COST · build 0.36 s + serialize 0.02 s per world (against run_hd 249.8 s)
+
+   T · lateral deviation from the D8 trace, final polyline: p50 0.000 · p99 **0.133** · max 0.221 cell (1818405 samples every 0.25 cell) · Chaikin before the constraint p99 0.094 · max 0.133
+   T · ridge crossings: raw D8 trace 640 of 1834826 samples · final **23** of 1818405 · vertices pulled back by the 0.5-cell bound 0 of 3313939 · stair index (turns ≥ 45°): raw 0.193 → final 0.089
+   T · (F146's retired instrument, for the record) terrain − bed > 1 m: raw 16.96 % · Chaikin 22.47 % · final 23.54 %
+
+   X · F146's instrument (any intersection away from a river's end): 1335 · of which not a touch at a shared vertex: **0** · shared vertex runs 8566: crossing through the run **0**, touching 0 · self-intersections **0**
+   X · the crossings left (proper + through a run), by class: {}
+   X · spillway trace points spliced onto a watercourse's vertices: 850 of 1175 (72.3 %)
+
+   V · discharge: accumulated (segment_discharge_profile_m3s) against the prorata (mouth Q × A/A_mouth): **18.1 %** of the 122868 vertices differ by > 20 % · prorata/accumulated p10/p50/p90 0.64/0.96/1.00 · vertices with no accumulated discharge 2883 · by kind ["Spillway: 73.1 % of 672", "Watercourse: 17.8 % of 119313"]
+   V · per vertex p10/p50/p90/max · catchment km² 6.84/54.05/2851.0/72520 · discharge m³/s 0.075/1.049/49.10/5300 · slope 0.0064/0.0514/0.5010 (negative 0.0 %) · valley width m 178/332/1090/2879 · bed width m (a = 5) 1.4/5.1/35.0/364
+   V · bed width w = a·Q^0.5, all rivers (21541 km): share of km wider than 69.3 m (radius at the corner) / 80 m (radius at the edge)
+      a = 2.5: **0.35 %** / **0.13 %** (76.3 / 28.1 km) · needs Q > 768 / 1024 m³/s
+      a = 3.5: **0.63 %** / **0.48 %** (135.7 / 102.5 km) · needs Q > 392 / 522 m³/s
+      a = 5.0: **1.11 %** / **0.82 %** (239.2 / 177.2 km) · needs Q > 192 / 256 m³/s
+      a = 7.0: **2.26 %** / **1.68 %** (487.8 / 361.8 km) · needs Q > 98 / 131 m³/s
+   V · bed width w = a·Q^0.5, watercourses only (no spillway) (21476 km): share of km wider than 69.3 m (radius at the corner) / 80 m (radius at the edge)
+      a = 2.5: **0.14 %** / **0.00 %** (31.1 / 0.0 km) · needs Q > 768 / 1024 m³/s
+      a = 3.5: **0.39 %** / **0.24 %** (84.3 / 51.2 km) · needs Q > 392 / 522 m³/s
+      a = 5.0: **0.87 %** / **0.59 %** (187.8 / 125.9 km) · needs Q > 192 / 256 m³/s
+      a = 7.0: **2.01 %** / **1.42 %** (431.7 / 305.7 km) · needs Q > 98 / 131 m³/s
+
+   F · parallel pairs (≤ 2 cells over > 2 km, no shared confluence, no spillway with the watercourse it retraces): **1631** · rivers with a parallel_of 1423 · fusion candidates **938** (3448 km) · retracing spillways **5** of 15 spillways (53 km)
+   F · both filters on: 9303 rivers left of 10246 · 18041 km of 21541 km
+
+==========  end Finding 147 . 278.5 s  ==========
+
+test f147_rivers ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 74 filtered out; finished in 278.61s
+

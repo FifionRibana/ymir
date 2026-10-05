@@ -16636,7 +16636,7 @@ fn f146_rivers() {
     let (rivers, _) = build_rivers_ll(dr, &v.conditioned, &ss, cell_km2, RiversLlParams::default(), false);
     let t_build = tp.elapsed().as_secs_f64();
     let tj = Instant::now();
-    let bytes = rivers_ll_json(&rivers, CELL_KM, None);
+    let bytes = rivers_ll_json(&rivers, CELL_KM, &RiversLlParams::default());
     let t_json = tj.elapsed().as_secs_f64();
     let (_, st) = build_rivers_ll(dr, &v.conditioned, &ss, cell_km2, RiversLlParams::default(), true);
     let rj1 = rivers_json(dr, cell_km2);
@@ -16953,12 +16953,17 @@ fn f146_hex() {
     let kn = Knobs { valley: Some(temoin), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) };
     let wd = build_world(kn, None, PSEED, None);
     let v = viz_hd_lakes_on(&wd, kn, PSEED, 45.0, 40.0);
-    let (mut rivers, _) = build_rivers_ll(&v.drainage, &v.conditioned, &ss, cell_km2, RiversLlParams::default(), false);
+    let (rivers, _) = build_rivers_ll(&v.drainage, &v.conditioned, &ss, cell_km2, RiversLlParams::default(), false);
     let grid = HexGrid::living_landz();
     let te = Instant::now();
-    let e = river_hex_edges(&mut rivers, &v.drainage, &v.conditioned, &ss, cell_km2, &grid, 200.0 / 10f32.powf(0.3), 0.3);
+    let e = river_hex_edges(&rivers, &v.drainage, &v.conditioned, &ss, cell_km2, &grid, 200.0 / 10f32.powf(0.3), 0.3);
     let t_edges = te.elapsed().as_secs_f64();
-    let bytes = rivers_ll_json(&rivers, CELL_KM, Some((&grid, &e)));
+    // since Finding 147 the edges are not exported: the size is the rivers' plus the edges' own JSON
+    let bytes = [rivers_ll_json(&rivers, CELL_KM, &RiversLlParams::default()), serde_json::to_vec(&e).unwrap()].concat();
+    let mut hex_count = vec![0u32; rivers.len()];
+    for &r in &e.river_id {
+        hex_count[r as usize] += 1;
+    }
     let n = e.q1.len();
     let not_nb = (0..n)
         .filter(|&i| {
@@ -16972,7 +16977,7 @@ fn f146_hex() {
         s.sort_by(f32::total_cmp);
         if s.is_empty() { f32::NAN } else { s[((s.len() - 1) as f64 * p) as usize] }
     };
-    let per: Vec<f32> = rivers.iter().map(|r| r.hex_edges as f32).collect();
+    let per: Vec<f32> = hex_count.iter().map(|&c| c as f32).collect();
     eprintln!(
         "   **{n} edge crossings** by {} rivers · not between neighbours: {not_nb} · per river p50 / p90 / max {:.0} / {:.0} / {:.0} · edges per km of river {:.1}",
         rivers.len(),
@@ -16999,8 +17004,609 @@ fn f146_hex() {
     );
     for (thr_l, thr_a) in [(0.0f32, 0.0f32), (5.0, 0.0), (10.0, 0.0), (0.0, 100.0), (10.0, 10.0)] {
         let kept: Vec<_> = rivers.iter().filter(|r| r.length_km >= thr_l && r.catchment_km2 >= thr_a).collect();
-        eprintln!("      length ≥ {thr_l} km and catchment ≥ {thr_a} km²: {} rivers · {} hex edges", kept.len(), kept.iter().map(|r| r.hex_edges).sum::<u32>());
+        eprintln!("      length ≥ {thr_l} km and catchment ≥ {thr_a} km²: {} rivers · {} hex edges", kept.len(), kept.iter().map(|r| hex_count[r.id as usize]).sum::<u32>());
     }
     eprintln!("   COST · hex edges {t_edges:.2} s per world · rivers_ll.json with the edges {:.1} MB", bytes.len() as f64 / 1e6);
     eprintln!("\n==========  end Finding 146-H . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+
+/// ADR Finding 147-X, diagnosis before any fix — what the crossings between two smoothed rivers (F146: 662) are: a
+/// spillway involved, two rivers sharing trace cells (a retrace), a D8 "X" (two diagonal steps across one 2×2 block), near
+/// a river's end, or other. The témoin, F146's build.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored --exact f147_xdiag --nocapture
+#[test]
+#[ignore]
+fn f147_xdiag() {
+    use common::{build_world, viz_hd_lakes_on};
+    use std::collections::{BTreeMap, HashMap, HashSet};
+    use ymir_core::export::rivers_ll::{RiversLlParams, build_rivers_ll};
+    use ymir_core::tectonics_c1::drainage::SegmentKind;
+    let ss = SteinSteinParams::default();
+    let cell_km2 = CELL_KM * CELL_KM;
+    let temoin = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let kn = Knobs { valley: Some(temoin), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) };
+    let wd = build_world(kn, None, PSEED, None);
+    let v = viz_hd_lakes_on(&wd, kn, PSEED, 45.0, 40.0);
+    let dr = &v.drainage;
+    let (rivers, _) = build_rivers_ll(dr, &v.conditioned, &ss, cell_km2, RiversLlParams::default(), false);
+    let w = v.conditioned.width;
+    eprintln!("\n==========  Finding 147-X diagnosis . the crossings' classes  ==========");
+    let cells_of: Vec<HashSet<(u32, u32)>> = rivers.iter().map(|r| r.segments.iter().flat_map(|&s| dr.rivers.segments[s].points.iter().copied()).collect()).collect();
+    let seg_inter = |a: [f32; 2], b: [f32; 2], c: [f32; 2], d: [f32; 2]| -> Option<[f32; 2]> {
+        let r = [b[0] - a[0], b[1] - a[1]];
+        let s = [d[0] - c[0], d[1] - c[1]];
+        let den = r[0] * s[1] - r[1] * s[0];
+        if den.abs() < 1e-9 {
+            return None;
+        }
+        let t = ((c[0] - a[0]) * s[1] - (c[1] - a[1]) * s[0]) / den;
+        let u = ((c[0] - a[0]) * r[1] - (c[1] - a[1]) * r[0]) / den;
+        ((0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u)).then(|| [a[0] + t * r[0], a[1] + t * r[1]])
+    };
+    let polys: Vec<&Vec<[f32; 2]>> = rivers.iter().map(|r| &r.points).collect();
+    let mut hash: HashMap<(i32, i32), Vec<(usize, usize)>> = HashMap::new();
+    for (ri, p) in polys.iter().enumerate() {
+        for e in 0..p.len().saturating_sub(1) {
+            let (a, b) = (p[e], p[e + 1]);
+            for gx in (a[0].min(b[0]) / 4.0).floor() as i32..=(a[0].max(b[0]) / 4.0).floor() as i32 {
+                for gy in (a[1].min(b[1]) / 4.0).floor() as i32..=(a[1].max(b[1]) / 4.0).floor() as i32 {
+                    hash.entry((gx, gy)).or_default().push((ri, e));
+                }
+            }
+        }
+    }
+    let ends: Vec<([f32; 2], [f32; 2])> = polys.iter().map(|p| (p[0], *p.last().unwrap())).collect();
+    let dist_end = |q: [f32; 2], ri: usize| -> f32 {
+        let (a, b) = ends[ri];
+        (((q[0] - a[0]).powi(2) + (q[1] - a[1]).powi(2)).sqrt()).min(((q[0] - b[0]).powi(2) + (q[1] - b[1]).powi(2)).sqrt())
+    };
+    // a D8 X: in the 2×2 block holding q, both diagonals are trace steps, one of each river
+    let is_x = |q: [f32; 2], ra: usize, rb: usize| -> bool {
+        let (bx, by) = ((q[0] - 0.5).floor() as i64, (q[1] - 0.5).floor() as i64);
+        let c = |x: i64, y: i64| (x.max(0) as u32, y.max(0) as u32);
+        let (p00, p11, p10, p01) = (c(bx, by), c(bx + 1, by + 1), c(bx + 1, by), c(bx, by + 1));
+        let diag_a = cells_of[ra].contains(&p00) && cells_of[ra].contains(&p11);
+        let anti_b = cells_of[rb].contains(&p10) && cells_of[rb].contains(&p01);
+        let diag_b = cells_of[rb].contains(&p00) && cells_of[rb].contains(&p11);
+        let anti_a = cells_of[ra].contains(&p10) && cells_of[ra].contains(&p01);
+        (diag_a && anti_b) || (diag_b && anti_a)
+    };
+    let mut seen: HashSet<(usize, usize, usize, usize)> = HashSet::new();
+    let mut cls: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut ex: Vec<String> = Vec::new();
+    for list in hash.values() {
+        for i in 0..list.len() {
+            for j in i + 1..list.len() {
+                let ((ra, ea), (rb, eb)) = (list[i], list[j]);
+                if ra == rb {
+                    continue;
+                }
+                let key = if (ra, ea) < (rb, eb) { (ra, ea, rb, eb) } else { (rb, eb, ra, ea) };
+                if !seen.insert(key) {
+                    continue;
+                }
+                let Some(q) = seg_inter(polys[ra][ea], polys[ra][ea + 1], polys[rb][eb], polys[rb][eb + 1]) else { continue };
+                if dist_end(q, ra) < 0.05 || dist_end(q, rb) < 0.05 {
+                    continue;
+                }
+                let spill = rivers[ra].kind == SegmentKind::Spillway || rivers[rb].kind == SegmentKind::Spillway;
+                let shared = cells_of[ra].intersection(&cells_of[rb]).count();
+                let c = if spill && shared > 0 {
+                    "spillway sharing trace cells (a retrace)"
+                } else if spill {
+                    "spillway, no shared cell"
+                } else if shared > 0 {
+                    "two watercourses sharing trace cells"
+                } else if is_x(q, ra, rb) {
+                    "a D8 X (two diagonals across one 2×2 block)"
+                } else if dist_end(q, ra).min(dist_end(q, rb)) < 3.0 {
+                    "within 3 cells of a river's end"
+                } else {
+                    "other"
+                };
+                *cls.entry(c).or_insert(0) += 1;
+                if ex.len() < 12 && (c == "other" || c.starts_with("a D8")) {
+                    ex.push(format!("{c}: rivers {ra} / {rb} at ({:.1},{:.1})", q[0], q[1]));
+                }
+            }
+        }
+    }
+    let tot: usize = cls.values().sum();
+    eprintln!("   crossings away from an end: {tot}");
+    for (k, c) in &cls {
+        eprintln!("      {k}: {c}");
+    }
+    for e in &ex {
+        eprintln!("      e.g. {e}");
+    }
+    let _ = w;
+}
+
+/// ADR Finding 147 — the rivers for Living Landz, round 2 (format 0.3.0) on the témoin: the crossings resolved in the
+/// exported geometry (X), the per-vertex attributes and the bed-width table (V), the annotations (F), the valley-floor
+/// instrument on the final polyline (T) and the cost. Declared in `f147_declared.md`.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored --exact f147_rivers --nocapture
+#[test]
+#[ignore]
+fn f147_rivers() {
+    use common::{build_world, viz_hd_lakes_on};
+    use std::collections::{BTreeMap, HashMap, HashSet};
+    use ymir_core::export::rivers_ll::{RiverEnd, RiversLlParams, build_rivers_ll, rivers_ll_json};
+    use ymir_core::export::hydro::rivers_json;
+    use ymir_core::tectonics_c1::drainage::SegmentKind;
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    let cell_km2 = CELL_KM * CELL_KM;
+    eprintln!("\n==========  Finding 147 . the rivers for Living Landz, format 0.3.0 (témoin C2 /10 col)  ==========");
+    let temoin = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let kn = Knobs { valley: Some(temoin), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) };
+    let wd = build_world(kn, None, PSEED, None);
+    let v = viz_hd_lakes_on(&wd, kn, PSEED, 45.0, 40.0);
+    let dr = &v.drainage;
+    let rj0 = rivers_json(dr, cell_km2);
+    let params = RiversLlParams::default();
+    // production cost (no instruments), twice (the first warms the pool), then the instrumented build
+    let mut t_build = 0f64;
+    let mut rivers = Vec::new();
+    for _ in 0..2 {
+        let tp = Instant::now();
+        rivers = build_rivers_ll(dr, &v.conditioned, &ss, cell_km2, params, false).0;
+        t_build = tp.elapsed().as_secs_f64();
+    }
+    let tj = Instant::now();
+    let bytes = rivers_ll_json(&rivers, CELL_KM, &params);
+    let t_json = tj.elapsed().as_secs_f64();
+    let (rivers_s, st) = build_rivers_ll(dr, &v.conditioned, &ss, cell_km2, params, true);
+    let same = rivers.len() == rivers_s.len() && rivers.iter().zip(&rivers_s).all(|(a, b)| a.points == b.points && a.vertex.discharge_m3s == b.vertex.discharge_m3s);
+    let rj1 = rivers_json(dr, cell_km2);
+    let nv: usize = rivers.iter().map(|r| r.points.len()).sum();
+    let aligned = rivers.iter().all(|r| {
+        let n = r.points.len();
+        r.vertex.catchment_km2.len() == n && r.vertex.discharge_m3s.len() == n && r.vertex.slope.len() == n && r.vertex.valley_width_m.len() == n && r.vertex.bed_width_m.len() == n
+    });
+    eprintln!(
+        "   {} segments → **{} rivers** · {nv} vertices · per-vertex arrays aligned: {aligned} · instrumented build identical: {same} · rivers.json byte-identical: {}",
+        dr.rivers.segments.len(),
+        rivers.len(),
+        rj0 == rj1
+    );
+    eprintln!("   V · **rivers_ll.json {:.2} MB** (format 0.3.0, no hex edge)", bytes.len() as f64 / 1e6);
+    eprintln!(
+        "   X · reaches joining their receiver below its head (T3b), now ending in a confluence: {} · of them larger than the receiver's reach above the junction (Hack's convention broken there): {}",
+        st.mid_joins, st.mid_joins_larger
+    );
+    eprintln!("   COST · build {t_build:.2} s + serialize {t_json:.2} s per world (against run_hd 249.8 s)");
+    let pct = |v: &[f32], p: f64| -> f32 {
+        let mut s = v.to_vec();
+        s.sort_by(f32::total_cmp);
+        if s.is_empty() { f32::NAN } else { s[((s.len() - 1) as f64 * p) as usize] }
+    };
+    // ── T: the valley-floor instrument on the final polyline
+    eprintln!(
+        "\n   T · lateral deviation from the D8 trace, final polyline: p50 {:.3} · p99 **{:.3}** · max {:.3} cell ({} samples every 0.25 cell) · Chaikin before the constraint p99 {:.3} · max {:.3}",
+        pct(&st.lateral_cells, 0.5),
+        pct(&st.lateral_cells, 0.99),
+        pct(&st.lateral_cells, 1.0),
+        st.lateral_cells.len(),
+        pct(&st.lateral_before, 0.99),
+        pct(&st.lateral_before, 1.0)
+    );
+    eprintln!(
+        "   T · ridge crossings: raw D8 trace {} of {} samples · final **{}** of {} · vertices pulled back by the 0.5-cell bound {} of {} · stair index (turns ≥ 45°): raw {:.3} → final {:.3}",
+        st.ridge_cross_raw,
+        st.samples_raw,
+        st.ridge_cross_smoothed,
+        st.samples,
+        st.pulled,
+        st.vertices,
+        st.stair_raw,
+        st.stair_smoothed
+    );
+    {
+        // the ridge-crossing samples, diagnosed: on the river's own trace cell or not, by river kind, on an exact half
+        // step of the D8 trace (a corner between two trace cells) or not
+        let mut cls: BTreeMap<String, usize> = BTreeMap::new();
+        for &(ri, q, own) in &st.ridge_samples {
+            let r = &rivers_s[ri as usize];
+            let corner = ((q[0] - q[0].round()).abs() < 1e-3) && ((q[1] - q[1].round()).abs() < 1e-3);
+            let k = format!("{:?} · {} · {}", r.kind, if own { "its own trace cell" } else { "OFF its trace" }, if corner { "at a cell corner" } else { "not at a corner" });
+            *cls.entry(k).or_insert(0) += 1;
+        }
+        eprintln!("   T · the {} final ridge-crossing samples by class: {cls:?}", st.ridge_samples.len());
+        let dc: Vec<f32> = st.ridge_samples.iter().map(|&(_, q, _)| ((q[0] - q[0].round()).powi(2) + (q[1] - q[1].round()).powi(2)).sqrt()).collect();
+        eprintln!(
+            "   T · their distance to the nearest cell corner: max {:.4} cell · within 0.02 cell: {} of {}",
+            dc.iter().copied().fold(0f32, f32::max),
+            dc.iter().filter(|&&d| d <= 0.02).count(),
+            dc.len()
+        );
+        for &(ri, q, own) in st.ridge_samples.iter().take(8) {
+            let r = &rivers_s[ri as usize];
+            eprintln!("      e.g. river {ri} ({:?}, end {:?}, {} lakes crossed) at ({:.3},{:.3}) own cell {own}", r.kind, r.end, r.lakes_crossed.len(), q[0], q[1]);
+        }
+    }
+    let out1 = |v: &[f32]| 100.0 * v.iter().filter(|&&x| x > 1.0).count() as f64 / v.len().max(1) as f64;
+    eprintln!(
+        "   T · (F146's retired instrument, for the record) terrain − bed > 1 m: raw {:.2} % · Chaikin {:.2} % · final {:.2} %",
+        out1(&st.above_bed_raw),
+        out1(&st.above_bed_before),
+        out1(&st.above_bed_after)
+    );
+    // ── X: the crossings on the final geometry
+    let polys: Vec<&Vec<[f32; 2]>> = rivers.iter().map(|r| &r.points).collect();
+    let seg_inter = |a: [f32; 2], b: [f32; 2], c: [f32; 2], d: [f32; 2]| -> Option<[f32; 2]> {
+        let r = [b[0] - a[0], b[1] - a[1]];
+        let s = [d[0] - c[0], d[1] - c[1]];
+        let den = r[0] * s[1] - r[1] * s[0];
+        if den.abs() < 1e-9 {
+            return None;
+        }
+        let t = ((c[0] - a[0]) * s[1] - (c[1] - a[1]) * s[0]) / den;
+        let u = ((c[0] - a[0]) * r[1] - (c[1] - a[1]) * r[0]) / den;
+        ((0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u)).then(|| [a[0] + t * r[0], a[1] + t * r[1]])
+    };
+    let mut hash: HashMap<(i32, i32), Vec<(usize, usize)>> = HashMap::new();
+    for (ri, p) in polys.iter().enumerate() {
+        for e in 0..p.len().saturating_sub(1) {
+            let (a, b) = (p[e], p[e + 1]);
+            for gx in (a[0].min(b[0]) / 4.0).floor() as i32..=(a[0].max(b[0]) / 4.0).floor() as i32 {
+                for gy in (a[1].min(b[1]) / 4.0).floor() as i32..=(a[1].max(b[1]) / 4.0).floor() as i32 {
+                    hash.entry((gx, gy)).or_default().push((ri, e));
+                }
+            }
+        }
+    }
+    let d2 = |p: [f32; 2], q: [f32; 2]| ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2)).sqrt();
+    let near_end = |q: [f32; 2], ri: usize| -> bool { d2(q, polys[ri][0]) < 0.05 || d2(q, *polys[ri].last().unwrap()) < 0.05 };
+    let cells_of: Vec<HashSet<(u32, u32)>> = rivers.iter().map(|r| r.segments.iter().flat_map(|&s| dr.rivers.segments[s].points.iter().copied()).collect()).collect();
+    let mut seen: HashSet<(usize, usize, usize, usize)> = HashSet::new();
+    let (mut f146_count, mut selfx) = (0usize, 0usize);
+    let mut strict: Vec<(usize, usize, [f32; 2])> = Vec::new();
+    let mut strict_seen: HashSet<(usize, usize, i64, i64)> = HashSet::new();
+    for list in hash.values() {
+        for i in 0..list.len() {
+            for j in i + 1..list.len() {
+                let ((ra, ea), (rb, eb)) = (list[i], list[j]);
+                let key = if (ra, ea) < (rb, eb) { (ra, ea, rb, eb) } else { (rb, eb, ra, ea) };
+                if !seen.insert(key) {
+                    continue;
+                }
+                if ra == rb && ea.abs_diff(eb) <= 1 {
+                    continue;
+                }
+                let (pa, pb) = (polys[ra], polys[rb]);
+                let Some(q) = seg_inter(pa[ea], pa[ea + 1], pb[eb], pb[eb + 1]) else { continue };
+                if ra == rb {
+                    selfx += 1;
+                    continue;
+                }
+                if near_end(q, ra) || near_end(q, rb) {
+                    continue;
+                }
+                f146_count += 1;
+                // strict: not a touch at a vertex both polylines share
+                let at_a = d2(q, pa[ea]) < 1e-4 || d2(q, pa[ea + 1]) < 1e-4;
+                let at_b = d2(q, pb[eb]) < 1e-4 || d2(q, pb[eb + 1]) < 1e-4;
+                if at_a && at_b {
+                    continue;
+                }
+                let (lo, hi) = (ra.min(rb), ra.max(rb));
+                if strict_seen.insert((lo, hi, (q[0] * 1000.0).round() as i64, (q[1] * 1000.0).round() as i64)) {
+                    strict.push((lo, hi, q));
+                }
+            }
+        }
+    }
+    // crossings through a shared run of vertices (a polyline arriving on one side of the other and leaving on the other)
+    let mut vmap: HashMap<(u32, u32), Vec<(usize, usize)>> = HashMap::new();
+    for (ri, p) in polys.iter().enumerate() {
+        for (vi, q) in p.iter().enumerate() {
+            vmap.entry((q[0].to_bits(), q[1].to_bits())).or_default().push((ri, vi));
+        }
+    }
+    let mut share_pairs: HashSet<(usize, usize)> = HashSet::new();
+    for l in vmap.values() {
+        for &(a, _) in l {
+            for &(b, _) in l {
+                if a < b {
+                    share_pairs.insert((a, b));
+                }
+            }
+        }
+    }
+    let side = |o: [f32; 2], d: [f32; 2], p: [f32; 2]| -> i32 {
+        let c = d[0] * (p[1] - o[1]) - d[1] * (p[0] - o[0]);
+        if c > 1e-6 { 1 } else if c < -1e-6 { -1 } else { 0 }
+    };
+    let (mut overlap_cross, mut overlap_touch, mut shared_runs) = (0usize, 0usize, 0usize);
+    let mut sp: Vec<(usize, usize)> = share_pairs.into_iter().collect();
+    sp.sort();
+    for &(a, b) in &sp {
+        let (pa, pb) = (polys[a], polys[b]);
+        let idx_b: HashMap<(u32, u32), usize> = pb.iter().enumerate().map(|(i, q)| ((q[0].to_bits(), q[1].to_bits()), i)).collect();
+        let kb = |q: [f32; 2]| idx_b.get(&(q[0].to_bits(), q[1].to_bits())).copied();
+        let mut i = 0usize;
+        while i < pa.len() {
+            let Some(k0) = kb(pa[i]) else {
+                i += 1;
+                continue;
+            };
+            // the maximal run of consecutive shared vertices from i
+            let (mut i1, mut k1) = (i, k0);
+            while i1 + 1 < pa.len() {
+                match kb(pa[i1 + 1]) {
+                    Some(k) if k.abs_diff(k1) == 1 => {
+                        i1 += 1;
+                        k1 = k;
+                    }
+                    _ => break,
+                }
+            }
+            shared_runs += 1;
+            let interior_a = i > 0 && i1 + 1 < pa.len();
+            let interior_b = k0.min(k1) > 0 && k0.max(k1) + 1 < pb.len();
+            if interior_a && interior_b {
+                let tan = |k: usize| [pb[k + 1][0] - pb[k - 1][0], pb[k + 1][1] - pb[k - 1][1]];
+                let sb = side(pb[k0], tan(k0), pa[i - 1]);
+                let sa = side(pb[k1], tan(k1), pa[i1 + 1]);
+                if sb != 0 && sa != 0 && sb != sa {
+                    overlap_cross += 1;
+                    if strict.len() < 100_000 {
+                        strict.push((a, b, pa[i]));
+                    }
+                } else {
+                    overlap_touch += 1;
+                }
+            }
+            i = i1 + 1;
+        }
+    }
+    let n_proper = strict.len() - overlap_cross;
+    eprintln!(
+        "\n   X · F146's instrument (any intersection away from a river's end): {f146_count} · of which not a touch at a shared vertex: **{n_proper}** · shared vertex runs {shared_runs}: crossing through the run **{overlap_cross}**, touching {overlap_touch} · self-intersections **{selfx}**"
+    );
+    let mut cls: BTreeMap<String, usize> = BTreeMap::new();
+    let mut ex: Vec<String> = Vec::new();
+    for &(ra, rb, q) in &strict {
+        let spill = rivers[ra].kind == SegmentKind::Spillway || rivers[rb].kind == SegmentKind::Spillway;
+        let shared = cells_of[ra].intersection(&cells_of[rb]).count();
+        let joined = matches!(rivers[ra].end, RiverEnd::Confluence { river_id } if river_id as usize == rb) || matches!(rivers[rb].end, RiverEnd::Confluence { river_id } if river_id as usize == ra);
+        let c = format!(
+            "{} · {} · {}",
+            if spill { "a spillway involved" } else { "two watercourses" },
+            if shared > 0 { "sharing trace cells" } else { "no shared cell" },
+            if joined { "a confluence pair" } else { "not joined" }
+        );
+        *cls.entry(c.clone()).or_insert(0) += 1;
+        if ex.len() < 12 {
+            ex.push(format!("{c}: rivers {ra} ({:?}, {} pts) / {rb} ({:?}, {} pts) at ({:.2},{:.2})", rivers[ra].kind, polys[ra].len(), rivers[rb].kind, polys[rb].len(), q[0], q[1]));
+        }
+    }
+    eprintln!("   X · the crossings left (proper + through a run), by class: {cls:?}");
+    for e in &ex {
+        eprintln!("      e.g. {e}");
+    }
+    // the local picture of the first crossings: both rivers' D8 trace cells and final vertices within 3 cells
+    for &(ra, rb, q) in strict.iter().take(6) {
+        eprintln!("      ── at ({:.2},{:.2}): rivers {ra} (end {:?}) / {rb} (end {:?})", q[0], q[1], rivers[ra].end, rivers[rb].end);
+        for ri in [ra, rb] {
+            let mut tr: Vec<(u32, u32)> = Vec::new();
+            for &sg in &rivers[ri].segments {
+                for &c in &dr.rivers.segments[sg].points {
+                    if tr.last() != Some(&c) {
+                        tr.push(c);
+                    }
+                }
+            }
+            let near_c: Vec<String> = tr
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| (c.0 as f32 + 0.5 - q[0]).abs() <= 3.0 && (c.1 as f32 + 0.5 - q[1]).abs() <= 3.0)
+                .map(|(i, c)| format!("{i}:({},{})", c.0, c.1))
+                .collect();
+            let np = polys[ri].len();
+            let near_v: Vec<String> = polys[ri]
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| (p[0] - q[0]).abs() <= 3.0 && (p[1] - q[1]).abs() <= 3.0)
+                .map(|(i, p)| format!("{i}/{np}:({:.2},{:.2})", p[0], p[1]))
+                .collect();
+            eprintln!("         river {ri}: trace cells (of {}) {near_c:?}", tr.len());
+            eprintln!("         river {ri}: vertices {near_v:?}");
+        }
+    }
+    eprintln!(
+        "   X · spillway trace points spliced onto a watercourse's vertices: {} of {} ({:.1} %)",
+        st.spliced_points,
+        st.spillway_points,
+        100.0 * st.spliced_points as f64 / st.spillway_points.max(1) as f64
+    );
+    // ── V: the discharge, accumulated against the prorata
+    let (mut n_v, mut n_gap, mut n_zero) = (0usize, 0usize, 0usize);
+    let mut ratio: Vec<f32> = Vec::new();
+    let mut by_kind: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+    for r in &rivers {
+        for i in 0..r.points.len() {
+            let qa = r.vertex.discharge_m3s[i];
+            let qp = if r.catchment_km2 > 0.0 { r.discharge_m3s * r.vertex.catchment_km2[i] / r.catchment_km2 } else { 0.0 };
+            n_v += 1;
+            if qa <= 0.0 {
+                n_zero += 1;
+                continue;
+            }
+            ratio.push(qp / qa);
+            let gap = (qp - qa).abs() / qa > 0.2;
+            if gap {
+                n_gap += 1;
+            }
+            let e = by_kind.entry(format!("{:?}", r.kind)).or_insert((0, 0));
+            e.0 += 1;
+            e.1 += gap as usize;
+        }
+    }
+    eprintln!(
+        "\n   V · discharge: accumulated (segment_discharge_profile_m3s) against the prorata (mouth Q × A/A_mouth): **{:.1} %** of the {n_v} vertices differ by > 20 % · prorata/accumulated p10/p50/p90 {:.2}/{:.2}/{:.2} · vertices with no accumulated discharge {n_zero} · by kind {:?}",
+        100.0 * n_gap as f64 / (n_v - n_zero).max(1) as f64,
+        pct(&ratio, 0.1),
+        pct(&ratio, 0.5),
+        pct(&ratio, 0.9),
+        by_kind.iter().map(|(k, (n, g))| format!("{k}: {:.1} % of {n}", 100.0 * *g as f64 / (*n).max(1) as f64)).collect::<Vec<_>>()
+    );
+    let all = |f: &dyn Fn(&ymir_core::export::rivers_ll::VertexAttrs) -> &Vec<f32>| -> Vec<f32> { rivers.iter().flat_map(|r| f(&r.vertex).iter().copied()).collect() };
+    let (ca, qa, sl, vw, bw) = (all(&|v| &v.catchment_km2), all(&|v| &v.discharge_m3s), all(&|v| &v.slope), all(&|v| &v.valley_width_m), all(&|v| &v.bed_width_m));
+    eprintln!(
+        "   V · per vertex p10/p50/p90/max · catchment km² {:.2}/{:.2}/{:.1}/{:.0} · discharge m³/s {:.3}/{:.3}/{:.2}/{:.0} · slope {:.4}/{:.4}/{:.4} (negative {:.1} %) · valley width m {:.0}/{:.0}/{:.0}/{:.0} · bed width m (a = 5) {:.1}/{:.1}/{:.1}/{:.0}",
+        pct(&ca, 0.1),
+        pct(&ca, 0.5),
+        pct(&ca, 0.9),
+        pct(&ca, 1.0),
+        pct(&qa, 0.1),
+        pct(&qa, 0.5),
+        pct(&qa, 0.9),
+        pct(&qa, 1.0),
+        pct(&sl, 0.1),
+        pct(&sl, 0.5),
+        pct(&sl, 0.9),
+        100.0 * sl.iter().filter(|&&s| s < 0.0).count() as f64 / sl.len().max(1) as f64,
+        pct(&vw, 0.1),
+        pct(&vw, 0.5),
+        pct(&vw, 0.9),
+        pct(&vw, 1.0),
+        pct(&bw, 0.1),
+        pct(&bw, 0.5),
+        pct(&bw, 0.9),
+        pct(&bw, 1.0)
+    );
+    // ── V: the bed-width table (the share of river km wider than one hex, both radius readings)
+    let flat_corner = 40.0 * 3f32.sqrt(); // 69.28 m: flat to flat with a 40 m centre-to-corner radius
+    let flat_edge = 80.0; // 80 m: flat to flat with a 40 m centre-to-edge radius
+    for (label, keep) in [("all rivers", None), ("watercourses only (no spillway)", Some(SegmentKind::Watercourse))] {
+        let mut tot = 0f64;
+        let mut wide: BTreeMap<u32, (f64, f64)> = BTreeMap::new();
+        let coefs = [2.5f32, 3.5, 5.0, 7.0];
+        for r in rivers.iter().filter(|r| keep.is_none_or(|k| r.kind == k)) {
+            for e in 0..r.points.len().saturating_sub(1) {
+                let l = d2(r.points[e], r.points[e + 1]) as f64 * CELL_KM as f64;
+                let q = 0.5 * (r.vertex.discharge_m3s[e] + r.vertex.discharge_m3s[e + 1]);
+                tot += l;
+                for &a in &coefs {
+                    let wb = a * q.max(0.0).sqrt();
+                    let ent = wide.entry((a * 10.0) as u32).or_insert((0.0, 0.0));
+                    if wb > flat_corner {
+                        ent.0 += l;
+                    }
+                    if wb > flat_edge {
+                        ent.1 += l;
+                    }
+                }
+            }
+        }
+        eprintln!("   V · bed width w = a·Q^0.5, {label} ({tot:.0} km): share of km wider than 69.3 m (radius at the corner) / 80 m (radius at the edge)");
+        for (a10, (k1, k2)) in &wide {
+            let a = *a10 as f32 / 10.0;
+            eprintln!(
+                "      a = {a:.1}: **{:.2} %** / **{:.2} %** ({:.1} / {:.1} km) · needs Q > {:.0} / {:.0} m³/s",
+                100.0 * k1 / tot.max(1e-9),
+                100.0 * k2 / tot.max(1e-9),
+                k1,
+                k2,
+                (flat_corner / a).powi(2),
+                (flat_edge / a).powi(2)
+            );
+        }
+    }
+    // ── F: the annotations
+    let n_pairs = st.parallel_pairs.len();
+    let n_cand = rivers.iter().filter(|r| r.fusion_candidate).count();
+    let n_par = rivers.iter().filter(|r| r.parallel_of.is_some()).count();
+    let n_retr = rivers.iter().filter(|r| r.retraces_spillway).count();
+    let n_spill = rivers.iter().filter(|r| r.kind == SegmentKind::Spillway).count();
+    let km_cand: f32 = rivers.iter().filter(|r| r.fusion_candidate).map(|r| r.length_km).sum();
+    let km_retr: f32 = rivers.iter().filter(|r| r.retraces_spillway).map(|r| r.length_km).sum();
+    eprintln!(
+        "\n   F · parallel pairs (≤ 2 cells over > 2 km, no shared confluence, no spillway with the watercourse it retraces): **{n_pairs}** · rivers with a parallel_of {n_par} · fusion candidates **{n_cand}** ({km_cand:.0} km) · retracing spillways **{n_retr}** of {n_spill} spillways ({km_retr:.0} km)"
+    );
+    let hidden = rivers.iter().filter(|r| r.fusion_candidate || r.retraces_spillway).count();
+    eprintln!("   F · both filters on: {} rivers left of {} · {:.0} km of {:.0} km", rivers.len() - hidden, rivers.len(), rivers.iter().filter(|r| !(r.fusion_candidate || r.retraces_spillway)).map(|r| r.length_km).sum::<f32>(), rivers.iter().map(|r| r.length_km).sum::<f32>());
+    eprintln!("\n==========  end Finding 147 . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+
+/// ADR Finding 147-R — the hex reference for Living Landz: 5 varied rivers of the témoin, their polylines and the hex
+/// edges F146's computation expects on the assumed grid, written to `docs/rivers_ll_hex_reference.json`.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored --exact f147_hexref --nocapture
+#[test]
+#[ignore]
+fn f147_hexref() {
+    use common::{build_world, viz_hd_lakes_on};
+    use ymir_core::export::rivers_ll::{HexGrid, RiverEnd, RiversLlParams, build_rivers_ll, river_hex_edges};
+    use ymir_core::tectonics_c1::drainage::SegmentKind;
+    let ss = SteinSteinParams::default();
+    let cell_km2 = CELL_KM * CELL_KM;
+    let cell_m = CELL_KM * 1000.0;
+    let temoin = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let kn = Knobs { valley: Some(temoin), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) };
+    let wd = build_world(kn, None, PSEED, None);
+    let v = viz_hd_lakes_on(&wd, kn, PSEED, 45.0, 40.0);
+    let (rivers, _) = build_rivers_ll(&v.drainage, &v.conditioned, &ss, cell_km2, RiversLlParams::default(), false);
+    // the 5 picks (declared): the first river by id in each class, not already picked
+    let used = std::cell::RefCell::new(Vec::<usize>::new());
+    let pick = |name: &str, f: &dyn Fn(&ymir_core::export::rivers_ll::RiverLl) -> bool| -> (String, usize) {
+        let i = rivers.iter().position(|r| f(r) && !used.borrow().contains(&(r.id as usize))).unwrap_or_else(|| panic!("no river for {name}"));
+        used.borrow_mut().push(i);
+        (name.to_string(), i)
+    };
+    let picks = [
+        pick("a watercourse ending at the sea, 2–5 km", &|r| r.kind == SegmentKind::Watercourse && r.end == RiverEnd::Sea && (2.0..5.0).contains(&r.length_km)),
+        pick("a tributary ending at a confluence, 1–3 km", &|r| matches!(r.end, RiverEnd::Confluence { .. }) && (1.0..3.0).contains(&r.length_km)),
+        pick("a river ending in a lake, 1–5 km", &|r| matches!(r.end, RiverEnd::Lake { .. } | RiverEnd::EndorheicLake { .. }) && (1.0..5.0).contains(&r.length_km)),
+        pick("a spillway, 0.5–5 km", &|r| r.kind == SegmentKind::Spillway && (0.5..5.0).contains(&r.length_km)),
+        pick("a large river (catchment ≥ 50 km²) under 8 km", &|r| r.catchment_km2 >= 50.0 && r.length_km < 8.0),
+    ];
+    let grid = HexGrid::living_landz();
+    let mut out_rivers = Vec::new();
+    for (name, i) in &picks {
+        let r = &rivers[*i];
+        let e = river_hex_edges(std::slice::from_ref(r), &v.drainage, &v.conditioned, &ss, cell_km2, &grid, 200.0 / 10f32.powf(0.3), 0.3);
+        let edges: Vec<serde_json::Value> = (0..e.q1.len()).map(|k| serde_json::json!([[e.q1[k], e.r1[k]], [e.q2[k], e.r2[k]]])).collect();
+        let pts_m: Vec<[f32; 2]> = r.points.iter().map(|p| [p[0] * cell_m, p[1] * cell_m]).collect();
+        let hex_first = grid.hex_of(pts_m[0][0], pts_m[0][1]);
+        let hex_last = grid.hex_of(pts_m.last().unwrap()[0], pts_m.last().unwrap()[1]);
+        eprintln!("   {name}: river {} · {:.2} km · {} vertices · {} hex edges", r.id, r.length_km, r.points.len(), edges.len());
+        out_rivers.push(serde_json::json!({
+            "case": name,
+            "river_id": r.id,
+            "kind": r.kind,
+            "length_km": r.length_km,
+            "points_cells": r.points,
+            "points_m": pts_m,
+            "hex_of_first_point": [hex_first.0, hex_first.1],
+            "hex_of_last_point": [hex_last.0, hex_last.1],
+            "expected_hex_edges": edges,
+        }));
+    }
+    let doc = serde_json::json!({
+        "what": "ADR Finding 147-R — a reference for Living Landz's own hex computation from the rivers_ll.json polylines: 5 rivers of the témoin world, their polylines and the hex edges Ymir's reference computation (Finding 146-H) finds.",
+        "assumptions_TO_CONFIRM_by_the_author": {
+            "size_m": 40.0,
+            "size_reading": "the 40 m radius is read CENTRE TO CORNER (a hex is 80 m corner to corner, 69.28 m flat to flat). If Living Landz's 40 m is centre to EDGE (80 m flat to flat), the edges below do not apply.",
+            "orientation": "flat_top",
+            "coordinates": "axial (q, r); cube rounding; the six neighbours of (q, r) are (q±1, r), (q, r±1), (q+1, r−1), (q−1, r+1)",
+            "origin": "hex (0, 0) is CENTRED on the map's bottom-left corner (x = 0, y = 0). If Living Landz puts that corner at a hex's corner or edge instead, every hex index shifts.",
+            "y_axis": "y grows NORTHWARD from the bottom edge (the container's y = 0 = south)."
+        },
+        "conversion": {
+            "metres_per_cell": cell_m,
+            "x_m": "x_cells × metres_per_cell",
+            "y_m": "y_cells × metres_per_cell",
+            "axial_from_metres": "q = (2/3 · x_m) / size_m ; r = (−x_m/3 + √3/3 · y_m) / size_m ; then cube rounding"
+        },
+        "edge_rule": "each polyline is walked every 0.1 × size_m (4 m); each change of hex between two consecutive samples is one edge crossing [[q1, r1], [q2, r2]], upstream side first, in order along the river",
+        "rivers": out_rivers,
+    });
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/rivers_ll_hex_reference.json");
+    std::fs::write(&path, serde_json::to_string_pretty(&doc).unwrap()).unwrap();
+    eprintln!("   written {}", path.display());
 }

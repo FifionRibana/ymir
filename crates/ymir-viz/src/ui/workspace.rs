@@ -213,6 +213,10 @@ struct WorkspaceState {
     rll_min_len_km: f32,
     rll_min_area_km2: f32,
     rll_min_strahler: u8,
+    /// ADR Finding 147-F -- hide the fusion candidates (the lower-discharge river of a parallel pair) and the spillways
+    /// that retrace watercourses.
+    rll_hide_fusion: bool,
+    rll_hide_retrace: bool,
     inspector_open: bool,
     // Expert params (exposed, wiring deferred — tagged in the UI).
     climat_open: bool,
@@ -409,6 +413,8 @@ impl Default for WorkspaceState {
             rll_min_len_km: 0.0,
             rll_min_area_km2: 0.0,
             rll_min_strahler: 1,
+            rll_hide_fusion: false,
+            rll_hide_retrace: false,
             inspector_open: true,
             climat_open: true,
             relief_open: false,
@@ -2916,7 +2922,11 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
 /// ADR Finding 146 -- does a Living Landz river pass the layer's selection filters? A spillway has no Strahler
 /// order and passes that filter.
 fn rll_keep(ws: &WorkspaceState, r: &ymir_core::export::rivers_ll::RiverLl) -> bool {
-    r.length_km >= ws.rll_min_len_km && r.catchment_km2 >= ws.rll_min_area_km2 && r.strahler.is_none_or(|s| s >= ws.rll_min_strahler)
+    r.length_km >= ws.rll_min_len_km
+        && r.catchment_km2 >= ws.rll_min_area_km2
+        && r.strahler.is_none_or(|s| s >= ws.rll_min_strahler)
+        && !(ws.rll_hide_fusion && r.fusion_candidate)
+        && !(ws.rll_hide_retrace && r.retraces_spillway)
 }
 
 /// Floating canvas tool bar (mock): SELECT (microscope) / PAN (hand) tools, plus the hydro
@@ -2966,13 +2976,19 @@ fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) 
                             ui.add(egui::Slider::new(&mut ws.rll_min_len_km, 0.0..=100.0).logarithmic(true).text("longueur min (km)"));
                             ui.add(egui::Slider::new(&mut ws.rll_min_area_km2, 0.0..=5000.0).logarithmic(true).text("aire min (km²)"));
                             ui.add(egui::Slider::new(&mut ws.rll_min_strahler, 1..=8).text("Strahler min"));
+                            // ADR Finding 147-F -- the annotations, with their counts
+                            let (n_fusion, n_retrace) = ws.current.as_ref().map_or((0, 0), |hd| {
+                                (hd.rivers_ll.iter().filter(|r| r.fusion_candidate).count(), hd.rivers_ll.iter().filter(|r| r.retraces_spillway).count())
+                            });
+                            ui.checkbox(&mut ws.rll_hide_fusion, format!("masquer les candidats à la fusion ({n_fusion})"))
+                                .on_hover_text("La rivière de plus faible débit d'une paire parallèle (à ≤ 2 cellules sur > 2 km, sans confluence commune)");
+                            ui.checkbox(&mut ws.rll_hide_retrace, format!("masquer les déversoirs retracés ({n_retrace})"))
+                                .on_hover_text("Un déversoir dont ≥ 50 % du tracé repasse sur des cours d'eau (dessiné sur leurs sommets)");
                             if let Some(hd) = ws.current.as_ref() {
                                 let kept = hd.rivers_ll.iter().filter(|r| rll_keep(ws, r)).count();
                                 let km: f32 = hd.rivers_ll.iter().filter(|r| rll_keep(ws, r)).map(|r| r.length_km).sum();
-                                let edges: u32 = hd.rivers_ll.iter().filter(|r| rll_keep(ws, r)).map(|r| r.hex_edges).sum();
-                                ui.label(format!("{kept} rivières retenues sur {} · {km:.0} km · {edges} bords d'hex", hd.rivers_ll.len()));
+                                ui.label(format!("{kept} rivières retenues sur {} · {km:.0} km", hd.rivers_ll.len()));
                             }
-                            ui.label(egui::RichText::new("Grille Living Landz : hex 40 m flat-top, axial, origine en bas à gauche").weak());
                         });
                     }
                     ui.checkbox(&mut ws.show_symbols, egui::RichText::new("Symboles").size(11.0))

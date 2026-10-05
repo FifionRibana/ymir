@@ -180,9 +180,12 @@ mod tests {
         assert_eq!(r[0].points.last(), Some(&[3.5, 3.5]));
         assert_eq!(r[0].strahler, Some(4));
         assert!((r[0].discharge_m3s - 520.0).abs() < 1e-3 && (r[0].catchment_km2 - 1_440_000.0).abs() < 1.0);
-        let js = crate::export::rivers_ll::rivers_ll_json(&r, 1.0, None);
+        assert_eq!(r[0].vertex.discharge_m3s.len(), r[0].points.len(), "one attribute per vertex");
+        let js = crate::export::rivers_ll::rivers_ll_json(&r, 1.0, &Default::default());
         let v: Value = serde_json::from_slice(&js).unwrap();
         assert_eq!(v["format_version"], crate::export::rivers_ll::RIVERS_LL_FORMAT_VERSION);
+        assert_eq!(v["bed_width_law"]["b"], 0.5);
+        assert!(v.get("hex_edges").is_none() && v["rivers"][0].get("hex_edges").is_none(), "no hex edge in the export");
         assert_eq!(v["rivers"][0]["falls"].as_array().map(|a| a.len()), Some(0), "falls empty while the gorge is paused");
     }
 

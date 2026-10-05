@@ -1,0 +1,336 @@
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2200:23
+     |
+2200 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2270 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling ymir-viz v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-viz)
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+warning: unnecessary parentheses around `if` condition
+   --> crates\ymir-viz\src\ui\workspace.rs:678:8
+    |
+678 |     if (resp.dragged() || resp.clicked()) {
+    |        ^                                ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+    |
+678 -     if (resp.dragged() || resp.clicked()) {
+678 +     if resp.dragged() || resp.clicked() {
+    |
+
+warning: use of deprecated method `bevy_egui::egui::ScrollArea::drag_to_scroll`: Use `ScrollArea::scroll_source()
+    --> crates\ymir-viz\src\ui\workspace.rs:2491:58
+     |
+2491 |     egui::ScrollArea::both().auto_shrink([false, false]).drag_to_scroll(false).show(ui, |ui| {
+     |                                                          ^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+
+warning: variant `Cancel` is never constructed
+  --> crates\ymir-viz\src\bridge\c1\commands.rs:58:5
+   |
+30 | pub enum C1Command {
+   |          --------- variant in this enum
+...
+58 |     Cancel,
+   |     ^^^^^^
+   |
+   = note: `C1Command` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `spec` is never read
+  --> crates\ymir-viz\src\bridge\c1\events.rs:86:17
+   |
+86 |     HdStarted { spec: C1RunSpec, params: HdParams },
+   |     ---------   ^^^^
+   |     |
+   |     field in this variant
+   |
+   = note: `C1Event` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: field `elapsed` is never read
+   --> crates\ymir-viz\src\bridge\c1\events.rs:105:48
+    |
+105 |     PreviewReady { preview: Arc<PreviewShape>, elapsed: Duration },
+    |     ------------ field in this variant         ^^^^^^^
+    |
+    = note: `C1Event` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: variant `Failed` is never constructed
+  --> crates\ymir-viz\src\bridge\c1\events.rs:81:5
+   |
+63 | pub enum C1Event {
+   |          ------- variant in this enum
+...
+81 |     Failed { error: String },
+   |     ^^^^^^
+   |
+   = note: `C1Event` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: field `params` is never read
+   --> crates\ymir-viz\src\bridge\c1\hd.rs:357:9
+    |
+356 |     Running {
+    |     ------- field in this variant
+357 |         params: HdParams,
+    |         ^^^^^^
+    |
+    = note: `HdState` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `altitude_norm` is never read
+   --> crates\ymir-viz\src\bridge\c1\inspect.rs:110:9
+    |
+107 | pub struct CellInspection {
+    |            -------------- field in this struct
+...
+110 |     pub altitude_norm: f32,
+    |         ^^^^^^^^^^^^^
+    |
+    = note: `CellInspection` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: fields `spec` and `kind` are never read
+  --> crates\ymir-viz\src\bridge\c1\plugin.rs:77:9
+   |
+76 |     Completed {
+   |     --------- fields in this variant
+77 |         spec: C1RunSpec,
+   |         ^^^^
+78 |         /// Pipeline kind of the completed run (Issue #139 Stage E2).
+79 |         kind: C1RunKind,
+   |         ^^^^
+   |
+   = note: `C1RunState` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: fields `dx` and `dy` are never read
+  --> crates\ymir-viz\src\bridge\c1\snapshot.rs:62:9
+   |
+55 | pub struct C1Snapshot {
+   |            ---------- fields in this struct
+...
+62 |     pub dx: f64,
+   |         ^^
+63 |     pub dy: f64,
+   |         ^^
+   |
+   = note: `C1Snapshot` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: methods `live_plates` and `kinematics` are never used
+   --> crates\ymir-viz\src\bridge\c1\snapshot.rs:172:12
+    |
+ 89 | impl C1Snapshot {
+    | --------------- methods in this implementation
+...
+172 |     pub fn live_plates(&self) -> usize {
+    |            ^^^^^^^^^^^
+...
+180 |     pub fn kinematics(&self) -> PlateKinematics {
+    |            ^^^^^^^^^^
+
+warning: function `snapshot_event_summary` is never used
+   --> crates\ymir-viz\src\visualization\c1_viz.rs:358:8
+    |
+358 | pub fn snapshot_event_summary(snapshot: &C1Snapshot) -> (usize, usize, usize, usize, usize) {
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `slope_color` is never used
+  --> crates\ymir-viz\src\visualization\colormap.rs:36:8
+   |
+36 | pub fn slope_color(gx: f32, gy: f32) -> [u8; 4] {
+   |        ^^^^^^^^^^^
+
+warning: function `log_hot` is never used
+   --> crates\ymir-viz\src\visualization\colormap.rs:137:8
+    |
+137 | pub fn log_hot(t: f64) -> [u8; 4] {
+    |        ^^^^^^^
+
+warning: function `log_normalize` is never used
+   --> crates\ymir-viz\src\visualization\colormap.rs:151:8
+    |
+151 | pub fn log_normalize(value: f64, lo: f64, hi: f64) -> f64 {
+    |        ^^^^^^^^^^^^^
+
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+   --> crates\ymir-viz\src\bridge\c1\hd.rs:854:9
+    |
+854 |         drop(progress);
+    |         ^^^^^--------^
+    |              |
+    |              argument has type `{closure@crates\ymir-viz\src\bridge\c1\hd.rs:807:28: 807:44}`
+    |
+    = note: `#[warn(dropping_copy_types)]` on by default
+help: use `let _ = ...` to ignore the expression or result
+    |
+854 -         drop(progress);
+854 +         let _ = progress;
+    |
+
+warning: `ymir-viz` (bin "ymir-viz" test) generated 16 warnings (run `cargo fix --bin "ymir-viz" -p ymir-viz --tests` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 2m 43s
+     Running unittests src\lib.rs (target_f147\release\deps\ymir_viz-c43a0e7e6322d776.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target_f147\release\deps\ymir_viz-2ddf142efd2c696b.exe)
+
+running 1 test
+
+==========  Finding 123/125 . the guard through run_hd, six states  ==========
+[HD] SHIPPED relief-v3 config from production_hd_config (MFD p=2.0, C-3 litho ON, C-3b fracture ON)
+[HD timing] coarse land report 0.2s
+[C1 land] seed 10481999410520546993 — 5 landmass(es); largest 160512 km² (15.3% of torus), wraps x=false y=false, bbox 608×592 km; coarse emerged 15.6%; roll (0,37) cells → offset [0.094,0.578]
+[HD] bench guard (f61ef23f4f4e9d94): Match { label: "livré · cadrage canonique (viz)" }
+[HD volcanism] 15 resolved crater records (7 active/acidic, 8 extinct)
+[HD timing] eroded HIT (0.5s)
+[HD] relief-v3 breach conditioning HIT (0.2s)
+[HD timing] climate HIT (0.5s)
+[HD] H-1 infiltration ON (f_cap 0.70, k_ref 2.7e-3 m/day)
+[HD timing] drainage HIT (4.3s)
+[HD volcanism] crater lakes: 2 acidic | 5 dry craters
+[HD] lake guard (200aa06dbef7ec05): Match { label: "livré · cadrage canonique (viz) · 45° / 40°" }
+[HD timing] biomes (2.3s)
+[C1 land] post-FBM+erosion emerged fraction (window) = 16.9%
+[HD timing] rivers_ll 5054 rivers (0.23s)
+[HD timing] run_hd TOTAL 18.7s (render is separate, on the UI thread)
+   livré: field Match { label: "livré · cadrage canonique (viz)" } · lakes Match { label: "livré · cadrage canonique (viz) · 45° / 40°" }
+[HD] SHIPPED relief-v3 config from production_hd_config (MFD p=2.0, C-3 litho ON, C-3b fracture ON)
+[HD] AGE OF THE CONTINENT ON (ADR Finding 109): absolute slope floor S_eq = 0.024·A^(-1/2) + A1. Window {0.021, 0.024, 0.027} (Findings 106/108). Lakes, rivers and biomes are re-derived.
+[HD timing] coarse land report 0.2s
+[C1 land] seed 10481999410520546993 — 5 landmass(es); largest 160512 km² (15.3% of torus), wraps x=false y=false, bbox 608×592 km; coarse emerged 15.6%; roll (0,37) cells → offset [0.094,0.578]
+[HD] bench guard (e05628c2eb1c1c22): Match { label: "A1+B2 · cadrage canonique (viz)" }
+[HD volcanism] 15 resolved crater records (7 active/acidic, 8 extinct)
+[HD timing] eroded HIT (0.5s)
+[HD] relief-v3 breach conditioning HIT (0.2s)
+[HD timing] climate HIT (0.5s)
+[HD] H-1 infiltration ON (f_cap 0.70, k_ref 2.7e-3 m/day)
+[HD timing] drainage HIT (4.3s)
+[HD volcanism] crater lakes: 2 acidic | 5 dry craters
+[HD] lake guard (7f0ffbbb243f8b00): Match { label: "A1+B2 · cadrage canonique (viz) · 45° / 40°" }
+[HD timing] biomes (2.2s)
+[C1 land] post-FBM+erosion emerged fraction (window) = 16.9%
+[HD timing] rivers_ll 7800 rivers (0.32s)
+[HD timing] run_hd TOTAL 18.2s (render is separate, on the UI thread)
+   A1+B2: field Match { label: "A1+B2 · cadrage canonique (viz)" } · lakes Match { label: "A1+B2 · cadrage canonique (viz) · 45° / 40°" }
+[HD] SHIPPED relief-v3 config from production_hd_config (MFD p=2.0, C-3 litho ON, C-3b fracture ON)
+[HD] VALLEY CONSTRUCTION ON (ADR Finding 121): trunks A >= 10 km2, age k = 0.07183 (PROXY), W = 200 m at 10 km2, walls 28 deg, then NO incision (bare construction)
+[HD timing] coarse land report 0.2s
+[C1 land] seed 10481999410520546993 — 5 landmass(es); largest 160512 km² (15.3% of torus), wraps x=false y=false, bbox 608×592 km; coarse emerged 15.6%; roll (0,37) cells → offset [0.094,0.578]
+[HD] bench guard (e2a5b05da6eed1fb): Match { label: "C1 nue · cadrage canonique (viz)" }
+[HD volcanism] 15 resolved crater records (7 active/acidic, 8 extinct)
+[HD timing] eroded HIT (0.5s)
+[HD] relief-v3 breach conditioning HIT (0.2s)
+[HD timing] climate HIT (0.5s)
+[HD] H-1 infiltration ON (f_cap 0.70, k_ref 2.7e-3 m/day)
+[HD timing] drainage HIT (4.2s)
+[HD volcanism] crater lakes: 2 acidic | 5 dry craters
+[HD] lake guard (25517c7bb3fc6462): Match { label: "C1 nue · cadrage canonique (viz) · 45° / 40°" }
+[HD timing] biomes (2.3s)
+[C1 land] post-FBM+erosion emerged fraction (window) = 16.9%
+[HD timing] rivers_ll 9978 rivers (0.47s)
+[HD timing] run_hd TOTAL 18.4s (render is separate, on the UI thread)
+   C1 nue: field Match { label: "C1 nue · cadrage canonique (viz)" } · lakes Match { label: "C1 nue · cadrage canonique (viz) · 45° / 40°" }
+[HD] SHIPPED relief-v3 config from production_hd_config (MFD p=2.0, C-3 litho ON, C-3b fracture ON)
+[HD] VALLEY CONSTRUCTION ON (ADR Finding 121): trunks A >= 10 km2, age k = 0.07183 (PROXY), W = 200 m at 10 km2, walls 28 deg, then ONE light pass at 0.100 x k_time
+[HD] AGE OF THE CONTINENT ON (ADR Finding 109): absolute slope floor S_eq = 0.024·A^(-1/2) + A1. Window {0.021, 0.024, 0.027} (Findings 106/108). Lakes, rivers and biomes are re-derived.
+[HD timing] coarse land report 0.2s
+[C1 land] seed 10481999410520546993 — 5 landmass(es); largest 160512 km² (15.3% of torus), wraps x=false y=false, bbox 608×592 km; coarse emerged 15.6%; roll (0,37) cells → offset [0.094,0.578]
+[HD] bench guard (cf1d4539c7afe588): Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" }
+[HD volcanism] 15 resolved crater records (7 active/acidic, 8 extinct)
+[HD timing] eroded HIT (0.5s)
+[HD] relief-v3 breach conditioning HIT (0.2s)
+[HD timing] climate HIT (0.4s)
+[HD] H-1 infiltration ON (f_cap 0.70, k_ref 2.7e-3 m/day)
+test ui::workspace::f123_viz_guard::f123_viz_guard has been running for over 60 seconds
+[HD timing] drainage HIT (4.1s)
+[HD volcanism] crater lakes: 1 acidic | 6 dry craters
+[HD] lake guard (632404f9450ef9a5): Match { label: "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°" }
+[HD timing] biomes (2.3s)
+[C1 land] post-FBM+erosion emerged fraction (window) = 16.9%
+[HD timing] rivers_ll 10246 rivers (0.36s)
+[HD timing] run_hd TOTAL 18.0s (render is separate, on the UI thread)
+   C2 /10 col (défaut): field Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" } · lakes Match { label: "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°" }
+[HD] SHIPPED relief-v3 config from production_hd_config (MFD p=2.0, C-3 litho ON, C-3b fracture ON)
+[HD] VALLEY CONSTRUCTION ON (ADR Finding 121): trunks A >= 10 km2, age k = 0.07183 (PROXY), W = 200 m at 10 km2, walls 28 deg, then ONE light pass at 0.333 x k_time
+[HD] AGE OF THE CONTINENT ON (ADR Finding 109): absolute slope floor S_eq = 0.024·A^(-1/2) + A1. Window {0.021, 0.024, 0.027} (Findings 106/108). Lakes, rivers and biomes are re-derived.
+[HD timing] coarse land report 0.2s
+[C1 land] seed 10481999410520546993 — 5 landmass(es); largest 160512 km² (15.3% of torus), wraps x=false y=false, bbox 608×592 km; coarse emerged 15.6%; roll (0,37) cells → offset [0.094,0.578]
+[HD] bench guard (70cf2dc92822681b): Match { label: "C2 /3 · cadrage canonique (viz)" }
+[HD volcanism] 15 resolved crater records (7 active/acidic, 8 extinct)
+[HD timing] eroded HIT (0.5s)
+[HD] relief-v3 breach conditioning HIT (0.2s)
+[HD timing] climate HIT (0.5s)
+[HD] H-1 infiltration ON (f_cap 0.70, k_ref 2.7e-3 m/day)
+[HD timing] drainage HIT (4.1s)
+[HD volcanism] crater lakes: 1 acidic | 6 dry craters
+[HD] lake guard (bfcfdf8bff0e26b6): Match { label: "C2 /3 · cadrage canonique (viz) · 45° / 40°" }
+[HD timing] biomes (2.2s)
+[C1 land] post-FBM+erosion emerged fraction (window) = 16.9%
+[HD timing] rivers_ll 9667 rivers (0.32s)
+[HD timing] run_hd TOTAL 17.5s (render is separate, on the UI thread)
+   C2 /3: field Match { label: "C2 /3 · cadrage canonique (viz)" } · lakes Match { label: "C2 /3 · cadrage canonique (viz) · 45° / 40°" }
+[HD] SHIPPED relief-v3 config from production_hd_config (MFD p=2.0, C-3 litho ON, C-3b fracture ON)
+[HD] VALLEY CONSTRUCTION ON (ADR Finding 121): trunks A >= 10 km2, age k = 0.07183 (PROXY), W = 200 m at 10 km2, walls 28 deg, then ONE light pass at 0.100 x k_time
+[HD] AGE OF THE CONTINENT ON (ADR Finding 109): absolute slope floor S_eq = 0.024·A^(-1/2) + A1. Window {0.021, 0.024, 0.027} (Findings 106/108). Lakes, rivers and biomes are re-derived.
+[HD timing] coarse land report 0.2s
+[C1 land] seed 10481999410520546993 — 5 landmass(es); largest 160512 km² (15.3% of torus), wraps x=false y=false, bbox 608×592 km; coarse emerged 15.6%; roll (0,37) cells → offset [0.094,0.578]
+[HD] bench guard (3552097350b238c8): Match { label: "C2 /10 niveau mer · cadrage canonique (viz)" }
+[HD volcanism] 15 resolved crater records (7 active/acidic, 8 extinct)
+[HD timing] eroded HIT (0.4s)
+[HD] relief-v3 breach conditioning HIT (0.2s)
+[HD timing] climate HIT (0.5s)
+[HD] H-1 infiltration ON (f_cap 0.70, k_ref 2.7e-3 m/day)
+[HD timing] drainage HIT (4.2s)
+[HD volcanism] crater lakes: 1 acidic | 6 dry craters
+[HD] lake guard (9f70222f95e39d13): Match { label: "C2 /10 niveau mer · cadrage canonique (viz) · 45° / 40°" }
+[HD timing] biomes (2.4s)
+[C1 land] post-FBM+erosion emerged fraction (window) = 16.9%
+[HD timing] rivers_ll 8431 rivers (0.34s)
+[HD timing] run_hd TOTAL 18.5s (render is separate, on the UI thread)
+   C2 /10 niveau mer: field Match { label: "C2 /10 niveau mer · cadrage canonique (viz)" } · lakes Match { label: "C2 /10 niveau mer · cadrage canonique (viz) · 45° / 40°" }
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes = banc
+   C1 nue                 field = banc · lakes = banc
+   C2 /10 col (défaut)    field = banc · lakes = banc
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes = banc
+test ui::workspace::f123_viz_guard::f123_viz_guard ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 45 filtered out; finished in 110.14s
+

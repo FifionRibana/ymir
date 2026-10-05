@@ -1,0 +1,23 @@
+# F147 checks AFTER (working tree, uncommitted)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 54.29s
+test result: ok. 605 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 2.34s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 30 passed; 0 failed; 16 ignored; 0 measured; 0 filtered out; finished in 1.19s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   2 · C2 /10 col (défaut) cadrage canonique (viz): digest cf1d4539c7afe588 · field a8d2d538d692c2f0 (168 s)
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core\data/bench_field_hashes.json (6 entries)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 822.55s
+# the 6/6 guard through run_hd (ymir-viz f123_viz_guard; f123_guard above rewrote crates/ymir-core/data/bench_field_hashes.json byte-identically: no git diff)
+[HD timing] rivers_ll 5054 rivers (0.23s)
+[HD timing] rivers_ll 7800 rivers (0.32s)
+[HD timing] rivers_ll 9978 rivers (0.47s)
+[HD timing] rivers_ll 10246 rivers (0.36s)
+[HD timing] rivers_ll 9667 rivers (0.32s)
+[HD timing] rivers_ll 8431 rivers (0.34s)
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes = banc
+   C1 nue                 field = banc · lakes = banc
+   C2 /10 col (défaut)    field = banc · lakes = banc
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes = banc
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 45 filtered out; finished in 110.14s
