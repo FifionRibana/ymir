@@ -1,0 +1,297 @@
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2200:23
+     |
+2200 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2270 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+warning: unused import: `SegmentKind`
+     --> crates\ymir-core\tests\f126_coast.rs:17740:55
+      |
+17740 |     use ymir_core::tectonics_c1::drainage::{LakeType, SegmentKind};
+      |                                                       ^^^^^^^^^^^
+      |
+      = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `skn`
+     --> crates\ymir-core\tests\f126_coast.rs:10710:9
+      |
+10710 |     let skn = skeleton(&s1, &ext, &ss, DOMAIN_KM);
+      |         ^^^ help: if this is intentional, prefix it with an underscore: `_skn`
+      |
+      = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `t_on_con` is never read
+     --> crates\ymir-core\tests\f126_coast.rs:11447:24
+      |
+11447 |     let mut t_on_con = 0f64;
+      |                        ^^^^ this value is reassigned later and never used
+...
+11496 |         t_on_con = t.elapsed().as_secs_f64();
+      |         ------------------------------------ `t_on_con` is overwritten here before the previous value is read
+      |
+      = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `ci`, `floor`, `stop`, and `crossed` are never read
+     --> crates\ymir-core\tests\f126_coast.rs:13985:9
+      |
+13983 |     struct Ev {
+      |            -- fields in this struct
+13984 |         pit: usize,
+13985 |         ci: usize,
+      |         ^^
+13986 |         floor: f32,
+      |         ^^^^^
+13987 |         steps: u32,
+13988 |         stop: u8, // 0 a base, 1 a cell already lower than the ramp, 2 the chain's end
+      |         ^^^^
+13989 |         stop_cell: usize,
+13990 |         crossed: u32,
+      |         ^^^^^^^
+      |
+      = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `step_of` and `backlink` are never read
+     --> crates\ymir-core\tests\f126_coast.rs:13996:9
+      |
+13993 |     struct Br {
+      |            -- fields in this struct
+...
+13996 |         step_of: Vec<u32>,
+      |         ^^^^^^^
+13997 |         backlink: Vec<usize>,
+      |         ^^^^^^^^
+
+warning: `ymir-core` (test "f126_coast") generated 5 warnings (run `cargo fix --test "f126_coast" -p ymir-core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 1m 38s
+     Running tests\f126_coast.rs (target_f148\release\deps\f126_coast-78c90b7d7fab281b.exe)
+
+running 1 test
+
+==========  Finding 148 . channel heads by convergence (témoin C2 /10 col)  ==========
+test f148_rivers has been running for over 60 seconds
+
+   J · 16226 segments → **10246 rivers** (F147: 10 246) · build 0.39 s · instrumented build identical: true
+   J · T3b joins 2261 · of them the larger stream continues now (the receiver cut): **465** · joins with no junction found: 0
+   J · **Hack violations 0** of 7984 confluences (the tributary larger than its receiver above the junction by > 0.1 %) · receivers starting at the junction 0
+   J · crossings **0** · through a shared run **0** · self-intersections **0**
+   J · ridge crossings: F147's sample instrument **23** of 1818405 samples · amended (stretches > 0.001 cell in an off-outlet cell) **134** · lateral p99 0.133 cell
+
+   K · lake 1000011
+      type Unresolved · reason Some(NoOutletReach) · 494.33 km² · level 459 m · outlet cell (4451, 3861)
+      footprint 207335 cells
+      segment 2248 (Watercourse, source lake None): 12 pts · first (4215, 3526) at 12 cell(s) · last (4216, 3537) at 1 · cells on the footprint 0 · downstream None
+      segment 3179 (Watercourse, source lake None): 4 pts · first (4353, 3459) at 4 cell(s) · last (4354, 3462) at 1 · cells on the footprint 0 · downstream None
+      segment 3859 (Watercourse, source lake None): 11 pts · first (4721, 3516) at 11 cell(s) · last (4723, 3526) at 1 · cells on the footprint 0 · downstream None
+      segment 3924 (Watercourse, source lake None): 186 pts · first (4251, 3327) at 136 cell(s) · last (4302, 3512) at 1 · cells on the footprint 0 · downstream None
+      segment 3990 (Watercourse, source lake None): 152 pts · first (4262, 3352) at 111 cell(s) · last (4316, 3503) at 1 · cells on the footprint 0 · downstream None
+      segment 4017 (Watercourse, source lake None): 76 pts · first (4110, 3490) at 67 cell(s) · last (4116, 3565) at 1 · cells on the footprint 0 · downstream None
+      segment 4032 (Watercourse, source lake None): 243 pts · first (4074, 3362) at 176 cell(s) · last (4134, 3566) at 1 · cells on the footprint 0 · downstream None
+      segment 4147 (Watercourse, source lake None): 198 pts · first (4631, 3403) at 124 cell(s) · last (4634, 3599) at 1 · cells on the footprint 0 · downstream None
+      segment 4155 (Watercourse, source lake None): 149 pts · first (4598, 3408) at 126 cell(s) · last (4576, 3551) at 1 · cells on the footprint 0 · downstream None
+      segment 4191 (Watercourse, source lake None): 7 pts · first (4022, 3618) at 7 cell(s) · last (4028, 3618) at 1 · cells on the footprint 0 · downstream None
+      segment 4220 (Watercourse, source lake None): 6 pts · first (4775, 3560) at 6 cell(s) · last (4770, 3565) at 1 · cells on the footprint 0 · downstream None
+      segment 4297 (Watercourse, source lake None): 129 pts · first (4129, 3440) at 98 cell(s) · last (4125, 3568) at 1 · cells on the footprint 0 · downstream None
+      segment 4301 (Watercourse, source lake None): 64 pts · first (4469, 3441) at 63 cell(s) · last (4409, 3504) at 1 · cells on the footprint 0 · downstream None
+      segment 4316 (Watercourse, source lake None): 37 pts · first (4407, 3443) at 37 cell(s) · last (4372, 3479) at 1 · cells on the footprint 0 · downstream None
+      segment 4372 (Watercourse, source lake None): 76 pts · first (4762, 3453) at 74 cell(s) · last (4740, 3528) at 1 · cells on the footprint 0 · downstream None
+      segment 4396 (Watercourse, source lake None): 103 pts · first (4160, 3459) at 79 cell(s) · last (4155, 3561) at 1 · cells on the footprint 0 · downstream None
+      segment 4414 (Watercourse, source lake None): 76 pts · first (4222, 3462) at 61 cell(s) · last (4221, 3537) at 1 · cells on the footprint 0 · downstream None
+      segment 4429 (Watercourse, source lake None): 86 pts · first (4523, 3465) at 83 cell(s) · last (4443, 3549) at 1 · cells on the footprint 0 · downstream None
+      segment 4432 (Watercourse, source lake None): 43 pts · first (4457, 3466) at 43 cell(s) · last (4415, 3508) at 1 · cells on the footprint 0 · downstream None
+      segment 4433 (Watercourse, source lake None): 44 pts · first (4459, 3466) at 44 cell(s) · last (4416, 3509) at 1 · cells on the footprint 0 · downstream None
+      segment 4447 (Watercourse, source lake None): 50 pts · first (4840, 3592) at 50 cell(s) · last (4791, 3592) at 1 · cells on the footprint 0 · downstream None
+      segment 4465 (Watercourse, source lake None): 34 pts · first (4438, 3469) at 34 cell(s) · last (4405, 3502) at 1 · cells on the footprint 0 · downstream None
+      segment 4487 (Watercourse, source lake None): 21 pts · first (4409, 3472) at 21 cell(s) · last (4389, 3492) at 1 · cells on the footprint 0 · downstream None
+      segment 4490 (Watercourse, source lake None): 27 pts · first (4425, 3473) at 27 cell(s) · last (4399, 3499) at 1 · cells on the footprint 0 · downstream None
+      segment 4491 (Watercourse, source lake None): 28 pts · first (4429, 3473) at 28 cell(s) · last (4402, 3500) at 1 · cells on the footprint 0 · downstream None
+      segment 4498 (Watercourse, source lake None): 20 pts · first (4410, 3475) at 20 cell(s) · last (4391, 3494) at 1 · cells on the footprint 0 · downstream None
+      segment 4500 (Watercourse, source lake None): 16 pts · first (4402, 3476) at 16 cell(s) · last (4387, 3491) at 1 · cells on the footprint 0 · downstream None
+      segment 4503 (Watercourse, source lake None): 19 pts · first (4412, 3477) at 19 cell(s) · last (4394, 3495) at 1 · cells on the footprint 0 · downstream None
+      segment 4504 (Watercourse, source lake None): 42 pts · first (4461, 3477) at 41 cell(s) · last (4420, 3514) at 1 · cells on the footprint 0 · downstream None
+      segment 4515 (Watercourse, source lake None): 96 pts · first (4544, 3479) at 71 cell(s) · last (4476, 3569) at 1 · cells on the footprint 0 · downstream None
+      segment 4516 (Watercourse, source lake None): 37 pts · first (4256, 3480) at 36 cell(s) · last (4292, 3514) at 1 · cells on the footprint 0 · downstream None
+      segment 4517 (Watercourse, source lake None): 9 pts · first (4354, 3480) at 3 cell(s) · last (4356, 3488) at 1 · cells on the footprint 0 · downstream None
+      segment 4522 (Watercourse, source lake None): 77 pts · first (4164, 3482) at 56 cell(s) · last (4165, 3558) at 1 · cells on the footprint 0 · downstream None
+      segment 4523 (Watercourse, source lake None): 26 pts · first (4438, 3482) at 26 cell(s) · last (4413, 3507) at 1 · cells on the footprint 0 · downstream None
+      segment 4524 (Watercourse, source lake None): 19 pts · first (4422, 3483) at 19 cell(s) · last (4404, 3501) at 1 · cells on the footprint 0 · downstream None
+      segment 4527 (Watercourse, source lake None): 22 pts · first (4432, 3484) at 22 cell(s) · last (4411, 3505) at 1 · cells on the footprint 0 · downstream None
+      segment 4533 (Watercourse, source lake None): 6 pts · first (4080, 3577) at 5 cell(s) · last (4081, 3582) at 1 · cells on the footprint 0 · downstream None
+      segment 4543 (Watercourse, source lake None): 10 pts · first (4405, 3488) at 10 cell(s) · last (4396, 3497) at 1 · cells on the footprint 0 · downstream None
+      segment 4548 (Watercourse, source lake None): 58 pts · first (4654, 3490) at 56 cell(s) · last (4700, 3547) at 1 · cells on the footprint 0 · downstream None
+      segment 4561 (Watercourse, source lake None): 89 pts · first (4084, 3492) at 70 cell(s) · last (4102, 3580) at 1 · cells on the footprint 0 · downstream None
+      segment 4564 (Watercourse, source lake None): 28 pts · first (4261, 3493) at 27 cell(s) · last (4287, 3519) at 1 · cells on the footprint 0 · downstream None
+      segment 4571 (Watercourse, source lake None): 23 pts · first (4267, 3494) at 23 cell(s) · last (4289, 3516) at 1 · cells on the footprint 0 · downstream None
+      segment 4576 (Watercourse, source lake None): 12 pts · first (4347, 3495) at 9 cell(s) · last (4357, 3506) at 1 · cells on the footprint 0 · downstream None
+      segment 4597 (Watercourse, source lake None): 38 pts · first (4239, 3500) at 31 cell(s) · last (4260, 3534) at 1 · cells on the footprint 0 · downstream None
+      segment 4629 (Watercourse, source lake None): 51 pts · first (4643, 3509) at 46 cell(s) · last (4680, 3559) at 1 · cells on the footprint 0 · downstream None
+      segment 4643 (Watercourse, source lake None): 32 pts · first (4693, 3512) at 31 cell(s) · last (4724, 3538) at 1 · cells on the footprint 0 · downstream None
+      segment 4678 (Watercourse, source lake None): 49 pts · first (4130, 3520) at 38 cell(s) · last (4128, 3568) at 1 · cells on the footprint 0 · downstream None
+      segment 4711 (Watercourse, source lake None): 20 pts · first (4236, 3523) at 15 cell(s) · last (4254, 3541) at 1 · cells on the footprint 0 · downstream None
+      segment 4742 (Watercourse, source lake None): 10 pts · first (4751, 3531) at 10 cell(s) · last (4742, 3540) at 1 · cells on the footprint 0 · downstream None
+      segment 4750 (Watercourse, source lake None): 64 pts · first (4533, 3533) at 32 cell(s) · last (4553, 3596) at 1 · cells on the footprint 0 · downstream None
+      segment 4769 (Watercourse, source lake None): 9 pts · first (4716, 3536) at 8 cell(s) · last (4724, 3541) at 1 · cells on the footprint 0 · downstream None
+      segment 4793 (Watercourse, source lake None): 71 pts · first (4526, 3540) at 36 cell(s) · last (4526, 3610) at 1 · cells on the footprint 0 · downstream None
+      segment 4800 (Watercourse, source lake None): 40 pts · first (4085, 3543) at 29 cell(s) · last (4087, 3582) at 1 · cells on the footprint 0 · downstream None
+      segment 4805 (Watercourse, source lake None): 20 pts · first (4140, 3545) at 17 cell(s) · last (4140, 3564) at 1 · cells on the footprint 0 · downstream None
+      segment 4816 (Watercourse, source lake None): 28 pts · first (4472, 3547) at 20 cell(s) · last (4445, 3573) at 1 · cells on the footprint 0 · downstream None
+      segment 4817 (Watercourse, source lake None): 52 pts · first (4522, 3547) at 32 cell(s) · last (4515, 3597) at 1 · cells on the footprint 0 · downstream None
+      segment 4827 (Watercourse, source lake None): 40 pts · first (4051, 3551) at 31 cell(s) · last (4062, 3590) at 1 · cells on the footprint 0 · downstream None
+      segment 4838 (Watercourse, source lake None): 11 pts · first (4589, 3554) at 10 cell(s) · last (4579, 3559) at 1 · cells on the footprint 0 · downstream None
+      segment 4840 (Watercourse, source lake None): 20 pts · first (4599, 3555) at 18 cell(s) · last (4580, 3566) at 1 · cells on the footprint 0 · downstream None
+      segment 4848 (Watercourse, source lake None): 30 pts · first (4642, 3558) at 29 cell(s) · last (4668, 3587) at 1 · cells on the footprint 0 · downstream None
+      segment 4851 (Watercourse, source lake None): 22 pts · first (4101, 3559) at 13 cell(s) · last (4101, 3580) at 1 · cells on the footprint 0 · downstream None
+      segment 4872 (Watercourse, source lake None): 83 pts · first (3967, 3570) at 62 cell(s) · last (4049, 3599) at 1 · cells on the footprint 0 · downstream None
+      segment 4879 (Watercourse, source lake None): 9 pts · first (4098, 3572) at 8 cell(s) · last (4098, 3580) at 1 · cells on the footprint 0 · downstream None
+      segment 4904 (Watercourse, source lake None): 10 pts · first (4662, 3576) at 10 cell(s) · last (4671, 3585) at 1 · cells on the footprint 0 · downstream None
+      segment 4906 (Watercourse, source lake None): 22 pts · first (4635, 3577) at 18 cell(s) · last (4636, 3598) at 1 · cells on the footprint 0 · downstream None
+      segment 4921 (Watercourse, source lake None): 3 pts · first (4782, 3582) at 3 cell(s) · last (4780, 3584) at 1 · cells on the footprint 0 · downstream None
+      segment 4922 (Watercourse, source lake None): 19 pts · first (4799, 3582) at 10 cell(s) · last (4781, 3586) at 1 · cells on the footprint 0 · downstream None
+      segment 4924 (Watercourse, source lake None): 56 pts · first (4845, 3583) at 55 cell(s) · last (4790, 3591) at 1 · cells on the footprint 0 · downstream None
+      segment 4939 (Watercourse, source lake None): 10 pts · first (4647, 3585) at 9 cell(s) · last (4653, 3594) at 1 · cells on the footprint 0 · downstream None
+      segment 4952 (Watercourse, source lake None): 6 pts · first (4653, 3589) at 5 cell(s) · last (4654, 3594) at 1 · cells on the footprint 0 · downstream None
+      segment 5042 (Watercourse, source lake None): 25 pts · first (4809, 3612) at 20 cell(s) · last (4785, 3612) at 1 · cells on the footprint 0 · downstream None
+      segment 5047 (Watercourse, source lake None): 24 pts · first (4807, 3614) at 20 cell(s) · last (4784, 3614) at 1 · cells on the footprint 0 · downstream None
+      segment 5078 (Watercourse, source lake None): 48 pts · first (4831, 3621) at 41 cell(s) · last (4784, 3617) at 1 · cells on the footprint 0 · downstream None
+      segment 5107 (Watercourse, source lake None): 56 pts · first (4838, 3626) at 48 cell(s) · last (4783, 3629) at 1 · cells on the footprint 0 · downstream None
+      segment 5116 (Watercourse, source lake None): 49 pts · first (4831, 3628) at 41 cell(s) · last (4783, 3631) at 1 · cells on the footprint 0 · downstream None
+      segment 5122 (Watercourse, source lake None): 47 pts · first (4829, 3629) at 39 cell(s) · last (4783, 3632) at 1 · cells on the footprint 0 · downstream None
+      segment 5132 (Watercourse, source lake None): 3 pts · first (4785, 3630) at 3 cell(s) · last (4783, 3630) at 1 · cells on the footprint 0 · downstream None
+      segment 5133 (Watercourse, source lake None): 48 pts · first (4830, 3630) at 40 cell(s) · last (4783, 3633) at 1 · cells on the footprint 0 · downstream None
+      segment 5136 (Watercourse, source lake None): 60 pts · first (4842, 3631) at 52 cell(s) · last (4783, 3634) at 1 · cells on the footprint 0 · downstream None
+      segment 5146 (Watercourse, source lake None): 11 pts · first (4038, 3636) at 11 cell(s) · last (4048, 3626) at 1 · cells on the footprint 0 · downstream None
+      segment 5147 (Watercourse, source lake None): 32 pts · first (4814, 3636) at 29 cell(s) · last (4783, 3635) at 1 · cells on the footprint 0 · downstream None
+      segment 5157 (Watercourse, source lake None): 10 pts · first (4044, 3639) at 10 cell(s) · last (4053, 3630) at 1 · cells on the footprint 0 · downstream None
+      segment 5168 (Watercourse, source lake None): 18 pts · first (4034, 3644) at 18 cell(s) · last (4051, 3627) at 1 · cells on the footprint 0 · downstream None
+      segment 5169 (Watercourse, source lake None): 11 pts · first (4051, 3644) at 11 cell(s) · last (4060, 3634) at 1 · cells on the footprint 0 · downstream None
+      segment 5173 (Watercourse, source lake None): 13 pts · first (4054, 3649) at 13 cell(s) · last (4066, 3637) at 1 · cells on the footprint 0 · downstream None
+      segment 5188 (Watercourse, source lake None): 128 pts · first (3923, 3657) at 106 cell(s) · last (4049, 3626) at 1 · cells on the footprint 0 · downstream None
+      segment 5189 (Watercourse, source lake None): 3 pts · first (4077, 3658) at 3 cell(s) · last (4079, 3657) at 1 · cells on the footprint 0 · downstream None
+      segment 5213 (Watercourse, source lake None): 24 pts · first (4056, 3673) at 23 cell(s) · last (4079, 3672) at 1 · cells on the footprint 0 · downstream None
+      segment 5222 (Watercourse, source lake None): 161 pts · first (3898, 3678) at 131 cell(s) · last (4058, 3631) at 1 · cells on the footprint 0 · downstream None
+      segment 5236 (Watercourse, source lake None): 176 pts · first (4959, 3684) at 169 cell(s) · last (4784, 3661) at 1 · cells on the footprint 0 · downstream None
+      segment 5270 (Watercourse, source lake None): 2 pts · first (4774, 3694) at 2 cell(s) · last (4773, 3693) at 1 · cells on the footprint 0 · downstream None
+      segment 5280 (Watercourse, source lake None): 155 pts · first (4922, 3697) at 132 cell(s) · last (4769, 3674) at 1 · cells on the footprint 0 · downstream None
+      segment 5333 (Watercourse, source lake None): 155 pts · first (3927, 3700) at 102 cell(s) · last (4081, 3683) at 1 · cells on the footprint 0 · downstream None
+      segment 5374 (Watercourse, source lake None): 2 pts · first (4140, 3760) at 2 cell(s) · last (4141, 3759) at 1 · cells on the footprint 0 · downstream None
+      segment 5387 (Watercourse, source lake None): 9 pts · first (4726, 3711) at 8 cell(s) · last (4726, 3703) at 1 · cells on the footprint 0 · downstream None
+      segment 5403 (Watercourse, source lake None): 24 pts · first (4777, 3716) at 23 cell(s) · last (4762, 3693) at 1 · cells on the footprint 0 · downstream None
+      segment 5404 (Watercourse, source lake None): 23 pts · first (4789, 3716) at 23 cell(s) · last (4772, 3694) at 1 · cells on the footprint 0 · downstream None
+      segment 5411 (Watercourse, source lake None): 21 pts · first (4072, 3718) at 21 cell(s) · last (4092, 3698) at 1 · cells on the footprint 0 · downstream None
+      segment 5413 (Watercourse, source lake None): 21 pts · first (4073, 3720) at 21 cell(s) · last (4093, 3700) at 1 · cells on the footprint 0 · downstream None
+      segment 5418 (Watercourse, source lake None): 18 pts · first (4718, 3721) at 8 cell(s) · last (4718, 3704) at 1 · cells on the footprint 0 · downstream None
+      segment 5419 (Watercourse, source lake None): 18 pts · first (4720, 3721) at 10 cell(s) · last (4720, 3704) at 1 · cells on the footprint 0 · downstream None
+      segment 5428 (Watercourse, source lake None): 149 pts · first (3974, 3723) at 89 cell(s) · last (4122, 3723) at 1 · cells on the footprint 0 · downstream None
+      segment 5464 (Watercourse, source lake None): 136 pts · first (4907, 3737) at 122 cell(s) · last (4772, 3693) at 1 · cells on the footprint 0 · downstream None
+      segment 5484 (Watercourse, source lake None): 97 pts · first (4006, 3743) at 73 cell(s) · last (4096, 3709) at 1 · cells on the footprint 0 · downstream None
+      segment 5487 (Watercourse, source lake None): 56 pts · first (4036, 3744) at 53 cell(s) · last (4091, 3696) at 1 · cells on the footprint 0 · downstream None
+      segment 5502 (Watercourse, source lake None): 12 pts · first (4716, 3748) at 12 cell(s) · last (4712, 3737) at 1 · cells on the footprint 0 · downstream None
+      segment 5564 (Watercourse, source lake None): 10 pts · first (4166, 3766) at 10 cell(s) · last (4175, 3757) at 1 · cells on the footprint 0 · downstream None
+      segment 5587 (Watercourse, source lake None): 17 pts · first (4153, 3769) at 10 cell(s) · last (4169, 3753) at 1 · cells on the footprint 0 · downstream None
+      segment 5621 (Watercourse, source lake None): 27 pts · first (4708, 3772) at 23 cell(s) · last (4682, 3760) at 1 · cells on the footprint 0 · downstream None
+      segment 5623 (Watercourse, source lake None): 101 pts · first (4807, 3773) at 74 cell(s) · last (4739, 3700) at 1 · cells on the footprint 0 · downstream None
+      segment 5630 (Watercourse, source lake None): 15 pts · first (4167, 3774) at 15 cell(s) · last (4181, 3760) at 1 · cells on the footprint 0 · downstream None
+      segment 5655 (Watercourse, source lake None): 32 pts · first (4142, 3782) at 23 cell(s) · last (4173, 3755) at 1 · cells on the footprint 0 · downstream None
+      segment 5691 (Watercourse, source lake None): 220 pts · first (4900, 3788) at 124 cell(s) · last (4714, 3736) at 1 · cells on the footprint 0 · downstream None
+      segment 5845 (Watercourse, source lake None): 16 pts · first (4230, 3811) at 16 cell(s) · last (4245, 3796) at 1 · cells on the footprint 0 · downstream None
+      segment 5846 (Watercourse, source lake None): 14 pts · first (4233, 3811) at 14 cell(s) · last (4246, 3798) at 1 · cells on the footprint 0 · downstream None
+      segment 5852 (Watercourse, source lake None): 13 pts · first (4235, 3812) at 13 cell(s) · last (4247, 3800) at 1 · cells on the footprint 0 · downstream None
+      segment 5853 (Watercourse, source lake None): 12 pts · first (4236, 3812) at 12 cell(s) · last (4247, 3802) at 1 · cells on the footprint 0 · downstream None
+      segment 5854 (Watercourse, source lake None): 14 pts · first (4237, 3812) at 11 cell(s) · last (4250, 3808) at 1 · cells on the footprint 0 · downstream None
+      segment 5862 (Watercourse, source lake None): 13 pts · first (4239, 3813) at 10 cell(s) · last (4251, 3812) at 1 · cells on the footprint 0 · downstream None
+      segment 5904 (Watercourse, source lake None): 47 pts · first (4182, 3820) at 42 cell(s) · last (4205, 3774) at 1 · cells on the footprint 0 · downstream None
+      segment 5987 (Watercourse, source lake None): 23 pts · first (4231, 3826) at 19 cell(s) · last (4253, 3826) at 1 · cells on the footprint 0 · downstream None
+      segment 6002 (Watercourse, source lake None): 2 pts · first (4654, 3828) at 2 cell(s) · last (4653, 3828) at 1 · cells on the footprint 0 · downstream None
+      segment 6082 (Watercourse, source lake None): 7 pts · first (4247, 3842) at 7 cell(s) · last (4253, 3842) at 1 · cells on the footprint 0 · downstream None
+      segment 6103 (Watercourse, source lake None): 4 pts · first (4250, 3845) at 4 cell(s) · last (4253, 3845) at 1 · cells on the footprint 0 · downstream None
+      segment 6110 (Watercourse, source lake None): 5 pts · first (4249, 3846) at 5 cell(s) · last (4253, 3847) at 1 · cells on the footprint 0 · downstream None
+      segment 6117 (Watercourse, source lake None): 10 pts · first (4244, 3848) at 10 cell(s) · last (4253, 3848) at 1 · cells on the footprint 0 · downstream None
+      segment 6124 (Watercourse, source lake None): 23 pts · first (4723, 3849) at 22 cell(s) · last (4701, 3847) at 1 · cells on the footprint 0 · downstream None
+      segment 6135 (Watercourse, source lake None): 14 pts · first (4241, 3852) at 10 cell(s) · last (4254, 3851) at 1 · cells on the footprint 0 · downstream None
+      segment 6137 (Watercourse, source lake None): 17 pts · first (4238, 3853) at 11 cell(s) · last (4254, 3854) at 1 · cells on the footprint 0 · downstream None
+      segment 6239 (Watercourse, source lake None): 55 pts · first (4200, 3854) at 42 cell(s) · last (4254, 3855) at 1 · cells on the footprint 0 · downstream None
+      segment 6397 (Watercourse, source lake None): 68 pts · first (4175, 3878) at 67 cell(s) · last (4242, 3874) at 1 · cells on the footprint 0 · downstream None
+      segment 6719 (Watercourse, source lake None): 31 pts · first (4282, 3922) at 22 cell(s) · last (4280, 3892) at 1 · cells on the footprint 0 · downstream None
+      segment 6739 (Watercourse, source lake None): 3 pts · first (4617, 3926) at 3 cell(s) · last (4615, 3925) at 1 · cells on the footprint 0 · downstream None
+      segment 6755 (Watercourse, source lake None): 38 pts · first (4288, 3928) at 22 cell(s) · last (4295, 3891) at 1 · cells on the footprint 0 · downstream None
+      segment 6841 (Watercourse, source lake None): 4 pts · first (4384, 3945) at 4 cell(s) · last (4385, 3942) at 1 · cells on the footprint 0 · downstream None
+      segment 6842 (Watercourse, source lake None): 3 pts · first (4388, 3945) at 2 cell(s) · last (4389, 3943) at 1 · cells on the footprint 0 · downstream None
+      segment 6860 (Watercourse, source lake None): 21 pts · first (4344, 3949) at 21 cell(s) · last (4364, 3929) at 1 · cells on the footprint 0 · downstream None
+      segment 6875 (Watercourse, source lake None): 21 pts · first (4606, 3952) at 20 cell(s) · last (4602, 3932) at 1 · cells on the footprint 0 · downstream None
+      segment 7404 (Watercourse, source lake None): 15 pts · first (4533, 4022) at 15 cell(s) · last (4522, 4008) at 1 · cells on the footprint 0 · downstream None
+      segment 16217 (Spillway, source lake Some(1000011)): 33 pts · first (4424, 3975) at 2 cell(s) · last (4394, 4006) at 32 · cells on the footprint 0 · downstream None
+      rivers_ll rivers ending in it: 139
+      lakes Unresolved in this world: 1
+
+   M · convergence field σ = 2 cells: 0.17 s
+   M · populations: (a) fusion candidates 873 (69 in the control, removed) · every pair member 1292 · (b) micro-rivers into a lake < 1 km 705 (21 in the control) · (a)∩(b) 0 · (a)∪(b) 1578 · **(c) control 2828** (≥ 10 km 255 · ≥ 50 % on a construction floor 2695)
+   M · convergence σ=1: AUC (c) against (a)∪(b) · max / head / median = **0.796** **0.857** **0.837** · against (a) alone 0.722 / 0.875 · against (b) alone 0.888 / 0.834 (max / head) · medians of the head score: (a) -0.111 · (b) -0.048 · (c) 3.201
+   M · convergence σ=2: AUC (c) against (a)∪(b) · max / head / median = **0.736** **0.784** **0.753** · against (a) alone 0.650 / 0.792 · against (b) alone 0.843 / 0.774 (max / head) · medians of the head score: (a) -0.124 · (b) -0.069 · (c) 1.259
+   M · convergence σ=4: AUC (c) against (a)∪(b) · max / head / median = **0.713** **0.748** **0.722** · against (a) alone 0.622 / 0.755 · against (b) alone 0.826 / 0.740 (max / head) · medians of the head score: (a) -0.129 · (b) -0.088 · (c) 0.578
+   M · A·S²: AUC (c) against (a)∪(b) · max / head / median = **0.462** **0.418** **0.306** · against (a) alone 0.414 / 0.421 · against (b) alone 0.522 / 0.414 (max / head) · medians of the head score: (a) 639.421 · (b) 966.413 · (c) 292.034
+
+   M · the rule on convergence σ=2 (km⁻¹): θ · rivers · km · parallel pairs · micro-lake rivers · (a) removed · (b) removed · (a)∪(b) removed · **(c) lost** · every pair member removed · stop rule
+      F148 J build (no rule): 10246 rivers · 21541 km · 1660 pairs · 726 micro-lake
+      θ 0 = 0.0000: 9400 rivers · 17448 km · **915 pairs** · **655 micro-lake** · (a) 36.8 % · (b) 51.2 % · (a)∪(b) **43.2 %** · (c) lost **460 (16.27 %)** · pair members 34.4 % · fails (1.0 s with instruments)
+      θ (c) p0.5 = -1.2359: 10223 rivers · 21249 km · **1636 pairs** · **732 micro-lake** · (a) 0.8 % · (b) 4.4 % · (a)∪(b) **2.4 %** · (c) lost **28 (0.99 %)** · pair members 0.7 % · fails (1.1 s with instruments)
+      θ (c) p1.0 = -0.9494: 10199 rivers · 21106 km · **1615 pairs** · **729 micro-lake** · (a) 0.9 % · (b) 6.5 % · (a)∪(b) **3.4 %** · (c) lost **53 (1.87 %)** · pair members 0.9 % · fails (1.1 s with instruments)
+      θ (c) p2.0 = -0.6805: 10131 rivers · 20869 km · **1593 pairs** · **721 micro-lake** · (a) 2.7 % · (b) 11.2 % · (a)∪(b) **6.5 %** · (c) lost **95 (3.36 %)** · pair members 2.3 % · fails (1.0 s with instruments)
+      θ (c) p5.0 = -0.2866: 9913 rivers · 19710 km · **1375 pairs** · **740 micro-lake** · (a) 14.3 % · (b) 24.3 % · (a)∪(b) **18.8 %** · (c) lost **222 (7.85 %)** · pair members 13.2 % · fails (1.0 s with instruments)
+      θ (c) p10.0 = -0.0251: 9454 rivers · 17679 km · **950 pairs** · **660 micro-lake** · (a) 34.7 % · (b) 49.2 % · (a)∪(b) **41.2 %** · (c) lost **420 (14.85 %)** · pair members 32.5 % · fails (0.9 s with instruments)
+      θ (c) p20.0 = 0.3039: 8676 rivers · 14916 km · **563 pairs** · **497 micro-lake** · (a) 61.1 % · (b) 72.5 % · (a)∪(b) **66.2 %** · (c) lost **841 (29.74 %)** · pair members 57.8 % · fails (0.8 s with instruments)
+   M · stop rule on convergence σ=2 (km⁻¹): θ passing (≥ 50 % of (a)∪(b) removed, ≤ 1 % of (c) lost): []
+
+   M · the rule on A·S² (m²): θ · rivers · km · parallel pairs · micro-lake rivers · (a) removed · (b) removed · (a)∪(b) removed · **(c) lost** · every pair member removed · stop rule
+      F148 J build (no rule): 10246 rivers · 21541 km · 1660 pairs · 726 micro-lake
+      θ 0 = 0.0000: 10246 rivers · 21541 km · **1660 pairs** · **726 micro-lake** · (a) 0.0 % · (b) 0.0 % · (a)∪(b) **0.0 %** · (c) lost **0 (0.00 %)** · pair members 0.0 % · fails (1.0 s with instruments)
+      θ (c) p0.5 = 1.2515: 10241 rivers · 21502 km · **1645 pairs** · **726 micro-lake** · (a) 0.0 % · (b) 0.0 % · (a)∪(b) **0.0 %** · (c) lost **26 (0.92 %)** · pair members 0.0 % · fails (1.0 s with instruments)
+      θ (c) p1.0 = 2.1891: 10240 rivers · 21454 km · **1635 pairs** · **728 micro-lake** · (a) 0.8 % · (b) 0.0 % · (a)∪(b) **0.4 %** · (c) lost **50 (1.77 %)** · pair members 0.5 % · fails (1.1 s with instruments)
+      θ (c) p2.0 = 3.6698: 10239 rivers · 21392 km · **1619 pairs** · **728 micro-lake** · (a) 1.0 % · (b) 0.9 % · (a)∪(b) **1.0 %** · (c) lost **86 (3.04 %)** · pair members 0.8 % · fails (1.1 s with instruments)
+      θ (c) p5.0 = 9.7976: 10216 rivers · 21224 km · **1574 pairs** · **716 micro-lake** · (a) 2.5 % · (b) 1.8 % · (a)∪(b) **2.2 %** · (c) lost **184 (6.51 %)** · pair members 1.9 % · fails (1.1 s with instruments)
+      θ (c) p10.0 = 27.9806: 10146 rivers · 20859 km · **1527 pairs** · **704 micro-lake** · (a) 4.8 % · (b) 8.7 % · (a)∪(b) **6.5 %** · (c) lost **376 (13.30 %)** · pair members 3.8 % · fails (1.0 s with instruments)
+      θ (c) p20.0 = 77.5182: 10016 rivers · 20293 km · **1437 pairs** · **700 micro-lake** · (a) 10.3 % · (b) 15.2 % · (a)∪(b) **12.5 %** · (c) lost **736 (26.03 %)** · pair members 8.6 % · fails (1.0 s with instruments)
+   M · stop rule on A·S² (m²): θ passing (≥ 50 % of (a)∪(b) removed, ≤ 1 % of (c) lost): []
+
+   M · the J build's parallel pairs: 1660 · micro-lake rivers 726
+   COST · convergence field 0.17 s + the build with the rule 0.36 s (without 0.39 s), against 249.8 s
+
+==========  end Finding 148 . 423.5 s  ==========
+
+test f148_rivers ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 75 filtered out; finished in 423.65s
+

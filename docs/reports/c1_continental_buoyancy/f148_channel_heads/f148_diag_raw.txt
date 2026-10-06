@@ -1,0 +1,126 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2200:23
+     |
+2200 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2270 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+warning: unused import: `SegmentKind`
+     --> crates\ymir-core\tests\f126_coast.rs:17740:55
+      |
+17740 |     use ymir_core::tectonics_c1::drainage::{LakeType, SegmentKind};
+      |                                                       ^^^^^^^^^^^
+      |
+      = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `skn`
+     --> crates\ymir-core\tests\f126_coast.rs:10710:9
+      |
+10710 |     let skn = skeleton(&s1, &ext, &ss, DOMAIN_KM);
+      |         ^^^ help: if this is intentional, prefix it with an underscore: `_skn`
+      |
+      = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `t_on_con` is never read
+     --> crates\ymir-core\tests\f126_coast.rs:11447:24
+      |
+11447 |     let mut t_on_con = 0f64;
+      |                        ^^^^ this value is reassigned later and never used
+...
+11496 |         t_on_con = t.elapsed().as_secs_f64();
+      |         ------------------------------------ `t_on_con` is overwritten here before the previous value is read
+      |
+      = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `ci`, `floor`, `stop`, and `crossed` are never read
+     --> crates\ymir-core\tests\f126_coast.rs:13985:9
+      |
+13983 |     struct Ev {
+      |            -- fields in this struct
+13984 |         pit: usize,
+13985 |         ci: usize,
+      |         ^^
+13986 |         floor: f32,
+      |         ^^^^^
+13987 |         steps: u32,
+13988 |         stop: u8, // 0 a base, 1 a cell already lower than the ramp, 2 the chain's end
+      |         ^^^^
+13989 |         stop_cell: usize,
+13990 |         crossed: u32,
+      |         ^^^^^^^
+      |
+      = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `step_of` and `backlink` are never read
+     --> crates\ymir-core\tests\f126_coast.rs:13996:9
+      |
+13993 |     struct Br {
+      |            -- fields in this struct
+...
+13996 |         step_of: Vec<u32>,
+      |         ^^^^^^^
+13997 |         backlink: Vec<usize>,
+      |         ^^^^^^^^
+
+warning: `ymir-core` (test "f126_coast") generated 5 warnings (run `cargo fix --test "f126_coast" -p ymir-core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 1m 10s
+     Running tests\f126_coast.rs (target_f148\release\deps\f126_coast-78c90b7d7fab281b.exe)
+
+running 1 test
+test f148_diag has been running for over 60 seconds
+
+==========  Finding 148 . diagnoses  ==========
+   K · spillway 16217: 33 pts · discharge 1624.79 m³/s · first (4424, 3975) · lake level 459.3 m
+   K · the 7×7 around its first point (lake id or ·, then altitude m on the conditioned field; * = the spillway's cells):
+      *       ·  457.6 |        ·  457.9 |        ·  458.2 |        ·  458.7 |        ·  459.1 |        ·  459.5 |        ·  459.7 |
+              ·  458.3 |*       ·  458.5 |        ·  458.7 |        ·  458.9 |        ·  459.3 |        ·  459.5 |        ·  459.6 |
+              ·  459.1 |        ·  459.0 |*       ·  459.0 |        ·  459.1 |        ·  459.4 |        ·  459.5 |        ·  459.5 |
+              ·  459.7 |        ·  459.5 |        ·  459.4 |*       ·  459.3 |        ·  459.4 |        ·  459.4 |        L  459.3 |
+              ·  460.3 |        ·  460.0 |        ·  459.6 |        ·  459.5 |        ·  459.3 |        L  459.2 |        L  459.0 |
+              ·  460.8 |        ·  460.4 |        ·  459.9 |        ·  459.5 |        L  459.2 |        L  459.0 |        L  458.6 |
+              ·  461.3 |        ·  460.7 |        ·  460.0 |        ·  459.5 |        L  459.0 |        L  458.7 |        L  458.2 |
+   K · D8 downstream from its first point: [((4424, 3975), 0, 459.3249), ((4423, 3976), 0, 459.04474), ((4422, 3977), 0, 458.47897), ((4421, 3978), 0, 457.5697), ((4420, 3979), 0, 456.26508), ((4419, 3980), 0, 454.40543)]
+   J2 · 134 off-outlet stretches: length p10 / p50 / p90 / max 0.0032 / 0.0124 / 0.0421 / 0.0976 cell · ≤ 0.01: 52 · ≤ 0.05: 123 · ≤ 0.1: 134 · total 2.50 cells
+   J1 · catch(s) / acc at its own end: p1 / p10 / p50 / p90 / p99 56.2500 / 56.2500 / 56.2500 / 56.2500 / 56.2500 · catch(s) / max acc along it: p10 / p50 / p90 0.1657 / 54.2090 / 56.2500 · cell_km2 0.002384 · 1/cell_km2 419.43
+   J1 · segments whose catchment differs from the accumulation at their own end by > 1 %: 16226 of 16226 · T3b joins 2261 · F147's count (raw catch(u) > acc above the junction): 831 · F148's (the continuing piece): 465 · junctions with several joiners: 109
+
+==========  end Finding 148 diagnoses  ==========
+
+test f148_diag ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 76 filtered out; finished in 259.56s
+

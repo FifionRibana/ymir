@@ -32,7 +32,7 @@ use crate::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
 use crate::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
 
 /// The format version this writer emits.
-pub const RIVERS_LL_FORMAT_VERSION: &str = "0.3.0";
+pub const RIVERS_LL_FORMAT_VERSION: &str = "0.4.0";
 
 /// The bed width's coefficient `a` in `w = a·Q^b` (m per (m³/s)^b) — a DECISION (the author's), the default being
 /// Ymir's own channel width (`rivers.json`'s `width_m`, drainage.rs `CHANNEL_WIDTH_A`). Written in the header.
@@ -125,7 +125,8 @@ pub struct VertexAttrs {
 pub struct RiverLl {
     pub id: u32,
     pub kind: SegmentKind,
-    /// The `rivers.json` segments it chains, upstream → downstream.
+    /// The `rivers.json` segments it covers, wholly or in part (a reach cut at a T3b junction, Finding 148-J), upstream
+    /// → downstream.
     pub segments: Vec<usize>,
     /// The smoothed polyline, upstream → downstream, in continuous erosion-grid cells.
     pub points: Vec<[f32; 2]>,
@@ -333,6 +334,16 @@ pub struct RiversLlStats {
     /// them, those larger than the receiver's reach above the junction.
     pub mid_joins: usize,
     pub mid_joins_larger: usize,
+    /// Reaches whose junction with their receiver is not found (neither their last cell nor its receiver lies on it):
+    /// they end without a confluence.
+    pub unlinked_joins: usize,
+    /// ADR Finding 148-J2 — the final polyline's stretches (edge × cell, length > 0.001 cell) inside a cell draining to
+    /// another outlet than the nearest trace cell: a zero-length corner touch does not count.
+    pub ridge_cross_exact: usize,
+    /// Their lengths (cells), for the diagnosis.
+    pub ridge_stretch_len: Vec<f32>,
+    /// Each river's trace cells (row-major), for the benches.
+    pub trace_cells: Vec<Vec<u32>>,
     /// The final polyline's ridge-crossing samples (river, point, whether the sample's cell is one of the river's own
     /// trace cells near it), for the diagnosis.
     pub ridge_samples: Vec<(u32, [f32; 2], bool)>,
@@ -618,10 +629,28 @@ struct Smoothed {
     fixed: Vec<bool>,
 }
 
+/// ADR Finding 148-M — a channel-head rule (gated; production passes none): a network cell is ELIGIBLE when its
+/// accumulation is ≥ `a_min_cells` and `index` (one value per cell) is ≥ `threshold`. A segment is channel from its
+/// first eligible cell, or from where its first channel upstream reach joins it; a reach leaving a lake's shore or a
+/// spillway is channel from its start; downstream of a channel cell everything is channel. Only `rivers_ll` reads
+/// it: `dr.rivers` (rivers.json, the lakes' outlets) is untouched.
+#[derive(Clone, Copy, Debug)]
+pub struct HeadRule<'a> {
+    pub index: &'a [f32],
+    pub threshold: f32,
+    pub a_min_cells: f32,
+}
+
 /// Build the main stems, smooth them in their valley and attach the attributes. `field` is the conditioned
-/// (breached) field the drainage was computed on (normalised). With `with_stats`, the Findings 146-L / 147-T
+/// (breached) field the drainage was computed on (normalised). With `with_stats`, the Findings 146-L / 147-T / 148-J
 /// instruments are filled (an O(n) outlet labelling more).
 pub fn build_rivers_ll(dr: &C1DrainageResult, field: &GridF32, ss: &SteinSteinParams, cell_km2: f32, params: RiversLlParams, with_stats: bool) -> (Vec<RiverLl>, RiversLlStats) {
+    build_rivers_ll_heads(dr, field, ss, cell_km2, params, with_stats, None)
+}
+
+/// [`build_rivers_ll`] with an optional channel-head rule (ADR Finding 148-M).
+#[allow(clippy::too_many_arguments)]
+pub fn build_rivers_ll_heads(dr: &C1DrainageResult, field: &GridF32, ss: &SteinSteinParams, cell_km2: f32, params: RiversLlParams, with_stats: bool, heads: Option<&HeadRule>) -> (Vec<RiverLl>, RiversLlStats) {
     let (w, h) = (field.width, field.height);
     let segs = &dr.rivers.segments;
     let ns = segs.len();
@@ -638,56 +667,165 @@ pub fn build_rivers_ll(dr: &C1DrainageResult, field: &GridF32, ss: &SteinSteinPa
         Some(y * w + x)
     };
     let catch = |s: usize| dr.segment_catchment_cells.get(s).copied().unwrap_or(0.0);
-    // the continuing upstream reach of each segment: the largest catchment (ties: the lowest index), among the reaches
-    // that join it AT ITS HEAD. A reach joining it further down (the drainage's T3b confluence) cannot continue it: the
-    // trace would jump back to the head and walk down again (Finding 147-X, amendment 2). It ends in a confluence on it.
     let cell_of = |p: (u32, u32)| p.1 as usize * w + p.0 as usize;
-    let joins_head = |u: usize, d: usize| -> bool {
-        match (segs[u].points.last(), segs[d].points.first()) {
-            (Some(&ul), Some(&d0)) => ul == d0 || recv(cell_of(ul)) == Some(cell_of(d0)),
-            _ => false,
-        }
+    // where reach u joins its receiver d: the index in d of u's last cell, or of the cell u's last cell drains into
+    let junction = |u: usize, d: usize| -> Option<usize> {
+        let ul = cell_of(*segs[u].points.last()?);
+        let dc = &segs[d].points;
+        dc.iter().position(|&p| cell_of(p) == ul).or_else(|| recv(ul).and_then(|r| dc.iter().position(|&p| cell_of(p) == r)))
     };
-    let (mut mid_joins, mut mid_joins_larger) = (0usize, 0usize);
-    let mut cont_up = vec![usize::MAX; ns];
-    for d in 0..ns {
-        let mut best: Option<usize> = None;
-        for &u in &segs[d].upstream {
-            if u >= ns {
-                continue;
-            }
-            if !joins_head(u, d) {
-                mid_joins += 1;
-                // larger than the receiver's own reach above the junction: Hack's convention is broken there
-                let ul = segs[u].points.last().map(|&p| cell_of(p));
-                let dc: Vec<usize> = segs[d].points.iter().map(|&p| cell_of(p)).collect();
-                let j = ul.and_then(|c| dc.iter().position(|&x| x == c).or_else(|| recv(c).and_then(|r| dc.iter().position(|&x| x == r))));
-                if let Some(j) = j
-                    && j > 0
-                    && catch(u) > acc[dc[j - 1]]
-                {
-                    mid_joins_larger += 1;
-                }
-                continue;
-            }
-            if best.is_none_or(|b| catch(u) > catch(b) || (catch(u) == catch(b) && u < b)) {
-                best = Some(u);
+    let down_seg = |s: usize| -> Option<(usize, usize)> {
+        let d = segs[s].downstream?;
+        if d >= ns {
+            return None;
+        }
+        junction(s, d).map(|j| (d, j))
+    };
+    // the accumulation's scale to each segment's (possibly signified) catchment, at its own end (Finding 49)
+    let k_seg: Vec<f32> = (0..ns)
+        .map(|s| {
+            let own = segs[s].points.get(own_end(segs, s)).map_or(0.0, |&(x, y)| acc[y as usize * w + x as usize]);
+            if own > 0.0 { catch(s) / own } else { 1.0 }
+        })
+        .collect();
+    // ADR Finding 148-M — the channel start of each segment (all `Some(0)` without a head rule)
+    let mut start: Vec<Option<usize>> = vec![Some(0); ns];
+    let mut unlinked_joins = 0usize;
+    if let Some(rule) = heads {
+        let near_lake = |c: usize| -> bool {
+            let (x, y) = ((c % w) as i64, (c / w) as i64);
+            (-1i64..=1).any(|dy| (-1i64..=1).any(|dx| dr.lake_map.get(((y + dy).rem_euclid(h as i64) as usize) * w + (x + dx).rem_euclid(w as i64) as usize).copied().unwrap_or(0) != 0))
+        };
+        // upstream before downstream (Kahn on the segments' downstream links)
+        let mut indeg = vec![0usize; ns];
+        for s in 0..ns {
+            if let Some(d) = segs[s].downstream
+                && d < ns
+            {
+                indeg[d] += 1;
             }
         }
-        if let Some(b) = best {
-            cont_up[d] = b;
+        let mut queue: std::collections::VecDeque<usize> = (0..ns).filter(|&s| indeg[s] == 0).collect();
+        let mut from_up: Vec<Option<usize>> = vec![None; ns];
+        let mut done = 0usize;
+        while let Some(s) = queue.pop_front() {
+            done += 1;
+            let pts = &segs[s].points;
+            let forced = dr.segment_kind.get(s) == Some(&SegmentKind::Spillway) || dr.segment_source_lake.get(s).is_some_and(|l| l.is_some()) || pts.first().is_some_and(|&p| near_lake(cell_of(p)));
+            let eligible = pts.iter().position(|&p| {
+                let c = cell_of(p);
+                acc[c] >= rule.a_min_cells && rule.index[c] >= rule.threshold
+            });
+            let st = if forced { Some(0) } else { [eligible, from_up[s]].into_iter().flatten().min() };
+            start[s] = st;
+            if let Some(d) = segs[s].downstream
+                && d < ns
+            {
+                if st.is_some()
+                    && let Some(j) = junction(s, d)
+                {
+                    from_up[d] = Some(from_up[d].map_or(j, |v| v.min(j)));
+                }
+                indeg[d] -= 1;
+                if indeg[d] == 0 {
+                    queue.push_back(d);
+                }
+            }
+        }
+        debug_assert_eq!(done, ns, "the segments' downstream links form a forest");
+    }
+    // ADR Finding 148-J — the PIECES: each channel segment cut at every index where a channel reach joins it below its
+    // head (the drainage's T3b confluence), so that every piece's upstream pieces join it at its head
+    let mut splits: Vec<Vec<usize>> = vec![Vec::new(); ns];
+    for s in 0..ns {
+        if start[s].is_none() {
+            continue;
+        }
+        match down_seg(s) {
+            Some((d, j)) if start[d].is_some_and(|st| j > st) => splits[d].push(j),
+            Some(_) => {}
+            None => {
+                if segs[s].downstream.is_some_and(|d| d < ns) {
+                    unlinked_joins += 1;
+                }
+            }
         }
     }
-    let mut seg_river = vec![u32::MAX; ns];
-    let mut chains: Vec<Vec<usize>> = Vec::new();
+    #[derive(Clone, Copy)]
+    struct Piece {
+        seg: usize,
+        a: usize,
+        b: usize,
+    }
+    let mut pieces: Vec<Piece> = Vec::new();
+    let mut seg_pieces: Vec<std::ops::Range<usize>> = vec![0..0; ns];
     for s in 0..ns {
-        if cont_up[s] != usize::MAX {
-            continue; // not a head: it continues an upstream reach
+        let Some(st) = start[s] else { continue };
+        let n = segs[s].points.len();
+        if st >= n {
+            continue;
         }
-        let mut chain = vec![s];
-        let mut c = s;
-        while let Some(d) = segs[c].downstream {
-            if d >= ns || cont_up[d] != c {
+        let mut cuts: Vec<usize> = splits[s].iter().copied().filter(|&j| j > st && j < n).collect();
+        cuts.sort_unstable();
+        cuts.dedup();
+        let p0 = pieces.len();
+        let mut a = st;
+        for &j in &cuts {
+            pieces.push(Piece { seg: s, a, b: j - 1 });
+            a = j;
+        }
+        pieces.push(Piece { seg: s, a, b: n - 1 });
+        seg_pieces[s] = p0..pieces.len();
+    }
+    let np = pieces.len();
+    let piece_at = |s: usize, j: usize| -> Option<usize> { seg_pieces[s].clone().find(|&p| pieces[p].a == j) };
+    // each piece's downstream piece
+    let down: Vec<Option<usize>> = (0..np)
+        .map(|p| {
+            let pc = pieces[p];
+            if p + 1 < seg_pieces[pc.seg].end {
+                return Some(p + 1);
+            }
+            let (d, j) = down_seg(pc.seg)?;
+            start[d]?;
+            piece_at(d, j)
+        })
+        .collect();
+    // a piece's catchment at its own end: the segment's for its last piece, else the accumulation there, scaled
+    let piece_catch = |p: usize| -> f32 {
+        let pc = pieces[p];
+        if pc.b + 1 == segs[pc.seg].points.len() { catch(pc.seg) } else { acc[cell_of(segs[pc.seg].points[pc.b])] * k_seg[pc.seg] }
+    };
+    // the continuing upstream piece: the largest catchment (ties: the lowest piece) — Hack's convention at every junction
+    let mut cont_up = vec![usize::MAX; np];
+    for p in 0..np {
+        if let Some(d) = down[p]
+            && (cont_up[d] == usize::MAX || piece_catch(p) > piece_catch(cont_up[d]) || (piece_catch(p) == piece_catch(cont_up[d]) && p < cont_up[d]))
+        {
+            cont_up[d] = p;
+        }
+    }
+    // the T3b joins, and those where the joining reach is the larger (the receiver's reach is cut there)
+    let (mut mid_joins, mut mid_joins_larger) = (0usize, 0usize);
+    for p in 0..np {
+        let Some(d) = down[p] else { continue };
+        if pieces[d].seg != pieces[p].seg && pieces[d].a > 0 {
+            mid_joins += 1;
+            if cont_up[d] == p {
+                mid_joins_larger += 1;
+            }
+        }
+    }
+    let mut piece_river = vec![u32::MAX; np];
+    let mut chains: Vec<Vec<usize>> = Vec::new();
+    for p in 0..np {
+        if cont_up[p] != usize::MAX {
+            continue; // not a head: it continues an upstream piece
+        }
+        let mut chain = vec![p];
+        let mut c = p;
+        while let Some(d) = down[c] {
+            if cont_up[d] != c {
                 break;
             }
             chain.push(d);
@@ -695,28 +833,27 @@ pub fn build_rivers_ll(dr: &C1DrainageResult, field: &GridF32, ss: &SteinSteinPa
         }
         let rid = chains.len() as u32;
         for &x in &chain {
-            seg_river[x] = rid;
+            piece_river[x] = rid;
         }
         chains.push(chain);
     }
     let nr = chains.len();
-    let kind_of: Vec<SegmentKind> = chains.iter().map(|c| dr.segment_kind.get(*c.last().expect("non-empty")).copied().unwrap_or(SegmentKind::Watercourse)).collect();
+    let kind_of: Vec<SegmentKind> = chains.iter().map(|c| dr.segment_kind.get(pieces[*c.last().expect("non-empty")].seg).copied().unwrap_or(SegmentKind::Watercourse)).collect();
     // the trace of each river (cell centres) with its bed, discharge and area, and its confluence end point
     let mut traces: Vec<Trace> = Vec::with_capacity(nr);
     for chain in &chains {
         let mut t = Trace { pts: Vec::new(), bed: Vec::new(), cells: Vec::new(), q: Vec::new(), area: Vec::new() };
-        for &s in chain {
+        for &p in chain {
+            let Piece { seg: s, a: ia, b: ib } = pieces[p];
             let prof = dr.segment_profile_m.get(s);
             let qprof = dr.segment_discharge_profile_m3s.get(s);
             let q_seg = dr.segment_discharge_m3s.get(s).copied().unwrap_or(0.0);
-            // the accumulation's scale to the segment's (possibly signified) catchment, at its own end (Finding 49)
-            let own = segs[s].points.get(own_end(segs, s)).map_or(0.0, |&(x, y)| acc[y as usize * w + x as usize]);
-            let k_s = if own > 0.0 { catch(s) / own } else { 1.0 };
             let a_cap = catch(s) * cell_km2;
-            for (i, &(x, y)) in segs[s].points.iter().enumerate() {
+            for i in ia..=ib {
+                let (x, y) = segs[s].points[i];
                 let c = y as usize * w + x as usize;
-                let q = qprof.and_then(|p| p.get(i).copied()).unwrap_or(q_seg);
-                let a = (acc[c] * k_s * cell_km2).min(a_cap).max(0.0);
+                let q = qprof.and_then(|pr| pr.get(i).copied()).unwrap_or(q_seg);
+                let a = (acc[c] * k_seg[s] * cell_km2).min(a_cap).max(0.0);
                 if t.cells.last() == Some(&c) {
                     // the junction cell shared with the previous reach: the downstream reach's values
                     *t.q.last_mut().expect("non-empty") = q;
@@ -725,42 +862,55 @@ pub fn build_rivers_ll(dr: &C1DrainageResult, field: &GridF32, ss: &SteinSteinPa
                 }
                 t.cells.push(c);
                 t.pts.push([x as f32 + 0.5, y as f32 + 0.5]);
-                t.bed.push(prof.and_then(|p| p.get(i).copied()).unwrap_or(zm[c]));
+                t.bed.push(prof.and_then(|pr| pr.get(i).copied()).unwrap_or(zm[c]));
                 t.q.push(q);
                 t.area.push(a);
             }
         }
-        // a river ending in a confluence: its last point must be the receiving river's cell
-        let last = *chain.last().expect("non-empty chain");
-        if let Some(d) = segs[last].downstream
-            && d < ns
-            && let Some(&lc) = t.cells.last()
-        {
-            let dcells: Vec<usize> = segs[d].points.iter().map(|&(x, y)| y as usize * w + x as usize).collect();
-            if !dcells.contains(&lc) {
-                let r = recv(lc).filter(|r| dcells.contains(r)).or_else(|| dcells.first().copied());
-                if let Some(r) = r {
-                    let (q, a) = (*t.q.last().expect("non-empty"), *t.area.last().expect("non-empty"));
-                    t.cells.push(r);
-                    t.pts.push([(r % w) as f32 + 0.5, (r / w) as f32 + 0.5]);
-                    t.bed.push(zm[r]);
-                    t.q.push(q);
-                    t.area.push(a);
-                }
+        // a river ending in a confluence: its last point is the receiving piece's first cell
+        if let Some(pd) = down[*chain.last().expect("non-empty chain")] {
+            let (x, y) = segs[pieces[pd].seg].points[pieces[pd].a];
+            let r = y as usize * w + x as usize;
+            if t.cells.last() != Some(&r) {
+                let (q, a) = (*t.q.last().expect("non-empty"), *t.area.last().expect("non-empty"));
+                t.cells.push(r);
+                t.pts.push([x as f32 + 0.5, y as f32 + 0.5]);
+                t.bed.push(zm[r]);
+                t.q.push(q);
+                t.area.push(a);
             }
         }
         traces.push(t);
     }
+    // the mouth's catchment (cells), discharge and channel width
+    let mouth_attr: Vec<(f32, f32, f32)> = chains
+        .iter()
+        .map(|chain| {
+            let p = *chain.last().expect("non-empty");
+            let pc = pieces[p];
+            if pc.b + 1 == segs[pc.seg].points.len() {
+                (catch(pc.seg), dr.segment_discharge_m3s.get(pc.seg).copied().unwrap_or(0.0), dr.segment_width_m.get(pc.seg).copied().unwrap_or(0.0))
+            } else {
+                let q = dr.segment_discharge_profile_m3s.get(pc.seg).and_then(|pr| pr.get(pc.b).copied()).unwrap_or(0.0);
+                (piece_catch(p), q, BED_WIDTH_A_DEFAULT * q.max(0.0).powf(BED_WIDTH_B))
+            }
+        })
+        .collect();
+    let seg_list: Vec<Vec<usize>> = chains
+        .iter()
+        .map(|chain| {
+            let mut v: Vec<usize> = chain.iter().map(|&p| pieces[p].seg).collect();
+            v.dedup();
+            v
+        })
+        .collect();
+    let end_piece: Vec<Option<usize>> = chains.iter().map(|c| down[*c.last().expect("non-empty")]).collect();
     // the fixed trace points (Finding 147-X): the endpoints; each confluence point on its receiver with the receiver's
     // trace neighbours; the tributary's second-to-last point
     let mut fixed: Vec<Vec<bool>> = traces.iter().map(|t| (0..t.pts.len()).map(|i| i == 0 || i + 1 == t.pts.len()).collect()).collect();
-    for (ri, chain) in chains.iter().enumerate() {
-        let last = *chain.last().expect("non-empty");
-        let Some(d) = segs[last].downstream else { continue };
-        if d >= ns || seg_river[d] == u32::MAX {
-            continue;
-        }
-        let rj = seg_river[d] as usize;
+    for ri in 0..nr {
+        let Some(pd) = end_piece[ri] else { continue };
+        let rj = piece_river[pd] as usize;
         let Some(&lc) = traces[ri].cells.last() else { continue };
         let n0 = traces[ri].pts.len();
         if n0 >= 2 {
@@ -834,7 +984,10 @@ pub fn build_rivers_ll(dr: &C1DrainageResult, field: &GridF32, ss: &SteinSteinPa
             t += l;
         }
     }
-    let mut stats = RiversLlStats { mid_joins, mid_joins_larger, ..Default::default() };
+    let mut stats = RiversLlStats { mid_joins, mid_joins_larger, unlinked_joins, ..Default::default() };
+    if with_stats {
+        stats.trace_cells = traces.iter().map(|t| t.cells.iter().map(|&c| c as u32).collect()).collect();
+    }
     // outlet labels for the ridge-crossing instrument (bench only)
     let outlet: Option<Vec<u32>> = with_stats.then(|| {
         let n = w * h;
@@ -1033,6 +1186,39 @@ pub fn build_rivers_ll(dr: &C1DrainageResult, field: &GridF32, ss: &SteinSteinPa
             sample(&p, &o, &mut before, None);
             stats.above_bed_before.extend(before);
             let fin = &finals[ri];
+            // ADR Finding 148-J2 — each final edge cut exactly at the cell boundaries
+            if let Some(ol) = outlet.as_ref() {
+                for i in 0..fin.pts.len().saturating_sub(1) {
+                    let (a, b) = (fin.pts[i], fin.pts[i + 1]);
+                    let l = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
+                    if l < 1e-9 {
+                        continue;
+                    }
+                    let mut ts: Vec<f32> = vec![0.0, 1.0];
+                    for ax in 0..2 {
+                        let (lo, hi) = (a[ax].min(b[ax]), a[ax].max(b[ax]));
+                        let mut g = lo.floor() + 1.0;
+                        while g < hi {
+                            ts.push((g - a[ax]) / (b[ax] - a[ax]));
+                            g += 1.0;
+                        }
+                    }
+                    ts.sort_by(f32::total_cmp);
+                    let (o0, o1) = (fin.org[i].min(fin.org[i + 1]), fin.org[i].max(fin.org[i + 1]));
+                    for k in 0..ts.len() - 1 {
+                        if (ts[k + 1] - ts[k]) * l <= 1e-3 {
+                            continue;
+                        }
+                        let tm = 0.5 * (ts[k] + ts[k + 1]);
+                        let q = [a[0] + tm * (b[0] - a[0]), a[1] + tm * (b[1] - a[1])];
+                        let qc = (q[1].floor() as i64).rem_euclid(h as i64) as usize * w + (q[0].floor() as i64).rem_euclid(w as i64) as usize;
+                        if ol[qc] != ol[t.cells[nearest(q, o0, o1)]] {
+                            stats.ridge_cross_exact += 1;
+                            stats.ridge_stretch_len.push((ts[k + 1] - ts[k]) * l);
+                        }
+                    }
+                }
+            }
             let (k, c) = sample(&fin.pts, &fin.org, &mut stats.above_bed_after, Some(&mut stats.lateral_cells));
             stats.samples += k;
             stats.ridge_cross_smoothed += c.len();
@@ -1050,13 +1236,8 @@ pub fn build_rivers_ll(dr: &C1DrainageResult, field: &GridF32, ss: &SteinSteinPa
     // attributes
     let cell_km = cell_km2.sqrt();
     let end_of = |ri: usize| -> RiverEnd {
-        let chain = &chains[ri];
-        let last = *chain.last().expect("non-empty");
-        if let Some(d) = segs[last].downstream
-            && d < ns
-            && seg_river[d] != u32::MAX
-        {
-            return RiverEnd::Confluence { river_id: seg_river[d] };
+        if let Some(pd) = end_piece[ri] {
+            return RiverEnd::Confluence { river_id: piece_river[pd] };
         }
         let lc = *traces[ri].cells.last().expect("non-empty");
         let probe: Vec<usize> = std::iter::once(lc).chain(recv(lc)).collect();
@@ -1108,8 +1289,6 @@ pub fn build_rivers_ll(dr: &C1DrainageResult, field: &GridF32, ss: &SteinSteinPa
     };
     let mut rivers: Vec<RiverLl> = (0..nr)
         .map(|ri| {
-            let chain = &chains[ri];
-            let last = *chain.last().expect("non-empty");
             let kind = kind_of[ri];
             let end = end_of(ri);
             let end_lake = match end {
@@ -1130,14 +1309,14 @@ pub fn build_rivers_ll(dr: &C1DrainageResult, field: &GridF32, ss: &SteinSteinPa
             RiverLl {
                 id: ri as u32,
                 kind,
-                segments: chain.clone(),
+                segments: seg_list[ri].clone(),
                 length_km: poly_len(&pts) * cell_km,
                 points: pts,
                 vertex: vertex_of(ri),
-                catchment_km2: catch(last) * cell_km2,
-                strahler: (kind == SegmentKind::Watercourse).then(|| chain.iter().map(|&s| segs[s].strahler_order).max().unwrap_or(0)),
-                discharge_m3s: dr.segment_discharge_m3s.get(last).copied().unwrap_or(0.0),
-                width_m: dr.segment_width_m.get(last).copied().unwrap_or(0.0),
+                catchment_km2: mouth_attr[ri].0 * cell_km2,
+                strahler: (kind == SegmentKind::Watercourse).then(|| seg_list[ri].iter().map(|&s| segs[s].strahler_order).max().unwrap_or(0)),
+                discharge_m3s: mouth_attr[ri].1,
+                width_m: mouth_attr[ri].2,
                 end,
                 lakes_crossed: lakes.into_iter().collect(),
                 falls: Vec::new(),
@@ -1282,12 +1461,10 @@ mod tests {
         assert_eq!(rdp(&pts, &fixed, 0.1), vec![0, 4, 9]);
     }
 
-    /// ADR Finding 147-X, amendment 2 — a reach joining its receiver BELOW its head (the drainage's T3b confluence)
-    /// ends in a confluence on it; only a reach joining at the head continues it. The negative control: the mid-joining
-    /// reach is the larger one, so the old rule (the largest catchment) would have chained it and jumped back to the
-    /// receiver's head.
-    #[test]
-    fn a_reach_joining_below_the_head_ends_in_a_confluence() {
+    /// A drainage with a receiver (segment 0, head at (1,1)), a reach joining it at its head (1) and a reach joining it
+    /// at (3,1), below its head (2, the drainage's T3b confluence), whose catchment is `mid_catch` cells. The receiver's
+    /// accumulation above the junction, at (2,1), is 7.
+    fn t3b_drainage(mid_catch: f32) -> C1DrainageResult {
         use crate::tectonics_c1::drainage::Navigability;
         use crate::terrain::flow::{FlowResult, RiverNetwork, RiverSegment};
         let seg = |points: Vec<(u32, u32)>, upstream: Vec<usize>, downstream: Option<usize>| RiverSegment {
@@ -1299,28 +1476,25 @@ mod tests {
             upstream,
             downstream,
         };
-        // 0: the receiver, head at (1,1); 1: joins at its head; 2: joins at (3,1), mid-way, and is the larger
         let segs = vec![
             seg(vec![(1, 1), (2, 1), (3, 1), (4, 1), (5, 1)], vec![1, 2], None),
             seg(vec![(1, 4), (1, 3), (1, 2), (1, 1)], vec![], Some(0)),
             seg(vec![(3, 5), (3, 4), (3, 3), (3, 2), (3, 1)], vec![], Some(0)),
         ];
+        let mut acc = GridF32::new(8, 8, 1.0);
+        for (x, y, v) in [(1, 1, 6.0), (2, 1, 7.0), (3, 1, 7.0 + mid_catch), (4, 1, 8.0 + mid_catch), (5, 1, 9.0 + mid_catch), (1, 4, 2.0), (1, 3, 3.0), (1, 2, 5.0), (3, 2, mid_catch)] {
+            acc.data[y * 8 + x] = v;
+        }
         let n = segs.len();
-        let dr = C1DrainageResult {
-            flow: FlowResult {
-                filled: GridF32::new(8, 8, 0.0),
-                direction: vec![DIR_NONE; 64],
-                accumulation: GridF32::new(8, 8, 1.0),
-                basins: vec![0; 64],
-                num_basins: 1,
-            },
+        C1DrainageResult {
+            flow: FlowResult { filled: GridF32::new(8, 8, 0.0), direction: vec![DIR_NONE; 64], accumulation: acc, basins: vec![0; 64], num_basins: 1 },
             segment_drainage_km2: vec![1.0; n],
             segment_navigability: vec![Navigability::NonNavigable; n],
             segment_discharge_m3s: vec![1.0; n],
             segment_width_m: vec![5.0; n],
             segment_profile_m: segs.iter().map(|s| vec![100.0; s.points.len()]).collect(),
             segment_discharge_profile_m3s: segs.iter().map(|s| vec![1.0; s.points.len()]).collect(),
-            segment_catchment_cells: vec![20.0, 5.0, 10.0],
+            segment_catchment_cells: vec![9.0 + mid_catch, 5.0, mid_catch],
             segment_kind: vec![SegmentKind::Watercourse; n],
             segment_source_lake: vec![None; n],
             rivers: RiverNetwork { segments: segs },
@@ -1328,19 +1502,60 @@ mod tests {
             lake_map: vec![0; 64],
             width: 8,
             height: 8,
-        };
+        }
+    }
+
+    /// ADR Finding 148-J1 — at a T3b junction the LARGER stream continues (Hack's convention): the receiver's reach is
+    /// cut there, and its upper piece ends in a confluence on the river that continues. The negative control: when the
+    /// joining reach is the smaller one, the receiver continues and the joining reach ends on it. Neither trace jumps
+    /// back to the receiver's head.
+    #[test]
+    fn at_a_t3b_junction_the_larger_stream_continues() {
         let field = GridF32::new(8, 8, 0.6);
-        let (r, st) = build_rivers_ll(&dr, &field, &SteinSteinParams::default(), 1.0, RiversLlParams::default(), true);
+        let ss = SteinSteinParams::default();
+        // the joining reach (10) is larger than the receiver above the junction (7)
+        let dr = t3b_drainage(10.0);
+        let (r, st) = build_rivers_ll(&dr, &field, &ss, 1.0, RiversLlParams::default(), true);
         assert_eq!(r.len(), 2, "{:?}", r.iter().map(|x| &x.segments).collect::<Vec<_>>());
-        let main = r.iter().find(|x| x.segments.contains(&0)).unwrap();
-        assert_eq!(main.segments, vec![1, 0], "the head-joining reach continues the receiver");
-        let trib = r.iter().find(|x| x.segments == vec![2]).unwrap();
-        assert_eq!(trib.end, RiverEnd::Confluence { river_id: main.id }, "the mid-joining reach ends on it");
-        assert_eq!(*trib.points.last().unwrap(), [3.5, 1.5], "at the receiver's junction cell");
-        assert!(main.points.contains(&[3.5, 1.5]), "which is a vertex of the receiver");
+        let main = r.iter().find(|x| x.segments == vec![2, 0]).expect("the joining reach continues the receiver's tail");
+        let upper = r.iter().find(|x| x.segments == vec![1, 0]).expect("the receiver's upper piece is its own river");
+        assert_eq!(upper.end, RiverEnd::Confluence { river_id: main.id });
+        assert_eq!(*upper.points.last().unwrap(), [3.5, 1.5], "it ends at the junction cell");
+        assert!(main.points.contains(&[3.5, 1.5]), "which is a vertex of the continuing river");
+        assert!((upper.catchment_km2 - 7.0).abs() < 1e-3, "its mouth is the receiver above the junction");
         assert_eq!((st.mid_joins, st.mid_joins_larger), (1, 1));
-        // the receiver's polyline never steps back westward (no jump back to its head)
-        assert!(main.points.windows(2).all(|p| p[1][0] >= p[0][0] - 1e-6 || p[1][1] < p[0][1]), "{:?}", main.points);
+        // the negative control: the joining reach (5) is smaller
+        let dr = t3b_drainage(5.0);
+        let (r, st) = build_rivers_ll(&dr, &field, &ss, 1.0, RiversLlParams::default(), true);
+        assert_eq!(r.len(), 2);
+        let main = r.iter().find(|x| x.segments == vec![1, 0]).expect("the receiver continues");
+        let trib = r.iter().find(|x| x.segments == vec![2]).expect("the joining reach is a tributary");
+        assert_eq!(trib.end, RiverEnd::Confluence { river_id: main.id });
+        assert_eq!((st.mid_joins, st.mid_joins_larger), (1, 0));
+        assert!(main.points.windows(2).all(|p| p[1][0] >= p[0][0] - 1e-6 || p[1][1] < p[0][1]), "no jump back: {:?}", main.points);
+    }
+
+    /// ADR Finding 148-M — the head rule: a reach with no eligible cell is not a channel unless a channel joins it; a
+    /// reach is channel from its first eligible cell. The negative control: an index everywhere above the threshold
+    /// keeps the whole network.
+    #[test]
+    fn the_head_rule_trims_and_removes_reaches() {
+        let field = GridF32::new(8, 8, 0.6);
+        let ss = SteinSteinParams::default();
+        let dr = t3b_drainage(10.0);
+        let all_on = vec![1.0f32; 64];
+        let rule = HeadRule { index: &all_on, threshold: 0.5, a_min_cells: 0.0 };
+        let (r0, _) = build_rivers_ll_heads(&dr, &field, &ss, 1.0, RiversLlParams::default(), false, Some(&rule));
+        let (r1, _) = build_rivers_ll(&dr, &field, &ss, 1.0, RiversLlParams::default(), false);
+        assert_eq!(r0.iter().map(|x| x.points.clone()).collect::<Vec<_>>(), r1.iter().map(|x| x.points.clone()).collect::<Vec<_>>(), "all eligible = no rule");
+        // only (3,3) on the joining reach and nothing on segment 1 or on the receiver's head is eligible
+        let mut idx = vec![0.0f32; 64];
+        idx[3 * 8 + 3] = 1.0;
+        let rule = HeadRule { index: &idx, threshold: 0.5, a_min_cells: 0.0 };
+        let (r, _) = build_rivers_ll_heads(&dr, &field, &ss, 1.0, RiversLlParams::default(), false, Some(&rule));
+        assert_eq!(r.len(), 1, "segment 1 and the receiver's head are not channels: {:?}", r.iter().map(|x| &x.segments).collect::<Vec<_>>());
+        assert_eq!(r[0].points[0], [3.5, 3.5], "the channel starts at the eligible cell");
+        assert_eq!(*r[0].points.last().unwrap(), [5.5, 1.5], "and runs down to the end unconditionally");
     }
 
     /// The 4-significant-digit rounding of the per-vertex attributes.

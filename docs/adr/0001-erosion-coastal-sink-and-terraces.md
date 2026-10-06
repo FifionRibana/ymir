@@ -20130,7 +20130,9 @@ local dump showed traces that jump back.
   there.
 - Fixed: only a reach joining at the head continues its receiver; the others end in a confluence on it. A permanent
   test with a negative control.
-- **2 261 such junctions; at 831 the larger stream ends on the smaller** (Hack's convention broken). The alternative
+- **2 261 such junctions; at 831 the larger stream ends on the smaller** (Hack's convention broken). **[CORRECTED in
+  F148: 465, not 831. The count compared `segment_catchment_cells`, signified at the témoin's geographic scale ratio
+  7.5 (× 56.25), with the real `flow.accumulation`.]** The alternative
   splits the receiver's reach and breaks the segments' 1 : 1 partition: the author's decision.
 - Rivers: 9 786 → 10 246.
 
@@ -20205,3 +20207,99 @@ are gone.
 - the 831 T3b junctions (split or keep);
 - the corner-touch ridge instrument;
 - your look in Living Landz.
+
+## Finding 148 — rivers, extension 1 of 2: channel heads by convergence measured, and the stop rule fires (no threshold removes half the bundles and micro-rivers while losing ≤ 1 % of the control; the bundles' heads ARE planar, AUC 0.78 at the head, but the construction's flat floors hide the control's convergence); Hack holds at the T3b junctions (465 cuts, F147's "831" was a units error); the lake 1000011's outlet is traced and the core's 1-cell check misses it
+
+**Status: M measured, B NOT built (the stop rule); J built in the export; nothing committed.** Report and raw outputs:
+`docs/reports/c1_continental_buoyancy/f148_channel_heads/` (`finding_148.md`).
+- F147 was committed (`254c66f`).
+- Instruments declared before measuring (`f148_declared.md`).
+
+**The author's criterion, recorded as given:** « Tête de chenal par convergence. Logiquement ça devrait faire
+disparaître les faisceaux parallèles superflus. Le masquage peut être implémenté à l'affichage en même temps, ce n'est
+pas exclusif (un toggle). Enfin la géologie. » (2026-10-04). Limit: 2 rounds.
+
+**Recorded, proposed by the reviewer and not contested by the author:**
+- cut the receiving reach at the junctions that violate Hack (the 1 : 1 match with `rivers.json` dropped);
+- amend the ridge instrument for zero-length corner touches;
+- a = 5 by default;
+- the grid's radius and origin are verified on Living Landz's side.
+
+**G — how a river is born**: by AREA only.
+- The rule: ≥ 20 km², plus the main stem of the largest sub-20 km² branch feeding such a cell, up to A_c = 0.1 km²
+  (`hd.rs:725–731`, `flow.rs:1200–1255`).
+- The designation also reaches the lakes: `resolve_exorheic_without_outlet` relabels an Exorheic lake with no reach
+  starting on its shore as Unresolved.
+- So the measured head rule lives in the `rivers_ll` export only.
+
+**J — built (the export; format 0.4.0):**
+- `rivers_ll` chains PIECES. A segment is cut wherever a reach joins it below its head, and the largest catchment
+  continues.
+- **0 Hack violations** of 7 984 confluences; 465 receivers cut; still **0 crossings, 0 self-intersections**; river
+  count unchanged (10 246).
+- **F147's "831" was a units error**: the témoin runs at a geographic scale ratio of 7.5, and `segment_catchment_cells`
+  is signified (× 56.25 on all 16 226 segments) while `flow.accumulation` is real. Corrected in place above.
+- **The ridge instrument, amended as declared** (the exact length in an off-outlet cell, > 0.001 cell): **134** against
+  the sample instrument's 23.
+  - The amendment removes the corner touches but sees the short stretches the sampling stepped over: all ≤ 0.098
+    cell (4.8 m), 2.5 cells in all over 21 541 km.
+  - A length tolerance would be a second amendment: the reviewer's.
+
+**K — the lake 1000011**: Unresolved (`NoOutletReach`).
+- **Its outlet IS traced**: spillway 16217, `source_lake = 1000011`, **1 625 m³/s**.
+- It starts at the col, **2 cells** from the footprint: a rim cell at the lake's own level (459.3 m) lies between,
+  outside the footprint.
+- `exorheic_lakes_missing_outlet` accepts a source within 1 cell, so the lake is relabelled. The viz panel searches 2
+  cells, finds the spillway's watercourse, and tests only `Endorheic`, so it says "exoréique".
+- **The panel is right, the core's label is wrong.** Nothing is corrected (it is not a false display).
+- **Queue, a named defect**: `exorheic_lakes_missing_outlet` misses a traced spillway whose col sits behind a rim cell
+  at the lake's level. A candidate fix: count the segment tagged `source_lake`.
+
+**M — the reviewer's hypothesis, measured:**
+- The index: C = div(∇z/|∇z|), Gaussian σ = 2 cells, unit-tested with a plane as the negative control.
+- The populations:
+  - (a) 873 fusion candidates;
+  - (b) 705 micro-rivers into a lake (< 1 km);
+  - (c) a control of 2 828 rivers (≥ 10 km, or ≥ 50 % on a construction floor).
+- AUC P(c > a ∪ b), max / head / median:
+  - convergence σ = 2: **0.736 / 0.784 / 0.753**;
+  - σ = 1: 0.796 / **0.857** / 0.837;
+  - σ = 4: 0.713 / 0.748 / 0.722;
+  - **A·S² 0.462 / 0.418 / 0.306** (it separates the wrong way: the bundles sit on steeper ground).
+- **The heads of (a) and (b) are planar** (median C −0.12 / −0.07 km⁻¹ against the control's +1.26): the hypothesis
+  holds at the head.
+- **The rule simulated** (one eligible cell along the trace, then the downstream closure; lake outlets and spillways
+  exempt):
+  - at the control's p0.5 (θ = −1.24 km⁻¹) it removes 2.4 % of (a)∪(b) for 0.99 % of (c);
+  - removing ≥ 50 % needs θ ≈ 0 to +0.3, where (c) loses 16–30 %.
+- **The stop rule fires for both criteria: B not built.**
+- **Why** (a hypothesis to check): 16 % of the control has no convergent cell along its trace. 2 695 of 2 828 control
+  rivers lie in the construction's planar floors (178 m to 2.9 km wide), where C ≈ 0 on the centreline.
+- **The cost** if built: +0.17 s per world (the field).
+
+**Predictions:**
+- **The reviewer's (hypotheses to check)**:
+  - held: better than A·S², the cost, the meta;
+  - refuted: AUC > 0.85 at σ = 2 (0.784 at the head; 0.857 only at σ = 1), "≥ 70 % of the pairs at no control loss"
+    (1.5 %);
+  - **K's "two sources": refuted** (the trace produced the outlet);
+  - G-micro and G-lakes not reached.
+- **Mine**:
+  - held: Hack 0, crossings 0, the pairs < 30 %, the 2-cell mechanism of K, the meta;
+  - refuted: the amended ridges ≤ 3 (134), the max AUCs > 0.85, the head AUC ≤ 0.75, **"the bundles are incised
+    channels"** (their heads are planar), (b) > 60 %, the stop rule not firing, K a display defect, the cost
+    0.5–2 s.
+
+**Built:**
+- `terrain::convergence` (the contour convergence; tests);
+- `export::rivers_ll`: the pieces (Hack), the exact ridge instrument, a gated `HeadRule` / `build_rivers_ll_heads`.
+  Bench only: production passes none.
+- Tests: lib + 3 (605 → 608): the convergence's signs, with a plane as the negative control; the Gaussian; the head
+  rule with its control. F147's T3b test is replaced by the Hack test with its control.
+
+**For the author (round 2 of the extension):**
+- the display toggle alone (the F147 flags plus a `micro_lake_inflow` flag; it needs no head rule);
+- a head rule on the HEAD score, measured with the same stop rule;
+- the K fix in the core;
+- the ridge tolerance.
+- Then the geology.

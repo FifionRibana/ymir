@@ -1,4 +1,4 @@
-# `rivers_ll.json` — rivers for Living Landz (format 0.3.0)
+# `rivers_ll.json` — rivers for Living Landz (format 0.4.0)
 
 A vector layer of the `.ymir` container (layer id `rivers_ll`), written next to `rivers.json`, which is unchanged.
 It holds the same drainage as `rivers.json`, regrouped into **rivers** (main stems), each a **smoothed polyline that
@@ -9,6 +9,11 @@ Produced by `ymir_core::export::rivers_ll` (ADR Findings 146–147).
 
 ## Changes
 
+- **0.4.0** (Finding 148): **Hack's convention holds at every confluence.**
+  - Where a reach joins another below its head (the drainage's T3b confluence), the larger stream continues and the
+    receiving reach is cut there.
+  - So a `rivers.json` segment may now belong to two rivers, and `segments` lists the segments a river covers wholly
+    or in part (the 1 : 1 match is dropped).
 - **0.3.0** (Finding 147):
   - **removed**: the hex edges (`hex_grid`, `hex_edges` and each river's `hex_edges` count). Living Landz computes them
     from the polylines, so the grid lives in one place. A reference for that computation is
@@ -31,7 +36,7 @@ Produced by `ymir_core::export::rivers_ll` (ADR Findings 146–147).
 
 ```json
 {
-  "format_version": "0.3.0",
+  "format_version": "0.4.0",
   "coordinate_space": "erosion_grid_cells_continuous",
   "km_per_cell": 0.0488,
   "discharge_source": "accumulated: the climate runoff … per trace point (…)",
@@ -60,7 +65,7 @@ A reader MUST refuse an unknown *major* version.
 |---|---|---|
 | `id` | u32 | the river's id (its index in `rivers`) |
 | `kind` | `"Watercourse"` \| `"Spillway"` | a spillway is the outflow of a closed below-sea basin over its col: no hierarchy |
-| `segments` | [usize] | the `rivers.json` segments it chains, upstream → downstream |
+| `segments` | [usize] | the `rivers.json` segments it covers, wholly or in part, upstream → downstream |
 | `points` | [[f32, f32]] | the smoothed polyline, upstream → downstream |
 | `vertex` | object | per-vertex attributes, parallel to `points` (below) |
 | `length_km` | f32 | the polyline's length |
@@ -114,8 +119,11 @@ Nothing is removed. The flags are for the consumer's selection.
 ## What "a river" is
 
 **A main stem (Hack's convention).** At each confluence, the upstream reach with the largest catchment continues the
-river downstream. Every other reach ends its own river there, with `end = confluence`. Every `rivers.json` segment
-belongs to exactly one river.
+river downstream. Every other reach ends its own river there, with `end = confluence`.
+
+The drainage lets a reach join another below its head (its T3b confluence). The receiving reach is then cut at the
+junction, so the larger of the two streams continues and the other ends there. A `rivers.json` segment may thus be
+shared by two rivers.
 
 ## How the polyline is made
 
