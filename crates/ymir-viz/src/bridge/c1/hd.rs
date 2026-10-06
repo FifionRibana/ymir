@@ -187,6 +187,8 @@ pub struct HdParams {
     /// Debug microscope: derive the coarse tectonic labels (rift/subduction/craton/…)
     /// for the overlay. Costs one extra ~1 s coarse pass; `false` (default) skips it.
     pub emit_tectonic_labels: bool,
+    /// ADR Finding 152 -- the geology rules file (TOML). `None`, or a missing file: the shipped v0 rules.
+    pub geology_rules: Option<PathBuf>,
 }
 
 impl Default for HdParams {
@@ -217,6 +219,7 @@ impl Default for HdParams {
             fracture: None,
             infiltration: None,
             emit_tectonic_labels: false,
+            geology_rules: None,
         }
     }
 }
@@ -320,6 +323,8 @@ pub struct HdResult {
     pub gorge_falls: Vec<(ymir_core::tectonics_c1::valley_construction::GorgeFall, Option<u32>)>,
     /// ADR Finding 146 -- the rivers for Living Landz: main stems smoothed in their valley (the `rivers_ll.json` layer).
     pub rivers_ll: Vec<ymir_core::export::rivers_ll::RiverLl>,
+    /// ADR Finding 152 -- the geology: the rock grid, the zoning context and the favourabilities of the rules loaded.
+    pub geology: Option<GeologyView>,
     /// Physical km per HD cell (`sample_size · domain_km / width`) — for the basal-disc
     /// radius of the volcaniclastic overlay.
     pub km_per_cell: f32,
@@ -1163,6 +1168,50 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     });
     eprintln!("[HD timing] biomes ({:.1}s)", t.elapsed().as_secs_f32());
 
+    // ── ADR Finding 152 -- the geology (read-only: it reads the world, writes only its own buffers) ──
+    let t_geo = Instant::now();
+    let geology = {
+        use ymir_core::climate::precipitation::precip_mm_per_year;
+        use ymir_core::geology::{GeologyInputs, build_geology, rules::load_rules, zone_timed};
+        let z_m: Vec<f32> = eroded.data.iter().map(|&v| ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres(v, &ss)).collect();
+        let precip_mm: Vec<f32> = climate.precipitation.data.iter().map(|&p| precip_mm_per_year(p)).collect();
+        let product = build_geology(&GeologyInputs {
+            seed: spec.seed,
+            grid: spec.grid_size,
+            init: &spec.init_params,
+            run: &run,
+            closures: &spec.closures,
+            field: &eroded,
+            z_m: &z_m,
+            cell_km: window_km / eroded.width as f32,
+            drainage: &drainage,
+            wetland: &wetland_mask,
+            temp_c: &climate.temperature.data,
+            precip_mm: &precip_mm,
+            sample_origin: upscale.sample_origin,
+            sample_size: upscale.sample_size,
+            domain_km: params.domain_km,
+            volcanism: Some(&volc),
+        });
+        let rules = load_rules(params.geology_rules.as_deref());
+        if let Some(e) = &rules.error {
+            eprintln!("[HD geology] rules file refused, the shipped rules are used: {e}");
+        }
+        let (zoning, zoning_s) = zone_timed(&product, &rules.rules);
+        let t = product.timings;
+        eprintln!(
+            "[HD timing] geology ({:.2}s: history {:.2} · rocks {:.2} · context {:.2} · zoning {:.2}) · rules {} ({})",
+            t_geo.elapsed().as_secs_f32(),
+            t.history_s,
+            t.rocks_s,
+            t.context_s,
+            zoning_s,
+            rules.label,
+            &rules.sha256[..12]
+        );
+        GeologyView { product: Arc::new(product), zoning, rules, stage_s: t_geo.elapsed().as_secs_f64(), zoning_s }
+    };
+
     // ── Optional: write the v1 `.ymir` delivery container. ──
     // Explicit opt-in only (never automatic). Ships height (placeholder) +
     // coastline/cliffs (Y-B) + temperature/precipitation/biome (Y-C).
@@ -1185,6 +1234,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             window_km,
             window_offset,
             export_dir,
+            Some(&geology),
         ) {
             // Non-fatal: the product still ships to the UI; surface the reason.
             let _ = tx.send(C1Event::HdFailed { error: format!("export .ymir: {e}") });
@@ -1274,12 +1324,25 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         lake_guard,
         gorge_falls: gorge_falls_res,
         rivers_ll,
+        geology: Some(geology),
     });
     eprintln!(
         "[HD timing] run_hd TOTAL {:.1}s (render is separate, on the UI thread)",
         t_all.elapsed().as_secs_f32()
     );
     let _ = tx.send(C1Event::HdCompleted { result, elapsed: t_all.elapsed() });
+}
+
+/// ADR Finding 152 -- the geology of a world as the viz holds it: the product (rocks + zoning context, fixed for the
+/// world) and the zoning of the rules loaded (the « Recharger les règles » button redoes the zoning only).
+#[derive(Clone, Debug)]
+pub struct GeologyView {
+    pub product: Arc<ymir_core::geology::GeologyProduct>,
+    pub zoning: ymir_core::geology::Zoning,
+    pub rules: ymir_core::geology::rules::LoadedRules,
+    /// Seconds: the whole stage (history + rocks + context + zoning), and the zoning alone.
+    pub stage_s: f64,
+    pub zoning_s: f64,
 }
 
 /// Write a v1 `.ymir` delivery container for `eroded` under `root`
@@ -1303,6 +1366,7 @@ fn export_ymir_container(
     window_km: f32,
     window_offset: [f64; 2],
     root: &Path,
+    geology: Option<&GeologyView>,
 ) -> Result<(), String> {
     let (w, h) = (eroded.width, eroded.height);
 
@@ -1412,6 +1476,17 @@ fn export_ymir_container(
     // constant) — 0 land, 1 ocean (edge-connected), 2 inland (enclosed below-sea).
     let water = connectivity::water_class(eroded, vector::SEA_LEVEL_NORM);
     writer.add_raster_u8("water_class", &water)?;
+    // ADR Finding 152 -- the geology: the rock classes (PNG), the favourabilities (PNG, ¼) and their manifest
+    if let Some(g) = geology {
+        let files = ymir_core::geology::export::export_files(&g.product.rocks, g.product.w, g.product.h, &g.zoning, &g.rules.rules, &g.rules.sha256);
+        for (name, bytes) in &files {
+            match name.as_str() {
+                "geologie_roches.png" => writer.add_encoded_raster_file("geologie_roches", name, bytes, g.product.w, g.product.h)?,
+                "geologie.json" => writer.add_vector_file("geologie", name, bytes)?,
+                _ => writer.add_companion_file(name, bytes)?,
+            }
+        }
+    }
 
     writer.finish()?;
     Ok(())

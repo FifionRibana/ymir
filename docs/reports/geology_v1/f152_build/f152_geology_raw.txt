@@ -1,0 +1,109 @@
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 2m 41s
+     Running tests\f152_geology.rs (target_f152\release\deps\f152_geology-626fb9a9795ed4d7.exe)
+
+running 1 test
+
+==========  Finding 152 . geology v1, the build and its gates (témoin C2 /10 col)  ==========
+test f152_geology has been running for over 60 seconds
+   build 2.53 s: history 0.35 · rocks 0.94 · context 1.23 · fossil belt 106 coarse cells · active belt 865 · merges 6 · edifices 15
+   rocks · share of the non-water cells:
+      Craton (granite, gneiss) (craton): 8.35 %
+      Ceinture (métamorphique) (belt): 14.17 %
+      Volcanique basaltique (basaltic_volcanic): 5.46 %
+      Volcanique d'arc (andésite, tufs) (arc_volcanic): 0.32 %
+      Remplissage de rift (rift_fill): 3.80 %
+      Dépôts meubles récents (loose_deposits): 2.88 %
+      Évaporites (evaporites): 2.40 %
+      Socle continental (basement): 62.62 %
+   d_ref MEASURED = 0.994 (the p90 of d over 168685 belt / arc ¼ cells; p50 0.664) · the rules file says Some(0.994) · g_min Some(0.2)
+   COST · the geology stage 2.58 s (build 2.53 + zoning 0.05) · re-zoning alone 0.05 s, against 249.8 s
+
+   G-nonempty · per resource, the land ¼ cells with favourability ≥ 10 (area), max, placer HD cells:
+      iron                    110819 cells ( 4227.4 km²) · max  40 · placer cells 0
+      gold                    167888 cells ( 6404.4 km²) · max  35 · placer cells 4876
+      silver                  149205 cells ( 5691.7 km²) · max  25 · placer cells 0
+      copper                  144839 cells ( 5525.2 km²) · max  40 · placer cells 0
+      tin                      38066 cells ( 1452.1 km²) · max  30 · placer cells 1342
+      stone                   508807 cells (19409.4 km²) · max  60 · placer cells 0
+      clay                     12654 cells (  482.7 km²) · max  50 · placer cells 0
+      sand_gravel              19258 cells (  734.6 km²) · max  50 · placer cells 0
+      salt                     15726 cells (  599.9 km²) · max  80 · placer cells 0
+      peat                      4332 cells (  165.3 km²) · max  60 · placer cells 0
+      sulphur_obsidian         45104 cells ( 1720.6 km²) · max  60 · placer cells 0
+      gems                     93525 cells ( 3567.7 km²) · max  20 · placer cells 3482
+
+   G-blocks · share within 1 cell of a coarse grid line: rock contacts 0.0302 (333623 cells) · coarse-sourced contacts (craton / belt / rift / basement) 0.0286 (43610) · control (land) 0.0274 → ratios **1.10** / **1.05** · favourability edges ¼ 0.1191 (92497) · control 0.1211 → **0.98** · pass ≤ 1.5
+
+   G-circles · 14 volcanic patches (≥ 20 cells) · Q / Q_disc max **0.704** (pass ≤ 0.8 for every patch) · failing 0
+        238292 cells · Q 0.034 · Q / Q_disc 0.054
+        126540 cells · Q 0.097 · Q / Q_disc 0.158
+        111355 cells · Q 0.150 · Q / Q_disc 0.244
+         50526 cells · Q 0.223 · Q / Q_disc 0.362
+         31983 cells · Q 0.239 · Q / Q_disc 0.387
+         25081 cells · Q 0.223 · Q / Q_disc 0.362
+         16308 cells · Q 0.249 · Q / Q_disc 0.408
+          2532 cells · Q 0.260 · Q / Q_disc 0.424
+          2041 cells · Q 0.202 · Q / Q_disc 0.330
+          1392 cells · Q 0.284 · Q / Q_disc 0.482
+           498 cells · Q 0.310 · Q / Q_disc 0.534
+           299 cells · Q 0.192 · Q / Q_disc 0.325
+            25 cells · Q 0.242 · Q / Q_disc 0.463
+            23 cells · Q 0.369 · Q / Q_disc 0.704
+   G-placers · gold: 1745 ¼ cells raised by the placer · on a river of ≥ 5 km²: **1745 (100.0 %)** · HD placer cells 4876
+   G-placers · tin: 471 ¼ cells raised by the placer · on a river of ≥ 5 km²: **471 (100.0 %)** · HD placer cells 1342
+   G-placers · gems: 1325 ¼ cells raised by the placer · on a river of ≥ 5 km²: **1325 (100.0 %)** · HD placer cells 3482
+   G-veins · gold on all belts (94444 ¼ cells): p10 / p50 / p90 23 / 32 / 35 · max 35 · share ≥ half the max **100.0 %** · mean 30.2 · control C-3b alone: mean 16.5 (**-45.3 %**), p50 11
+   G-veins · tin on all belts (94444 ¼ cells): p10 / p50 / p90 0 / 0 / 30 · max 30 · share ≥ half the max **40.1 %** · mean 11.7 · control C-3b alone: mean 2.8 (**-76.5 %**), p50 0
+   G-veins · gold on fossil belts (37847 ¼ cells): p10 / p50 / p90 33 / 34 / 35 · max 35 · share ≥ half the max **100.0 %** · mean 34.1 · control C-3b alone: mean 8.0 (**-76.4 %**), p50 8
+   G-veins · tin on fossil belts (37847 ¼ cells): p10 / p50 / p90 28 / 29 / 30 · max 30 · share ≥ half the max **100.0 %** · mean 29.2 · control C-3b alone: mean 6.9 (**-76.5 %**), p50 7
+
+   EXPORT · geologie_roches.png 0.65 MB · the 12 favourability PNGs **0.57 MB** · geologie.json 3698 bytes
+   views written to D:\Personnel\Projects\ymir\crates\ymir-core\../../docs/reports/geology_v1/f152_build
+
+==========  end Finding 152 . 465.9 s  ==========
+
+test f152_geology ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 466.18s
+

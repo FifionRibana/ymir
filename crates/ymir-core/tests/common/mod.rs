@@ -532,6 +532,10 @@ pub struct VizLakes {
     /// The conditioned (breached) field, `HdResult.eroded`.
     pub conditioned: GridF32,
     pub drainage: ymir_core::tectonics_c1::drainage::C1DrainageResult,
+    /// ADR Finding 152 -- the HD climate and the wetland mask the geology reads.
+    pub temperature: GridF32,
+    pub precipitation: GridF32,
+    pub wetland: Vec<u8>,
 }
 
 pub fn viz_hd_lakes(k: Knobs, pseed: u64, lat: f32, span: f32) -> VizLakes {
@@ -589,7 +593,7 @@ pub fn viz_hd_lakes_on(wd: &World, k: Knobs, pseed: u64, lat: f32, span: f32) ->
     });
     let dclim =
         DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
-    let mut drainage = assemble_hd_drainage(
+    let bundle = assemble_hd_drainage(
         &conditioned,
         &dclim,
         Some(prebreach),
@@ -599,8 +603,9 @@ pub fn viz_hd_lakes_on(wd: &World, k: Knobs, pseed: u64, lat: f32, span: f32) ->
         7.5,
         infil.as_deref(),
         false,
-    )
-    .drainage;
+    );
+    let wetland = bundle.wetland;
+    let mut drainage = bundle.drainage;
     if wd.volc.enabled {
         crater_lake_pass(
             &conditioned,
@@ -614,7 +619,7 @@ pub fn viz_hd_lakes_on(wd: &World, k: Knobs, pseed: u64, lat: f32, span: f32) ->
     }
     let ekey = bench_eroded_key(k, pseed);
     let digest = hd_drainage_key(&ekey, &dcfg, &ss, lat, &pp, Some(span), 7.5, window_km).digest();
-    VizLakes { digest, conditioned, drainage }
+    VizLakes { digest, conditioned, drainage, temperature: climate.temperature, precipitation: climate.precipitation, wetland }
 }
 
 pub fn pct(v: &[f32], p: f64) -> f32 {

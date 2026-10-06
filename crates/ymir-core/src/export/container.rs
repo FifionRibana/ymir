@@ -34,7 +34,9 @@ use crate::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use super::raw;
 
 /// The exchange-format version this writer emits.
-pub const FORMAT_VERSION: &str = "1.0.0";
+/// 1.1.0 (ADR Finding 152): two additive layers, `geologie_roches` (an 8-bit PNG raster) and `geologie` (its manifest,
+/// which names the favourability PNGs written beside it).
+pub const FORMAT_VERSION: &str = "1.1.0";
 
 // ── Manifest schema (serde, matches docs/WP0_exchange_format.md v1) ────────
 
@@ -334,6 +336,30 @@ impl ContinentWriter {
         std::fs::write(&path, bytes).map_err(|e| format!("Write error: {e}"))
     }
 
+    /// ADR Finding 152 — write a raster already ENCODED (e.g. an 8-bit PNG) and mark the layer present, with its own
+    /// size (a layer may differ from the grid). Errors on an unknown or non-raster layer id.
+    pub fn add_encoded_raster_file(&mut self, id: &str, filename: &str, bytes: &[u8], width: usize, height: usize) -> Result<(), String> {
+        let dir = self.dir.clone();
+        let layer = self.layer_mut(id)?;
+        if layer.kind != "raster" {
+            return Err(format!("Layer '{id}' is not a raster layer"));
+        }
+        layer.file = filename.to_string();
+        layer.width = Some(width);
+        layer.height = Some(height);
+        layer.present = true;
+        std::fs::write(dir.join(filename), bytes).map_err(|e| format!("Write error: {e}"))
+    }
+
+    /// ADR Finding 152 — write a file a layer's own manifest names (the favourability PNGs, named by `geologie.json`).
+    /// It is not a layer of the container's manifest.
+    pub fn add_companion_file(&mut self, filename: &str, bytes: &[u8]) -> Result<(), String> {
+        if filename.contains('/') || filename.contains('\\') || filename == "manifest.json" {
+            return Err(format!("companion file '{filename}': a bare file name, not the manifest"));
+        }
+        std::fs::write(self.dir.join(filename), bytes).map_err(|e| format!("Write error: {e}"))
+    }
+
     /// Stamp a vector layer's `level_m` (e.g. coastline sea level) into the
     /// manifest. Errors on an unknown layer id.
     pub fn set_level_m(&mut self, id: &str, level_m: f64) -> Result<(), String> {
@@ -450,6 +476,15 @@ fn default_layers(w: usize, h: usize) -> Vec<Layer> {
     // 0 = land, 1 = ocean (edge-connected below-sea), 2 = inland (enclosed below-sea).
     water_class.semantics = Some("ymir.WaterClass@v1".to_string());
 
+    // ADR Finding 152 -- the geology: the rock classes (8-bit PNG, `docs/geology_format.md`) and the manifest that names
+    // the favourability PNGs
+    let mut geologie_roches = raster("geologie_roches", "geologie_roches.png", "u8");
+    geologie_roches.endianness = None;
+    geologie_roches.encoding = Some("png".to_string());
+    geologie_roches.semantics = Some("ymir.RockClass@v1".to_string());
+    let mut geologie = vector("geologie", "geologie.json");
+    geologie.semantics = Some("ymir.Geology@v1".to_string());
+
     vec![
         height,
         coastline,
@@ -463,6 +498,8 @@ fn default_layers(w: usize, h: usize) -> Vec<Layer> {
         temperature,
         precipitation,
         water_class,
+        geologie_roches,
+        geologie,
     ]
 }
 

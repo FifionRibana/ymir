@@ -23,6 +23,7 @@ pub mod seed;
 pub mod climate;
 pub mod erosion;
 pub mod export;
+pub mod geology;
 pub mod lakes;
 pub mod tectonics;
 pub mod tectonics_c1;

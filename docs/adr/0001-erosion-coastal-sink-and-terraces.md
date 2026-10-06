@@ -20535,3 +20535,95 @@ committed.** Report, spec and rules proposal: `docs/reports/geology_v1/f151_spec
 - The viz's startup world is the guard's.
 
 **For the author**: edit the rules file; raw or PNG chances; the fossil-belt rule; TOML.
+
+## Finding 152 — geology v1, round 3 of 3: the rock grid, the favourabilities (TOML rules, placers, the structural modulation) and the viz views built, at 2.58 s per world (re-zoning 0.05 s); G-blocks failed then held after the declared terrain snapping; the vein modulation makes no districts (the belts are flat sheets: Ymir has no sub-belt structure); 12 / 12 resources non-empty
+
+**Status: built; nothing committed.** Report and renders: `docs/reports/geology_v1/f152_build/` (`finding_152.md`).
+- Code: `crates/ymir-core/src/geology/`. Rules: `crates/ymir-core/data/geology_rules_v0.toml`. Format:
+  `docs/geology_format.md`.
+- F151 was committed (`5a124bc`).
+- Instruments declared before measuring (`f152_declared.md`), with one amendment, NOT blind.
+
+**The author's decisions, recorded as given:**
+- F151's;
+- « Favorabilité dans Ymir, rareté dans Living Landz »;
+- « Oui, moduler les filons par la fracturation (districts) ».
+- Proposed by the reviewer and not contested: a PNG export, TOML rules, the fossil-belt rule kept as a PROXY, a build
+  with the v0 rules.
+- **The exported value is a relative favourability** (0–100), never a probability nor a deposit.
+
+**Built:**
+- **`geology::history`**: the fossil belts recorded by the read-only observer in a geology pass of its own; the
+  structural density `max(C-3b, exp(−d/25 km))` from the sutures and the past collisions. It is used by the zoning
+  only; a test pins C-3b's density unchanged.
+- **`geology::rocks`**: 9 classes per HD cell, with hardness and colour.
+  - Coarse contacts: bilinear, a Gaussian of 3 km, then snapped to the terrain.
+  - Volcanic rock bound to the cone's relief.
+  - Loose deposits and evaporites from the HD fields.
+- **`geology::rules`**: TOML; unknown keys refused; `modulate = "structural"`.
+  - **d_ref = 0.994 MEASURED** (the p90 of d over the belts and the arc zone).
+  - **g_min = 0.2 DECISION** (declared before measuring, with its consequence: the control cannot pass −80 %).
+- **`geology::zoning`**: the context on the ¼ grid, once per world. AND / MAX; placers downstream along the D8
+  rivers.
+- **The export**: the container 1.1.0 (additive), `geologie_roches.png`, `favorabilite_<id>.png` (¼),
+  `geologie.json` (the rules' SHA-256 and the legends).
+- **The viz**: « ⛏ Géologie » → « Roches », « Chances » (one resource or all, opacity = favourability), « Recharger
+  les règles » with the re-zoning time.
+
+**The gates (the témoin, run 2)**:
+- **G-blocks**: the contacts within 1 cell of a coarse grid line against the land control.
+  - **Run 1 FAILED**: the coarse-sourced contacts were 4.01 ×. A straight coarse edge stays straight, and on the line,
+    under any symmetric smoothing.
+  - **The declared amendment**: the spec's optional terrain snapping (hard classes `+β·a`, soft `−β·a`, `a` the terrain
+    anomaly at ≈ 1.6 km, β = 0.25: contacts along the valleys, PROXY).
+  - **Run 2: 1.05 × (all 1.10 ×, favourability edges 0.98 ×), PASS.**
+- **G-circles**: 14 patches, Q / Q_disc ≤ 0.704. PASS.
+- **G-nonempty**: 12 / 12. Peat is the smallest (165 km²); stone the largest (19 409 km²).
+- **G-placers**: 100 % of the cells a placer raised are on a river.
+- **G-rules**: the permanent test.
+- **G-field**: the C-3b test, and the 6/6 guard = banc (field and lakes) through `run_hd` with the geology stage running. PASS.
+- **G-veins**:
+  - **no districts**: on the fossil belts 100 % of the cells stand above half the maximum (gold p10 / p50 / p90 33 /
+    34 / 35).
+  - The belts and the density come from the same contacts and sutures, and d varies on 25 km, wider than a belt.
+  - **The control (C-3b alone) lowers the fossil-belt gold and tin by −76.4 % / −76.5 %**: the sutures are what make
+    the fossil belts favourable. Reported, not fixed.
+- **The cost**: **2.58 s** in the bench, **2.97–3.32 s per state in `run_hd`** (+1.2–1.3 % of 249.8 s); re-zoning **0.05 s**.
+- **The export**: rocks 0.65 MB, the 12 favourabilities **0.57 MB**.
+
+**The author's look (R)**: the renders use the viz's colours (`geology::render`); the viz itself was not
+screenshotted.
+- No blocks since the amendment.
+- A few coastal basaltic patches still read round.
+- The vein resources are bands, not patches.
+- **Stone is nearly everywhere and hides the others in the « all » view.**
+
+**Predictions:**
+- **The reviewer's (hypotheses to check)**:
+  - refuted: the control < −80 % (−76.4 %, bounded by g_min); copper the smallest (peat); G-blocks without an
+    amendment;
+  - held: 12 non-empty, G-circles, < 5 MB, < 2 s for the re-zoning, the meta;
+  - "< 3 s": held in the bench (2.58), refuted in `run_hd` (2.97–3.32).
+- **Mine**:
+  - held: the control −65 to −80 %, 12 non-empty, 2–6 s;
+  - refuted: districts 20–40 % (100 % flat), the smallest salt or sulphur, G-blocks holding, a cone failing G-circles,
+    1–3 MB (0.57), re-zoning 0.3–1.5 s (0.05).
+
+**Checks after**:
+- `cargo check --workspace` clean; lib 616 (+6); viz 31;
+- **the guard 6 / 6 = banc** (C2 /10 col `a8d2d538d692c2f0`).
+
+**For the author**:
+- look in the viz;
+- tune `geology_rules.toml` (first, stone);
+- districts: accept flat belts, or a fine-scale structural proxy later.
+- **Geology v1 closes after the author's look.**
+
+**Recorded at commit (F153):**
+- **G-blocks held only after the declared amendment**: the contacts snapped to the terrain, an option the
+  specification had provided for.
+- **A known limit of v1: no districts in the belts.** Ymir has no structure finer than a belt. A finer structural proxy
+  can lift it later. The author judges the result good for v1.
+- **The favourability discs around the active volcanoes** (sulphur and obsidian) come from the distance rules
+  (`volcano_within_km`), not from the code. G-circles tested only the rock class. Tuning the file is left to the
+  author.

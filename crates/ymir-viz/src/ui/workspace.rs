@@ -140,6 +140,9 @@ enum HdLayer {
     Precipitation,
     Temperature,
     Biomes,
+    /// ADR Finding 152 -- the rock classes (like the biomes) and the favourabilities (opacity = favourability).
+    Rocks,
+    Chances,
 }
 
 impl HdLayer {
@@ -150,6 +153,8 @@ impl HdLayer {
             HdLayer::Precipitation => "Précipitation",
             HdLayer::Temperature => "Température",
             HdLayer::Biomes => "Biomes",
+            HdLayer::Rocks => "Roches",
+            HdLayer::Chances => "Chances",
         }
     }
     fn desc(self) -> &'static str {
@@ -161,6 +166,8 @@ impl HdLayer {
             }
             HdLayer::Temperature => "Température de surface — gradient latitudinal + lapse rate.",
             HdLayer::Biomes => "Classification de Whittaker (température × précipitation).",
+            HdLayer::Rocks => "Classes de roche (géologie v1) : fixes pour un monde.",
+            HdLayer::Chances => "Favorabilité relative des ressources (0–100) ; opacité = favorabilité.",
         }
     }
 }
@@ -218,6 +225,11 @@ struct WorkspaceState {
     /// spillways that retrace watercourses. Display only.
     rll_hide_fusion: bool,
     rll_hide_retrace: bool,
+    /// ADR Finding 152 -- the geology rules file, the resource the « Chances » view shows (`None`: all, the highest
+    /// favourability wins), and a re-zoning done by « Recharger les règles » (zoning, rules, seconds).
+    geology_rules_path: String,
+    chance_only: Option<usize>,
+    zoning_override: Option<(ymir_core::geology::Zoning, ymir_core::geology::rules::LoadedRules, f64)>,
     inspector_open: bool,
     // Expert params (exposed, wiring deferred — tagged in the UI).
     climat_open: bool,
@@ -416,6 +428,9 @@ impl Default for WorkspaceState {
             rll_min_strahler: 1,
             rll_hide_fusion: false,
             rll_hide_retrace: false,
+            geology_rules_path: "geology_rules.toml".to_string(),
+            chance_only: None,
+            zoning_override: None,
             inspector_open: true,
             climat_open: true,
             relief_open: false,
@@ -769,6 +784,7 @@ fn draw_workspace(
         let is_new = ws.current.as_ref().map(|c| !Arc::ptr_eq(c, result)).unwrap_or(true);
         if is_new {
             ws.current = Some(result.clone());
+            ws.zoning_override = None; // ADR Finding 152 -- a new world: its own zoning
             GUARD_REFUSES.store(
                 result.bench_guard.refuses_numbers() || result.lake_guard.refuses_numbers(),
                 std::sync::atomic::Ordering::Relaxed,
@@ -1086,6 +1102,7 @@ fn left_panel(
                             // Debug microscope overlay — derive the tectonic labels so
                             // the overlay panel has data (one cheap coarse pass).
                             emit_tectonic_labels: true,
+                            geology_rules: Some(std::path::PathBuf::from(&ws.geology_rules_path)),
                         };
                         let _ = bridge.submit_hd(spec, params);
                     }
@@ -2331,6 +2348,7 @@ fn preview_params(ws: &WorkspaceState) -> HdParams {
         fracture: None,
         infiltration: None,
         emit_tectonic_labels: false, // preview is coarse-only; overlays need the HD run
+        geology_rules: None,
     }
 }
 
@@ -2594,7 +2612,8 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                 (2, Some(r)) => ReliefView::Diff(r, DIFF_SAT_M[ws.diff_sat.min(2)]),
                 _ => ReliefView::Hypso,
             };
-            layer_color_image(hd, layer, rm, overlay, overlays, relief)
+            let geo = hd.geology.as_ref().map(|g| (ws.zoning_override.as_ref().map_or(&g.zoning, |o| &o.0), ws.chance_only, g.product.rocks.as_slice()));
+            layer_color_image(hd, layer, rm, overlay, overlays, relief, geo)
         };
         ws.diff_stats = stats;
         ws.texture = Some(ui.ctx().load_texture("hd_map", img, egui::TextureOptions::NEAREST));
@@ -2694,7 +2713,24 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     );
 
     overlay_chip(ui, vp, ws.layer);
-    legend_box(ui, vp, ws.layer, (ws.relief_view, ws.diff_sat, ws.diff_stats, ws.diff_ref.is_some()));
+    // ADR Finding 152 -- the geology views' legends
+    let geo_items: Vec<(C, String, String)> = match (ws.layer, ws.current.as_ref().and_then(|h| h.geology.as_ref())) {
+        (HdLayer::Rocks, Some(_)) => ymir_core::geology::rocks::ROCK_CLASSES[1..]
+            .iter()
+            .map(|r| (C::from_rgb(r.color[0], r.color[1], r.color[2]), r.name_fr.to_string(), ["tendre", "moyenne", "dure"][r.hardness.min(2) as usize].to_string()))
+            .collect(),
+        (HdLayer::Chances, Some(g)) => {
+            let z = ws.zoning_override.as_ref().map_or(&g.zoning, |o| &o.0);
+            z.resources
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| ws.chance_only.is_none_or(|o| o == *i))
+                .map(|(_, r)| (C::from_rgb(r.color[0], r.color[1], r.color[2]), r.name_fr.clone(), format!("max {}", r.fav.iter().max().copied().unwrap_or(0))))
+                .collect()
+        }
+        _ => Vec::new(),
+    };
+    legend_box(ui, vp, ws.layer, (ws.relief_view, ws.diff_sat, ws.diff_stats, ws.diff_ref.is_some()), geo_items);
 
     // Hover -> cell -> inspect (only when the cursor is over the map, not the letterbox).
     ws.hover = None;
@@ -3015,6 +3051,58 @@ fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) 
                         .on_hover_text(
                             "Marqueurs sur la carte (volcans : ▲ rouge actif / gris éteint)",
                         );
+                    // ADR Finding 152 -- the geology views, the resource picker and the rules reload
+                    if ws.current.as_ref().is_some_and(|h| h.geology.is_some()) {
+                        ui.separator();
+                        ui.menu_button(egui::RichText::new("⛏ Géologie ▾").size(11.0), |ui| {
+                            ui.set_min_width(320.0);
+                            if ui.selectable_label(ws.layer == HdLayer::Rocks, "Roches").clicked() {
+                                ws.layer = HdLayer::Rocks;
+                                ws.texture = None;
+                            }
+                            if ui.selectable_label(ws.layer == HdLayer::Chances, "Chances (favorabilité)").clicked() {
+                                ws.layer = HdLayer::Chances;
+                                ws.texture = None;
+                            }
+                            ui.separator();
+                            let g = ws.current.as_ref().and_then(|h| h.geology.clone());
+                            if let Some(g) = g {
+                                let names: Vec<String> = ws.zoning_override.as_ref().map_or(&g.zoning, |o| &o.0).resources.iter().map(|r| r.name_fr.clone()).collect();
+                                let current = ws.chance_only.and_then(|i| names.get(i).cloned()).unwrap_or_else(|| "Toutes (la plus forte)".to_string());
+                                egui::ComboBox::from_label("ressource").selected_text(current).show_ui(ui, |ui| {
+                                    if ui.selectable_label(ws.chance_only.is_none(), "Toutes (la plus forte)").clicked() {
+                                        ws.chance_only = None;
+                                        ws.texture = None;
+                                    }
+                                    for (i, n) in names.iter().enumerate() {
+                                        if ui.selectable_label(ws.chance_only == Some(i), n).clicked() {
+                                            ws.chance_only = Some(i);
+                                            ws.texture = None;
+                                        }
+                                    }
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label("fichier");
+                                    ui.text_edit_singleline(&mut ws.geology_rules_path);
+                                });
+                                if ui.button("Recharger les règles").clicked() {
+                                    let loaded = ymir_core::geology::rules::load_rules(Some(std::path::Path::new(&ws.geology_rules_path)));
+                                    let (z, secs) = ymir_core::geology::zone_timed(&g.product, &loaded.rules);
+                                    ws.zoning_override = Some((z, loaded, secs));
+                                    ws.texture = None;
+                                }
+                                let (label, sha, secs, err) = match &ws.zoning_override {
+                                    Some((_, l, t)) => (l.label.clone(), l.sha256.clone(), *t, l.error.clone()),
+                                    None => (g.rules.label.clone(), g.rules.sha256.clone(), g.zoning_s, g.rules.error.clone()),
+                                };
+                                ui.label(egui::RichText::new(format!("règles : {label} · {} · re-zonage {secs:.2} s", &sha[..12])).weak());
+                                if let Some(e) = err {
+                                    ui.label(egui::RichText::new(format!("⚠ fichier refusé, règles intégrées utilisées : {e}")).color(WARN_ORANGE));
+                                }
+                                ui.label(egui::RichText::new(format!("étage géologie {:.2} s par monde", g.stage_s)).weak());
+                            }
+                        });
+                    }
                     // ADR Finding 135-V -- the relief view (a view of the world, never the world)
                     if ws.layer == HdLayer::Relief && ws.current.is_some() {
                         ui.separator();
@@ -3190,10 +3278,11 @@ fn legend_box(
     rect: egui::Rect,
     layer: HdLayer,
     relief: (usize, usize, Option<(usize, usize)>, bool),
+    geo_items: Vec<(C, String, String)>,
 ) {
     let diff_view = layer == HdLayer::Relief && relief.0 == 2 && relief.3;
     let p = ui.painter_at(rect);
-    let items: Vec<(C, &str, &str)> = match layer {
+    let items: Vec<(C, String, String)> = match layer {
         HdLayer::Relief => vec![], // scale below
         HdLayer::Drainage => vec![
             (C::from_rgb(0x5A, 0xA0, 0xF0), "Barque", "small-boat"),
@@ -3215,7 +3304,12 @@ fn legend_box(
             (C::from_rgb(0xE1, 0x78, 0x46), "Chaud", ">20°"),
         ],
         HdLayer::Biomes => (0..10).map(|i| (biome_hex(i), biome_fr(i), "")).collect(),
-    };
+        HdLayer::Rocks | HdLayer::Chances => Vec::new(),
+    }
+    .into_iter()
+    .map(|(c, a, b): (C, &str, &str)| (c, a.to_string(), b.to_string()))
+    .chain(geo_items)
+    .collect();
     let title = match layer {
         HdLayer::Relief if diff_view => "DIFFÉRENCE COURANT − RÉFÉRENCE (M)",
         HdLayer::Relief if relief.0 == 1 => "RELIEF — OMBRAGE (AZ 315°, H 45°)",
@@ -3224,6 +3318,8 @@ fn legend_box(
         HdLayer::Precipitation => "PRÉCIPITATION (MM/AN)",
         HdLayer::Temperature => "TEMPÉRATURE",
         HdLayer::Biomes => "BIOMES",
+        HdLayer::Rocks => "ROCHES",
+        HdLayer::Chances => "CHANCES — OPACITÉ = FAVORABILITÉ",
     };
     let row_h = 16.0;
     let rows = if diff_view { 3.0 } else if items.is_empty() { 2.0 } else { items.len() as f32 };
@@ -3331,7 +3427,7 @@ fn legend_box(
             p.text(
                 egui::pos2(bpos.x + 28.0, ry),
                 egui::Align2::LEFT_TOP,
-                *lbl,
+                lbl,
                 egui::FontId::proportional(11.0),
                 C::from_rgb(0xcf, 0xcf, 0xcf),
             );
@@ -3339,7 +3435,7 @@ fn legend_box(
                 p.text(
                     egui::pos2(bpos.x + bw - 12.0, ry),
                     egui::Align2::RIGHT_TOP,
-                    *sub,
+                    sub,
                     egui::FontId::monospace(9.5),
                     C::from_rgb(0x77, 0x77, 0x77),
                 );
@@ -3661,6 +3757,7 @@ fn layer_color_image(
     overlay: bool,
     tectonic: TectonicOverlays,
     relief: ReliefView<'_>,
+    geo: Option<(&ymir_core::geology::Zoning, Option<usize>, &[u8])>,
 ) -> (egui::ColorImage, Option<(usize, usize)>) {
     use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
     use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
@@ -3708,11 +3805,20 @@ fn layer_color_image(
                 [r, g, b]
             }
             HdLayer::Drainage => drainage_color(hd, river_map, k),
+            // ADR Finding 152 -- the geology views draw over the hypsometric relief (water stays as it is)
+            HdLayer::Rocks | HdLayer::Chances => relief_color(hd.eroded.data[k]),
         };
         rgba[k * 4] = c[0];
         rgba[k * 4 + 1] = c[1];
         rgba[k * 4 + 2] = c[2];
         rgba[k * 4 + 3] = 255;
+    }
+    if let Some((zoning, only, rocks)) = geo {
+        match layer {
+            HdLayer::Rocks => ymir_core::geology::render::rocks_rgba(rocks, &mut rgba),
+            HdLayer::Chances => ymir_core::geology::render::chances_rgba(zoning, only, w, h, &mut rgba),
+            _ => {}
+        }
     }
     if overlay {
         draw_river_overlay(&mut rgba, hd);
@@ -5640,6 +5746,7 @@ mod spillway_typing_bench {
             }),
             infiltration: Some(InfiltrationConfig { enabled: true, ..Default::default() }),
             emit_tectonic_labels: false,
+            geology_rules: None,
         };
         let (tx, rx) = bounded(256);
         let cancel = Arc::new(AtomicBool::new(false));
@@ -5805,6 +5912,7 @@ mod network_fragmentation_bench {
             }),
             infiltration: Some(InfiltrationConfig { enabled: true, ..Default::default() }),
             emit_tectonic_labels: false,
+            geology_rules: None,
         };
         let (tx, rx) = bounded(256);
         let cancel = Arc::new(AtomicBool::new(false));
@@ -6687,6 +6795,7 @@ mod f123_viz_guard {
             }),
             infiltration: Some(InfiltrationConfig { enabled: true, ..Default::default() }),
             emit_tectonic_labels: false,
+            geology_rules: None,
         };
         let (tx, rx) = bounded(256);
         let cancel = Arc::new(AtomicBool::new(false));
@@ -6794,6 +6903,7 @@ mod f133v_bench {
             fracture: Some(FractureConfig { enabled: true, amplitude: 6.0, decay_km: 25.0, ..Default::default() }),
             infiltration: Some(InfiltrationConfig { enabled: true, ..Default::default() }),
             emit_tectonic_labels: false,
+            geology_rules: None,
         };
         let (tx, rx) = bounded(256);
         let cancel = Arc::new(AtomicBool::new(false));
@@ -7061,15 +7171,15 @@ mod f133v_bench {
         let rm_on = RiverCellMap::from_drainage(&on.drainage);
         let ov = TectonicOverlays::default();
         for (sat, name) in [(1000.0f32, "v_diff_lake2_1000m.png"), (100.0, "v_diff_lake2_100m.png")] {
-            let (img, st) = layer_color_image(&on, HdLayer::Relief, &rm_on, false, ov, ReliefView::Diff(&off, sat));
+            let (img, st) = layer_color_image(&on, HdLayer::Relief, &rm_on, false, ov, ReliefView::Diff(&off, sat), None);
             eprintln!("   difference ON − OFF at ±{sat} m: (saturated, ≠ 0) = {st:?}");
             save(&img, name);
         }
-        let (img, _) = layer_color_image(&off, HdLayer::Relief, &rm_off, false, ov, ReliefView::Shade);
+        let (img, _) = layer_color_image(&off, HdLayer::Relief, &rm_off, false, ov, ReliefView::Shade, None);
         save(&img, "v_shade_lake2_OFF.png");
-        let (img, _) = layer_color_image(&on, HdLayer::Relief, &rm_on, false, ov, ReliefView::Shade);
+        let (img, _) = layer_color_image(&on, HdLayer::Relief, &rm_on, false, ov, ReliefView::Shade, None);
         save(&img, "v_shade_lake2_ON.png");
-        let (img, _) = layer_color_image(&off, HdLayer::Relief, &rm_off, false, ov, ReliefView::Hypso);
+        let (img, _) = layer_color_image(&off, HdLayer::Relief, &rm_off, false, ov, ReliefView::Hypso, None);
         save(&img, "v_hypso_lake2_OFF.png");
         assert_eq!(field_hash(&off.eroded), h0, "a view wrote the world");
         assert_eq!(field_hash(&on.eroded), h1, "a view wrote the world");
@@ -7194,6 +7304,7 @@ mod f124_objects {
             lake_guard: ymir_core::tectonics_c1::bench_guard::GuardStatus::NoReference { viz: String::new() },
             gorge_falls: Vec::new(),
             rivers_ll: Vec::new(),
+            geology: None,
             km_per_cell: 1.0,
         };
         let wcs = aggregate_watercourses(&hd, w as f32, 1.0);

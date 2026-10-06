@@ -1,0 +1,323 @@
+# Ymir — geology rules, v0 (Finding 151, with Finding 152's `modulate`). The author edits this file; Ymir reads it.
+#
+# A resource's chance at a cell (0–100) is the MAX of its rules whose conditions all hold. Placers then travel
+# downstream along the rivers from the resource's own zones. Ymir exports RELATIVE FAVOURABILITIES (0–100), never
+# deposits nor probabilities: « Favorabilité dans Ymir, rareté dans Living Landz ».
+#
+# `modulate = "structural"` multiplies a rule's favourability by g(d) = g_min + (1 − g_min)·min(d / d_ref, 1), d the
+# structural density (fracturing near plate contacts, sutures and past collisions): vein deposits form DISTRICTS.
+#
+# Every chance below is a PROXY / DECISION to tune by eye. Each `source` is a real deposit context cited from
+# memory, TO CHECK:
+#   [Robb] L. Robb 2005, Introduction to Ore-Forming Processes
+#   [Evans] A.M. Evans 1993, Ore Geology and Industrial Minerals
+#   [C&S] D.P. Cox & D.A. Singer 1986, Mineral Deposit Models, USGS Bulletin 1693
+#   [Clifford] T.N. Clifford 1966, EPSL 1 (diamonds on Archean cratons)
+#
+# Rock classes: craton, belt, basaltic_volcanic, arc_volcanic, rift_fill, loose_deposits, evaporites, basement.
+
+format = "ymir-geology-rules"
+version = "0.2.0"
+notes = "v0 rules (Finding 151) with the structural modulation of the vein rules (Finding 152)"
+
+# g_min: DECISION (a belt without faults keeps a fifth of its favourability).
+# d_ref: MEASURED on the témoin (Finding 152): the p90 of d over the land cells of the belts and the arc zone.
+[modulation.structural]
+d_ref = 0.994
+g_min = 0.2
+
+# ─────────────────────────────────────────────────────────────── 1. iron
+[[resource]]
+id = "iron"
+name_fr = "Fer"
+color = "#B5562F"
+
+[[resource.rule]]
+rock = ["craton"]
+chance = 40
+source = "banded iron formations of Precambrian cratons [Robb]"
+
+[[resource.rule]]
+belt = "fossil"
+chance = 20
+source = "skarn and ironstone in old orogens [Evans]"
+
+[[resource.rule]]
+wetland = true
+temp_max_c = 15
+slope_max = 0.01
+chance = 30
+source = "bog iron in cool wetlands and peatlands [Evans]"
+
+# ─────────────────────────────────────────────────────────────── 2. gold
+[[resource]]
+id = "gold"
+name_fr = "Or"
+color = "#E6C229"
+
+[[resource.rule]]
+rock = ["belt"]
+chance = 35
+modulate = "structural"
+source = "orogenic lode gold in metamorphic belts [Robb]"
+
+[[resource.rule]]
+volcano_setting = "arc"
+volcano_within_km = 10
+chance = 30
+modulate = "structural"
+source = "epithermal gold in volcanic arcs [C&S]"
+
+[[resource.rule]]
+rock = ["craton"]
+chance = 10
+source = "greenstone-belt gold in old cratons [Robb] (Ymir cannot tell greenstone from granite: low)"
+
+[resource.placer]
+source_min_chance = 20
+river_min_area_km2 = 5.0
+start_chance = 30
+decay_per_km = 1.0
+max_slope = 0.01
+source = "placer gold in alluvium downstream of a source [Evans]"
+
+# ─────────────────────────────────────────────────────────────── 3. silver
+[[resource]]
+id = "silver"
+name_fr = "Argent"
+color = "#C0C6CC"
+
+[[resource.rule]]
+volcano_setting = "arc"
+volcano_within_km = 15
+chance = 25
+modulate = "structural"
+source = "epithermal silver in arcs [C&S]"
+
+[[resource.rule]]
+rock = ["belt"]
+chance = 20
+modulate = "structural"
+source = "hydrothermal silver-lead-zinc veins in orogens [C&S]"
+
+[[resource.rule]]
+rock = ["rift_fill"]
+chance = 15
+source = "SEDEX lead-zinc-silver in rift basins [Robb]"
+
+# ─────────────────────────────────────────────────────────────── 4. copper
+[[resource]]
+id = "copper"
+name_fr = "Cuivre"
+color = "#C26B2C"
+
+[[resource.rule]]
+arc_within_km = 30
+chance = 40
+modulate = "structural"
+source = "porphyry copper above subduction zones (C&S model 17)"
+
+[[resource.rule]]
+rock = ["rift_fill"]
+chance = 25
+source = "sediment-hosted stratiform copper in rift basins [Robb]"
+
+[[resource.rule]]
+rock = ["basaltic_volcanic"]
+chance = 10
+source = "native copper in flood and rift basalts [Evans]"
+
+# ─────────────────────────────────────────────────────────────── 5. tin
+[[resource]]
+id = "tin"
+name_fr = "Étain"
+color = "#7F8C8D"
+
+[[resource.rule]]
+rock = ["belt"]
+belt = "fossil"
+chance = 30
+modulate = "structural"
+source = "tin granites (S-type, greisens) of collision belts [Robb]"
+
+[resource.placer]
+source_min_chance = 20
+river_min_area_km2 = 5.0
+start_chance = 25
+decay_per_km = 1.5
+max_slope = 0.01
+source = "cassiterite placers [Evans]"
+
+# ─────────────────────────────────────────────────────────────── 6. stone
+[[resource]]
+id = "stone"
+name_fr = "Pierre"
+color = "#9E9E9E"
+
+[[resource.rule]]
+rock = ["craton"]
+slope_min = 0.05
+chance = 60
+source = "granite and gneiss, quarried where it crops out [Evans]"
+
+[[resource.rule]]
+rock = ["basement", "belt"]
+slope_min = 0.05
+chance = 40
+source = "crystalline and metamorphic building stone [Evans]"
+
+[[resource.rule]]
+rock = ["basaltic_volcanic"]
+chance = 50
+source = "basalt [Evans]"
+
+[[resource.rule]]
+rock = ["arc_volcanic"]
+chance = 30
+source = "tuff, a soft, easily worked stone [Evans]"
+
+# ─────────────────────────────────────────────────────────────── 7. clay
+[[resource]]
+id = "clay"
+name_fr = "Argile"
+color = "#B07A4F"
+
+[[resource.rule]]
+rock = ["loose_deposits"]
+valley_floor = true
+chance = 50
+source = "floodplain clays [Evans]"
+
+[[resource.rule]]
+rock = ["loose_deposits"]
+lake = true
+chance = 50
+source = "lake-bed clays [Evans]"
+
+[[resource.rule]]
+rock = ["craton", "basement"]
+precip_min_mm = 1500
+temp_min_c = 20
+chance = 30
+source = "kaolin from the deep tropical weathering of granite [Evans]"
+
+# ─────────────────────────────────────────────────────────────── 8. sand and gravel
+[[resource]]
+id = "sand_gravel"
+name_fr = "Sable et gravier"
+color = "#D9C48E"
+
+[[resource.rule]]
+river_min_area_km2 = 20.0
+chance = 50
+source = "river channel and bar gravels [Evans]"
+
+[[resource.rule]]
+coast_within_km = 0.5
+slope_max = 0.02
+chance = 40
+source = "beach sands [Evans]"
+
+[[resource.rule]]
+rock = ["loose_deposits"]
+valley_floor = true
+chance = 30
+source = "terrace gravels [Evans]"
+
+# ─────────────────────────────────────────────────────────────── 9. salt
+[[resource]]
+id = "salt"
+name_fr = "Sel"
+color = "#F4F4F0"
+
+[[resource.rule]]
+rock = ["evaporites"]
+chance = 80
+source = "evaporites of arid endorheic basins (playas) [Evans]"
+
+[[resource.rule]]
+endorheic_lake_within_km = 2.0
+precip_max_mm = 400
+chance = 40
+source = "salt crusts on arid lake margins [Evans]"
+
+[[resource.rule]]
+coast_within_km = 1.0
+precip_max_mm = 300
+slope_max = 0.01
+chance = 25
+source = "coastal sabkhas and salt pans [Evans]"
+
+# ─────────────────────────────────────────────────────────────── 10. peat
+[[resource]]
+id = "peat"
+name_fr = "Tourbe"
+color = "#5B4636"
+
+[[resource.rule]]
+wetland = true
+temp_max_c = 12
+chance = 60
+source = "peat in cool waterlogged lowlands [Evans]"
+
+[[resource.rule]]
+rock = ["loose_deposits"]
+slope_max = 0.005
+precip_min_mm = 800
+temp_max_c = 15
+chance = 30
+source = "fen and bog peat on flat, wet floors [Evans]"
+
+# ─────────────────────────────────────────────────────────────── 11. sulphur and obsidian
+[[resource]]
+id = "sulphur_obsidian"
+name_fr = "Soufre et obsidienne"
+color = "#D4E157"
+
+[[resource.rule]]
+volcano_active = true
+volcano_within_km = 2
+chance = 60
+source = "sulphur at active vents: fumaroles, solfataras [Evans]"
+
+[[resource.rule]]
+volcano_active = true
+volcano_within_km = 5
+chance = 30
+source = "sulphur around active volcanoes [Evans]"
+
+[[resource.rule]]
+rock = ["arc_volcanic"]
+chance = 30
+source = "obsidian from rhyolitic volcanism in arcs [Evans]"
+
+[[resource.rule]]
+volcano_setting = "rift"
+volcano_within_km = 5
+chance = 30
+source = "obsidian in continental rifts [Evans]"
+
+# ─────────────────────────────────────────────────────────────── 12. gems
+[[resource]]
+id = "gems"
+name_fr = "Gemmes"
+color = "#3FA7D6"
+
+[[resource.rule]]
+rock = ["craton"]
+chance = 15
+source = "diamondiferous kimberlites on Archean cratons [Clifford]"
+
+[[resource.rule]]
+rock = ["belt"]
+belt = "fossil"
+chance = 20
+source = "corundum and other metamorphic gems in collision belts [Evans]"
+
+[resource.placer]
+source_min_chance = 15
+river_min_area_km2 = 5.0
+start_chance = 20
+decay_per_km = 1.0
+max_slope = 0.01
+source = "gem gravels (placers) [Evans]"

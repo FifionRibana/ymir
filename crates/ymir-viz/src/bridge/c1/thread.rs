@@ -218,6 +218,7 @@ mod tests {
                     fracture: None,
                     infiltration: None,
                     emit_tectonic_labels: false,
+                    geology_rules: None,
                 },
             })
             .expect("send RunHd");
