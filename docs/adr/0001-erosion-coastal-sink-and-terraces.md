@@ -20383,3 +20383,81 @@ Living Landz owns:
 - the selection, the masking, the SDF rendering.
 
 Still queued: the breach's ramp (F141's γ). **Next: the geology v1.**
+
+## Finding 150 — geology v1, round 1 of 3: the inventory (the coarse tectonic state is filled and feeds the isostasy; craton and plate type are computed but the panel is hard-coded; no classed « type de sol »; no geological layer is exported), C-3 changes the relief only inside its soft classes (3.3 % of the land, up to −1 040 m; altitude p50 −1.05 %), the témoin has no collision belt (2 plates left), and the catalogue of rocks and resources
+
+**Status: inventory and catalogue; no production code; nothing committed.** Report, maps and catalogue:
+`docs/reports/geology_v1/f150_inventory/` (`finding_150.md`, `catalogue_geologie_v1.md`).
+- F149 was committed (`9e710be`).
+- Instruments declared before measuring (`f150_declared.md`).
+
+**The author's criterion, recorded as given (the geology work):**
+- Usage : « Chutes + ressources. Ce qui est visible dans LL, on verra plus tard, car ce sera peut-être un
+  sous-ensemble. Là, on va faire du zoning : ici, il y a de l'or possible ; ici, du fer, etc. »
+- Détail : « On va lister ce qu'on intègre avant. »
+- Relief : « C'est peut-être déjà le cas. Mais pour moi le type de sol est déjà existant (craton, meuble, etc.), donc
+  la roche en découle. À voir. Mais non : on fait la carte, puis on voit après. »
+- Limit: 3 rounds (the inventory and catalogue; the author's list and the spec; the map, zones and gates).
+- The cost: seconds per world against 249.8 s.
+
+**Recorded:**
+- The author on the rivers: « Filtrage avec Strahler semble très bien » (Strahler ≥ 2 keeps 714 of 8 857 rivers on the
+  témoin).
+- **The reviewer's remark for Living Landz**: the viz's filters combine with AND. Keeping a long first-order river
+  needs an OR rule there (Strahler ≥ 2, or length ≥ X).
+
+**I — the inventory** (the témoin, C-2 / C-3 / C-3b ON as in the benches and the guard):
+- **The coarse state (64², 6.25 km cells) is filled**: `s` (crust thickness), `age`, `plate_type`, `plate_id`,
+  `cratonic_mask`, and the boundary classes.
+  - The production upscale reads `s`, `age`, `plate_type` and `cratonic_mask` for the isostasy.
+  - **The témoin ends with 2 plates of 8, 0 collision cells and 7 subduction upper-plate cells.** The craton is 57
+    cells.
+- **The HD derivations**:
+  - C-3's erodibility classes: hard 90.8 % of the land, rift-soft 4.9 %, volcaniclastic 4.3 %;
+  - C-3b's fracture density;
+  - 15 volcanic edifices with their setting (arc / hotspot / rift) and an active flag.
+- **Exported: none of them.** Only the crater lakes reach `lakes.json`.
+- **The panel's three empty fields are hard-coded "—"** (`workspace.rs:1922–1924`).
+  - Plate type and craton are computed and already in `HdResult.tectonic`.
+  - The crust thickness is computed but not carried to the viz.
+- **No classed « type de sol » exists.** The nearest are C-3's three erodibility classes, the craton mask and the
+  biomes. There is no loose, regolith or deposit class, since erosion is detachment-limited.
+- **In the viz, C-2 / C-3 / C-3b / H-1 are unchecked at startup.** The benches and the 6/6 guard run C-2 / C-3 / C-3b
+  ON. Which is "production" is the author's to confirm.
+- Nine maps, north up.
+
+**D — C-3 ON against OFF** (C-2 and C-3b ON in both):
+- |Δz| p50 / p90 0 m, p99 148 m, max 1 040 m, lowering only;
+- **3.3 % of the land moves by > 10 m: 62 % on the volcanic footprints, 35 % on the rifts, 0 % elsewhere**;
+- land altitude p50 −1.05 %; R8 −0.0008.
+- **The rock already shapes the relief through erodibility, inside its soft classes only.** The isostasy is not
+  measured here.
+
+**C — the catalogue** (`catalogue_geologie_v1.md`):
+- seven rock classes with hardness, placing fields and artefact risks;
+- the 11 starting resources plus 5 proposed, with their real contexts (Robb 2005, Evans 1993, Cox & Singer 1986,
+  Clifford 1966: **cited from memory, to check**);
+- three forms of zoning.
+- By its grading, **9 of 11 are zonable with existing or derived fields**. Coal and the carbonate-hosted Ag-Pb-Zn need
+  a sedimentary-basin field Ymir lacks.
+- **"Zonable" is not "present"**: on the témoin the collision and active-margin zones would be empty or a few cells.
+
+**Predictions:**
+- **The reviewer's (hypotheses to check)**:
+  - **I, "craton and plate type are not computed for a C1 continent": refuted** (computed, not wired);
+  - held: no « type de sol »; D < 5 % (on the soft classes themselves, not at their contacts); C ≥ half; the meta.
+- **Mine**:
+  - held: computed-not-wired, D's sizes and place, R8;
+  - refuted: the degenerate age (3 294 distinct values), "max several hundred metres" (1 040), "8 of 11" (9).
+- **Not foreseen**: 2 plates and no collision belt on the témoin.
+
+**For the author (round 2)**:
+- the list of rocks and resources;
+- the zoning's form;
+- which world is production;
+- wiring the panel (small, any time).
+
+**Built:** the bench `crates/ymir-core/tests/f150_geology.rs` only.
+
+**Checks after:** `cargo check --workspace` clean; lib 610; viz 30; the guard 6 / 6, field and lakes = banc (C2 /10 col
+`a8d2d538d692c2f0`).

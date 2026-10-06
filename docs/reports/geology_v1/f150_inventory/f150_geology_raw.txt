@@ -1,0 +1,141 @@
+   Compiling cfg-if v1.0.4
+   Compiling simd-adler32 v0.3.9
+   Compiling windows-link v0.2.1
+   Compiling adler2 v2.0.1
+   Compiling either v1.15.0
+   Compiling once_cell v1.21.4
+   Compiling itoa v1.0.18
+   Compiling rand_core v0.6.4
+   Compiling memchr v2.8.0
+   Compiling anstyle v1.0.14
+   Compiling pxfm v0.1.28
+   Compiling plotters-backend v0.3.7
+   Compiling serde_core v1.0.228
+   Compiling crossbeam-utils v0.8.21
+   Compiling zmij v1.0.21
+   Compiling regex-syntax v0.8.10
+   Compiling bitflags v2.11.0
+   Compiling clap_lex v1.1.0
+   Compiling ciborium-io v0.2.2
+   Compiling cast v0.3.0
+   Compiling constant_time_eq v0.4.2
+   Compiling num-traits v0.2.19
+   Compiling zerocopy v0.8.48
+   Compiling cpufeatures v0.3.0
+   Compiling getrandom v0.3.4
+   Compiling windows-sys v0.61.2
+   Compiling miniz_oxide v0.8.9
+   Compiling crc32fast v1.5.0
+   Compiling fdeflate v0.3.7
+   Compiling itertools v0.10.5
+   Compiling tracing-core v0.1.36
+   Compiling rand_xorshift v0.3.0
+   Compiling rand v0.8.5
+   Compiling plotters-svg v0.3.7
+   Compiling pin-project-lite v0.2.17
+   Compiling arrayvec v0.7.6
+   Compiling clap_builder v4.6.0
+   Compiling bytemuck v1.25.0
+   Compiling rand_core v0.9.5
+   Compiling byteorder-lite v0.1.0
+   Compiling arrayref v0.3.9
+   Compiling crossbeam-epoch v0.9.18
+   Compiling anes v0.1.6
+   Compiling oorandom v11.1.5
+   Compiling blake3 v1.8.4
+   Compiling tracing v0.1.44
+   Compiling flate2 v1.1.9
+   Compiling crossbeam-deque v0.8.6
+   Compiling plotters v0.3.7
+   Compiling noise v0.9.0
+   Compiling rayon-core v1.13.0
+   Compiling winapi-util v0.1.11
+   Compiling is-terminal v0.4.17
+   Compiling png v0.18.1
+   Compiling regex-automata v0.4.14
+   Compiling same-file v1.0.6
+   Compiling walkdir v2.5.0
+   Compiling rayon v1.11.0
+   Compiling criterion-plot v0.5.0
+   Compiling serde v1.0.228
+   Compiling serde_json v1.0.149
+   Compiling moxcms v0.8.1
+   Compiling clap v4.6.1
+   Compiling bincode v1.3.3
+   Compiling regex v1.12.3
+   Compiling tinytemplate v1.2.1
+   Compiling half v2.7.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling ciborium-ll v0.2.2
+   Compiling rand_chacha v0.9.0
+   Compiling ciborium v0.2.2
+   Compiling rand v0.9.3
+   Compiling criterion v0.5.1
+   Compiling image v0.25.10
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 1m 04s
+     Running tests\f150_geology.rs (target_f150\release\deps\f150_geology-f5b099903b0d6244.exe)
+
+running 1 test
+
+==========  Finding 150 . geology v1, the inventory (témoin C2 /10 col; C-2, C-3, C-3b ON)  ==========
+test f150_geology has been running for over 60 seconds
+
+   I · coarse grid 64×64 (the témoin's settled state, 300 steps)
+   I · s (crust thickness, non-dim.): min / p10 / p50 / p90 / max 0.000 / 0.060 / 0.236 / 0.705 / 2.181 · on continental cells p50 0.392 · on oceanic p50 0.217
+   I · age (non-dim.): min / p10 / p50 / p90 / max 0.000 / 0.000 / 0.069 / 7.000 / 155.726 · distinct values 3294 · continental cells with age < 1 (C-3's rift-soft) 66 of 832
+   I · plate_type: continental 832 · oceanic 3264 of 4096 · plate_id: 2 distinct plates (num_plates at init 8) · cratonic_mask: 57 cells (6.9 % of the continental)
+   I · boundaries: internal 3726 · convergent 154 · divergent 142 · transform/other 74 · labels: craton 57 · rift 66 · subduction upper 7 · slab 147 · collision 0 · divergent 142
+   I · HD land 11328426 cells · C-3 rift-soft (K×10) 551805 (4.87 %) · volcaniclastic (K×3) 486484 (4.29 %) · hard 90.83 % · edifices 15 · craters 15 · C-3b density on land p10 / p50 / p90 0.010 / 0.042 / 0.430 (K = 1 + 6·density)
+   I · maps written to D:\Personnel\Projects\ymir\crates\ymir-core\../../docs/reports/geology_v1/f150_inventory
+
+   D · Δz = z(C-3 ON) − z(C-3 OFF) on 11328471 land cells: |Δz| p50 / p90 / p99 / max 0.00 / 0.00 / 148.2 / 1040.2 m · signed p1 / p99 -148.2 / 0.0 m · cells |Δz| > 10 m 372787 (3.29 %) · > 100 m 163012
+   D · where the |Δz| > 10 m cells are: on the rift-soft class 35.4 % · on a volcanic footprint 61.7 % · within 5 km of either 2.8 % · elsewhere 0.0 %
+   D · land altitude p50: ON 515.3 m · OFF 520.8 m (-1.05 %) · R8: ON 0.0451 · OFF 0.0459 (-0.0008) · local σ 3×3 p50: ON 5.58 m · OFF 5.65 m
+
+==========  end Finding 150 . 638.1 s  ==========
+
+test f150_geology ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 638.21s
+
