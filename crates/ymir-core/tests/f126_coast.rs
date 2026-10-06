@@ -17952,7 +17952,7 @@ fn f148_rivers() {
         eprintln!("      F148 J build (no rule): {} rivers · {total_km:.0} km · {} pairs · {} micro-lake", nr, st.parallel_pairs.len(), rivers.iter().filter(|r| is_micro(r)).count());
         let mut passes = Vec::new();
         for (lab, th) in &thetas {
-            let rule = HeadRule { index: f, threshold: *th, a_min_cells };
+            let rule = HeadRule { index: f, threshold: *th, a_min_cells, head_cells: None };
             let tr = Instant::now();
             let (rr, rst) = build_rivers_ll_heads(dr, &v.conditioned, &ss, cell_km2, params, true, Some(&rule));
             let t_rule = tr.elapsed().as_secs_f64();
@@ -17991,7 +17991,7 @@ fn f148_rivers() {
     let pairs0 = st.parallel_pairs.len();
     eprintln!("\n   M · the J build's parallel pairs: {pairs0} · micro-lake rivers {}", rivers.iter().filter(|r| is_micro(r)).count());
     // the production cost of the rule (no instruments) at θ = 0 on convergence
-    let rule = HeadRule { index: &conv2, threshold: 0.0, a_min_cells };
+    let rule = HeadRule { index: &conv2, threshold: 0.0, a_min_cells, head_cells: None };
     let tr = Instant::now();
     let _ = build_rivers_ll_heads(dr, &v.conditioned, &ss, cell_km2, params, false, Some(&rule));
     eprintln!("   COST · convergence field {t_conv:.2} s + the build with the rule {:.2} s (without {t_build:.2} s), against 249.8 s", tr.elapsed().as_secs_f64());
@@ -18140,4 +18140,208 @@ fn f148_diag() {
         st.mid_joins_larger
     );
     eprintln!("\n==========  end Finding 148 diagnoses  ==========\n");
+}
+
+/// ADR Finding 149 — the rivers' last round, on the témoin: T (what the masking toggle hides) and H (one attempt, the
+/// head score: the rule simulated over θ with F148's populations and its stop rule, unchanged; the control rivers lost
+/// described). Declared in `f149_declared.md`.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored --exact f149_rivers --nocapture
+#[test]
+#[ignore]
+fn f149_rivers() {
+    use common::{build_world, viz_hd_lakes_on};
+    use std::collections::BTreeMap;
+    use ymir_core::export::rivers_ll::{HeadRule, RiverEnd, RiversLlParams, build_rivers_ll, build_rivers_ll_heads, rivers_ll_json};
+    use ymir_core::terrain::convergence::contour_convergence;
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    let cell_km2 = CELL_KM * CELL_KM;
+    let cell_m = CELL_KM * 1000.0;
+    eprintln!("\n==========  Finding 149 . the masking toggle and the head score (témoin C2 /10 col)  ==========");
+    let temoin = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let kn = Knobs { valley: Some(temoin), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) };
+    let wd = build_world(kn, None, PSEED, None);
+    let v = viz_hd_lakes_on(&wd, kn, PSEED, 45.0, 40.0);
+    let dr = &v.drainage;
+    let (w, h) = (v.conditioned.width, v.conditioned.height);
+    let n = w * h;
+    let params = RiversLlParams::default();
+    let pct = |v: &[f32], p: f64| -> f32 {
+        let mut s = v.to_vec();
+        s.sort_by(f32::total_cmp);
+        if s.is_empty() { f32::NAN } else { s[((s.len() - 1) as f64 * p) as usize] }
+    };
+    let tp = Instant::now();
+    let (rivers, st) = build_rivers_ll(dr, &v.conditioned, &ss, cell_km2, params, true);
+    let t_build = tp.elapsed().as_secs_f64();
+    let bytes = rivers_ll_json(&rivers, CELL_KM, &params);
+    let nr = rivers.len();
+    let total_km: f32 = rivers.iter().map(|r| r.length_km).sum();
+    // ── T
+    let km = |f: &dyn Fn(&ymir_core::export::rivers_ll::RiverLl) -> bool| -> (usize, f32) {
+        let s: Vec<_> = rivers.iter().filter(|r| f(r)).collect();
+        (s.len(), s.iter().map(|r| r.length_km).sum())
+    };
+    let (n_f, k_f) = km(&|r| r.fusion_candidate);
+    let (n_m, k_m) = km(&|r| r.micro_lake_inflow);
+    let (n_fm, _) = km(&|r| r.fusion_candidate && r.micro_lake_inflow);
+    let (n_t, k_t) = km(&|r| r.fusion_candidate || r.micro_lake_inflow);
+    let (n_r, k_r) = km(&|r| r.retraces_spillway);
+    let (n_all, k_all) = km(&|r| r.fusion_candidate || r.micro_lake_inflow || r.retraces_spillway);
+    eprintln!("\n   T · {nr} rivers · {total_km:.0} km · rivers_ll.json {:.2} MB (format 0.5.0) · build {t_build:.2} s (with instruments)", bytes.len() as f64 / 1e6);
+    eprintln!(
+        "   T · « Masquer faisceaux et micro-rivières » hides **{n_t} rivers · {k_t:.0} km** ({:.1} % of the rivers, {:.1} % of the km): fusion candidates {n_f} ({k_f:.0} km) · micro_lake_inflow {n_m} ({k_m:.0} km) · both {n_fm}",
+        100.0 * n_t as f64 / nr as f64,
+        100.0 * k_t as f64 / total_km as f64
+    );
+    eprintln!("   T · « déversoirs retracés » adds {n_r} ({k_r:.0} km) · all three boxes: {n_all} rivers, {k_all:.0} km hidden · {} left, {:.0} km", nr - n_all, total_km - k_all);
+    // ── H
+    let zm: Vec<f32> = v.conditioned.data.iter().map(|&x| c1_altitude_norm_to_metres(x, &ss)).collect();
+    let conv2 = contour_convergence(&zm, w, h, 2.0, cell_m);
+    let conv1 = contour_convergence(&zm, w, h, 1.0, cell_m);
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let sk = skeleton(&s1, &temoin, &ss, DOMAIN_KM);
+    let (_, mk) = carve(&s1, &sk, &temoin, &ss);
+    drop(sk);
+    drop(s1);
+    let own = |ri: usize| -> &[u32] {
+        let t = &st.trace_cells[ri];
+        &t[..t.len().saturating_sub(1)]
+    };
+    let floor_share: Vec<f32> = (0..nr).map(|ri| {
+        let o = own(ri);
+        o.iter().filter(|&&c| mk.floor[c as usize]).count() as f32 / o.len().max(1) as f32
+    }).collect();
+    let is_c: Vec<bool> = (0..nr).map(|ri| rivers[ri].length_km >= 10.0 || floor_share[ri] >= 0.5).collect();
+    let is_micro = |r: &ymir_core::export::rivers_ll::RiverLl| matches!(r.end, RiverEnd::Lake { .. } | RiverEnd::EndorheicLake { .. }) && r.length_km < 1.0;
+    let a: Vec<usize> = (0..nr).filter(|&i| rivers[i].fusion_candidate && !is_c[i]).collect();
+    let b: Vec<usize> = (0..nr).filter(|&i| is_micro(&rivers[i]) && !is_c[i]).collect();
+    let c: Vec<usize> = (0..nr).filter(|&i| is_c[i]).collect();
+    let mut ab: Vec<usize> = a.iter().chain(b.iter()).copied().collect();
+    ab.sort_unstable();
+    ab.dedup();
+    eprintln!("\n   H · populations (F148's definitions): (a) {} · (b) {} · (a)∪(b) {} · (c) {} · flag check: micro_lake_inflow == F148 (b) definition on every river: {}", a.len(), b.len(), ab.len(), c.len(), rivers.iter().all(|r| r.micro_lake_inflow == is_micro(r)));
+    let head_score = |f: &[f32], ri: usize| -> f32 {
+        let o = own(ri);
+        if o.is_empty() {
+            return f32::NAN;
+        }
+        o.iter().take(10).map(|&cc| f[cc as usize]).sum::<f32>() / o.len().min(10) as f32
+    };
+    let auc = |pos: &[f32], neg: &[f32]| -> f64 {
+        let mut s = 0f64;
+        for &p in pos {
+            for &q in neg {
+                s += if p > q { 1.0 } else if p == q { 0.5 } else { 0.0 };
+            }
+        }
+        s / (pos.len() * neg.len()).max(1) as f64
+    };
+    let a_min_cells = (ymir_core::erosion::stream_power::RELIEF_V1_A_C_KM2 / cell_km2).max(1.0);
+    for (name, f, blind) in [("convergence σ=2 (declared)", &conv2[..], "blind on the rule, not on the AUC"), ("convergence σ=1", &conv1[..], "NOT blind (seen in F148)")] {
+        let hs: Vec<f32> = (0..nr).map(|ri| head_score(f, ri)).collect();
+        let pick = |set: &[usize]| -> Vec<f32> { set.iter().map(|&i| hs[i]).filter(|x| x.is_finite()).collect() };
+        let chs = pick(&c);
+        eprintln!(
+            "\n   H · {name} [{blind}] · head AUC (c) against (a)∪(b) {:.3} · head p0.5 / p1 / p2 / p5 of (c): {:.3} / {:.3} / {:.3} / {:.3} · head medians (a) {:.3} (b) {:.3} (c) {:.3}",
+            auc(&chs, &pick(&ab)),
+            pct(&chs, 0.005),
+            pct(&chs, 0.01),
+            pct(&chs, 0.02),
+            pct(&chs, 0.05),
+            pct(&pick(&a), 0.5),
+            pct(&pick(&b), 0.5),
+            pct(&chs, 0.5)
+        );
+        let mut thetas: Vec<(String, f32)> = Vec::new();
+        for q in [0.005, 0.01, 0.02, 0.05, 0.10, 0.20] {
+            thetas.push((format!("(c) p{:.1}", q * 100.0), pct(&chs, q)));
+        }
+        thetas.push(("0".into(), 0.0));
+        eprintln!("   H · θ · rivers · km · pairs · micro-lake · (a) removed · (b) removed · (a)∪(b) removed · **(c) lost** · stop rule");
+        let mut best_ok: Option<(String, f32)> = None;
+        let mut nearest: Option<(f32, Vec<usize>, String)> = None;
+        let mut passes = Vec::new();
+        for (lab, th) in &thetas {
+            let rule = HeadRule { index: f, threshold: *th, a_min_cells, head_cells: Some(10) };
+            let (rr, rst) = build_rivers_ll_heads(dr, &v.conditioned, &ss, cell_km2, params, true, Some(&rule));
+            let mut chan = vec![false; n];
+            for t in &rst.trace_cells {
+                for &cc in t {
+                    chan[cc as usize] = true;
+                }
+            }
+            let kept = |ri: usize| -> bool {
+                let o = own(ri);
+                o.is_empty() || o.iter().filter(|&&cc| chan[cc as usize]).count() * 2 >= o.len()
+            };
+            let rem = |set: &[usize]| -> f64 { 100.0 * set.iter().filter(|&&i| !kept(i)).count() as f64 / set.len().max(1) as f64 };
+            let lost: Vec<usize> = c.iter().copied().filter(|&i| !kept(i)).collect();
+            let lost_pc = 100.0 * lost.len() as f64 / c.len().max(1) as f64;
+            let ab_rem = rem(&ab);
+            let ok = ab_rem >= 50.0 && lost_pc <= 1.0;
+            if ok {
+                passes.push(lab.clone());
+            }
+            if lost_pc <= 1.0 && best_ok.as_ref().is_none_or(|(_, t)| *th > *t) {
+                best_ok = Some((lab.clone(), *th));
+                nearest = Some((*th, lost.clone(), lab.clone()));
+            }
+            eprintln!(
+                "      θ {lab} = {th:.4}: {} rivers · {:.0} km · **{} pairs** · **{} micro-lake** · (a) {:.1} % · (b) {:.1} % · (a)∪(b) **{ab_rem:.1} %** · (c) lost **{} ({lost_pc:.2} %)** · {}",
+                rr.len(),
+                rr.iter().map(|r| r.length_km).sum::<f32>(),
+                rst.parallel_pairs.len(),
+                rr.iter().filter(|r| r.micro_lake_inflow).count(),
+                rem(&a),
+                rem(&b),
+                lost.len(),
+                if ok { "PASSES" } else { "fails" }
+            );
+            if nearest.is_none() && lab == "(c) p0.5" {
+                nearest = Some((*th, lost.clone(), lab.clone()));
+            }
+        }
+        eprintln!("   H · stop rule on {name}: θ passing (≥ 50 % of (a)∪(b), ≤ 1 % of (c)): {passes:?}");
+        // the control rivers lost at the θ nearest the 1 % bound
+        if let Some((th, lost, lab)) = nearest {
+            let mut ends: BTreeMap<String, usize> = BTreeMap::new();
+            let mut heads: BTreeMap<&str, usize> = BTreeMap::new();
+            let mut lens: Vec<f32> = Vec::new();
+            let (mut pair, mut ge10, mut fl) = (0usize, 0usize, 0usize);
+            for &i in &lost {
+                let r = &rivers[i];
+                lens.push(r.length_km);
+                pair += r.parallel_of.is_some() as usize;
+                ge10 += (r.length_km >= 10.0) as usize;
+                fl += (floor_share[i] >= 0.5) as usize;
+                let e = match r.end {
+                    RiverEnd::Sea => "sea",
+                    RiverEnd::Lake { .. } => "lake",
+                    RiverEnd::EndorheicLake { .. } => "endorheic lake",
+                    RiverEnd::Confluence { .. } => "confluence",
+                    RiverEnd::Terminal => "terminal",
+                };
+                *ends.entry(e.to_string()).or_insert(0) += 1;
+                let hc = own(i).first().map(|&cc| cc as usize);
+                let k = match hc {
+                    Some(cc) if mk.floor[cc] => "head on a construction floor",
+                    Some(cc) if mk.carved[cc] => "head on a carved wall",
+                    Some(_) => "head elsewhere (uncarved)",
+                    None => "no cell",
+                };
+                *heads.entry(k).or_insert(0) += 1;
+            }
+            eprintln!(
+                "   H · the {} control rivers lost at θ {lab} = {th:.3}: length p10 / p50 / p90 / max {:.2} / {:.2} / {:.2} / {:.2} km · ≥ 10 km {ge10} · ≥ 50 % on a floor {fl} · **pair members {pair}** · {heads:?} · ends {ends:?}",
+                lost.len(),
+                pct(&lens, 0.1),
+                pct(&lens, 0.5),
+                pct(&lens, 0.9),
+                pct(&lens, 1.0)
+            );
+        }
+    }
+    eprintln!("\n==========  end Finding 149 . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
 }

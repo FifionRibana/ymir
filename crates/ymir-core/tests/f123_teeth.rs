@@ -1058,6 +1058,36 @@ fn f134_lake_guard() {
         let v = viz_hd_lakes_on(&wd, kn, PSEED, lat, span);
         let fp = lake_fingerprint(&v.drainage.lake_map, &v.drainage.lakes);
         let craters = v.drainage.lakes.iter().filter(|l| format!("{:?}", l.lake_type).starts_with("Crater")).count();
+        // ADR Finding 149-K — the lakes the tagged-outlet rule keeps Exorheic: no segment source on their border, a
+        // segment tagged with their id. Exactly the lakes whose type the fix changes (the only change is there).
+        {
+            let dd = &v.drainage;
+            let (lw, lh) = (dd.width, dd.height);
+            let borders = |sx: u32, sy: u32, id: u32| {
+                (-1i32..=1).any(|dy| {
+                    (-1i32..=1).any(|dx| {
+                        let (nx, ny) = (sx as i32 + dx, sy as i32 + dy);
+                        nx >= 0 && ny >= 0 && (nx as usize) < lw && (ny as usize) < lh && dd.lake_map[ny as usize * lw + nx as usize] == id
+                    })
+                })
+            };
+            let kept: Vec<String> = dd
+                .lakes
+                .iter()
+                .filter(|l| l.lake_type == LakeType::Exorheic)
+                .filter(|l| !dd.rivers.segments.iter().any(|sg| sg.points.first().is_some_and(|&(x, y)| borders(x, y, l.base.id))))
+                .map(|l| {
+                    let tags: Vec<usize> = (0..dd.rivers.segments.len()).filter(|&i| dd.segment_source_lake.get(i) == Some(&Some(l.base.id))).collect();
+                    format!("{} ({:.1} km², tagged segments {:?})", l.base.id, l.area_km2, tags)
+                })
+                .collect();
+            eprintln!(
+                "   {label:<26} F149-K · Exorheic only through a tagged segment: {} {:?} · Unresolved left: {}",
+                kept.len(),
+                kept,
+                dd.lakes.iter().filter(|l| l.lake_type == LakeType::Unresolved).count()
+            );
+        }
         eprintln!(
             "   {label:<26} field {digest} = {fh} · lakes key {} · **{} lakes** ({craters} crater) · {fp} ({:.0} s)",
             v.digest,

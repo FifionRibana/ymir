@@ -1031,10 +1031,15 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
 /// (`exorheic_below_sea_basin_has_traced_spillway`) checked ONLY below-sea basins on a synthetic
 /// grid; the 21 exorheic below-sea lakes shipped WITHOUT an outlet in the 8192² export slipped
 /// through that subset (same blind-spot pattern as Finding 36's config subset — see ADR Finding 37).
+///
+/// ADR Finding 149-K — a segment TAGGED with the lake (`segment_source_lake = Some(id)`: the basin's own traced
+/// spillway) is its outlet wherever it starts. Lake 1000011's spillway (1 625 m³/s) starts at its col, 2 cells off the
+/// footprint behind a rim cell at the lake's own level, and the border test alone relabelled the lake Unresolved.
 pub fn exorheic_lakes_missing_outlet(dr: &C1DrainageResult) -> Vec<u32> {
     let (w, h) = (dr.width, dr.height);
     let sources: Vec<(u32, u32)> =
         dr.rivers.segments.iter().filter_map(|s| s.points.first().copied()).collect();
+    let tagged: std::collections::HashSet<u32> = dr.segment_source_lake.iter().flatten().copied().collect();
     let borders = |sx: u32, sy: u32, id: u32| -> bool {
         for dy in -1i32..=1 {
             for dx in -1i32..=1 {
@@ -1055,7 +1060,7 @@ pub fn exorheic_lakes_missing_outlet(dr: &C1DrainageResult) -> Vec<u32> {
         .iter()
         .filter(|lk| lk.lake_type == LakeType::Exorheic)
         .map(|lk| lk.base.id)
-        .filter(|&id| !sources.iter().any(|&(sx, sy)| borders(sx, sy, id)))
+        .filter(|&id| !tagged.contains(&id) && !sources.iter().any(|&(sx, sy)| borders(sx, sy, id)))
         .collect()
 }
 
@@ -4067,6 +4072,70 @@ mod tests {
             .expect_err("a walled bowl has no escape");
         assert_eq!(err, UnresolvedReason::SaddleHasNoLowerNeighbour);
         assert_eq!(err.as_str(), "the saddle has no lower exterior neighbour");
+    }
+
+    /// ADR Finding 149-K — a lake whose only outlet is its own TAGGED spillway, starting 2 cells off its footprint (the
+    /// lake 1000011 case: a rim cell at the lake's level between the col and the pool), keeps `Exorheic`. The negative
+    /// controls: the same segment untagged, and a lake with no segment at all, both go Unresolved.
+    #[test]
+    fn a_tagged_spillway_off_the_shore_is_its_lakes_outlet() {
+        use crate::terrain::flow::{FlowResult, RiverNetwork};
+        let (w, h) = (12usize, 1usize);
+        let mut lake_map = vec![0u32; w * h];
+        lake_map[2] = 5;
+        lake_map[3] = 5;
+        lake_map[10] = 8;
+        let mk_lake = |id: u32| C1Lake {
+            base: Lake { id, surface_elevation: 0.5, max_depth: 0.01, area: 2, basin_id: 1, outlet: (0, 0), shallow: false },
+            level_m: 0.0,
+            depth_m: 1.0,
+            area_km2: 1.0,
+            lake_type: LakeType::Exorheic,
+            unresolved_reason: None,
+        };
+        // the spillway starts at x = 5: two cells from the footprint's x = 3, outside its 8-neighbourhood
+        let mk = |tag: Option<u32>| C1DrainageResult {
+            flow: FlowResult {
+                filled: GridF32::new(w, h, 0.0),
+                direction: vec![0; w * h],
+                accumulation: GridF32::new(w, h, 0.0),
+                basins: vec![0; w * h],
+                num_basins: 1,
+            },
+            rivers: RiverNetwork {
+                segments: vec![RiverSegment {
+                    points: vec![(5, 0), (6, 0)],
+                    strahler_order: 1,
+                    avg_flow: 1.0,
+                    max_flow: 1.0,
+                    basin_id: 1,
+                    upstream: vec![],
+                    downstream: None,
+                }],
+            },
+            segment_drainage_km2: vec![1.0],
+            segment_navigability: vec![Navigability::NonNavigable],
+            segment_discharge_m3s: vec![1.0],
+            segment_width_m: vec![5.0],
+            segment_profile_m: vec![vec![0.0, 0.0]],
+            segment_catchment_cells: vec![1.0],
+            segment_discharge_profile_m3s: vec![vec![1.0, 1.0]],
+            segment_kind: vec![SegmentKind::Spillway],
+            segment_source_lake: vec![tag],
+            lakes: vec![mk_lake(5), mk_lake(8)],
+            lake_map: lake_map.clone(),
+            width: w,
+            height: h,
+        };
+        let ty = |id: u32, d: &C1DrainageResult| d.lakes.iter().find(|l| l.base.id == id).unwrap().lake_type;
+        let mut tagged = mk(Some(5));
+        assert_eq!(resolve_exorheic_without_outlet(&mut tagged), vec![8], "only the lake with no segment moves");
+        assert_eq!(ty(5, &tagged), LakeType::Exorheic, "its tagged spillway is its outlet, 2 cells off the shore");
+        assert_eq!(ty(8, &tagged), LakeType::Unresolved);
+        // the negative control: untagged, the same segment 2 cells off is no outlet (no wider distance)
+        let mut untagged = mk(None);
+        assert_eq!(resolve_exorheic_without_outlet(&mut untagged), vec![5, 8]);
+        assert_eq!(ty(5, &untagged), LakeType::Unresolved);
     }
 
     /// ADR 0001 Finding 86 — the H2 LINE, on the same fixture as the invariant above, because the

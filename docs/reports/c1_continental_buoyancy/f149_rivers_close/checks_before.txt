@@ -1,0 +1,20 @@
+# F149 checks BEFORE = F148's after-checks (d937aec; the same tree; this round's code changes start after it)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 47.96s
+test result: ok. 608 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 2.02s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 30 passed; 0 failed; 16 ignored; 0 measured; 0 filtered out; finished in 1.22s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+# the 6/6 guard through run_hd (ymir-viz f123_viz_guard)
+[HD timing] rivers_ll 5054 rivers (0.24s)
+[HD timing] rivers_ll 7800 rivers (0.29s)
+[HD timing] rivers_ll 9978 rivers (0.44s)
+[HD timing] rivers_ll 10246 rivers (0.36s)
+[HD timing] rivers_ll 9667 rivers (0.35s)
+[HD timing] rivers_ll 8431 rivers (0.35s)
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes = banc
+   C1 nue                 field = banc · lakes = banc
+   C2 /10 col (défaut)    field = banc · lakes = banc
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes = banc
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 45 filtered out; finished in 110.87s

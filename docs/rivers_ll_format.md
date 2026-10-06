@@ -1,4 +1,4 @@
-# `rivers_ll.json` — rivers for Living Landz (format 0.4.0)
+# `rivers_ll.json` — rivers for Living Landz (format 0.5.0)
 
 A vector layer of the `.ymir` container (layer id `rivers_ll`), written next to `rivers.json`, which is unchanged.
 It holds the same drainage as `rivers.json`, regrouped into **rivers** (main stems), each a **smoothed polyline that
@@ -9,6 +9,7 @@ Produced by `ymir_core::export::rivers_ll` (ADR Findings 146–147).
 
 ## Changes
 
+- **0.5.0** (Finding 149): **added** `micro_lake_inflow`, a river shorter than 1 km that ends in a lake.
 - **0.4.0** (Finding 148): **Hack's convention holds at every confluence.**
   - Where a reach joins another below its head (the drainage's T3b confluence), the larger stream continues and the
     receiving reach is cut there.
@@ -36,7 +37,7 @@ Produced by `ymir_core::export::rivers_ll` (ADR Findings 146–147).
 
 ```json
 {
-  "format_version": "0.4.0",
+  "format_version": "0.5.0",
   "coordinate_space": "erosion_grid_cells_continuous",
   "km_per_cell": 0.0488,
   "discharge_source": "accumulated: the climate runoff … per trace point (…)",
@@ -80,6 +81,7 @@ A reader MUST refuse an unknown *major* version.
 | `mouth_basin` | u32 | the mouth basin's key: the last land cell (row-major index) on the D8 path from the river's end |
 | `parallel_of` | u32 \| null | the higher-discharge river of this river's longest parallel pair (its own id when it is that river); `null` without a pair |
 | `fusion_candidate` | bool | the lower-discharge river of at least one parallel pair |
+| `micro_lake_inflow` | bool | shorter than 1 km and ending in a lake (`end` = lake or endorheic lake): the micro-rivers that read as runoff on a shore |
 | `retraces_spillway` | bool | a spillway with ≥ 50 % of its D8 trace on watercourse cells; those stretches are drawn on the watercourse's vertices |
 
 ### `vertex`

@@ -32,7 +32,7 @@ use crate::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
 use crate::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
 
 /// The format version this writer emits.
-pub const RIVERS_LL_FORMAT_VERSION: &str = "0.4.0";
+pub const RIVERS_LL_FORMAT_VERSION: &str = "0.5.0";
 
 /// The bed width's coefficient `a` in `w = a·Q^b` (m per (m³/s)^b) — a DECISION (the author's), the default being
 /// Ymir's own channel width (`rivers.json`'s `width_m`, drainage.rs `CHANNEL_WIDTH_A`). Written in the header.
@@ -40,6 +40,9 @@ pub const BED_WIDTH_A_DEFAULT: f32 = 5.0;
 /// The bed width's exponent `b` — ANCHORED: downstream hydraulic geometry, Leopold & Maddock 1953 (USGS Professional
 /// Paper 252).
 pub const BED_WIDTH_B: f32 = 0.5;
+
+/// ADR Finding 149-T — a river ending in a lake is a `micro_lake_inflow` below this length (km).
+pub const MICRO_LAKE_INFLOW_KM: f32 = 1.0;
 
 /// The smoothing's and the annotations' parameters (declared in Findings 146–147).
 #[derive(Clone, Copy, Debug)]
@@ -155,6 +158,9 @@ pub struct RiverLl {
     pub fusion_candidate: bool,
     /// A spillway whose trace mostly retraces watercourses (its overlapping runs are drawn on their vertices).
     pub retraces_spillway: bool,
+    /// ADR Finding 149-T — a river shorter than 1 km that ends in a lake (F148-M (b)'s definition): the micro-rivers
+    /// that look like runoff on the shore.
+    pub micro_lake_inflow: bool,
 }
 
 #[derive(Serialize)]
@@ -634,11 +640,17 @@ struct Smoothed {
 /// first eligible cell, or from where its first channel upstream reach joins it; a reach leaving a lake's shore or a
 /// spillway is channel from its start; downstream of a channel cell everything is channel. Only `rivers_ll` reads
 /// it: `dr.rivers` (rivers.json, the lakes' outlets) is untouched.
+///
+/// ADR Finding 149-H — with `head_cells = Some(n)` a head is judged ONCE: a segment with no channel input is a channel
+/// from its start if the mean of `index` over its first `n` cells is ≥ `threshold` (and its first cell has
+/// `a_min_cells`), else not at all; a segment a channel joins at index `j` is a channel from `j`, or from its start if
+/// its own head passes. `None` is F148's rule (the first eligible cell anywhere).
 #[derive(Clone, Copy, Debug)]
 pub struct HeadRule<'a> {
     pub index: &'a [f32],
     pub threshold: f32,
     pub a_min_cells: f32,
+    pub head_cells: Option<usize>,
 }
 
 /// Build the main stems, smooth them in their valley and attach the attributes. `field` is the conditioned
@@ -716,7 +728,16 @@ pub fn build_rivers_ll_heads(dr: &C1DrainageResult, field: &GridF32, ss: &SteinS
                 let c = cell_of(p);
                 acc[c] >= rule.a_min_cells && rule.index[c] >= rule.threshold
             });
-            let st = if forced { Some(0) } else { [eligible, from_up[s]].into_iter().flatten().min() };
+            let st = if forced {
+                Some(0)
+            } else if let Some(nh) = rule.head_cells {
+                let k = nh.min(pts.len()).max(1);
+                let mean = pts.iter().take(k).map(|&p| rule.index[cell_of(p)]).sum::<f32>() / k as f32;
+                let head_ok = mean >= rule.threshold && pts.first().is_some_and(|&p| acc[cell_of(p)] >= rule.a_min_cells);
+                if head_ok { Some(0) } else { from_up[s] }
+            } else {
+                [eligible, from_up[s]].into_iter().flatten().min()
+            };
             start[s] = st;
             if let Some(d) = segs[s].downstream
                 && d < ns
@@ -1325,9 +1346,14 @@ pub fn build_rivers_ll_heads(dr: &C1DrainageResult, field: &GridF32, ss: &SteinS
                 parallel_of: None,
                 fusion_candidate: false,
                 retraces_spillway: kind == SegmentKind::Spillway && shared_pts[ri] as f32 >= params.retrace_share * traces[ri].pts.len() as f32,
+                micro_lake_inflow: false,
             }
         })
         .collect();
+    // ADR Finding 149-T — the micro-rivers into a lake
+    for r in rivers.iter_mut() {
+        r.micro_lake_inflow = matches!(r.end, RiverEnd::Lake { .. } | RiverEnd::EndorheicLake { .. }) && r.length_km < MICRO_LAKE_INFLOW_KM;
+    }
     // the length rank within the mouth basin
     let mut by_basin: HashMap<u32, Vec<usize>> = HashMap::new();
     for (i, r) in rivers.iter().enumerate() {
@@ -1544,18 +1570,44 @@ mod tests {
         let ss = SteinSteinParams::default();
         let dr = t3b_drainage(10.0);
         let all_on = vec![1.0f32; 64];
-        let rule = HeadRule { index: &all_on, threshold: 0.5, a_min_cells: 0.0 };
+        let rule = HeadRule { index: &all_on, threshold: 0.5, a_min_cells: 0.0, head_cells: None };
         let (r0, _) = build_rivers_ll_heads(&dr, &field, &ss, 1.0, RiversLlParams::default(), false, Some(&rule));
         let (r1, _) = build_rivers_ll(&dr, &field, &ss, 1.0, RiversLlParams::default(), false);
         assert_eq!(r0.iter().map(|x| x.points.clone()).collect::<Vec<_>>(), r1.iter().map(|x| x.points.clone()).collect::<Vec<_>>(), "all eligible = no rule");
         // only (3,3) on the joining reach and nothing on segment 1 or on the receiver's head is eligible
         let mut idx = vec![0.0f32; 64];
         idx[3 * 8 + 3] = 1.0;
-        let rule = HeadRule { index: &idx, threshold: 0.5, a_min_cells: 0.0 };
+        let rule = HeadRule { index: &idx, threshold: 0.5, a_min_cells: 0.0, head_cells: None };
         let (r, _) = build_rivers_ll_heads(&dr, &field, &ss, 1.0, RiversLlParams::default(), false, Some(&rule));
         assert_eq!(r.len(), 1, "segment 1 and the receiver's head are not channels: {:?}", r.iter().map(|x| &x.segments).collect::<Vec<_>>());
         assert_eq!(r[0].points[0], [3.5, 3.5], "the channel starts at the eligible cell");
         assert_eq!(*r[0].points.last().unwrap(), [5.5, 1.5], "and runs down to the end unconditionally");
+    }
+
+    /// ADR Finding 149-H — the head-score mode judges a head once: the joining reach (2), whose first two cells read 0
+    /// and whose third reads 1, is no channel with `head_cells = 2` (its head mean is 0); the negative control, F148's
+    /// any-cell rule, makes it a channel from (3,3). A head whose mean passes is a channel from its start.
+    #[test]
+    fn the_head_score_mode_judges_a_head_once() {
+        let field = GridF32::new(8, 8, 0.6);
+        let ss = SteinSteinParams::default();
+        let dr = t3b_drainage(10.0);
+        let mut idx = vec![0.0f32; 64];
+        idx[3 * 8 + 3] = 1.0;
+        let pts_of = |r: &[RiverLl]| r.iter().map(|x| x.points[0]).collect::<Vec<_>>();
+        let any = HeadRule { index: &idx, threshold: 0.5, a_min_cells: 0.0, head_cells: None };
+        let (r_any, _) = build_rivers_ll_heads(&dr, &field, &ss, 1.0, RiversLlParams::default(), false, Some(&any));
+        assert_eq!(pts_of(&r_any), vec![[3.5, 3.5]], "negative control: F148's rule finds the eligible cell");
+        let head = HeadRule { head_cells: Some(2), ..any };
+        let (r_head, _) = build_rivers_ll_heads(&dr, &field, &ss, 1.0, RiversLlParams::default(), false, Some(&head));
+        assert!(r_head.is_empty(), "no head passes, nothing is a channel: {:?}", pts_of(&r_head));
+        // the joining reach's head reads 1 on its first two cells: a channel from its start
+        let mut idx2 = vec![0.0f32; 64];
+        idx2[5 * 8 + 3] = 1.0;
+        idx2[4 * 8 + 3] = 1.0;
+        let head2 = HeadRule { index: &idx2, threshold: 0.5, a_min_cells: 0.0, head_cells: Some(2) };
+        let (r2, _) = build_rivers_ll_heads(&dr, &field, &ss, 1.0, RiversLlParams::default(), false, Some(&head2));
+        assert_eq!(pts_of(&r2), vec![[3.5, 5.5]], "the passing head is a channel from its start");
     }
 
     /// The 4-significant-digit rounding of the per-vertex attributes.

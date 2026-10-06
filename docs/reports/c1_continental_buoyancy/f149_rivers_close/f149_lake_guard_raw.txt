@@ -1,0 +1,70 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+    Finished `release` profile [optimized] target(s) in 20.96s
+     Running tests\f123_teeth.rs (target_f149\release\deps\f123_teeth-69e128c345c3a1f4.exe)
+
+running 1 test
+
+==========  Finding 134 . the lake guard (six states, 45° / 40°)  ==========
+test f134_lake_guard has been running for over 60 seconds
+   livré                      F149-K · Exorheic only through a tagged segment: 0 [] · Unresolved left: 3
+   livré                      field f61ef23f4f4e9d94 = 14953e8337bcd394 · lakes key 200aa06dbef7ec05 · **60 lakes** (2 crater) · 9748c34f86566083/7a48cc29495fa016 (155 s)
+   A1+B2                      F149-K · Exorheic only through a tagged segment: 1 ["1000016 (403.7 km², tagged segments [11803])"] · Unresolved left: 0
+   A1+B2                      field e05628c2eb1c1c22 = b07eabbe4773016a · lakes key 7f0ffbbb243f8b00 · **38 lakes** (2 crater) · 34c84b66edebbd09/431997016b994447 (147 s)
+   C1 nue                     F149-K · Exorheic only through a tagged segment: 1 ["1000017 (325.1 km², tagged segments [15051])"] · Unresolved left: 2
+   C1 nue                     field e2a5b05da6eed1fb = c876c200e92e0f60 · lakes key 25517c7bb3fc6462 · **27 lakes** (2 crater) · 45264dbdfffe003c/85a1898d7a061441 (230 s)
+   C2 /10 col (défaut)        F149-K · Exorheic only through a tagged segment: 1 ["1000011 (494.3 km², tagged segments [16217])"] · Unresolved left: 0
+   C2 /10 col (défaut)        field cf1d4539c7afe588 = a8d2d538d692c2f0 · lakes key 632404f9450ef9a5 · **26 lakes** (1 crater) · b7e502b2c1e126c3/e2dc847cd255850e (276 s)
+   C2 /3                      F149-K · Exorheic only through a tagged segment: 0 [] · Unresolved left: 0
+   C2 /3                      field 70cf2dc92822681b = c2eb1cb3b24ebccb · lakes key bfcfdf8bff0e26b6 · **26 lakes** (1 crater) · 4144d4ee828245f7/73ed1df1ce82d658 (259 s)
+   C2 /10 niveau mer          F149-K · Exorheic only through a tagged segment: 1 ["1000017 (373.9 km², tagged segments [12793])"] · Unresolved left: 0
+   C2 /10 niveau mer          field 3552097350b238c8 = 35e1bc8123049d8c · lakes key 9f70222f95e39d13 · **24 lakes** (1 crater) · 91ee910f77b7a260/c246e5b404f532e9 (192 s)
+   C2 /10 col, lake_base ON   F149-K · Exorheic only through a tagged segment: 1 ["1000011 (493.2 km², tagged segments [13468])"] · Unresolved left: 0
+   C2 /10 col, lake_base ON   field 834fa66b41d6e05d = a620a9aa0d5882a0 · lakes key 64e3c3fddfdf0dd4 · **34 lakes** (1 crater) · d7a888b0a90d795a/5f8cfe75eb866a0e (261 s)
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core\data/bench_lake_hashes.json (6 entries)
+
+==========  end Finding 134 lake guard . 1520.7 s  ==========
+
+test f134_lake_guard ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 1520.66s
+

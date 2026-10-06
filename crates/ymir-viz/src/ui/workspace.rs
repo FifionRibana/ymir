@@ -213,8 +213,9 @@ struct WorkspaceState {
     rll_min_len_km: f32,
     rll_min_area_km2: f32,
     rll_min_strahler: u8,
-    /// ADR Finding 147-F -- hide the fusion candidates (the lower-discharge river of a parallel pair) and the spillways
-    /// that retrace watercourses.
+    /// ADR Findings 147-F / 149-T -- « Masquer faisceaux et micro-rivières » hides the fusion candidates (the
+    /// lower-discharge river of a parallel pair) and the micro-rivers into a lake (< 1 km); a separate box hides the
+    /// spillways that retrace watercourses. Display only.
     rll_hide_fusion: bool,
     rll_hide_retrace: bool,
     inspector_open: bool,
@@ -2925,7 +2926,7 @@ fn rll_keep(ws: &WorkspaceState, r: &ymir_core::export::rivers_ll::RiverLl) -> b
     r.length_km >= ws.rll_min_len_km
         && r.catchment_km2 >= ws.rll_min_area_km2
         && r.strahler.is_none_or(|s| s >= ws.rll_min_strahler)
-        && !(ws.rll_hide_fusion && r.fusion_candidate)
+        && !(ws.rll_hide_fusion && (r.fusion_candidate || r.micro_lake_inflow))
         && !(ws.rll_hide_retrace && r.retraces_spillway)
 }
 
@@ -2976,13 +2977,21 @@ fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) 
                             ui.add(egui::Slider::new(&mut ws.rll_min_len_km, 0.0..=100.0).logarithmic(true).text("longueur min (km)"));
                             ui.add(egui::Slider::new(&mut ws.rll_min_area_km2, 0.0..=5000.0).logarithmic(true).text("aire min (km²)"));
                             ui.add(egui::Slider::new(&mut ws.rll_min_strahler, 1..=8).text("Strahler min"));
-                            // ADR Finding 147-F -- the annotations, with their counts
-                            let (n_fusion, n_retrace) = ws.current.as_ref().map_or((0, 0), |hd| {
-                                (hd.rivers_ll.iter().filter(|r| r.fusion_candidate).count(), hd.rivers_ll.iter().filter(|r| r.retraces_spillway).count())
-                            });
-                            ui.checkbox(&mut ws.rll_hide_fusion, format!("masquer les candidats à la fusion ({n_fusion})"))
-                                .on_hover_text("La rivière de plus faible débit d'une paire parallèle (à ≤ 2 cellules sur > 2 km, sans confluence commune)");
-                            ui.checkbox(&mut ws.rll_hide_retrace, format!("masquer les déversoirs retracés ({n_retrace})"))
+                            // ADR Findings 147-F / 149-T -- the annotations, with the counts and km each box hides
+                            let count_km = |f: &dyn Fn(&ymir_core::export::rivers_ll::RiverLl) -> bool| -> (usize, f32) {
+                                ws.current.as_ref().map_or((0, 0.0), |hd| {
+                                    let v: Vec<_> = hd.rivers_ll.iter().filter(|r| f(r)).collect();
+                                    (v.len(), v.iter().map(|r| r.length_km).sum())
+                                })
+                            };
+                            let (n_mask, km_mask) = count_km(&|r| r.fusion_candidate || r.micro_lake_inflow);
+                            let (n_retrace, km_retrace) = count_km(&|r| r.retraces_spillway);
+                            ui.checkbox(&mut ws.rll_hide_fusion, format!("Masquer faisceaux et micro-rivières ({n_mask} · {km_mask:.0} km)"))
+                                .on_hover_text(
+                                    "Faisceaux : la rivière de plus faible débit d'une paire parallèle (à ≤ 2 cellules sur > 2 km, sans confluence commune). \
+                                     Micro-rivières : moins de 1 km et finissant dans un lac. Affichage seul : le monde et les exports sont inchangés.",
+                                );
+                            ui.checkbox(&mut ws.rll_hide_retrace, format!("masquer les déversoirs retracés ({n_retrace} · {km_retrace:.0} km)"))
                                 .on_hover_text("Un déversoir dont ≥ 50 % du tracé repasse sur des cours d'eau (dessiné sur leurs sommets)");
                             if let Some(hd) = ws.current.as_ref() {
                                 let kept = hd.rivers_ll.iter().filter(|r| rll_keep(ws, r)).count();

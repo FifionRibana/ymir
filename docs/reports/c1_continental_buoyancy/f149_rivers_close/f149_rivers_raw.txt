@@ -1,0 +1,143 @@
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+warning: unused import: `SegmentKind`
+     --> crates\ymir-core\tests\f126_coast.rs:17740:55
+      |
+17740 |     use ymir_core::tectonics_c1::drainage::{LakeType, SegmentKind};
+      |                                                       ^^^^^^^^^^^
+      |
+      = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `skn`
+     --> crates\ymir-core\tests\f126_coast.rs:10710:9
+      |
+10710 |     let skn = skeleton(&s1, &ext, &ss, DOMAIN_KM);
+      |         ^^^ help: if this is intentional, prefix it with an underscore: `_skn`
+      |
+      = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `t_on_con` is never read
+     --> crates\ymir-core\tests\f126_coast.rs:11447:24
+      |
+11447 |     let mut t_on_con = 0f64;
+      |                        ^^^^ this value is reassigned later and never used
+...
+11496 |         t_on_con = t.elapsed().as_secs_f64();
+      |         ------------------------------------ `t_on_con` is overwritten here before the previous value is read
+      |
+      = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `ci`, `floor`, `stop`, and `crossed` are never read
+     --> crates\ymir-core\tests\f126_coast.rs:13985:9
+      |
+13983 |     struct Ev {
+      |            -- fields in this struct
+13984 |         pit: usize,
+13985 |         ci: usize,
+      |         ^^
+13986 |         floor: f32,
+      |         ^^^^^
+13987 |         steps: u32,
+13988 |         stop: u8, // 0 a base, 1 a cell already lower than the ramp, 2 the chain's end
+      |         ^^^^
+13989 |         stop_cell: usize,
+13990 |         crossed: u32,
+      |         ^^^^^^^
+      |
+      = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `step_of` and `backlink` are never read
+     --> crates\ymir-core\tests\f126_coast.rs:13996:9
+      |
+13993 |     struct Br {
+      |            -- fields in this struct
+...
+13996 |         step_of: Vec<u32>,
+      |         ^^^^^^^
+13997 |         backlink: Vec<usize>,
+      |         ^^^^^^^^
+
+warning: `ymir-core` (test "f126_coast") generated 5 warnings (run `cargo fix --test "f126_coast" -p ymir-core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 1m 47s
+     Running tests\f126_coast.rs (target_f149\release\deps\f126_coast-78c90b7d7fab281b.exe)
+
+running 1 test
+
+==========  Finding 149 . the masking toggle and the head score (témoin C2 /10 col)  ==========
+test f149_rivers has been running for over 60 seconds
+
+   T · 10246 rivers · 21541 km · rivers_ll.json 11.32 MB (format 0.5.0) · build 1.47 s (with instruments)
+   T · « Masquer faisceaux et micro-rivières » hides **1668 rivers · 3781 km** (16.3 % of the rivers, 17.6 % of the km): fusion candidates 942 (3430 km) · micro_lake_inflow 726 (351 km) · both 0
+   T · « déversoirs retracés » adds 5 (53 km) · all three boxes: 1673 rivers, 3834 km hidden · 8573 left, 17707 km
+
+   H · populations (F148's definitions): (a) 873 · (b) 705 · (a)∪(b) 1578 · (c) 2828 · flag check: micro_lake_inflow == F148 (b) definition on every river: true
+
+   H · convergence σ=2 (declared) [blind on the rule, not on the AUC] · head AUC (c) against (a)∪(b) 0.784 · head p0.5 / p1 / p2 / p5 of (c): -2.476 / -1.599 / -1.162 / -0.712 · head medians (a) -0.124 (b) -0.069 (c) 1.259
+   H · θ · rivers · km · pairs · micro-lake · (a) removed · (b) removed · (a)∪(b) removed · **(c) lost** · stop rule
+      θ (c) p0.5 = -2.4760: 10070 rivers · 21058 km · **1625 pairs** · **715 micro-lake** · (a) 1.6 % · (b) 1.6 % · (a)∪(b) **1.6 %** · (c) lost **11 (0.39 %)** · fails
+      θ (c) p1.0 = -1.5994: 9893 rivers · 20673 km · **1602 pairs** · **700 micro-lake** · (a) 2.5 % · (b) 3.7 % · (a)∪(b) **3.0 %** · (c) lost **17 (0.60 %)** · fails
+      θ (c) p2.0 = -1.1616: 9703 rivers · 20268 km · **1574 pairs** · **686 micro-lake** · (a) 3.9 % · (b) 5.7 % · (a)∪(b) **4.7 %** · (c) lost **41 (1.45 %)** · fails
+      θ (c) p5.0 = -0.7122: 9265 rivers · 19323 km · **1481 pairs** · **631 micro-lake** · (a) 9.7 % · (b) 13.2 % · (a)∪(b) **11.3 %** · (c) lost **93 (3.29 %)** · fails
+      θ (c) p10.0 = -0.3303: 8326 rivers · 16971 km · **1111 pairs** · **541 micro-lake** · (a) 28.9 % · (b) 26.0 % · (a)∪(b) **27.6 %** · (c) lost **181 (6.40 %)** · fails
+      θ (c) p20.0 = -0.0229: 6796 rivers · 13239 km · **604 pairs** · **348 micro-lake** · (a) 58.9 % · (b) 53.2 % · (a)∪(b) **56.3 %** · (c) lost **366 (12.94 %)** · fails
+      θ 0 = 0.0000: 6665 rivers · 12988 km · **555 pairs** · **329 micro-lake** · (a) 61.4 % · (b) 55.9 % · (a)∪(b) **58.9 %** · (c) lost **380 (13.44 %)** · fails
+   H · stop rule on convergence σ=2 (declared): θ passing (≥ 50 % of (a)∪(b), ≤ 1 % of (c)): []
+   H · the 17 control rivers lost at θ (c) p1.0 = -1.599: length p10 / p50 / p90 / max 0.54 / 8.17 / 16.36 / 17.93 km · ≥ 10 km 8 · ≥ 50 % on a floor 11 · **pair members 3** · {"head elsewhere (uncarved)": 13, "head on a carved wall": 1, "head on a construction floor": 3} · ends {"confluence": 12, "lake": 4, "sea": 1}
+
+   H · convergence σ=1 [NOT blind (seen in F148)] · head AUC (c) against (a)∪(b) 0.857 · head p0.5 / p1 / p2 / p5 of (c): -1.907 / -1.497 / -0.939 / -0.361 · head medians (a) -0.111 (b) -0.048 (c) 3.201
+   H · θ · rivers · km · pairs · micro-lake · (a) removed · (b) removed · (a)∪(b) removed · **(c) lost** · stop rule
+      θ (c) p0.5 = -1.9075: 10026 rivers · 21062 km · **1621 pairs** · **705 micro-lake** · (a) 1.8 % · (b) 2.8 % · (a)∪(b) **2.3 %** · (c) lost **8 (0.28 %)** · fails
+      θ (c) p1.0 = -1.4969: 9948 rivers · 20922 km · **1612 pairs** · **699 micro-lake** · (a) 2.1 % · (b) 3.7 % · (a)∪(b) **2.8 %** · (c) lost **10 (0.35 %)** · fails
+      θ (c) p2.0 = -0.9386: 9704 rivers · 20368 km · **1529 pairs** · **666 micro-lake** · (a) 6.3 % · (b) 8.4 % · (a)∪(b) **7.2 %** · (c) lost **18 (0.64 %)** · fails
+      θ (c) p5.0 = -0.3610: 8842 rivers · 18076 km · **1178 pairs** · **553 micro-lake** · (a) 24.6 % · (b) 24.1 % · (a)∪(b) **24.4 %** · (c) lost **50 (1.77 %)** · fails
+      θ (c) p10.0 = -0.0037: 7374 rivers · 14197 km · **561 pairs** · **357 micro-lake** · (a) 60.6 % · (b) 52.1 % · (a)∪(b) **56.8 %** · (c) lost **103 (3.64 %)** · fails
+      θ (c) p20.0 = 0.3580: 6147 rivers · 11212 km · **224 pairs** · **214 micro-lake** · (a) 80.9 % · (b) 72.1 % · (a)∪(b) **76.9 %** · (c) lost **238 (8.42 %)** · fails
+      θ 0 = 0.0000: 7361 rivers · 14184 km · **559 pairs** · **349 micro-lake** · (a) 60.7 % · (b) 52.9 % · (a)∪(b) **57.2 %** · (c) lost **105 (3.71 %)** · fails
+   H · stop rule on convergence σ=1: θ passing (≥ 50 % of (a)∪(b), ≤ 1 % of (c)): []
+   H · the 18 control rivers lost at θ (c) p2.0 = -0.939: length p10 / p50 / p90 / max 0.17 / 5.83 / 15.46 / 17.50 km · ≥ 10 km 7 · ≥ 50 % on a floor 13 · **pair members 4** · {"head elsewhere (uncarved)": 10, "head on a carved wall": 3, "head on a construction floor": 5} · ends {"confluence": 15, "lake": 2, "sea": 1}
+
+==========  end Finding 149 . 424.7 s  ==========
+
+test f149_rivers ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 77 filtered out; finished in 424.80s
+

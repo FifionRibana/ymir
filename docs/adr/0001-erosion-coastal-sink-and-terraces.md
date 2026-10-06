@@ -20303,3 +20303,83 @@ pas exclusif (un toggle). Enfin la géologie. » (2026-10-04). Limit: 2 rounds.
 - the K fix in the core;
 - the ridge tolerance.
 - Then the geology.
+
+## Finding 149 — rivers, extension 2 of 2, the last round: the masking toggle (1 668 rivers, 3 781 km hidden on the témoin; display only), the K fix (a tagged spillway is its lake's outlet: only lake 1000011 changes on the témoin), one attempt at the head score (the stop rule fires again: 3.0 % of the bundles and micro-rivers at 0.60 % of the control); the bundles and micro-rivers accepted; the rivers closed
+
+**Status: T and K built; H measured and NOT built; nothing committed.** Report, raw outputs and the closing summary:
+`docs/reports/c1_continental_buoyancy/f149_rivers_close/` (`finding_149.md`).
+- F148 was committed (`d937aec`).
+- Instruments declared before measuring (`f149_declared.md`).
+
+**Recorded**:
+- **Rule 15**: F148's stop rule is not relaxed after the fact. H used it unchanged.
+- `docs/adr/accepted_defects.md`:
+  - § 2, the smoothed polylines clip off-valley cell corners: 134 stretches < 0.1 cell, 122 m over 21 541 km, below a
+    hex's scale; no second amendment of the instrument;
+  - § 3, the bundles and the micro-rivers into lakes (below).
+
+**T — the masking toggle (built)**:
+- `rivers_ll.json` 0.5.0 adds `micro_lake_inflow` (< 1 km, ending in a lake: F148-M (b)'s definition, checked equal
+  on every river).
+- The viz box « Masquer faisceaux et micro-rivières » hides `fusion_candidate || micro_lake_inflow`: **1 668 rivers,
+  3 781 km** on the témoin (16.3 % / 17.6 %). The candidates are 942 (3 430 km) and the micro-rivers 726 (351 km), with
+  no overlap.
+- The retracing spillways stay a separate box (5, 53 km).
+- Display only.
+
+**K — the core fix (built)**:
+- `exorheic_lakes_missing_outlet` counts a segment tagged `segment_source_lake = id` as the lake's outlet, wherever it
+  starts. No wider distance.
+- A permanent test: a tagged spillway 2 cells off the shore. Its negative controls (the same segment untagged; a lake
+  with no segment) go Unresolved. The F86 tests stay green.
+- **The lake guard, regenerated as declared** (`f134_lake_guard`):
+  - the changed lakes are exactly those whose only outlet is a tagged segment: **the témoin: 1000011 only**, plus one
+    lake in each of A1+B2 (1000016), C1 nue (1000017) and C2 /10 niveau mer (1000017);
+  - the diff touches those four states' `lakes_hash` only (its attribute half). The footprints, the lake counts and
+    the six fields are unchanged.
+
+**H — one attempt, the head score (measured, NOT built)**:
+- The score: the mean contour convergence over the first 10 cells (σ = 2; N = 10 is F148's head score, NOT blind).
+- The rule judges a head once.
+- At ≤ 1 % of the control lost:
+  - σ = 2 removes at best **3.0 %** of (a) ∪ (b) (θ = −1.60 km⁻¹, 0.60 % lost);
+  - σ = 1 (NOT blind) removes 7.2 %.
+- Past 50 % the control loses 13 % (σ = 2) or 3.6 % (σ = 1).
+- **The stop rule fires: nothing built.**
+- **The control rivers lost first are real rivers**:
+  - 17 at σ = 2, p50 8.2 km, 8 ≥ 10 km;
+  - 3 pair members;
+  - 13 heads on uncarved planar ground.
+- **Accepted (§ 3)**: the separation is real at the head (AUC 0.78; 0.86 at σ = 1) but the control's tail overlaps it.
+  The flags and the toggle mask them.
+
+**Predictions**:
+- **The reviewer's (hypotheses to check)**:
+  - held: the stop rule fires at σ = 2; K only 1000011 on the témoin; T ~1 600; the meta;
+  - refuted: "15–30 % at 1 %" (3.0 %); "≥ 1/3 of the lost control are parallel traces on the floors" (3 of 17).
+- **Mine**:
+  - held: the stop rule (σ = 2 and σ = 1), < 1/3 pair members, K (témoin and the other states), T's count and km, the
+    cost, the meta;
+  - refuted: "5–20 %" (3.0 %), "the lost control short and on the floors" (p50 8.2 km, heads uncarved).
+
+**Tests and checks**:
+- lib + 2 (608 → 610): the head-score mode with its control; the tagged spillway with its controls.
+- **The cache**: K changed the HD drainage bundle without bumping `ALGO_HD_DRAINAGE` (my error). The viz guard then
+  read the stale bundle and failed on lakes for the four states.
+  - `ALGO_HD_DRAINAGE` 11 → 12, declared.
+  - The lake reference was regenerated a second time: the six `digest`s changed, the `lakes_hash`es did not.
+- After: `cargo check --workspace` clean; lib 610; viz 30; **the guard 6 / 6, field and lakes = banc**, C2 /10 col
+  `a8d2d538d692c2f0`.
+
+**The rivers are closed.** `rivers_ll.json` 0.5.0 delivers:
+- main stems (Hack everywhere);
+- smoothed polylines in the valley floor, no crossings;
+- per-river and per-vertex attributes;
+- the selection flags.
+
+Living Landz owns:
+- the hex grid (against the reference file);
+- the ford / obstacle / bonus rules;
+- the selection, the masking, the SDF rendering.
+
+Still queued: the breach's ramp (F141's γ). **Next: the geology v1.**

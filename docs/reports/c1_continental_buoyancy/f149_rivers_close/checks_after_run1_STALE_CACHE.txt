@@ -1,0 +1,22 @@
+# F149 checks AFTER (working tree, uncommitted; bench_lake_hashes.json regenerated, declared)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 52.47s
+test result: ok. 610 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 2.14s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 30 passed; 0 failed; 16 ignored; 0 measured; 0 filtered out; finished in 1.20s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+# the 6/6 guard through run_hd (ymir-viz f123_viz_guard)
+[HD timing] rivers_ll 5054 rivers (0.21s)
+[HD timing] rivers_ll 7800 rivers (0.36s)
+[HD timing] rivers_ll 9978 rivers (0.41s)
+[HD timing] rivers_ll 10246 rivers (0.36s)
+[HD timing] rivers_ll 9667 rivers (0.37s)
+[HD timing] rivers_ll 8431 rivers (0.31s)
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes ≠ / non gardé
+   C1 nue                 field = banc · lakes ≠ / non gardé
+   C2 /10 col (défaut)    field = banc · lakes ≠ / non gardé
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes ≠ / non gardé
+thread 'ui::workspace::f123_viz_guard::f123_viz_guard' (40416) panicked at crates\ymir-viz\src\ui\workspace.rs:6709:13:
+test ui::workspace::f123_viz_guard::f123_viz_guard ... FAILED
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 45 filtered out; finished in 107.75s

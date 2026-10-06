@@ -87,7 +87,7 @@ pub const ALGO_BREACH: u32 = 1;
 /// evaporative equilibrium (level + footprint), draining the exposed floor from `lake_map` —
 /// the GEOMETRY half of the same discard H-1 fixed for the classification. Lake outlines,
 /// river clipping, wetlands and biomes all move.
-pub const ALGO_HD_DRAINAGE: u32 = 11; // Finding 124-3: own-end reach values; the clip links where the water goes
+pub const ALGO_HD_DRAINAGE: u32 = 12; // Finding 149-K: a segment tagged with its lake (its spillway) is the lake's outlet
 
 // ── Cache key ──────────────────────────────────────────────────────────────
 
