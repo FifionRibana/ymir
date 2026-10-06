@@ -20461,3 +20461,77 @@ Still queued: the breach's ramp (F141's γ). **Next: the geology v1.**
 
 **Checks after:** `cargo check --workspace` clean; lib 610; viz 30; the guard 6 / 6, field and lakes = banc (C2 /10 col
 `a8d2d538d692c2f0`).
+
+## Finding 151 — geology v1, round 2 of 3: the specification (9 rock classes, a TOML rules file giving CHANCES, the export, the viz views, the round-3 gates), the fossil-belt prototype (a read-only C1 observer: 6 sutures, an accreted terrane in the témoin's north-west, 106 fossil-belt cells, +0.02 s, bit-identical), and the viz aligned on production
+
+**Status: specified and prototyped; built only the viz's defaults and panel and a read-only observer; nothing
+committed.** Report, spec and rules proposal: `docs/reports/geology_v1/f151_spec/` (`finding_151.md`,
+`spec_geologie_v1.md`, `geology_rules_v0.toml`).
+- F150 was committed (`267f868`).
+- Instruments declared before measuring (`f151_declared.md`).
+
+**The author's decisions of 2026-10-06, recorded as given:**
+- **production**: « comme la garde, car je l'active manuellement »;
+- **fossil belts**: « Oui, enregistrer les anciennes collisions »;
+- **the v1 resources**: fer, or, argent, cuivre, étain, pierre, argile, sable et gravier, sel, tourbe, soufre et
+  obsidienne, gemmes;
+- **zoning**: « Je pense qu'une règle dans un fichier est plus versatile, et donc une grille des roches. La roche n'est
+  pas une variable du monde. Les ressources, elles, le sont. J'ai d'ailleurs une mécanique de "réinitialisation" de
+  certaines parties lorsque remasquées par le mist. Donc la répartition n'est qu'une image à l'instant t des chances. »;
+- **viz**: « Dans Ymir-viz, je veux avoir une visualisation des roches (comme les biomes), et pour les chances, juste
+  générer une vue des chances (avec opacité = % chance). »
+- **The consequence (the reviewer's)**: Ymir exports CHANCES, never deposits.
+
+**0 — the viz (built)**:
+- C-2, C-3 and C-3b checked at startup, pinned to the guard's literal by a permanent test;
+- the cell panel shows the plate type, the craton and the crust thickness S̃. The last comes from a new `crust_s` in
+  the debug labels; it is non-dimensional, since no km scale exists.
+
+**F — the fossil belts (prototype)**:
+- `run_with_closures_observed` lets the callback read the kinematics. **A signature-only production change, declared**
+  (the brief asked for none in F): the velocities change at each merge, so a past boundary needs them.
+  - The final state is bit-identical with the recording; +0.02 s.
+- **On the témoin**:
+  - 520 cells ever convergent;
+  - **45 ever in collision**, all ending at step 48;
+  - **6 merges** (five at step 49, one at step 99), no rift split.
+  - **The north-western block is an accreted terrane**: plate 4 into 0, a 100 % continental suture across the
+    continent.
+- **The proposed fossil belt (PROXY)**: collision ≥ 10 steps (≈ 7 Ma, ≈ 0.67 Ma per step, PROXY), or a continental
+  suture cell, and not convergent at the end. 106 coarse cells.
+
+**S — the spec's measurements**:
+- the land shares of the class sources: **default basement 56.7 %**, belt 14.3 %, loose deposits 11.6 %, craton 7.7 %,
+  rift 4.8 %, volcanic 4.0 %, evaporites 0.95 %;
+- 12 PROXY chance grids: raw 805 / 201 / **50 MB** at full / ½ / ¼, PNG 15 / 3.5 / **1.4 MB**;
+- the rock grid: 67 MB raw, 0.52 MB in PNG.
+
+**The specification** (`spec_geologie_v1.md`):
+- **9 classes**: none, craton, belt, basaltic volcanic, arc volcanic, rift fill, loose deposits, evaporites, and the
+  undifferentiated basement as the default. Each with its sources, its hardness for the falls (the contrast ANCHORED
+  on Stock & Montgomery 1999, the values PROXY), its colour and its priority.
+- **The contacts are never on the 64² grid**: bilinear, a Gaussian of 3 km, an iso-line. Volcanic rock is bound to the
+  eroded cone's relief, not a disc.
+- **A TOML rules file**: AND within a rule, MAX across rules, placers downstream along the D8 rivers. The v0 proposal
+  has 34 rules for the 12 resources, every chance a PROXY, every source to check.
+- **The export**: `geologie_roches` u8 at full resolution, `chances_<resource>` u8 at ¼ (DECISION: one chance cell is
+  ~9 hexes), raw (PNG offered as a fallback), the rules' SHA-256 in the manifest.
+- **The viz**: « Roches » like the biomes; « Chances » with opacity = chance, one resource or all (the highest chance
+  wins).
+- **The round-3 gates**: G-field, G-blocks (contacts on the coarse grid lines ≤ 1.5 × random), G-circles (each
+  volcanic patch's isoperimetric ratio ≤ 0.8 × a disc's), G-nonempty, G-placers (100 % on the rivers, downstream of a
+  source), G-rules (one rule changed → one grid changed), and the cost.
+
+**Predictions:**
+- **The reviewer's (hypotheses to check)**: F, S > 50 %, the export < 50 MB at ¼, the viz 6/6 at startup, the meta: all held.
+- **Mine**:
+  - refuted: ever-convergent 600–1 500 (520), ever-collision 50–300 (45), the default 35–55 % (56.7), full compressed
+    50–150 MB (15);
+  - held: the sutures, the export at ¼, the cost.
+
+**Checks after**:
+- `cargo check --workspace` clean; lib 610; viz 31 (+ the defaults test);
+- **the guard 6 / 6, field and lakes = banc**, C2 /10 col `a8d2d538d692c2f0`.
+- The viz's startup world is the guard's.
+
+**For the author**: edit the rules file; raw or PNG chances; the fossil-belt rule; TOML.

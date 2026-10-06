@@ -76,6 +76,8 @@ pub struct CoarseTectonicLabels {
     /// overlay: young = 0, old = 1). Degenerate on the current model (see ADR C-3),
     /// exposed anyway so the author can confirm that with their own eyes.
     pub age_norm: Vec<f32>,
+    /// ADR Finding 151-0 — the crust thickness `S̃` (non-dimensional, `C1State::s`), for the cell panel.
+    pub crust_s: Vec<f32>,
 }
 
 impl CoarseTectonicLabels {
@@ -106,6 +108,7 @@ pub fn derive_tectonic_labels(state: &C1State, kin: &PlateKinematics) -> CoarseT
     let mut collision = vec![false; n];
     let mut divergent = vec![false; n];
     let mut age_norm = vec![0.0f32; n];
+    let mut crust_s = vec![0.0f32; n];
 
     let mut age_max = 1e-6f32;
     for j in 0..ny {
@@ -120,6 +123,7 @@ pub fn derive_tectonic_labels(state: &C1State, kin: &PlateKinematics) -> CoarseT
             let cont = matches!(state.plate_type.get(i, j), PlateType::Continental);
             continental[k] = cont;
             craton[k] = state.cratonic_mask.get(i, j);
+            crust_s[k] = state.s.get(i, j) as f32;
             let age = state.age.get(i, j) as f32;
             age_norm[k] = age / age_max;
             if cont && age < 1.0 {
@@ -156,5 +160,6 @@ pub fn derive_tectonic_labels(state: &C1State, kin: &PlateKinematics) -> CoarseT
         collision,
         divergent,
         age_norm,
+        crust_s,
     }
 }

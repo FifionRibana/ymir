@@ -304,18 +304,18 @@ struct WorkspaceState {
     base_level: bool,
     /// EXPERIMENTAL: FBM amplitude_base for the striation ladder (0.16 = production).
     /// EXPERIMENTAL (C-2, closures roadmap §2): inject volcanic edifices (arcs /
-    /// hotspot chains / rifts) derived from the tectonic state. Off by default
-    /// (production byte-identical). Arc volcanism is barely visible on seeds with
+    /// hotspot chains / rifts) derived from the tectonic state. ON by default since ADR Finding 151 (the author's
+    /// production is the guard's world). Arc volcanism is barely visible on seeds with
     /// few O-C margins — the hotspot chains and rifts carry the render.
     volcanism: bool,
     /// EXPERIMENTAL (C-3, closures roadmap §3): lithological heterogeneity — a
     /// causal per-cell erodibility multiplier (hard basement ×1.0, rift-soft ×10,
-    /// volcaniclastic ×3). Off by default (production byte-identical). Only bites
+    /// volcaniclastic ×3). ON by default since ADR Finding 151. Only bites
     /// with stream-power on.
     lithology: bool,
     /// EXPERIMENTAL (C-3b, closures roadmap §3b): inherited structure — fracture-density
     /// erodibility (intact craton ×1 reference, fractured belts near plate contacts
-    /// erode more). Off by default (production byte-identical). Only bites with
+    /// erode more). ON by default since ADR Finding 151. Only bites with
     /// stream-power on.
     fracture: bool,
     /// EXPERIMENTAL (H-1): infiltration — a causal permeability field (lithology matrix +
@@ -455,9 +455,10 @@ impl Default for WorkspaceState {
             mfd: true,
             mfd_p: 2.0,
             base_level: true,    // ADR Finding 83 -- production ships the bound
-            volcanism: false,    // C-2 opt-in (Expert); production byte-identical
-            lithology: false,    // C-3 opt-in (Expert); production byte-identical
-            fracture: false,     // C-3b opt-in (Expert); production byte-identical
+            // ADR Finding 151-0 — the author's production is the guard's world: C-2, C-3, C-3b ON at startup
+            volcanism: true,
+            lithology: true,
+            fracture: true,
             infiltration: false, // H-1 opt-in (Expert); production byte-identical
             export_dir: "exports".to_string(),
             current: None,
@@ -1919,9 +1920,19 @@ fn inspection(ui: &mut egui::Ui, c: &CellInspection) {
     if let Some(d) = c.depth_m {
         kv(ui, "Profondeur", format!("−{d:.0} m"));
     }
-    kv(ui, "Épaisseur crustale / S̃", "—".into()); // coarse — deferred
-    kv(ui, "Type de plaque", "—".into());
-    kv(ui, "Craton", "—".into());
+    // ADR Finding 151-0 — the coarse tectonic state under the cell (6.25 km cells), when the labels were built
+    match c.tectonic {
+        Some((continental, craton, s)) => {
+            kv(ui, "Épaisseur crustale / S̃", format!("{s:.2} (sans dim.)"));
+            kv(ui, "Type de plaque", if continental { "continentale".into() } else { "océanique".into() });
+            kv(ui, "Craton", if craton { "oui".into() } else { "non".into() });
+        }
+        None => {
+            kv(ui, "Épaisseur crustale / S̃", "—".into());
+            kv(ui, "Type de plaque", "—".into());
+            kv(ui, "Craton", "—".into());
+        }
+    }
 
     group_title(ui, "CLIMAT");
     kv(ui, "Température", format!("{:.1} °C", c.temperature_c));
@@ -6605,6 +6616,20 @@ ANATOMY of the largest duplicated terminal, at cell {cell:?}:"
 /// the bench's; a `Mismatch` means the same configuration yields another world.
 ///
 /// Run: cargo test -p ymir-viz --release f123_viz_guard -- --ignored --nocapture
+/// ADR Finding 151-0 — the viz starts as the author's production, which is the 6/6 guard's world: C-2, C-3 and C-3b
+/// checked, H-1 not. The guard's literal (`f123_viz_guard::run`) and these defaults must not drift apart.
+#[cfg(test)]
+mod startup_defaults {
+    #[test]
+    fn the_workspace_starts_with_the_guards_closures() {
+        let ws = super::WorkspaceState::default();
+        assert!(ws.volcanism, "C-2 volcanism is on in the guard's world");
+        assert!(ws.lithology, "C-3 lithology is on in the guard's world");
+        assert!(ws.fracture, "C-3b fracture is on in the guard's world");
+        assert!(!ws.infiltration, "H-1 infiltration is off in the guard's world");
+    }
+}
+
 #[cfg(test)]
 mod f123_viz_guard {
     use super::*;

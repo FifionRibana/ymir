@@ -1,0 +1,137 @@
+   Compiling windows-sys v0.61.2
+   Compiling ciborium-io v0.2.2
+   Compiling plotters-backend v0.3.7
+   Compiling clap_lex v1.1.0
+   Compiling regex-syntax v0.8.10
+   Compiling bitflags v2.11.0
+   Compiling anstyle v1.0.14
+   Compiling tracing-core v0.1.36
+   Compiling itertools v0.10.5
+   Compiling cast v0.3.0
+   Compiling bytemuck v1.25.0
+   Compiling num-traits v0.2.19
+   Compiling oorandom v11.1.5
+   Compiling anes v0.1.6
+   Compiling zerocopy v0.8.48
+   Compiling serde v1.0.228
+   Compiling plotters-svg v0.3.7
+   Compiling png v0.18.1
+   Compiling clap_builder v4.6.0
+   Compiling tracing v0.1.44
+   Compiling bincode v1.3.3
+   Compiling tinytemplate v1.2.1
+   Compiling moxcms v0.8.1
+   Compiling plotters v0.3.7
+   Compiling noise v0.9.0
+   Compiling winapi-util v0.1.11
+   Compiling is-terminal v0.4.17
+   Compiling same-file v1.0.6
+   Compiling regex-automata v0.4.14
+   Compiling walkdir v2.5.0
+   Compiling criterion-plot v0.5.0
+   Compiling clap v4.6.1
+   Compiling regex v1.12.3
+   Compiling half v2.7.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling image v0.25.10
+   Compiling ciborium-ll v0.2.2
+   Compiling rand_chacha v0.9.0
+   Compiling ciborium v0.2.2
+   Compiling rand v0.9.3
+   Compiling criterion v0.5.1
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 1m 00s
+     Running tests\f151_geology.rs (target_f151\release\deps\f151_geology-1b2f7c75a28803a9.exe)
+
+running 1 test
+
+==========  Finding 151 . the fossil belts (F) and the spec's measurements (S)  ==========
+
+   F · read-only: the observed run's final state is bit-identical to the plain run's: **true** · plain 0.20 s · observed and recorded 0.22 s (+0.02 s)
+   F · over 300 steps: ever convergent 520 cells (continental at the end 162) · ever collision (C-C) 45 · ever subduction upper plate 123 · ever divergent 345 · convergent at the end 154 · collision at the end 0
+      collision ≥  1 steps: 45 cells (45 continental at the end, 1 on the craton, 0 convergent at the end) · any convergence ≥ 1 steps: 520 cells (162 continental)
+      collision ≥  5 steps: 45 cells (45 continental at the end, 1 on the craton, 0 convergent at the end) · any convergence ≥ 5 steps: 508 cells (161 continental)
+      collision ≥ 10 steps: 45 cells (45 continental at the end, 1 on the craton, 0 convergent at the end) · any convergence ≥ 10 steps: 489 cells (143 continental)
+      collision ≥ 20 steps: 45 cells (45 continental at the end, 1 on the craton, 0 convergent at the end) · any convergence ≥ 20 steps: 462 cells (119 continental)
+      collision ≥ 50 steps: 0 cells (0 continental at the end, 0 on the craton, 0 convergent at the end) · any convergence ≥ 50 steps: 283 cells (23 continental)
+      the last collision step of the ever-collision cells: p10 / p50 / p90 48 / 48 / 48 (of 300; ≈ 0.67 Ma per step, PROXY)
+   F · plate merges (sutures) 6 · rift splits (new plate ids) 0
+      step  49: plate 3 into 2 · suture 36 cells · continental 0 %
+      step  49: plate 5 into 1 · suture 16 cells · continental 0 %
+      step  49: plate 7 into 0 · suture 16 cells · continental 50 %
+      step  49: plate 6 into 0 · suture 20 cells · continental 50 %
+      step  49: plate 4 into 0 · suture 51 cells · continental 100 %
+      step  99: plate 1 into 0 · suture 226 cells · continental 17 %
+   F · proposed fossil belt (collision ≥ 10 steps, or a continental suture cell; not convergent at the end): **106 cells** (106 continental, 2 on the craton) · suture cells 360 (106 continental at the end)
+test f151_geology has been running for over 60 seconds
+   F · the témoin's coarse state equals this run's: true
+
+   S · the land shares of the rock classes' sources (priority in this order; this measurement's thresholds, not the spec's) over 11328426 land cells:
+      evaporites (endorheic lake): 0.95 %
+      loose deposits: 11.59 %
+      volcanic: 4.04 %
+      rift-soft: 4.78 %
+      belt (fossil or current): 14.25 %
+      craton: 7.70 %
+      default basement: 56.69 %
+      01 iron (craton): non-zero 3.0 % of the grid · PNG full 0.47 MB · ½ 0.12 MB · ¼ 0.04 MB
+      02 gold (belt + volcanic): non-zero 8.3 % of the grid · PNG full 0.83 MB · ½ 0.19 MB · ¼ 0.08 MB
+      03 silver (belt): non-zero 7.6 % of the grid · PNG full 0.80 MB · ½ 0.19 MB · ¼ 0.08 MB
+      04 copper (volcanic + rift): non-zero 4.0 % of the grid · PNG full 0.69 MB · ½ 0.18 MB · ¼ 0.06 MB
+      05 tin (belt): non-zero 7.6 % of the grid · PNG full 0.80 MB · ½ 0.19 MB · ¼ 0.08 MB
+      06 stone (craton + volcanic + default): non-zero 16.2 % of the grid · PNG full 0.89 MB · ½ 0.24 MB · ¼ 0.09 MB
+      07 clay (loose deposits): non-zero 16.8 % of the grid · PNG full 2.69 MB · ½ 0.62 MB · ¼ 0.25 MB
+      08 sand and gravel (rivers): non-zero 16.6 % of the grid · PNG full 2.85 MB · ½ 0.64 MB · ¼ 0.26 MB
+      09 salt (evaporites): non-zero 1.5 % of the grid · PNG full 0.56 MB · ½ 0.14 MB · ¼ 0.05 MB
+      10 peat (loose, flat): non-zero 16.5 % of the grid · PNG full 2.99 MB · ½ 0.66 MB · ¼ 0.27 MB
+      11 sulphur and obsidian (volcanic): non-zero 2.3 % of the grid · PNG full 0.58 MB · ½ 0.15 MB · ¼ 0.05 MB
+      12 gems (craton + belt): non-zero 10.0 % of the grid · PNG full 0.87 MB · ½ 0.20 MB · ¼ 0.08 MB
+   S · the 12 PROXY chance grids: raw full 805 MB · ½ 201 MB · ¼ 50 MB · **PNG full 15.0 MB · ½ 3.5 MB · ¼ 1.4 MB** (21.6 s for the 12 at full with distances)
+   S · the rock-class grid (u8, full resolution): raw 67 MB · PNG 0.52 MB
+
+==========  end Finding 151 . 500.3 s  ==========
+
+test f151_geology ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 500.46s
+

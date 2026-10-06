@@ -119,6 +119,9 @@ pub struct CellInspection {
     pub biome: Biome,
     pub river: Option<RiverCellInfo>,
     pub lake: Option<LakeCellInfo>,
+    /// ADR Finding 151-0 — the coarse tectonic state under the cell (continental, craton, crust thickness `S̃`),
+    /// sampled as the « Tectonique » overlay samples it. `None` when the labels were not requested.
+    pub tectonic: Option<(bool, bool, f32)>,
 }
 
 /// Gather every HD layer for cell `(x, y)`. `river_map` is the memoised
@@ -168,5 +171,15 @@ pub fn inspect_cell(hd: &HdResult, river_map: &RiverCellMap, x: usize, y: usize)
         biome,
         river: river_map.at(x, y),
         lake,
+        tectonic: hd.tectonic.as_ref().map(|lab| {
+            // the overlay's mapping (`blend_tectonic_overlays`): nearest coarse cell
+            let (nx, ny) = (lab.nx, lab.ny);
+            let sx = hd.sample_origin[0] * nx as f64 + x as f64 * hd.sample_size * nx as f64 / hd.width as f64;
+            let sy = hd.sample_origin[1] * ny as f64 + y as f64 * hd.sample_size * ny as f64 / hd.height as f64;
+            let ci = (sx.round() as isize).rem_euclid(nx as isize) as usize;
+            let cj = (sy.round() as isize).rem_euclid(ny as isize) as usize;
+            let ck = cj * nx + ci;
+            (lab.continental[ck], lab.craton[ck], lab.crust_s.get(ck).copied().unwrap_or(f32::NAN))
+        }),
     }
 }

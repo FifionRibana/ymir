@@ -538,6 +538,21 @@ pub fn run_with_closures<F>(
 ) where
     F: FnMut(usize, &C1State),
 {
+    run_with_closures_observed(state, kinematics, config, closures, |step, st, _| on_step(step, st));
+}
+
+/// [`run_with_closures`] whose callback also READS the kinematics. ADR Finding 151-F: the plate velocities change at
+/// every accretion merge and rifting split, so a past boundary can only be classified with them (the fossil belts).
+/// Read-only: the callback gets shared references and cannot change the run.
+pub fn run_with_closures_observed<F>(
+    state: &mut C1State,
+    kinematics: &mut PlateKinematics,
+    config: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    mut on_step: F,
+) where
+    F: FnMut(usize, &C1State, &PlateKinematics),
+{
     let nx = state.nx();
     let ny = state.ny();
     let n_cells = nx * ny;
@@ -960,7 +975,7 @@ pub fn run_with_closures<F>(
         // Pattern matches Phase 1.4's "designed trade-off, not
         // bug" floor-clamp finding.
 
-        on_step(step, state);
+        on_step(step, state, kinematics);
     }
 }
 
