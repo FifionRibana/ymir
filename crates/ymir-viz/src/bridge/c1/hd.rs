@@ -241,6 +241,8 @@ pub enum HdPhase {
     Drainage,
     /// Whittaker biome classification.
     Biomes,
+    /// ADR Finding 153 -- the geology (rocks + favourabilities), after the biomes.
+    Geology,
 }
 
 impl HdPhase {
@@ -252,6 +254,7 @@ impl HdPhase {
             HdPhase::Climate => "climat",
             HdPhase::Drainage => "drainage",
             HdPhase::Biomes => "biomes",
+            HdPhase::Geology => "géologie",
         }
     }
 }
@@ -1169,6 +1172,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     eprintln!("[HD timing] biomes ({:.1}s)", t.elapsed().as_secs_f32());
 
     // ── ADR Finding 152 -- the geology (read-only: it reads the world, writes only its own buffers) ──
+    let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Geology });
     let t_geo = Instant::now();
     let geology = {
         use ymir_core::climate::precipitation::precip_mm_per_year;
@@ -1211,6 +1215,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         );
         GeologyView { product: Arc::new(product), zoning, rules, stage_s: t_geo.elapsed().as_secs_f64(), zoning_s }
     };
+    let _ = tx.send(C1Event::HdPhaseDone { phase: HdPhase::Geology, regime: CacheRegime::Computed, elapsed: t_geo.elapsed() });
 
     // ── Optional: write the v1 `.ymir` delivery container. ──
     // Explicit opt-in only (never automatic). Ships height (placeholder) +

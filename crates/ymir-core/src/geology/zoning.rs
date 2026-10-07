@@ -356,6 +356,88 @@ pub fn modulation(d: f32, d_ref: f32, g_min: f32) -> f32 {
     g_min + (1.0 - g_min) * (d / d_ref.max(1e-6)).min(1.0)
 }
 
+/// The best rule of a resource at a ¼ cell: its value (before rounding), its index, and the structural modulation g it
+/// carried (if modulated). The FIRST rule of maximal value wins (the file's order), as in [`zone`].
+fn best_rule(res: &super::rules::Resource, rock_sets: &[Vec<u8>], ctx: &ZoningContext, q: usize, dens: &[f32], sm: Option<super::rules::StructuralModulation>) -> (f32, Option<(usize, Option<f32>)>) {
+    let mut best = 0f32;
+    let mut which = None;
+    for (k, (r, rs)) in res.rule.iter().zip(rock_sets).enumerate() {
+        if r.chance as f32 <= best || !rule_holds(r, ctx, q, rs) {
+            continue;
+        }
+        let mut v = r.chance as f32;
+        let mut g = None;
+        if r.modulate.is_some()
+            && let Some(m) = sm
+        {
+            let gg = modulation(dens[q], m.d_ref, m.g_min);
+            v *= gg;
+            g = Some(gg);
+        }
+        if v > best {
+            best = v;
+            which = Some((k, g));
+        }
+    }
+    (best, which)
+}
+
+fn rock_sets_of(res: &super::rules::Resource) -> Vec<Vec<u8>> {
+    res.rule.iter().map(|r| r.rock.iter().flatten().filter_map(|k| rocks::rock_id(k)).collect()).collect()
+}
+
+/// Where a cell's favourability came from.
+#[derive(Clone, Debug, PartialEq)]
+pub enum FavOrigin {
+    /// A rule of the file (its index, its `source`, and the structural modulation g it carried).
+    Rule { index: usize, source: Option<String>, modulation: Option<f32> },
+    /// A placer (downstream along the rivers).
+    Placer { source: Option<String> },
+}
+
+/// One resource at one cell, as the inspector shows it.
+#[derive(Clone, Debug)]
+pub struct CellResource {
+    pub id: String,
+    pub name_fr: String,
+    pub color: [u8; 3],
+    /// Exactly the zoning grid's (and so the export's) value.
+    pub fav: u8,
+    pub origin: FavOrigin,
+}
+
+/// ADR Finding 153-I — the resources of non-zero favourability at the ¼ cell `q`, strongest first. The favourability
+/// is READ from the zoning grid (so it is the export's); only the attribution is recomputed, with the same
+/// evaluation as [`zone`]: the rule whose rounded value equals the grid's, else the placer.
+#[must_use]
+pub fn explain(ctx: &ZoningContext, rules: &GeologyRules, z: &Zoning, q: usize, density: DensitySource) -> Vec<CellResource> {
+    let dens = match density {
+        DensitySource::Structural => &ctx.density,
+        DensitySource::C3bOnly => &ctx.density_c3b,
+    };
+    let sm = rules.modulation.structural;
+    let mut out: Vec<CellResource> = rules
+        .resource
+        .iter()
+        .zip(&z.resources)
+        .filter_map(|(res, grid)| {
+            let fav = *grid.fav.get(q)?;
+            if fav == 0 {
+                return None;
+            }
+            let (best, which) = best_rule(res, &rock_sets_of(res), ctx, q, dens, sm);
+            let rule_val = best.round().clamp(0.0, 100.0) as u8;
+            let origin = match which {
+                Some((k, g)) if rule_val == fav => FavOrigin::Rule { index: k, source: res.rule[k].source.clone(), modulation: g },
+                _ => FavOrigin::Placer { source: res.placer.as_ref().and_then(|p| p.source.clone()) },
+            };
+            Some(CellResource { id: res.id.clone(), name_fr: res.name_fr.clone(), color: grid.color, fav, origin })
+        })
+        .collect();
+    out.sort_by(|a, b| b.fav.cmp(&a.fav));
+    out
+}
+
 /// Evaluate a rules file on a context.
 #[must_use]
 pub fn zone(ctx: &ZoningContext, rules: &GeologyRules, density: DensitySource) -> Zoning {
@@ -369,27 +451,14 @@ pub fn zone(ctx: &ZoningContext, rules: &GeologyRules, density: DensitySource) -
         .resource
         .iter()
         .map(|res| {
-            let rock_sets: Vec<Vec<u8>> = res.rule.iter().map(|r| r.rock.iter().flatten().filter_map(|k| rocks::rock_id(k)).collect()).collect();
+            let rock_sets = rock_sets_of(res);
             let mut fav: Vec<u8> = (0..n4)
                 .into_par_iter()
                 .map(|q| {
                     if ctx.rock[q] == NONE && !ctx.lake[q] {
                         return 0u8;
                     }
-                    let mut best = 0f32;
-                    for (r, rs) in res.rule.iter().zip(&rock_sets) {
-                        if r.chance as f32 <= best || !rule_holds(r, ctx, q, rs) {
-                            continue;
-                        }
-                        let mut v = r.chance as f32;
-                        if r.modulate.is_some()
-                            && let Some(m) = sm
-                        {
-                            v *= modulation(dens[q], m.d_ref, m.g_min);
-                        }
-                        best = best.max(v);
-                    }
-                    best.round().clamp(0.0, 100.0) as u8
+                    best_rule(res, &rock_sets, ctx, q, dens, sm).0.round().clamp(0.0, 100.0) as u8
                 })
                 .collect();
             // the placers: downstream along the rivers from the resource's own zones
@@ -497,6 +566,38 @@ mod tests {
         assert!(gold[15] > gold[8], "more favourable where the density is higher ({} > {})", gold[15], gold[8]);
         let zc = zone(&c, &parse_rules(RULES).unwrap(), DensitySource::C3bOnly);
         assert_eq!(zc.resources[1].fav[15], 7, "C-3b alone at 0: 35 × 0.2 = 7");
+    }
+
+    /// ADR Finding 153-I — the inspector shows exactly the export's values: at several cells (a modulated rule, a plain
+    /// rule, a placer, an empty cell), `explain`'s favourability equals the zoning grid's and the decoded PNG's, and its
+    /// attribution is the rule or the placer that gave it.
+    #[test]
+    fn the_inspector_shows_the_exports_values() {
+        let mut c = ctx();
+        c.rivers = (0..6).map(|i| RiverCell { q4: (9 + i) as u32, recv: if i < 5 { (i + 1) as u32 } else { u32::MAX }, step_km: 1.0, slope: 0.001, area_km2: 10.0 }).collect();
+        c.wetland[11] = true;
+        let text = RULES.replace("modulate = \"structural\"\n", "modulate = \"structural\"\nsource = \"orogenic\"\n[[resource.rule]]\nwetland = true\nchance = 100\nsource = \"wet\"\n")
+            + "[resource.placer]\nsource_min_chance = 100\nriver_min_area_km2 = 5.0\nstart_chance = 50\ndecay_per_km = 10.0\nmax_slope = 0.01\nsource = \"gravels\"\n";
+        let rules = parse_rules(&text).unwrap();
+        let z = zone(&c, &rules, DensitySource::Structural);
+        let files = crate::geology::export::export_files(&vec![1u8; 64 * 64], 64, 64, &z, &rules, "test");
+        for q in [0usize, 9, 11, 12, 13, 15, 200] {
+            let cells = explain(&c, &rules, &z, q, DensitySource::Structural);
+            for (k, grid) in z.resources.iter().enumerate() {
+                let png = &files.iter().find(|(n, _)| n == &format!("favorabilite_{}.png", grid.id)).unwrap().1;
+                let img = image::load_from_memory(png).unwrap().to_luma8();
+                let exported = img.as_raw()[q];
+                assert_eq!(exported, grid.fav[q], "the PNG holds the grid's value at {q}");
+                let shown = cells.iter().find(|r| r.id == grid.id).map_or(0, |r| r.fav);
+                assert_eq!(shown, exported, "resource {k} at cell {q}: the inspector shows the export's value");
+            }
+        }
+        let at = |q: usize, id: &str| explain(&c, &rules, &z, q, DensitySource::Structural).into_iter().find(|r| r.id == id).unwrap().origin;
+        assert!(matches!(at(15, "gold"), FavOrigin::Rule { modulation: Some(_), .. }), "a modulated rule carries its g");
+        assert!(matches!(at(0, "iron"), FavOrigin::Rule { modulation: None, .. }), "a plain rule");
+        assert_eq!(at(11, "gold"), FavOrigin::Rule { index: 1, source: Some("wet".into()), modulation: None }, "the source cell's own rule");
+        assert_eq!(at(12, "gold"), FavOrigin::Placer { source: Some("gravels".into()) }, "downstream of the source: the placer (40 > the rule's 28)");
+        assert!(matches!(at(13, "gold"), FavOrigin::Rule { index: 0, .. }), "a tie (placer 30 = rule 30) goes to the rule, as zone's MAX keeps it");
     }
 
     /// The placers travel DOWNSTREAM only: a source upstream reaches the cells below it, never the ones above.

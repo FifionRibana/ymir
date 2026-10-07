@@ -245,9 +245,9 @@ mod tests {
             events.iter().filter(|e| matches!(e, C1Event::HdPhaseStarted { .. })).count();
         let phase_done = events.iter().filter(|e| matches!(e, C1Event::HdPhaseDone { .. })).count();
         assert_eq!(started, 1, "one HdStarted");
-        // Eroded is split into Tectonic/Relief/Erosion (suite e) → 6 sub-phases.
-        assert_eq!(phase_started, 6, "6 HdPhaseStarted");
-        assert_eq!(phase_done, 6, "6 HdPhaseDone");
+        // Eroded is split into Tectonic/Relief/Erosion (suite e), plus the geology (ADR Finding 153) → 7 sub-phases.
+        assert_eq!(phase_started, 7, "7 HdPhaseStarted");
+        assert_eq!(phase_done, 7, "7 HdPhaseDone");
 
         // Phases arrive in execution order (same on HIT or MISS).
         let order: Vec<HdPhase> = events
@@ -266,6 +266,7 @@ mod tests {
                 HdPhase::Climate,
                 HdPhase::Drainage,
                 HdPhase::Biomes,
+                HdPhase::Geology,
             ],
         );
 

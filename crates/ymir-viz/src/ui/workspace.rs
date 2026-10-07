@@ -140,9 +140,9 @@ enum HdLayer {
     Precipitation,
     Temperature,
     Biomes,
-    /// ADR Finding 152 -- the rock classes (like the biomes) and the favourabilities (opacity = favourability).
+    /// ADR Finding 152/153 -- the rock classes (a frieze step, like the biomes). The favourabilities are a MASK
+    /// (`WorkspaceState::chance_overlay`), drawn over any step.
     Rocks,
-    Chances,
 }
 
 impl HdLayer {
@@ -154,7 +154,6 @@ impl HdLayer {
             HdLayer::Temperature => "Température",
             HdLayer::Biomes => "Biomes",
             HdLayer::Rocks => "Roches",
-            HdLayer::Chances => "Chances",
         }
     }
     fn desc(self) -> &'static str {
@@ -167,7 +166,6 @@ impl HdLayer {
             HdLayer::Temperature => "Température de surface — gradient latitudinal + lapse rate.",
             HdLayer::Biomes => "Classification de Whittaker (température × précipitation).",
             HdLayer::Rocks => "Classes de roche (géologie v1) : fixes pour un monde.",
-            HdLayer::Chances => "Favorabilité relative des ressources (0–100) ; opacité = favorabilité.",
         }
     }
 }
@@ -179,7 +177,7 @@ impl HdLayer {
 /// product) and Relief (pre-erosion upscale, not retained). The Érosion node
 /// carries the Relief layer (the eroded heightmap = the final relief). Précip.
 /// and Temp. share the Climate phase.
-const FRIEZE: [(HdPhase, &str, Option<HdLayer>); 7] = [
+const FRIEZE: [(HdPhase, &str, Option<HdLayer>); 8] = [
     (HdPhase::Tectonic, "Tectonique", None),
     (HdPhase::Relief, "Relief", None),
     (HdPhase::Erosion, "Érosion", Some(HdLayer::Relief)),
@@ -187,6 +185,8 @@ const FRIEZE: [(HdPhase, &str, Option<HdLayer>); 7] = [
     (HdPhase::Climate, "Précip.", Some(HdLayer::Precipitation)),
     (HdPhase::Climate, "Temp.", Some(HdLayer::Temperature)),
     (HdPhase::Biomes, "Biomes", Some(HdLayer::Biomes)),
+    // ADR Finding 153 -- the rocks are a step of the pipeline, a view like the biomes
+    (HdPhase::Geology, "Roches", Some(HdLayer::Rocks)),
 ];
 
 /// Visual state of a frieze node, derived from the live HD event stream.
@@ -229,6 +229,8 @@ struct WorkspaceState {
     /// favourability wins), and a re-zoning done by « Recharger les règles » (zoning, rules, seconds).
     geology_rules_path: String,
     chance_only: Option<usize>,
+    /// ADR Finding 153 -- the « Chances » mask (over any step).
+    chance_overlay: bool,
     zoning_override: Option<(ymir_core::geology::Zoning, ymir_core::geology::rules::LoadedRules, f64)>,
     inspector_open: bool,
     // Expert params (exposed, wiring deferred — tagged in the UI).
@@ -430,6 +432,7 @@ impl Default for WorkspaceState {
             rll_hide_retrace: false,
             geology_rules_path: "geology_rules.toml".to_string(),
             chance_only: None,
+            chance_overlay: false,
             zoning_override: None,
             inspector_open: true,
             climat_open: true,
@@ -1825,6 +1828,7 @@ fn right_panel(ctx: &egui::Context, ws: &mut WorkspaceState) {
             });
             ui.separator();
             let hover = ws.hover; // copy before the &mut borrow below
+            let geo = ws.hover_xy.and_then(|(x, y)| geo_cell(ws, x, y));
             egui::ScrollArea::vertical().show(ui, |ui| {
                 // Primary: the selected element's detail (microscope).
                 block(ui, 15, 14, 14, |ui| microscope_detail(ui, ws));
@@ -1833,7 +1837,7 @@ fn right_panel(ctx: &egui::Context, ws: &mut WorkspaceState) {
                 match hover {
                     Some(c) => {
                         group_title(ui, "CELLULE SURVOLÉE");
-                        block(ui, 8, 14, 14, |ui| inspection(ui, &c));
+                        block(ui, 8, 14, 14, |ui| inspection(ui, &c, geo.as_ref()));
                     }
                     None => {
                         ui.add_space(10.0);
@@ -1913,7 +1917,26 @@ fn group_title(ui: &mut egui::Ui, t: &str) {
     ui.label(egui::RichText::new(t).color(BRONZE).size(9.5));
 }
 
-fn inspection(ui: &mut egui::Ui, c: &CellInspection) {
+/// ADR Finding 153 -- the geology of the hovered cell: its rock class and its resources (strongest first), read from the
+/// active zoning (the reloaded rules if any).
+struct GeoCell {
+    rock: u8,
+    resources: Vec<ymir_core::geology::zoning::CellResource>,
+}
+
+fn geo_cell(ws: &WorkspaceState, x: usize, y: usize) -> Option<GeoCell> {
+    use ymir_core::geology::zoning::{CHANCE_FACTOR, DensitySource, explain};
+    let g = ws.current.as_ref()?.geology.as_ref()?;
+    let (z, rules) = match &ws.zoning_override {
+        Some((z, l, _)) => (z, &l.rules),
+        None => (&g.zoning, &g.rules.rules),
+    };
+    let ctx = &g.product.context;
+    let q = (y / CHANCE_FACTOR).min(ctx.h4 - 1) * ctx.w4 + (x / CHANCE_FACTOR).min(ctx.w4 - 1);
+    Some(GeoCell { rock: *g.product.rocks.get(y * g.product.w + x)?, resources: explain(ctx, rules, z, q, DensitySource::Structural) })
+}
+
+fn inspection(ui: &mut egui::Ui, c: &CellInspection, geo: Option<&GeoCell>) {
     let [br, bg, bb] = c.biome.color();
     egui::Frame::default()
         .fill(FIELD)
@@ -2000,6 +2023,49 @@ fn inspection(ui: &mut egui::Ui, c: &CellInspection) {
                 ui.label(egui::RichText::new(french_biome(c.biome)).color(TEXT_BRIGHT).size(13.0));
             });
         });
+
+    // ADR Finding 153 -- the rock and the resources of the cell
+    if let Some(g) = geo {
+        let rc = &ymir_core::geology::rocks::ROCK_CLASSES[(g.rock as usize).min(8)];
+        group_title(ui, "ROCHES");
+        egui::Frame::default()
+            .fill(FIELD)
+            .stroke(egui::Stroke::new(1.0, C::from_rgb(0x2a, 0x2a, 0x2a)))
+            .inner_margin(egui::Margin::symmetric(12, 10))
+            .corner_radius(6)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("⬛").color(C::from_rgb(rc.color[0], rc.color[1], rc.color[2])).size(16.0));
+                    ui.add_space(2.0);
+                    ui.label(egui::RichText::new(rc.name_fr).color(TEXT_BRIGHT).size(13.0));
+                });
+                if g.rock != 0 {
+                    kv(ui, "Dureté", ["tendre", "moyenne", "dure"][rc.hardness.min(2) as usize].into());
+                }
+            });
+        group_title(ui, "RESSOURCES");
+        ui.label(egui::RichText::new("favorabilité relative 0–100, lue sur la grille ¼ (195 m), comme l'export").color(DIM).size(9.5));
+        if g.resources.is_empty() {
+            ui.label(egui::RichText::new("aucune").color(DIM).size(11.0));
+        }
+        for r in &g.resources {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("■").color(C::from_rgb(r.color[0], r.color[1], r.color[2])).size(12.0));
+                ui.label(egui::RichText::new(&r.name_fr).color(TEXT_BRIGHT).size(11.5));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(egui::RichText::new(format!("{}", r.fav)).color(COPPER_BRIGHT).monospace().size(11.5));
+                });
+            });
+            let why = match &r.origin {
+                ymir_core::geology::zoning::FavOrigin::Rule { index, source, modulation } => {
+                    let m = modulation.map_or(String::new(), |g| format!(" · modulation structurale × {g:.2}"));
+                    format!("règle {} : {}{m}", index + 1, source.clone().unwrap_or_else(|| "(sans source)".into()))
+                }
+                ymir_core::geology::zoning::FavOrigin::Placer { source } => format!("placer : {}", source.clone().unwrap_or_else(|| "(sans source)".into())),
+            };
+            ui.label(egui::RichText::new(why).color(DIM).size(9.5));
+        }
+    }
 }
 
 // ── Central: frieze + map ────────────────────────────────────────────────
@@ -2612,7 +2678,7 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                 (2, Some(r)) => ReliefView::Diff(r, DIFF_SAT_M[ws.diff_sat.min(2)]),
                 _ => ReliefView::Hypso,
             };
-            let geo = hd.geology.as_ref().map(|g| (ws.zoning_override.as_ref().map_or(&g.zoning, |o| &o.0), ws.chance_only, g.product.rocks.as_slice()));
+            let geo = hd.geology.as_ref().map(|g| (ws.zoning_override.as_ref().map_or(&g.zoning, |o| &o.0), ws.chance_only, g.product.rocks.as_slice(), ws.chance_overlay));
             layer_color_image(hd, layer, rm, overlay, overlays, relief, geo)
         };
         ws.diff_stats = stats;
@@ -2719,18 +2785,23 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
             .iter()
             .map(|r| (C::from_rgb(r.color[0], r.color[1], r.color[2]), r.name_fr.to_string(), ["tendre", "moyenne", "dure"][r.hardness.min(2) as usize].to_string()))
             .collect(),
-        (HdLayer::Chances, Some(g)) => {
-            let z = ws.zoning_override.as_ref().map_or(&g.zoning, |o| &o.0);
-            z.resources
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| ws.chance_only.is_none_or(|o| o == *i))
-                .map(|(_, r)| (C::from_rgb(r.color[0], r.color[1], r.color[2]), r.name_fr.clone(), format!("max {}", r.fav.iter().max().copied().unwrap_or(0))))
-                .collect()
-        }
         _ => Vec::new(),
     };
     legend_box(ui, vp, ws.layer, (ws.relief_view, ws.diff_sat, ws.diff_stats, ws.diff_ref.is_some()), geo_items);
+    // ADR Finding 153 -- the « Chances » mask's own legend (top left of the map)
+    if ws.chance_overlay
+        && let Some(g) = ws.current.as_ref().and_then(|h| h.geology.as_ref())
+    {
+        let z = ws.zoning_override.as_ref().map_or(&g.zoning, |o| &o.0);
+        let items: Vec<(C, String, String)> = z
+            .resources
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| ws.chance_only.is_none_or(|o| o == *i))
+            .map(|(_, r)| (C::from_rgb(r.color[0], r.color[1], r.color[2]), r.name_fr.clone(), format!("max {}", r.fav.iter().max().copied().unwrap_or(0))))
+            .collect();
+        chances_legend(ui, vp, &items, ws.chance_only.is_none());
+    }
 
     // Hover -> cell -> inspect (only when the cursor is over the map, not the letterbox).
     ws.hover = None;
@@ -3019,7 +3090,7 @@ fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) 
                     ui.checkbox(&mut ws.rll_overlay, egui::RichText::new("Rivières LL").size(11.0))
                         .on_hover_text("Rivières pour Living Landz : cours principaux lissés dans leur vallée (rivers_ll.json)");
                     if ws.rll_overlay {
-                        ui.menu_button(egui::RichText::new("filtres ▾").size(11.0), |ui| {
+                        tool_menu(ui, egui::RichText::new("filtres ▾").size(11.0), |ui| {
                             ui.set_min_width(300.0);
                             ui.add(egui::Slider::new(&mut ws.rll_min_len_km, 0.0..=100.0).logarithmic(true).text("longueur min (km)"));
                             ui.add(egui::Slider::new(&mut ws.rll_min_area_km2, 0.0..=5000.0).logarithmic(true).text("aire min (km²)"));
@@ -3051,36 +3122,34 @@ fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) 
                         .on_hover_text(
                             "Marqueurs sur la carte (volcans : ▲ rouge actif / gris éteint)",
                         );
-                    // ADR Finding 152 -- the geology views, the resource picker and the rules reload
+                    // ADR Finding 153 -- the « Chances » mask (over any step): the resource, the rules file and its reload. The rocks
+                    // are the frieze's « Roches » step.
                     if ws.current.as_ref().is_some_and(|h| h.geology.is_some()) {
                         ui.separator();
-                        ui.menu_button(egui::RichText::new("⛏ Géologie ▾").size(11.0), |ui| {
+                        if ui.checkbox(&mut ws.chance_overlay, egui::RichText::new("Chances").size(11.0)).on_hover_text("Favorabilité des ressources par-dessus l'étape affichée (opacité = favorabilité)").changed() {
+                            ws.texture = None;
+                        }
+                        tool_menu(ui, egui::RichText::new("⛏ ressources ▾").size(11.0), |ui| {
                             ui.set_min_width(320.0);
-                            if ui.selectable_label(ws.layer == HdLayer::Rocks, "Roches").clicked() {
-                                ws.layer = HdLayer::Rocks;
-                                ws.texture = None;
-                            }
-                            if ui.selectable_label(ws.layer == HdLayer::Chances, "Chances (favorabilité)").clicked() {
-                                ws.layer = HdLayer::Chances;
-                                ws.texture = None;
-                            }
-                            ui.separator();
                             let g = ws.current.as_ref().and_then(|h| h.geology.clone());
                             if let Some(g) = g {
-                                let names: Vec<String> = ws.zoning_override.as_ref().map_or(&g.zoning, |o| &o.0).resources.iter().map(|r| r.name_fr.clone()).collect();
-                                let current = ws.chance_only.and_then(|i| names.get(i).cloned()).unwrap_or_else(|| "Toutes (la plus forte)".to_string());
-                                egui::ComboBox::from_label("ressource").selected_text(current).show_ui(ui, |ui| {
-                                    if ui.selectable_label(ws.chance_only.is_none(), "Toutes (la plus forte)").clicked() {
-                                        ws.chance_only = None;
+                                if ui.checkbox(&mut ws.chance_overlay, "Afficher les chances").changed() {
+                                    ws.texture = None;
+                                }
+                                ui.separator();
+                                let names: Vec<(String, [u8; 3])> = ws.zoning_override.as_ref().map_or(&g.zoning, |o| &o.0).resources.iter().map(|r| (r.name_fr.clone(), r.color)).collect();
+                                if ui.radio(ws.chance_only.is_none(), "Toutes (la plus forte l'emporte)").clicked() {
+                                    ws.chance_only = None;
+                                    ws.texture = None;
+                                }
+                                for (i, (n, col)) in names.iter().enumerate() {
+                                    let txt = egui::RichText::new(format!("■ {n}")).color(C::from_rgb(col[0], col[1], col[2]));
+                                    if ui.radio(ws.chance_only == Some(i), txt).clicked() {
+                                        ws.chance_only = Some(i);
                                         ws.texture = None;
                                     }
-                                    for (i, n) in names.iter().enumerate() {
-                                        if ui.selectable_label(ws.chance_only == Some(i), n).clicked() {
-                                            ws.chance_only = Some(i);
-                                            ws.texture = None;
-                                        }
-                                    }
-                                });
+                                }
+                                ui.separator();
                                 ui.horizontal(|ui| {
                                     ui.label("fichier");
                                     ui.text_edit_singleline(&mut ws.geology_rules_path);
@@ -3107,7 +3176,7 @@ fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) 
                     if ws.layer == HdLayer::Relief && ws.current.is_some() {
                         ui.separator();
                         let name = ["Hypsométrie", "Ombrage", "Différence"][ws.relief_view.min(2)];
-                        ui.menu_button(egui::RichText::new(format!("🗻 {name} ▾")).size(11.0), |ui| {
+                        tool_menu(ui, egui::RichText::new(format!("🗻 {name} ▾")).size(11.0), |ui| {
                             ui.set_min_width(280.0);
                             let views = [
                                 ("Hypsométrie", "La couche livrée : l'altitude en couleur."),
@@ -3179,7 +3248,7 @@ fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) 
                         } else {
                             "🔬 Tectonique ▾".to_string()
                         };
-                        ui.menu_button(egui::RichText::new(btn).size(11.0), |ui| {
+                        tool_menu(ui, egui::RichText::new(btn).size(11.0), |ui| {
                             ui.set_min_width(180.0);
                             let mut chk =
                                 |ui: &mut egui::Ui, on: &mut bool, label, hint, col: [u8; 3]| {
@@ -3304,7 +3373,7 @@ fn legend_box(
             (C::from_rgb(0xE1, 0x78, 0x46), "Chaud", ">20°"),
         ],
         HdLayer::Biomes => (0..10).map(|i| (biome_hex(i), biome_fr(i), "")).collect(),
-        HdLayer::Rocks | HdLayer::Chances => Vec::new(),
+        HdLayer::Rocks => Vec::new(),
     }
     .into_iter()
     .map(|(c, a, b): (C, &str, &str)| (c, a.to_string(), b.to_string()))
@@ -3319,7 +3388,6 @@ fn legend_box(
         HdLayer::Temperature => "TEMPÉRATURE",
         HdLayer::Biomes => "BIOMES",
         HdLayer::Rocks => "ROCHES",
-        HdLayer::Chances => "CHANCES — OPACITÉ = FAVORABILITÉ",
     };
     let row_h = 16.0;
     let rows = if diff_view { 3.0 } else if items.is_empty() { 2.0 } else { items.len() as f32 };
@@ -3442,6 +3510,38 @@ fn legend_box(
             }
         }
     }
+}
+
+/// ADR Finding 153 -- the « Chances » mask's legend, top left of the map.
+fn chances_legend(ui: &mut egui::Ui, rect: egui::Rect, items: &[(C, String, String)], all: bool) {
+    let p = ui.painter_at(rect);
+    let row_h = 15.0;
+    let bh = 40.0 + items.len() as f32 * row_h;
+    let bw = 230.0;
+    let bpos = egui::pos2(rect.left() + 12.0, rect.top() + 12.0);
+    p.rect_filled(egui::Rect::from_min_size(bpos, egui::vec2(bw, bh)), 8.0, C::from_rgba_unmultiplied(18, 18, 18, 220));
+    p.text(egui::pos2(bpos.x + 12.0, bpos.y + 8.0), egui::Align2::LEFT_TOP, "CHANCES — OPACITÉ = FAVORABILITÉ", egui::FontId::proportional(9.5), C::from_rgb(0x7a, 0x7a, 0x7a));
+    p.text(
+        egui::pos2(bpos.x + 12.0, bpos.y + 21.0),
+        egui::Align2::LEFT_TOP,
+        if all { "toutes : la plus forte l'emporte · grille ¼ (195 m)" } else { "une ressource · grille ¼ (195 m)" },
+        egui::FontId::proportional(8.5),
+        DIM,
+    );
+    for (i, (col, lbl, sub)) in items.iter().enumerate() {
+        let ry = bpos.y + 36.0 + i as f32 * row_h;
+        p.rect_filled(egui::Rect::from_min_size(egui::pos2(bpos.x + 12.0, ry + 1.0), egui::vec2(10.0, 10.0)), 3.0, *col);
+        p.text(egui::pos2(bpos.x + 28.0, ry), egui::Align2::LEFT_TOP, lbl, egui::FontId::proportional(10.5), C::from_rgb(0xcf, 0xcf, 0xcf));
+        p.text(egui::pos2(bpos.x + bw - 12.0, ry), egui::Align2::RIGHT_TOP, sub, egui::FontId::monospace(9.0), C::from_rgb(0x77, 0x77, 0x77));
+    }
+}
+
+/// ADR Finding 153 -- a toolbar menu that stays open while its items are used: it closes on a click OUTSIDE it or on
+/// Escape (egui's default closes on any click, so a checkbox closed its menu).
+fn tool_menu<R>(ui: &mut egui::Ui, text: egui::RichText, add: impl FnOnce(&mut egui::Ui) -> R) -> egui::InnerResponse<Option<R>> {
+    use egui::containers::menu::{MenuButton, MenuConfig};
+    let (resp, inner) = MenuButton::new(text).config(MenuConfig::new().close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)).ui(ui, add);
+    egui::InnerResponse::new(inner.map(|i| i.inner), resp)
 }
 
 fn zoom_controls(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) {
@@ -3757,7 +3857,7 @@ fn layer_color_image(
     overlay: bool,
     tectonic: TectonicOverlays,
     relief: ReliefView<'_>,
-    geo: Option<(&ymir_core::geology::Zoning, Option<usize>, &[u8])>,
+    geo: Option<(&ymir_core::geology::Zoning, Option<usize>, &[u8], bool)>,
 ) -> (egui::ColorImage, Option<(usize, usize)>) {
     use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
     use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
@@ -3806,18 +3906,20 @@ fn layer_color_image(
             }
             HdLayer::Drainage => drainage_color(hd, river_map, k),
             // ADR Finding 152 -- the geology views draw over the hypsometric relief (water stays as it is)
-            HdLayer::Rocks | HdLayer::Chances => relief_color(hd.eroded.data[k]),
+            HdLayer::Rocks => relief_color(hd.eroded.data[k]),
         };
         rgba[k * 4] = c[0];
         rgba[k * 4 + 1] = c[1];
         rgba[k * 4 + 2] = c[2];
         rgba[k * 4 + 3] = 255;
     }
-    if let Some((zoning, only, rocks)) = geo {
-        match layer {
-            HdLayer::Rocks => ymir_core::geology::render::rocks_rgba(rocks, &mut rgba),
-            HdLayer::Chances => ymir_core::geology::render::chances_rgba(zoning, only, w, h, &mut rgba),
-            _ => {}
+    if let Some((zoning, only, rocks, chances)) = geo {
+        if layer == HdLayer::Rocks {
+            ymir_core::geology::render::rocks_rgba(rocks, &mut rgba);
+        }
+        // ADR Finding 153 -- the « Chances » mask, over any step
+        if chances {
+            ymir_core::geology::render::chances_rgba(zoning, only, w, h, &mut rgba);
         }
     }
     if overlay {

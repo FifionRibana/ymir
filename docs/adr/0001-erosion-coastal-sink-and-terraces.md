@@ -20627,3 +20627,49 @@ screenshotted.
 - **The favourability discs around the active volcanoes** (sulphur and obsidian) come from the distance rules
   (`volcano_within_km`), not from the code. G-circles tested only the rock class. Tuning the file is left to the
   author.
+
+## Finding 153 — geology v1, the interface finishes and the work closed: « Roches » is the frieze's eighth step, « Chances » a mask over any step, the toolbar menus stay open (close on a click outside or Escape), and the inspector shows the cell's rock and its resources with the rule that gave each (exactly the export's values, a permanent test)
+
+**Status: built (the viz, plus `geology::zoning::explain`); nothing committed.** Report and closing summary:
+`docs/reports/geology_v1/f153_ui/finding_153.md`.
+- F152 was committed (`f85f431`), its ADR entry completed.
+
+**The author's criterion, recorded as given**:
+- « À mon avis, ça semble très bien déjà. Avant de clore, j'aimerais faire des updates UI. »
+- The rock as a step like the biomes (« ou sinon il faut que ce soit un masque »).
+- The toolbar menus that close on a click inside.
+- An inspector with a « Roches » section and the resources' favourability on the hovered pixel.
+- The world, the exports and the guard do not change.
+
+**Built**:
+- **P**:
+  - the frieze's « Roches » step (`HdPhase::Geology`);
+  - « Chances » as a toolbar mask over any step, its menu holding the resource (radio buttons), the rules file and «
+    Recharger les règles », and its own legend.
+- **M**:
+  - the four toolbar menus go through `tool_menu` (egui's `MenuButton`, `PopupCloseBehavior::CloseOnClickOutside`):
+    an item is used without closing the menu, and the menu closes on a click outside or Escape;
+  - the combo box became radio buttons, since a second popup counts as "outside";
+  - the popups sit on a layer above the map canvas, so no click reaches it. Not verified interactively.
+- **I**:
+  - « ROCHES » (class, colour, hardness) and « RESSOURCES » (strongest first: favourability, the rule's `source` and
+    number, « × g » if modulated or « placer »), read on the ¼ grid from the ACTIVE zoning;
+  - `explain` READS the favourability from the zoning grid the export writes, and recomputes only the attribution by
+    the zoning's own evaluation (shared `best_rule`; a tie goes to the rule).
+  - **The permanent test `the_inspector_shows_the_exports_values`** decodes the PNGs and compares them with the
+    inspector's values at 7 cells.
+
+**Checks after**:
+- `cargo check --workspace` clean; lib 617 (+1);
+- **the guard 6 / 6 = banc** (C2 /10 col `a8d2d538d692c2f0`);
+- viz 31, after fixing the phase-count test (6 → 7 phases; my first run failed on it).
+
+**Predictions**:
+- held: the guard 6/6, inspector = export (the reviewer's and mine);
+- refuted in its detail: my "a placer at cell 13", where a tie goes to the rule (the test now names the tie).
+
+**The geology v1 work is CLOSED**: rocks and relative favourabilities exported, rules tuned by the author alone.
+- The known limits: no districts; no sedimentary basins (no coal, no limestone).
+- The first tunings suggested: lower stone, widen peat, volcanic rock instead of discs.
+- **Next, in the agreed order: lakes, gorges and falls resumed**, with the rock hardness at the lake sills now
+  available.

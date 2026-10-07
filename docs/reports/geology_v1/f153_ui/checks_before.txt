@@ -1,0 +1,20 @@
+# F153 checks BEFORE = F152's after-checks (f85f431)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 12s
+test result: ok. 616 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 2.57s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 31 passed; 0 failed; 16 ignored; 0 measured; 0 filtered out; finished in 1.48s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+# the 6/6 guard through run_hd (ymir-viz f123_viz_guard)
+[HD timing] geology (3.27s: history 0.44 · rocks 1.07 · context 1.42 · zoning 0.06) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (3.22s: history 0.57 · rocks 0.90 · context 1.46 · zoning 0.05) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (3.32s: history 0.44 · rocks 1.03 · context 1.53 · zoning 0.05) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (3.11s: history 0.56 · rocks 0.89 · context 1.33 · zoning 0.06) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (3.24s: history 0.43 · rocks 1.02 · context 1.48 · zoning 0.05) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.97s: history 0.42 · rocks 0.85 · context 1.44 · zoning 0.05) · rules v0 intégré (4d82bec83252)
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes = banc
+   C1 nue                 field = banc · lakes = banc
+   C2 /10 col (défaut)    field = banc · lakes = banc
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes = banc
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 46 filtered out; finished in 225.01s
