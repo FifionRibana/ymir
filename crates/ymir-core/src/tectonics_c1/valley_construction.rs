@@ -248,6 +248,11 @@ pub struct GorgeRetreat {
     /// ADR Finding 144-P3 — internal: the construction without the gorge's invariant and the rim clamp.
     #[serde(default, skip_serializing_if = "is_false")]
     pub bare: bool,
+    /// ADR Finding 155-F — the falls' rule (the author, 2026-10-07: « Tirage actuel, sauf lèvre tendre = pas de chute »):
+    /// φ = 0 for a body whose col lies on a SOFT substratum cell (hardness 0, F154's layer), the current draw otherwise.
+    /// The soft cells come with [`skeleton_with_soft_lips`]; without them no cell is soft. Skipped in the key when `false`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub soft_lip: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -265,7 +270,12 @@ fn is_zero_f32(x: &f32) -> bool {
 impl GorgeRetreat {
     /// Spec v3's values: m = 10, A_ref = 418.7 km².
     pub fn v3(r_world: f32, p: f32) -> Self {
-        Self { r_world, p, m: 10.0, a_ref_km2: 418.7, d8_scope: false, plain: false, scope_lows: None, phi_zero: false, freeze_design: false, input_scope: false, bound_b: false, head_cap: false, light_mode: 0, light_dt_m: 0.0, bare: false }
+        Self { r_world, p, m: 10.0, a_ref_km2: 418.7, d8_scope: false, plain: false, scope_lows: None, phi_zero: false, freeze_design: false, input_scope: false, bound_b: false, head_cap: false, light_mode: 0, light_dt_m: 0.0, bare: false, soft_lip: false }
+    }
+
+    /// ADR Finding 155-F — spec v5 with the soft-lip rule.
+    pub fn v6(r_world: f32, p: f32) -> Self {
+        Self { soft_lip: true, ..Self::v5(r_world, p) }
     }
 
     /// Spec v4: v3 with the D8 scope and the minimal plain (`spec_gorge_age_v4.md`).
@@ -616,7 +626,19 @@ pub fn skeleton(
     ss: &SteinSteinParams,
     domain_km: f32,
 ) -> Skeleton {
-    skeleton_patched(field, vc, ss, domain_km, None)
+    skeleton_impl(field, vc, ss, domain_km, None, None)
+}
+
+/// ADR Finding 155-F — [`skeleton`] with the soft substratum cells (`w·h`, `true` = hardness 0), read by the gorge's
+/// soft-lip rule ([`GorgeRetreat::soft_lip`]). `None` is [`skeleton`].
+pub fn skeleton_with_soft_lips(
+    field: &GridF32,
+    vc: &ValleyConstruction,
+    ss: &SteinSteinParams,
+    domain_km: f32,
+    soft: Option<&[bool]>,
+) -> Skeleton {
+    skeleton_impl(field, vc, ss, domain_km, None, soft)
 }
 
 /// ADR Finding 131-P — the pointers the skeleton will stand on, handed to a bench before the areas are
@@ -631,6 +653,17 @@ pub fn skeleton_patched(
     ss: &SteinSteinParams,
     domain_km: f32,
     patch: Option<SkeletonPatch>,
+) -> Skeleton {
+    skeleton_impl(field, vc, ss, domain_km, patch, None)
+}
+
+fn skeleton_impl(
+    field: &GridF32,
+    vc: &ValleyConstruction,
+    ss: &SteinSteinParams,
+    domain_km: f32,
+    patch: Option<SkeletonPatch>,
+    soft: Option<&[bool]>,
 ) -> Skeleton {
     let (w, h) = (field.width, field.height);
     let n = w * h;
@@ -701,7 +734,7 @@ pub fn skeleton_patched(
     // χ walk so that the lake stops take it as their base
     let gorge = match (vc.gorge_retreat, vc.lake_base, lake_map.as_deref(), lake_level.as_deref()) {
         (Some(g), Some(LakeBase::InputLakesAndBasins), Some(lm), Some(lv)) if vc.basin_base => Some(gorge_bodies(
-            field, lm, lv, &land, dir, &area_km2, &dep, &spill_m, w, h, cell_km2, ss, vc, &g,
+            field, lm, lv, &land, dir, &area_km2, &dep, &spill_m, w, h, cell_km2, ss, vc, &g, soft,
         )),
         _ => None,
     };
@@ -1042,6 +1075,7 @@ fn gorge_bodies(
     ss: &SteinSteinParams,
     vc: &ValleyConstruction,
     g: &GorgeRetreat,
+    soft: Option<&[bool]>,
 ) -> (Vec<u32>, Vec<GorgeBody>) {
     use std::collections::HashMap;
     let n = w * h;
@@ -1187,7 +1221,8 @@ fn gorge_bodies(
             a_out_km2: a_out,
             r_lake,
             level,
-            phi: if g.phi_zero { 0.0 } else { gorge_phi(low as u64) },
+            // ADR Finding 155-F -- a soft lip makes no fall
+            phi: if g.phi_zero || (g.soft_lip && col.is_some_and(|c| soft.is_some_and(|s| s[c]))) { 0.0 } else { gorge_phi(low as u64) },
             input_lake: *is_lake,
             touches_depression: t_dep,
             touches_below_sea: t_sea,
@@ -3207,6 +3242,56 @@ mod tests {
         assert!(b.col != u32::MAX && !e[b.col as usize], "the col drains away from its body");
         let off = skeleton(&f, &ext, &ss, 51.2);
         assert!(gorge_catchment_mask(&f, &off, 0.5).iter().all(|&x| !x), "empty when the gate is off");
+    }
+
+    /// ADR Finding 155-F, rule 13 — the soft-lip rule on v5's synthetic world: with every cell soft, v6 gives every body
+    /// φ = 0; negative controls: with no cell soft, and with the rule off (v5) on the soft cells, every φ is the draw.
+    /// The rule moves the key and is absent when off.
+    #[test]
+    fn a_soft_lip_makes_no_fall() {
+        let ss = SteinSteinParams::default();
+        let n = 128usize;
+        let field = |cx: f32| -> GridF32 {
+            let z_m = |x: f32, y: f32| -> f32 {
+                if y >= 120.0 {
+                    return -50.0;
+                }
+                let bowl = |cx: f32, cy: f32, r: f32, depth: f32| {
+                    let d = ((x - cx).powi(2) + (y - cy).powi(2)).sqrt();
+                    if d < r { depth * (1.0 - (d / r).powi(2)) } else { 0.0 }
+                };
+                300.0 + 0.5 * (120.0 - y) - bowl(cx, 12.0, 8.0, 120.0) - bowl(64.0, 64.0, 40.0, 400.0)
+            };
+            GridF32 {
+                width: n,
+                height: n,
+                data: (0..n * n).map(|k| c1_metres_to_altitude_norm(z_m((k % n) as f32 + 0.5, (k / n) as f32 + 0.5), &ss)).collect(),
+            }
+        };
+        let ext = ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..ValleyConstruction::new(F121_AGE_K, None) };
+        let v5 = ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v5(1.0, 0.0)), ..ext };
+        let v6 = ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v6(1.0, 0.0)), ..ext };
+        let (all, none) = (vec![true; n * n], vec![false; n * n]);
+        // the lone bowl's place, the first of a fixed list whose body with a col draws φ > 0 (the draw is 0 with p = 1/3)
+        let f = [12.0f32, 16.0, 20.0, 24.0, 28.0]
+            .into_iter()
+            .map(field)
+            .find(|f| skeleton(f, &v5, &ss, 51.2).gorge_bodies.iter().any(|b| b.col != u32::MAX && b.phi > 0.0))
+            .expect("a place where the draw is > 0");
+        let draw = skeleton(&f, &v5, &ss, 51.2);
+        let soft = skeleton_with_soft_lips(&f, &v6, &ss, 51.2, Some(&all));
+        let hard = skeleton_with_soft_lips(&f, &v6, &ss, 51.2, Some(&none));
+        let off = skeleton_with_soft_lips(&f, &v5, &ss, 51.2, Some(&all));
+        for (i, b) in draw.gorge_bodies.iter().enumerate() {
+            if b.col != u32::MAX {
+                assert_eq!(soft.gorge_bodies[i].phi, 0.0, "a soft lip makes no fall");
+            }
+            assert_eq!(hard.gorge_bodies[i].phi.to_bits(), b.phi.to_bits(), "negative control: a hard lip keeps the draw");
+            assert_eq!(off.gorge_bodies[i].phi.to_bits(), b.phi.to_bits(), "negative control: the rule off keeps the draw");
+        }
+        let js = |g: GorgeRetreat| serde_json::to_string(&ValleyConstruction { gorge_retreat: Some(g), ..ext }).unwrap();
+        assert!(!js(GorgeRetreat::v5(1.0, 0.0)).contains("soft_lip"), "absent when off");
+        assert_ne!(js(GorgeRetreat::v6(1.0, 0.0)), js(GorgeRetreat::v5(1.0, 0.0)), "v6 moves the key");
     }
 
     /// ADR Finding 133-F, rule 13 — a below-sea basin's lake is a present lake: χ stops at its shore. A plane

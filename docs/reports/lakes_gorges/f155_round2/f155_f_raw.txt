@@ -1,0 +1,75 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.20s
+     Running tests\f155_soft.rs (target_f155\release\deps\f155_soft-1ad4e1fd16b6b8ed.exe)
+
+running 1 test
+
+==========  Finding 155 F . the soft-lip rule on the témoin (×1, p 0.5)  ==========
+test f155_f has been running for over 60 seconds
+   PRODUCTION PATH · build_world v5 a219359ba8317d66 (199 s) · v6 a219359ba8317d66 (196 s) · identical: **true** · tagged falls 11 / 11
+   soft substratum cells (rift fill) on S1: 380118 land cells (3.36 % of the land) · sources + substratum 0.48 s
+      body (3615,2485) · lip basement · φ v5 0.194 · v6 0.194
+      body (4060,2829) · lip basement · φ v5 0.000 · v6 0.000
+      body (4217,3091) · lip basement · φ v5 0.324 · v6 0.324
+      body (2237,3545) · lip basement · φ v5 0.214 · v6 0.214
+      body (1871,3666) · lip basaltic_volcanic · φ v5 0.437 · v6 0.437
+      body (3549,3970) · lip basement · φ v5 0.321 · v6 0.321
+      body (4066,4001) · lip basement · φ v5 0.301 · v6 0.301
+      body (2939,4196) · lip basement · φ v5 0.499 · v6 0.499
+      body (4407,4053) · lip basement · φ v5 0.000 · v6 0.000
+      body (1668,4125) · lip basement · φ v5 0.387 · v6 0.387
+      body (1463,4246) · lip basement · φ v5 0.000 · v6 0.000
+      body (1897,4546) · lip basement · φ v5 0.000 · v6 0.000
+      body (3464,4674) · lip basement · φ v5 0.106 · v6 0.106
+      body (2439,5070) · lip basement · φ v5 0.235 · v6 0.235
+      body (2652,5041) · lip basement · φ v5 0.204 · v6 0.204
+      body (2541,5265) · lip basement · φ v5 0.181 · v6 0.181
+      body (3319,5749) · lip basement · φ v5 0.472 · v6 0.472
+      body (1538,5931) · lip basement · φ v5 0.000 · v6 0.000
+   CONSTRUCTION · bodies 18 / 18 · soft lips **0** · every φ identical **true** · falls 11 / 11 identical true · carve v5 ec60bde885e04bf4 · v6 ec60bde885e04bf4 · identical **true**
+
+==========  end Finding 155 F . 728.7 s  ==========
+
+test f155_f ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 728.93s
+

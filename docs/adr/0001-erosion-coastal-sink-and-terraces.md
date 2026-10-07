@@ -20755,3 +20755,80 @@ z[ci] was never compared to the pit's spill, and the declared copy measured a di
   basins.
 - **Br's amendment 2** (the anchor at `filled[nb]`) is **NOT blind**: it was designed on the témoin. F155-Br confirms
   or rejects it blind on the guard's other five states.
+
+## Finding 155 — lakes / gorges / falls resumed, round 2 of 4: the spill-anchored breach is NOT confirmed blind (the stop rule fires on all six guard states: the lakes' footprints change), so it does not ship; the soft-lip falls rule is built gated and is exactly the current draw on the témoin; without the light pass the gorge holds G-pits and G-rim everywhere, but the world shows the construction's naked facets, θ leaves its CI, and the cost falls by 22–32 s
+
+**Status: measured; the falls rule built gated; nothing promoted; the breach unchanged. Nothing committed.** Report,
+images and raw outputs: `docs/reports/lakes_gorges/f155_round2/finding_155.md`.
+- F154 was committed (`297972a`), its ADR entry completed.
+
+**The author's decisions (2026-10-07), recorded as given**:
+- the breach: « Confirmer sur les 5 autres états, puis production »;
+- the falls: « Tirage actuel, sauf lèvre tendre = pas de chute »;
+- the light pass: « Mesurer ce qu'elle apporte (option : la retirer) ».
+
+**Br — not confirmed, nothing ships.**
+- F154's amendment 2 (the ramp at `max(height, filled)`), untouched, against production on the guard's six states.
+  Production's lake fingerprint equals the guard's stored hash in all six.
+- **The lake mask's hash differs in all six; the count never changes.** No new below-sea land cell appears.
+- The below-sea land cells fall to 0 in C1 nue and C2 /10 col / C2 /3. They remain in livré (10 375 → 6 294),
+  A1+B2 (365 → 137) and C2 /10 niveau mer (272 → 2).
+- **The declared stop rule fires on all six.**
+- **Localised** (amendment, not blind):
+  - in the constructed states the lakes LOSE exactly the cells the old ramps carved under them (témoin: 1000016 −553,
+    three others −3 to −23), none gains;
+  - in livré, three lake ids are permuted;
+  - 6 294 coastal cells stay below the sea there: their pits' spill lies 0.50–2.73 m above it, and the ramps run 13–56
+    steps.
+- **Read in the code**:
+  - `ALGO_BREACH` alone would not suffice. The climate and the HD bundle read the conditioned field but are keyed on
+    the eroded key, so `ALGO_CLIMATE` and `ALGO_HD_DRAINAGE` must move too.
+  - The skeleton's own breach uses the same ramp, and must be kept apart.
+- **The defect stays in the queue.**
+
+**F — built gated**:
+- `GorgeRetreat::soft_lip` / `v6`: φ = 0 on a col with a soft substratum (F154's layer, hardness 0); the current draw
+  otherwise.
+- `skeleton_with_soft_lips`; the soft cells in `production_upscale` behind the gate.
+- Permanent test `a_soft_lip_makes_no_fall` (with negative controls).
+- **On the témoin: 0 soft lips of 18. The construction, every φ, the 11 falls and the production field are
+  bit-identical to v5.** ≈ 0.5 s per world when the gate is on.
+
+**P — what the light pass brings:**
+- **The origin**: F121, « the texture left to a light incision ». The bare construction is « STRIPED at the scale of
+  the valleys ». The pass « lowers the anisotropy » and « breaks the flat ». It also carries **A1+B2**, the drainage
+  closure that took the canyon class from 29.6 % to 3.4 % at F102.
+- **The production world without it**:
+  - relief p50 515.4 → 565.8 m (+9.8 %);
+  - σ p50 −14 %; R8 terrain 0.0451 → 0.0577 (+28 %); R8 network +26 %;
+  - **θ 0.436 → 0.493, OUT**;
+  - canyons 0;
+  - segments −7.2 %; Strahler ≥ 2 952 → 965;
+  - **parallel bundles 1 626 → 4 133**;
+  - lakes 26 → 27 (area −4.6 %); biomes 2.97 % changed;
+  - **planar walls 9.5 → 18.2 % of the land**;
+  - sharp crests 2 739 → 613 (the pass's gullies make them);
+  - **build −31.5 s.**
+  - The hillshade crops show the construction's cones and facets bare.
+- **The gorge without it** (×1 p .5, ×1.4 p .5, ×1.4 p 0):
+  - **G-pits 0 and G-rim 0 in all three**; G-levels 15/18 at ×1, 3/9 at ×1.4 p .5;
+  - **G-drained = the construction's** (2 190 / 2 318: the cones), still failing;
+  - G-tag = the construction's;
+  - θ 0.495 OUT; the coast −33 % at ×1;
+  - G-sea not readable (no ON reference without the pass);
+  - −20 to −23 s per world.
+- **Options, named, none chosen**:
+  - (a) no pass when the gorge is on: −22 s per gorge world; G-pits / G-rim hold; the texture, θ and the coast are
+    lost;
+  - (b) no pass at all: −31.5 s per world; the F121 "looks invented" failure returns.
+
+**Checks**: before = F154's after-checks (no `src` change between). After: `cargo check` clean, lib 620 (+1), viz 31,
+**the guard 6 / 6 = banc** (C2 /10 col `a8d2d538d692c2f0`); the breach unchanged.
+
+**Predictions**:
+- **The reviewer's**:
+  - held: R8 > +10 %, θ → 0.5, the cost > 5 s, G-pits / G-rim, G-drained failing, F, meta; the grep held in part
+    (the pass also carries A1+B2);
+  - refuted: Br (every footprint changes), relief < 2 % (+9.8 %), G-levels.
+- **Mine**: refuted are P-Br1, P-Br3, P-Br4 (livré, A1+B2), the lakes +10–40 %, the planar walls ≥ 3×, "the sharp
+  crests and the comb tile rise", and "G-sea holds".

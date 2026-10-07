@@ -494,11 +494,38 @@ pub fn upscale_from_c1_with_progress(
         let domain_km = cfg.sample_size as f32 * volcanism.domain_km;
         let p3 = vc.gorge_retreat.filter(|g| g.light_mode == 3);
         let field_pre = p3.map(|_| result.heightmap.clone());
-        let sk = crate::tectonics_c1::valley_construction::skeleton(
+        // ADR Finding 155-F -- the soft substratum cells for the gorge's soft-lip rule: F154's substratum read on the
+        // construction's input, at hardness 0. Its soft class (the rift fill) is decided by the cones and the rift mask
+        // only (the hard craton and belt are tested after it), so they are passed empty. `None` when the rule is off.
+        let soft: Option<Vec<bool>> = vc.gorge_retreat.filter(|g| g.soft_lip).and_then(|_| kin).map(|kin| {
+            use crate::geology::rocks;
+            let end = crate::tectonics_c1::debug_labels::derive_tectonic_labels(state, kin);
+            let (nx, ny) = (state.nx(), state.ny());
+            let (w, h) = (result.heightmap.width, result.heightmap.height);
+            let z_m: Vec<f32> = result.heightmap.data.iter().map(|&v| c1_altitude_norm_to_metres(v, ss)).collect();
+            let empty = vec![false; nx * ny];
+            let sub = rocks::build_substratum(&rocks::SubstratumInputs {
+                w,
+                h,
+                z_m: &z_m,
+                cell_km: cfg.sample_size as f32 * volcanism.domain_km / w as f32,
+                nx,
+                ny,
+                craton: &empty,
+                belt: &empty,
+                rift: &end.rift,
+                sample_origin: cfg.sample_origin,
+                sample_size: cfg.sample_size,
+                edifices,
+            });
+            sub.iter().map(|&r| rocks::ROCK_CLASSES[r as usize].hardness == 0).collect()
+        });
+        let sk = crate::tectonics_c1::valley_construction::skeleton_with_soft_lips(
             &result.heightmap,
             vc,
             ss,
             domain_km,
+            soft.as_deref(),
         );
         result.heightmap =
             crate::tectonics_c1::valley_construction::carve(&result.heightmap, &sk, vc, ss).0;

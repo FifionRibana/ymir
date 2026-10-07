@@ -1,0 +1,163 @@
+   Compiling num-traits v0.2.19
+   Compiling windows-sys v0.61.2
+   Compiling bitflags v2.11.0
+   Compiling regex-syntax v0.8.10
+   Compiling tracing-core v0.1.36
+   Compiling syn v2.0.117
+   Compiling bytemuck v1.25.0
+   Compiling png v0.18.1
+   Compiling winapi-util v0.1.11
+   Compiling is-terminal v0.4.17
+   Compiling same-file v1.0.6
+   Compiling walkdir v2.5.0
+   Compiling regex-automata v0.4.14
+   Compiling moxcms v0.8.1
+   Compiling plotters v0.3.7
+   Compiling noise v0.9.0
+   Compiling regex v1.12.3
+   Compiling serde_derive v1.0.228
+   Compiling zerocopy-derive v0.8.48
+   Compiling tracing-attributes v0.1.31
+   Compiling tracing v0.1.44
+   Compiling image v0.25.10
+   Compiling zerocopy v0.8.48
+   Compiling serde v1.0.228
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling bincode v1.3.3
+   Compiling tinytemplate v1.2.1
+   Compiling toml_edit v0.22.27
+   Compiling half v2.7.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling toml v0.8.23
+   Compiling ciborium-ll v0.2.2
+   Compiling rand_chacha v0.9.0
+   Compiling ciborium v0.2.2
+   Compiling rand v0.9.3
+   Compiling criterion v0.5.1
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 58.12s
+     Running tests\f155_round2.rs (target_f155\release\deps\f155_round2-dd669671ab99e711.exe)
+
+running 1 test
+
+==========  Finding 155 Br . the spill anchor on the guard's six states (45° / 40°)  ==========
+
+────────── livré ──────────
+test f155_br has been running for over 60 seconds
+   below-sea land cells: production **10375** · spill **6294** · NEW under the spill **0**
+   lakes: production 60 · spill 60 · footprint (mask hash) 9748c34f86566083 → 1c3d417ce14c5e63 **DIFFERS** · list hash 7a48cc29495fa016 → b4158e0de42008a1 DIFFERS · production = the guard's stored hash: true
+   conditioned cells > 1 cm: raised **337506** · lowered **892** · river segments 7301 → 8068 (+10.51 %)
+      list differs: 1000001 Endorheic 76.2526 m 660.79376 km² → 1000001 Endorheic 76.2526 m 656.96954 km²
+      list differs: 1000002 Endorheic 76.2526 m 173.19441 km² → 1000002 Exorheic 0.4405 m 0.08106 km²
+      list differs: 1000003 Exorheic 0.4405 m 0.14067 km² → 1000003 Endorheic 0.4297 m 0.00715 km²
+      list differs: 1000005 Endorheic 0.4297 m 0.00715 km² → 1000005 Exorheic 0.4405 m 47.04714 km²
+      list differs: 1000006 Exorheic 0.4405 m 47.58120 km² → 1000006 Endorheic 76.2526 m 172.67943 km²
+      list differs: 1000007 Exorheic 367.5211 m 605.36383 km² → 1000007 Exorheic 367.5211 m 602.87000 km²
+      list differs: 1000008 Exorheic 10.4297 m 31.27813 km² → 1000008 Exorheic 10.4297 m 31.23999 km²
+      list differs: 1000009 Exorheic 110.2202 m 305.57156 km² → 1000009 Exorheic 110.2202 m 304.17682 km²
+      list differs: 1000010 Exorheic 49.2682 m 867.06403 km² → 1000010 Exorheic 49.2682 m 865.87903 km²
+      list differs: 1000011 Exorheic 0.1697 m 0.32663 km² → 1000011 Exorheic 0.1697 m 0.16212 km²
+      list differs: 1000012 Exorheic 115.3276 m 757.43201 km² → 1000012 Exorheic 115.3276 m 755.78210 km²
+      list differs: 1000013 Exorheic 245.0628 m 652.46582 km² → 1000013 Exorheic 245.0628 m 650.46552 km²
+   (268 s)
+
+────────── A1+B2 ──────────
+   below-sea land cells: production **365** · spill **137** · NEW under the spill **0**
+   lakes: production 38 · spill 38 · footprint (mask hash) 34c84b66edebbd09 → 73e53ee2675822e0 **DIFFERS** · list hash 431997016b994447 → 5961daac4e59b4cf DIFFERS · production = the guard's stored hash: true
+   conditioned cells > 1 cm: raised **176819** · lowered **86** · river segments 11806 → 12054 (+2.10 %)
+      list differs: 1000001 Endorheic 76.2526 m 512.33533 km² → 1000001 Endorheic 76.2526 m 511.11221 km²
+      list differs: 1000007 Endorheic 76.2526 m 115.77129 km² → 1000007 Endorheic 76.2526 m 115.74983 km²
+      list differs: 1000010 Exorheic 458.9720 m 624.64954 km² → 1000010 Exorheic 458.9720 m 623.13794 km²
+      list differs: 1000012 Exorheic 110.2202 m 197.69431 km² → 1000012 Exorheic 110.2202 m 196.32339 km²
+      list differs: 1000013 Exorheic 49.2682 m 658.82684 km² → 1000013 Exorheic 49.2682 m 658.71002 km²
+      list differs: 1000015 Exorheic 115.3276 m 578.83026 km² → 1000015 Exorheic 115.3276 m 577.41162 km²
+      list differs: 1000016 Exorheic 268.7933 m 403.67603 km² → 1000016 Exorheic 268.7933 m 403.67126 km²
+      list differs: 1000017 Exorheic 472.1591 m 262.83026 km² → 1000017 Exorheic 472.1591 m 261.94333 km²
+   (253 s)
+
+────────── C1 nue ──────────
+   below-sea land cells: production **414** · spill **0** · NEW under the spill **0**
+   lakes: production 27 · spill 27 · footprint (mask hash) 45264dbdfffe003c → 66a6898871367f78 **DIFFERS** · list hash 85a1898d7a061441 → 146c8472058ea289 DIFFERS · production = the guard's stored hash: true
+   conditioned cells > 1 cm: raised **17380** · lowered **0** · river segments 15054 → 15218 (+1.09 %)
+      list differs: 1000016 Exorheic 115.3276 m 476.93491 km² → 1000016 Exorheic 115.3276 m 475.64267 km²
+   (342 s)
+
+────────── C2 /10 col (défaut, the témoin) ──────────
+   below-sea land cells: production **415** · spill **0** · NEW under the spill **0**
+   lakes: production 26 · spill 26 · footprint (mask hash) b7e502b2c1e126c3 → ca926f6891777821 **DIFFERS** · list hash e2dc847cd255850e → 2149d6d546588351 DIFFERS · production = the guard's stored hash: true
+   conditioned cells > 1 cm: raised **27302** · lowered **0** · river segments 16226 → 16389 (+1.00 %)
+      list differs: 1000016 Exorheic 115.3276 m 500.80060 km² → 1000016 Exorheic 115.3276 m 499.48215 km²
+      list differs: 1000017 Exorheic 268.7933 m 338.30167 km² → 1000017 Exorheic 268.7933 m 338.29449 km²
+      list differs: 1000018 Exorheic 471.7866 m 184.00192 km² → 1000018 Exorheic 471.7866 m 183.94708 km²
+      list differs: 1000019 Exorheic 614.9237 m 383.18158 km² → 1000019 Exorheic 614.9237 m 383.14819 km²
+   (355 s)
+
+────────── C2 /3 ──────────
+   below-sea land cells: production **416** · spill **0** · NEW under the spill **0**
+   lakes: production 26 · spill 26 · footprint (mask hash) 4144d4ee828245f7 → d07fb97dae0c3414 **DIFFERS** · list hash 73ed1df1ce82d658 → 9f35c30fb77de5ee DIFFERS · production = the guard's stored hash: true
+   conditioned cells > 1 cm: raised **57140** · lowered **0** · river segments 15327 → 15567 (+1.57 %)
+      list differs: 1000008 Endorheic 76.2526 m 103.01590 km² → 1000008 Endorheic 76.2526 m 102.21481 km²
+      list differs: 1000011 Exorheic 459.3222 m 534.40570 km² → 1000011 Exorheic 459.3222 m 534.19116 km²
+      list differs: 1000016 Exorheic 115.3276 m 527.34851 km² → 1000016 Exorheic 115.3276 m 525.59375 km²
+      list differs: 1000017 Exorheic 268.7933 m 357.71848 km² → 1000017 Exorheic 268.7933 m 357.60641 km²
+      list differs: 1000018 Exorheic 471.7751 m 219.77902 km² → 1000018 Exorheic 471.7751 m 218.86588 km²
+   (359 s)
+
+────────── C2 /10 niveau mer ──────────
+   below-sea land cells: production **272** · spill **2** · NEW under the spill **0**
+   lakes: production 24 · spill 24 · footprint (mask hash) 91ee910f77b7a260 → 9cb4f63eb5beba40 **DIFFERS** · list hash c246e5b404f532e9 → db855df9a42c812f DIFFERS · production = the guard's stored hash: true
+   conditioned cells > 1 cm: raised **22373** · lowered **0** · river segments 12796 → 12841 (+0.35 %)
+      list differs: 1000008 Endorheic 76.2526 m 122.91431 km² → 1000008 Endorheic 76.2526 m 122.90001 km²
+      list differs: 1000017 Exorheic 268.7933 m 373.89755 km² → 1000017 Exorheic 268.7933 m 373.87372 km²
+      list differs: 1000019 Exorheic 614.9237 m 506.71576 km² → 1000019 Exorheic 614.9237 m 506.70624 km²
+   (353 s)
+
+   STOP RULE (declared): FIRES: livré: a lake changes (count or footprint) | A1+B2: a lake changes (count or footprint) | C1 nue: a lake changes (count or footprint) | C2 /10 col (défaut, the témoin): a lake changes (count or footprint) | C2 /3: a lake changes (count or footprint) | C2 /10 niveau mer: a lake changes (count or footprint)
+
+==========  end Finding 155 Br . 1933.1 s  ==========
+
+test f155_br ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1933.11s
+
