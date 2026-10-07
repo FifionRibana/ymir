@@ -20673,3 +20673,85 @@ screenshotted.
 - The first tunings suggested: lower stone, widen peat, volcanic rock instead of discs.
 - **Next, in the agreed order: lakes, gorges and falls resumed**, with the rock hardness at the lake sills now
   available.
+
+## Finding 154 — lakes / gorges / falls resumed, round 1 of 4: the geology split into substratum and surface (the final grid bit-identical, the substratum available at the construction stage for 0.35 s); every lip on hard rock with no contrast downstream, so rock does not discriminate the témoin's falls; P4 (no light pass on the kept bodies' catchments) cuts G-pits to 2–18 but not to 0, NOT retained; the breach's ramp anchored at the pit's spill (amendment, not blind) removes ON's 292 below-sea cells and the sea's advance at lake 4
+
+**Status: built (the split; bench options), measured, nothing promoted. The gorge stays gated, its toggle hidden.
+Nothing committed.** Report: `docs/reports/lakes_gorges/f154_resume/finding_154.md`.
+- F153 was committed (`aa8ca60`). No wrong behaviour was reported from the author's look at the menus and the
+  inspector.
+
+**The author's criterion, recorded as given**:
+- « Je veux réduire la taille des lacs avec l'âge […]. » (2026-09-30)
+- « Un lac présent est un niveau de base […] ; un lac vidé ne l'est plus. » (2026-09-29)
+- « Les lacs des bassins sous la mer sont des lacs présents. » (2026-09-30)
+- « Chute ou gorge, les deux sont valides. » « […] faire apparaître des chutes d'eau (et donc de les tagger comme tel)
+  là où c'est pertinent. Ça donnera de la diversité au monde. » (2026-10-02)
+- « C'est bien d'avoir l'âge qui fixe jusqu'où la gorge a reculé. » (2026-10-02)
+
+**S — substratum / surface** (`geology::rocks::{build_substratum, apply_surface}`, `geology::tectonic_sources`):
+- **The témoin's final rock grid is bit-identical** (FNV-1a 64 `dbd91290b6c6148c` before and after).
+- **Permanent test**: `the_rock_grid_is_the_surface_over_the_substratum`.
+- The substratum needs C1's history and the edifices (0.27 s) and a relief. **At the construction stage it costs
+  0.35 s on S1.**
+- Read on S1, it differs from the one read on the final field on 5.04 % of the land (the terrain snapping).
+
+**H — falls by rock** (×1, p .5; φ values DECISION, mine, for the tabulation):
+- **All 18 lips are on hard rock** (17 basement, 1 basaltic), with the same class 1 and 3 km downstream.
+- The final grid shows the surface at 7 lips (hence the split).
+- Rule (i), hardness: **16 / 18 tagged** (median 74.0 m).
+- Rule (ii), contrast: no contrast, and the weak φ 0.1 still tags **14** (H_f 10 m against D_g 86–1 208 m on 14
+  outlets).
+- Rule (iii), the draw: 11.
+- The head fall is replayed exactly (`GorgeBody::head_for_phi`; self-check 0.0000 m).
+- **Rock does not discriminate the témoin's falls.**
+
+**L — P4** (bench option `light_mode = 4`; E = the cells whose D8 path on the light pass's input reaches a kept
+footprint, restored after the pass; E = 28 % of the land):
+- **G-pits 43 190 / 6 461 / 6 336 → 2 / 4 / 18**;
+- G-drained 9 781 / 14 366 → 6 513 / 7 001: **the light pass makes part of G-drained**;
+- G-levels at ×1 7 → 10 / 18;
+- G-ring +31–38 %;
+- the divide edge 1 309–1 423 (P0 813–851);
+- G-sea at ×1.4 p .5 +122;
+- θ IN with the declared tolerance; the coast unchanged;
+- **+8.4–8.6 s per world.**
+- **The declared rule (G-pits in all three worlds, the edge under a third of P1's at F144): P4 NOT retained. Nothing
+  further built.**
+- P0 reproduces F144.
+
+**Br — the breach's ramp** (bench copies, no production change):
+- **As declared** (anchor = z[ci]): ON keeps 286 of its 292 below-sea cells; the gorge's G-sea is +117 / −6.
+- **Amendment 1, NOT blind** (`f154_br_attr`):
+  - all 292 are taken by 102 ramps from a row of pits along lake 1000016's fringe (floors 7.0–12.7 m, spills
+    13.5–16.9 m);
+  - their outlets are already lowered by the neighbouring ramps, so z[ci] is not the overflow level. **The declared
+    copy did not test the brief's idea.**
+- **Amendment 2, NOT blind** (`f154_br_spill`, anchor = the pit's spill on the pre-breach flood):
+  - **ON's 292 → 0**;
+  - **22 863 cells raised, none lowered; no lake changes**; the river segments +0.75 %;
+  - on the gorge P4 ×1.4 p .5: **414 below-sea cells → 0, the inlet at lake 4 gone**; G-sea exact against ON with the
+    same breach.
+- **Decision for round 2.**
+
+**Checks**: before (`aa8ca60`) and after, the guard 6 / 6, field and lakes = banc (C2 /10 col
+`a8d2d538d692c2f0`); lib 617 → 619 (the two permanent tests); viz 31.
+
+**Predictions**:
+- **The reviewer's** (hypotheses to check, judged):
+  - held: S bit-identical (and < 0.5 s for the substratum alone); rule (i) ≥ 80 %; G-sea and G-drained still fail;
+    Br under amendment 2.
+  - refuted: rule (ii) < half; P4 holds G-pits; Br as declared; P4 reduces the time.
+- **Mine**: refuted are P-S3 (5.04 %), P-H4's count, P-L1, P-L3, P-L6, the Br counts, and Br as declared.
+
+**Method note**: a bench copy's change must be checked against the quantity it is meant to reach before the run. Here
+z[ci] was never compared to the pit's spill, and the declared copy measured a different idea.
+
+**Recorded at commit (F155).**
+- **P4 is not retained** (the declared rule). It was also worse on the divide walls (~1 360 against ~830 under P0),
+  on G-ring (+31–38 %) and on the cost (+8.5 s per world).
+- **Rock does not discriminate the falls on the témoin**: 17 of the 18 lips lie in the undifferentiated basement
+  (the 18th in basaltic volcanic), and the class downstream is the same. This is v1's limit, which has no sedimentary
+  basins.
+- **Br's amendment 2** (the anchor at `filled[nb]`) is **NOT blind**: it was designed on the témoin. F155-Br confirms
+  or rejects it blind on the guard's other five states.

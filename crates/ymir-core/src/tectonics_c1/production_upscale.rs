@@ -517,6 +517,11 @@ pub fn upscale_from_c1_with_progress(
                 2 => {
                     design_dist = Some((crate::tectonics_c1::valley_construction::gorge_design_distance_m(&mask, &sk), g.light_dt_m))
                 }
+                // ADR Finding 154-L -- P4: the kept bodies' catchments on the pass's input are restored after it (C2's restore)
+                4 => {
+                    let sea = cfg.stream_power.as_ref().map_or(0.5, |s| s.sea_level);
+                    design_mask = Some(crate::tectonics_c1::valley_construction::gorge_catchment_mask(&result.heightmap, &sk, sea));
+                }
                 _ => {
                     design_floor = Some(result.heightmap.clone());
                     design_mask = Some(mask);

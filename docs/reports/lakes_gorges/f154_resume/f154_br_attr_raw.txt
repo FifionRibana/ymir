@@ -1,0 +1,81 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+    Finished `release` profile [optimized] target(s) in 15.70s
+     Running tests\f154_resume.rs (target_f154\release\deps\f154_resume-9cc5ec878bb00ca5.exe)
+
+running 1 test
+
+==========  Finding 154 Br, amendment: ON's below-sea land cells attributed  ==========
+test f154_br_attr has been running for over 60 seconds
+   the ramp stage's below-sea set equals production's (the mop-up fill raises no base): true
+
+   anchor FLOOR (production) · below-sea land cells **292** · taken by a ramp 292 · their original height above the sea (m): p0 0.343 · p50 11.311 · p100 16.910 · ramps 102
+      ramp from pit (2725,5206) floor 7.99 m via (2726,5205) [filled 16.91 m] · anchor 7.99 m · 9 cells ≤ sea · steps to the deepest 78
+      ramp from pit (2842,5209) floor 12.63 m via (2843,5209) [filled 13.72 m] · anchor 12.63 m · 9 cells ≤ sea · steps to the deepest 119
+      ramp from pit (2732,5205) floor 8.52 m via (2733,5205) [filled 16.91 m] · anchor 8.52 m · 7 cells ≤ sea · steps to the deepest 81
+      ramp from pit (2752,5208) floor 10.71 m via (2753,5208) [filled 16.91 m] · anchor 10.71 m · 7 cells ≤ sea · steps to the deepest 100
+      ramp from pit (2757,5210) floor 11.20 m via (2758,5210) [filled 16.91 m] · anchor 11.20 m · 7 cells ≤ sea · steps to the deepest 104
+      ramp from pit (2721,5207) floor 7.74 m via (2722,5206) [filled 16.91 m] · anchor 7.74 m · 6 cells ≤ sea · steps to the deepest 73
+      ramp from pit (2763,5212) floor 12.08 m via (2764,5212) [filled 16.91 m] · anchor 12.08 m · 6 cells ≤ sea · steps to the deepest 111
+      ramp from pit (2745,5206) floor 9.74 m via (2746,5206) [filled 16.91 m] · anchor 9.74 m · 5 cells ≤ sea · steps to the deepest 90
+      ramp from pit (2718,5208) floor 7.57 m via (2719,5207) [filled 16.91 m] · anchor 7.57 m · 5 cells ≤ sea · steps to the deepest 70
+      ramp from pit (2851,5208) floor 12.65 m via (2852,5208) [filled 13.54 m] · anchor 12.65 m · 5 cells ≤ sea · steps to the deepest 115
+      ramp from pit (2710,5211) floor 7.01 m via (2711,5210) [filled 16.91 m] · anchor 7.01 m · 5 cells ≤ sea · steps to the deepest 65
+      ramp from pit (2760,5211) floor 11.67 m via (2761,5211) [filled 16.91 m] · anchor 11.67 m · 5 cells ≤ sea · steps to the deepest 107
+
+   anchor OVERFLOW (z[ci]) · below-sea land cells **286** · taken by a ramp 286 · their original height above the sea (m): p0 0.343 · p50 11.288 · p100 16.910 · ramps 73
+      ramp from pit (2793,5215) floor 15.63 m via (2794,5215) [filled 16.91 m] · anchor 15.83 m · 16 cells ≤ sea · steps to the deepest 154
+      ramp from pit (2880,5213) floor 12.07 m via (2881,5213) [filled 12.42 m] · anchor 12.20 m · 13 cells ≤ sea · steps to the deepest 119
+      ramp from pit (2924,5253) floor 11.25 m via (2925,5254) [filled 11.81 m] · anchor 11.27 m · 13 cells ≤ sea · steps to the deepest 111
+      ramp from pit (2835,5210) floor 13.10 m via (2836,5210) [filled 14.09 m] · anchor 13.26 m · 10 cells ≤ sea · steps to the deepest 126
+      ramp from pit (2710,5211) floor 7.01 m via (2711,5210) [filled 16.91 m] · anchor 7.44 m · 9 cells ≤ sea · steps to the deepest 73
+      ramp from pit (2766,5213) floor 12.41 m via (2767,5213) [filled 16.91 m] · anchor 12.87 m · 8 cells ≤ sea · steps to the deepest 120
+      ramp from pit (2731,5205) floor 8.42 m via (2732,5205) [filled 16.91 m] · anchor 8.52 m · 7 cells ≤ sea · steps to the deepest 81
+      ramp from pit (2721,5207) floor 7.74 m via (2722,5206) [filled 16.91 m] · anchor 8.29 m · 7 cells ≤ sea · steps to the deepest 79
+      ramp from pit (2749,5207) floor 10.60 m via (2750,5207) [filled 16.91 m] · anchor 10.90 m · 7 cells ≤ sea · steps to the deepest 102
+      ramp from pit (2753,5208) floor 11.33 m via (2754,5209) [filled 16.91 m] · anchor 11.47 m · 7 cells ≤ sea · steps to the deepest 107
+      ramp from pit (2746,5206) floor 10.20 m via (2747,5206) [filled 16.91 m] · anchor 10.55 m · 6 cells ≤ sea · steps to the deepest 98
+      ramp from pit (2718,5208) floor 7.57 m via (2719,5207) [filled 16.91 m] · anchor 8.03 m · 6 cells ≤ sea · steps to the deepest 75
+test f154_br_attr ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 246.86s
+

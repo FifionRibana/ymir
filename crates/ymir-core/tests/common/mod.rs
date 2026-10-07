@@ -544,6 +544,15 @@ pub fn viz_hd_lakes(k: Knobs, pseed: u64, lat: f32, span: f32) -> VizLakes {
 }
 
 pub fn viz_hd_lakes_on(wd: &World, k: Knobs, pseed: u64, lat: f32, span: f32) -> VizLakes {
+    viz_hd_lakes_with(wd, k, pseed, lat, span, &ymir_core::terrain::flow::breach_monotone_protected)
+}
+
+/// The breach's signature (`breach_monotone_protected`'s), for a bench copy.
+pub type BreachFn<'a> = dyn Fn(&GridF32, &GridF32, &[u32], f32, usize, usize, Option<&[bool]>) -> GridF32 + 'a;
+
+/// [`viz_hd_lakes_on`] with the breach given (ADR Finding 154-Br: a bench copy of it). The production breach gives
+/// exactly `viz_hd_lakes_on`.
+pub fn viz_hd_lakes_with(wd: &World, k: Knobs, pseed: u64, lat: f32, span: f32, breach: &BreachFn) -> VizLakes {
     use ymir_core::climate::precipitation::PrecipParams;
     use ymir_core::tectonics_c1::cached_product::hd_drainage_key;
     use ymir_core::climate::c1_climate_placed;
@@ -551,7 +560,6 @@ pub fn viz_hd_lakes_on(wd: &World, k: Knobs, pseed: u64, lat: f32, span: f32) ->
     use ymir_core::tectonics_c1::closures::volcanism::{crater_lake_pass, crater_protect_mask};
     use ymir_core::tectonics_c1::drainage::{DrainageClimate, c1_drainage_windowed};
     use ymir_core::tectonics_c1::hd_assembly::assemble_hd_drainage;
-    use ymir_core::terrain::flow::breach_monotone_protected;
     let ss = SteinSteinParams::default();
     let dcfg = viz_dcfg();
     let pp = PrecipParams::default();
@@ -560,7 +568,7 @@ pub fn viz_hd_lakes_on(wd: &World, k: Knobs, pseed: u64, lat: f32, span: f32) ->
     let window_km = DOMAIN_KM;
     let prebreach = c1_drainage_windowed(g, None, &dcfg, &ss, window_km);
     let protect = wd.volc.enabled.then(|| crater_protect_mask(&wd.craters, gw, gh));
-    let conditioned = breach_monotone_protected(
+    let conditioned = breach(
         g,
         &prebreach.flow.filled,
         &prebreach.lake_map,

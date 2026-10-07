@@ -239,7 +239,8 @@ pub struct GorgeRetreat {
     pub head_cap: bool,
     /// ADR Finding 144-P — BENCH OPTION, how the light pass meets the designed geometry: 0 free (P0), 1 a floor at the
     /// construction on the design (P1), 2 its erosion weighted by w(d) = min(1, d/`light_dt_m`) from the design (P2),
-    /// 3 the light pass on the construction without gorge, rim and plain, the design laid after it (P3).
+    /// 3 the light pass on the construction without gorge, rim and plain, the design laid after it (P3); ADR Finding
+    /// 154-L: 4 the light pass not applied on the kept bodies' catchments ([`gorge_catchment_mask`], P4).
     #[serde(default, skip_serializing_if = "is_zero_u8")]
     pub light_mode: u8,
     #[serde(default, skip_serializing_if = "is_zero_f32")]
@@ -339,6 +340,43 @@ pub struct GorgeBody {
     pub b_out: f32,
     pub bounded: bool,
     pub head_cap_m: f32,
+    /// ADR Finding 154-H — the outlet path from the col (the skeleton's D8, as the head fall walks it), the distance
+    /// along it (m), the law below frozen for this body (m), and the gorge's floor slope m·S_loi; for
+    /// [`GorgeBody::head_for_phi`]. Empty without a col.
+    pub outlet_path: Vec<u32>,
+    pub outlet_s_m: Vec<f32>,
+    pub outlet_law_m: Vec<f32>,
+    pub slope_law: f32,
+}
+
+impl GorgeBody {
+    /// ADR Finding 154-H — the head fall (m) and H_f (m) this body would get with the head fall's share `phi`: the
+    /// construction's arithmetic on the body's own path and law as built (the raises of the bodies built after it are
+    /// not replayed). At the body's own φ it returns the built `head_fall_m`. `(0, 10)` without a col.
+    #[must_use]
+    pub fn head_for_phi(&self, phi: f32) -> (f32, f32) {
+        let tan28 = 28f32.to_radians().tan();
+        let (s, lawv) = (&self.outlet_s_m, &self.outlet_law_m);
+        if s.is_empty() {
+            return (0.0, 10.0);
+        }
+        let lv = self.level;
+        let s_req = |top: f32| -> f32 {
+            if top <= lawv[0] {
+                return 0.0;
+            }
+            (1..s.len()).map(|i| (top - lawv[i]) / s[i]).fold(f32::INFINITY, f32::min).max(0.0)
+        };
+        let slope_for = |top: f32| -> f32 {
+            let r = s_req(top);
+            self.slope_law.max(if r.is_finite() { r } else { 0.0 }).min(tan28)
+        };
+        let top = lv - (phi * self.d_g).min(self.head_cap_m);
+        let sg = slope_for(top);
+        let hf = (1.5 * sg * 100.0).max(10.0);
+        let head = if s.len() > 1 { lv - (top - sg * s[1]) } else { 0.0 };
+        (head, hf)
+    }
 }
 
 /// ADR Finding 140 — φ, the head fall's share: 0 with probability 1/3, otherwise U[0.1, 0.5], from splitmix64 of
@@ -885,6 +923,7 @@ pub fn skeleton_patched(
                     });
                 }
                 gorge_path.extend(path[..end].iter().map(|&c| c as u32));
+                (b.outlet_path, b.outlet_s_m, b.outlet_law_m, b.slope_law) = (path.iter().map(|&c| c as u32).collect(), s.clone(), lawv.clone(), g.m * sl);
                 (b.slope, b.d_g, b.head_fall_m, b.shortage_m, b.path_km, b.gorge_cells) =
                     (sg, dg, head, short, s_end / 1000.0, raised);
             }
@@ -1299,6 +1338,51 @@ pub fn gorge_plain(field: &mut GridF32, sk: &Skeleton, ss: &SteinSteinParams, mi
         out.push(rec);
     }
     out
+}
+
+/// ADR Finding 154-L — the bench option P4's excluded set: the cells whose D8 path on `field` (the light pass's input),
+/// routed by the light pass's own `compute_flow` (`sea_level` normalised: the stream power's), reaches a kept body's
+/// footprint, the footprints included. A path leaving the map stays out; a body's col drains away from it, so it is
+/// out. Empty when the gate is off.
+pub fn gorge_catchment_mask(field: &GridF32, sk: &Skeleton, sea_level: f32) -> Vec<bool> {
+    let (w, h) = (field.width, field.height);
+    let n = w * h;
+    let Some(bo) = sk.gorge_body_of.as_deref() else {
+        return vec![false; n];
+    };
+    let flow = crate::terrain::flow::compute_flow(field, &crate::terrain::flow::FlowConfig { sea_level, ..Default::default() });
+    // 0 unknown, 1 in, 2 out, 3 on the current path
+    let mut st: Vec<u8> = bo.iter().map(|&b| if b != u32::MAX { 1 } else { 0 }).collect();
+    let mut path = Vec::new();
+    for s0 in 0..n {
+        if st[s0] != 0 {
+            continue;
+        }
+        path.clear();
+        let mut c = s0;
+        let v = loop {
+            match st[c] {
+                1 | 2 => break st[c],
+                3 => break 2,
+                _ => {}
+            }
+            st[c] = 3;
+            path.push(c);
+            let d = flow.direction[c];
+            if d == DIR_NONE {
+                break 2;
+            }
+            let (x, y) = ((c % w) as i32 + D8_DX[d as usize], (c / w) as i32 + D8_DY[d as usize]);
+            if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
+                break 2;
+            }
+            c = y as usize * w + x as usize;
+        };
+        for &p in &path {
+            st[p] = v;
+        }
+    }
+    st.iter().map(|&v| v == 1).collect()
 }
 
 /// ADR Finding 143-C2 — the gorge's designed geometry, for the bench option `freeze_design`: the kept bodies'
@@ -3081,6 +3165,48 @@ mod tests {
         let js = |g: GorgeRetreat| serde_json::to_string(&ValleyConstruction { gorge_retreat: Some(g), ..ext }).unwrap();
         assert!(!js(GorgeRetreat::v4(1.0, 0.0)).contains("input_scope"), "absent when off");
         assert_ne!(js(GorgeRetreat::v5(1.0, 0.0)), js(GorgeRetreat::v4(1.0, 0.0)), "v5 moves the key");
+    }
+
+    /// ADR Finding 154-H / L, rule 13 — on v5's synthetic world: `head_for_phi` at a body's own φ gives its built head
+    /// fall; P4's excluded set holds the lone bowl's footprint and the plane
+    /// upstream of it, and NOT a cell draining to the sea nor the bowl's col (negative controls).
+    #[test]
+    fn p4_excludes_the_kept_bodies_catchments_and_the_head_replays() {
+        let ss = SteinSteinParams::default();
+        let n = 128usize;
+        let z_m = |x: f32, y: f32| -> f32 {
+            if y >= 120.0 {
+                return -50.0;
+            }
+            let bowl = |cx: f32, cy: f32, r: f32, depth: f32| {
+                let d = ((x - cx).powi(2) + (y - cy).powi(2)).sqrt();
+                if d < r { depth * (1.0 - (d / r).powi(2)) } else { 0.0 }
+            };
+            300.0 + 0.5 * (120.0 - y) - bowl(12.0, 12.0, 8.0, 120.0) - bowl(64.0, 64.0, 40.0, 400.0)
+        };
+        let f = GridF32 {
+            width: n,
+            height: n,
+            data: (0..n * n).map(|k| c1_metres_to_altitude_norm(z_m((k % n) as f32 + 0.5, (k / n) as f32 + 0.5), &ss)).collect(),
+        };
+        let ext = ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..ValleyConstruction::new(F121_AGE_K, None) };
+        let sk = skeleton(&f, &ValleyConstruction { gorge_retreat: Some(GorgeRetreat::v5(1.0, 0.0)), ..ext }, &ss, 51.2);
+        let lone = 12 * n + 12;
+        let bo = sk.gorge_body_of.as_ref().unwrap();
+        assert!(bo[lone] != u32::MAX, "v5 keeps the lone bowl");
+        for b in sk.gorge_bodies.iter().filter(|b| b.col != u32::MAX) {
+            let (head, _) = b.head_for_phi(b.phi);
+            assert!((head - b.head_fall_m).abs() < 1e-3, "the replay gives the built head ({head} vs {})", b.head_fall_m);
+            assert!(!b.outlet_path.is_empty() && b.outlet_path[0] == b.col, "the path starts at the col");
+        }
+        let e = gorge_catchment_mask(&f, &sk, 0.5);
+        assert!((0..n * n).filter(|&k| bo[k] != u32::MAX).all(|k| e[k]), "the footprints are excluded");
+        assert!(e[3 * n + 12], "the plane upstream of the bowl drains into it");
+        assert!(!e[100 * n + 110], "negative control: a cell draining to the sea stays in the pass");
+        let b = &sk.gorge_bodies[bo[lone] as usize];
+        assert!(b.col != u32::MAX && !e[b.col as usize], "the col drains away from its body");
+        let off = skeleton(&f, &ext, &ss, 51.2);
+        assert!(gorge_catchment_mask(&f, &off, 0.5).iter().all(|&x| !x), "empty when the gate is off");
     }
 
     /// ADR Finding 133-F, rule 13 — a below-sea basin's lake is a present lake: χ stops at its shore. A plane

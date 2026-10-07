@@ -1,0 +1,94 @@
+   Compiling num-traits v0.2.19
+   Compiling windows-sys v0.61.2
+   Compiling bitflags v2.11.0
+   Compiling regex-syntax v0.8.10
+   Compiling tracing-core v0.1.36
+   Compiling syn v2.0.117
+   Compiling bytemuck v1.25.0
+   Compiling png v0.18.1
+   Compiling winapi-util v0.1.11
+   Compiling is-terminal v0.4.17
+   Compiling same-file v1.0.6
+   Compiling regex-automata v0.4.14
+   Compiling walkdir v2.5.0
+   Compiling moxcms v0.8.1
+   Compiling plotters v0.3.7
+   Compiling noise v0.9.0
+   Compiling regex v1.12.3
+   Compiling serde_derive v1.0.228
+   Compiling zerocopy-derive v0.8.48
+   Compiling tracing-attributes v0.1.31
+   Compiling image v0.25.10
+   Compiling tracing v0.1.44
+   Compiling zerocopy v0.8.48
+   Compiling serde v1.0.228
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling tinytemplate v1.2.1
+   Compiling bincode v1.3.3
+   Compiling toml_edit v0.22.27
+   Compiling ppv-lite86 v0.2.21
+   Compiling half v2.7.1
+   Compiling toml v0.8.23
+   Compiling ciborium-ll v0.2.2
+   Compiling rand_chacha v0.9.0
+   Compiling ciborium v0.2.2
+   Compiling rand v0.9.3
+   Compiling criterion v0.5.1
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 1m 15s
+     Running tests\f154_resume.rs (target_f154\release\deps\f154_resume-9cc5ec878bb00ca5.exe)
+
+running 1 test
+
+==========  Finding 154 S . the témoin's rock grid  ==========
+test f154_s has been running for over 60 seconds
+   ROCK GRID · fnv1a64 **dbd91290b6c6148c** · 67108864 cells · counts ["none 56612493", "craton 875935", "belt 1486839", "basaltic_volcanic 572942", "arc_volcanic 34027", "rift_fill 398629", "loose_deposits 302551", "evaporites 252351", "basement 6573097"]
+   build_geology 2.32 s: history 0.34 · rocks 0.81 · context 0.98
+
+==========  end Finding 154 S . 528.2 s  ==========
+
+test f154_s ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 528.34s
+

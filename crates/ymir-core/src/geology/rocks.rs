@@ -6,6 +6,11 @@
 //!   sampled bilinearly at the cell and cut at 0.5.
 //! - Volcanic rock follows the eroded cone's relief, not a disc.
 //! - Loose deposits and evaporites come from the HD fields (thresholds PROXY).
+//!
+//! ADR Finding 154-S — two layers: the SUBSTRATUM ([`build_substratum`]: craton, belt, basaltic or arc volcanic, rift
+//! fill, basement), from the tectonics and the edifices read on a relief, available from the construction stage on;
+//! and the SURFACE ([`apply_surface`]: water, evaporites, loose deposits), from the end of the chain. The rock grid is
+//! the surface over the substratum ([`build_rocks`]).
 
 use rayon::prelude::*;
 
@@ -252,16 +257,73 @@ pub fn floodplain(slope: &[f32], acc: &[f32], cell_km: f32) -> Vec<bool> {
     slope.par_iter().zip(acc.par_iter()).map(|(&s, &a)| s < FLOODPLAIN_SLOPE && a >= a_min).collect()
 }
 
-/// Build the rock grid. `slope` is [`slope_field`] of `z_m`.
+/// ADR Finding 154-S — the substratum's inputs: the coarse tectonic masks and the edifices, and the relief they are read
+/// on (the contacts' terrain snapping, the cones' relief test). At the construction stage that relief is the
+/// construction's input; at the end of the chain, the final field.
+pub struct SubstratumInputs<'a> {
+    pub w: usize,
+    pub h: usize,
+    pub z_m: &'a [f32],
+    pub cell_km: f32,
+    pub nx: usize,
+    pub ny: usize,
+    pub craton: &'a [bool],
+    pub belt: &'a [bool],
+    pub rift: &'a [bool],
+    pub sample_origin: [f64; 2],
+    pub sample_size: f64,
+    pub edifices: &'a [Edifice],
+}
+
+/// ADR Finding 154-S — the SUBSTRATUM: one of craton, belt, basaltic or arc volcanic, rift fill, basement on every cell
+/// (water included). The volcanic rock first, then the rift fill, the belt, the craton; the basement elsewhere.
 #[must_use]
-pub fn build_rocks(inp: &RockInputs, slope: &[f32]) -> Vec<u8> {
+pub fn build_substratum(inp: &SubstratumInputs) -> Vec<u8> {
     let (w, h) = (inp.w, inp.h);
-    let n = w * h;
     let craton = smooth_coarse(inp.craton, inp.nx, inp.ny, inp.sample_origin, inp.sample_size);
     let belt = smooth_coarse(inp.belt, inp.nx, inp.ny, inp.sample_origin, inp.sample_size);
     let rift = smooth_coarse(inp.rift, inp.nx, inp.ny, inp.sample_origin, inp.sample_size);
     let anom = terrain_anomaly(inp.z_m, w, h);
     let volc = volcanic_cells(inp.edifices, inp.z_m, w, h, inp.sample_origin, inp.sample_size, inp.cell_km);
+    let mut out = vec![BASEMENT; w * h];
+    out.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+        for (x, o) in row.iter_mut().enumerate() {
+            let c = y * w + x;
+            *o = if volc[c] != 0 {
+                volc[c]
+            } else if at_smooth(&rift, x, y, w, h) - SNAP_BETA * at_smooth(&anom, x, y, w, h) > 0.5 {
+                RIFT_FILL
+            } else if at_smooth(&belt, x, y, w, h) + SNAP_BETA * at_smooth(&anom, x, y, w, h) > 0.5 {
+                BELT
+            } else if at_smooth(&craton, x, y, w, h) + SNAP_BETA * at_smooth(&anom, x, y, w, h) > 0.5 {
+                CRATON
+            } else {
+                BASEMENT
+            };
+        }
+    });
+    out
+}
+
+/// ADR Finding 154-S — the surface's inputs, all from the end of the chain.
+pub struct SurfaceInputs<'a> {
+    pub w: usize,
+    pub h: usize,
+    pub sea: &'a [bool],
+    pub lake_map: &'a [u32],
+    pub endorheic: &'a std::collections::HashSet<u32>,
+    pub acc: &'a [f32],
+    pub cell_km: f32,
+    pub precip_mm: &'a [f32],
+}
+
+/// ADR Finding 154-S — the SURFACE over the substratum: water (an endorheic lake's bed is evaporites), the evaporites
+/// of the arid endorheic margins, the loose deposits (floodplain, lake margin, slope foot); the substratum elsewhere.
+/// `slope` is [`slope_field`] of the final relief.
+#[must_use]
+pub fn apply_surface(substratum: &[u8], inp: &SurfaceInputs, slope: &[f32]) -> Vec<u8> {
+    let (w, h) = (inp.w, inp.h);
+    let n = w * h;
     let flood = floodplain(slope, inp.acc, inp.cell_km);
     let lake: Vec<bool> = inp.lake_map.iter().map(|&l| l != 0).collect();
     let lake_margin = dilate(&lake, w, h, LAKE_MARGIN_CELLS);
@@ -286,18 +348,137 @@ pub fn build_rocks(inp: &RockInputs, slope: &[f32]) -> Vec<u8> {
                 EVAPORITES
             } else if flood[c] || lake_margin[c] || (near_steep[c] && slope[c] < SLOPE_FOOT_MAX) {
                 LOOSE_DEPOSITS
-            } else if volc[c] != 0 {
-                volc[c]
-            } else if at_smooth(&rift, x, y, w, h) - SNAP_BETA * at_smooth(&anom, x, y, w, h) > 0.5 {
-                RIFT_FILL
-            } else if at_smooth(&belt, x, y, w, h) + SNAP_BETA * at_smooth(&anom, x, y, w, h) > 0.5 {
-                BELT
-            } else if at_smooth(&craton, x, y, w, h) + SNAP_BETA * at_smooth(&anom, x, y, w, h) > 0.5 {
-                CRATON
             } else {
-                BASEMENT
+                substratum[c]
             };
         }
     });
     out
+}
+
+/// Build the rock grid: the surface over the substratum. `slope` is [`slope_field`] of `z_m`.
+#[must_use]
+pub fn build_rocks(inp: &RockInputs, slope: &[f32]) -> Vec<u8> {
+    let sub = build_substratum(&SubstratumInputs {
+        w: inp.w,
+        h: inp.h,
+        z_m: inp.z_m,
+        cell_km: inp.cell_km,
+        nx: inp.nx,
+        ny: inp.ny,
+        craton: inp.craton,
+        belt: inp.belt,
+        rift: inp.rift,
+        sample_origin: inp.sample_origin,
+        sample_size: inp.sample_size,
+        edifices: inp.edifices,
+    });
+    apply_surface(
+        &sub,
+        &SurfaceInputs {
+            w: inp.w,
+            h: inp.h,
+            sea: inp.sea,
+            lake_map: inp.lake_map,
+            endorheic: inp.endorheic,
+            acc: inp.acc,
+            cell_km: inp.cell_km,
+            precip_mm: inp.precip_mm,
+        },
+        slope,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ADR Finding 154-S, rule 13 — the rock grid is the surface over the substratum, cell for cell, and the substratum
+    /// alone is a different grid where the surface acts. A 128² world: a slope to the sea, a lake, a craton on the west
+    /// half, a rift band, no edifice. The per-cell order of the F152 rock grid is restated here (the old monolithic
+    /// `build_rocks`), and both paths must give it. Negative control: a lake-margin land cell's substratum is not its
+    /// final class (loose deposits), and the lake's cells are water over a hard substratum.
+    #[test]
+    fn the_rock_grid_is_the_surface_over_the_substratum() {
+        let (w, h) = (128usize, 128usize);
+        let n = w * h;
+        let z_m: Vec<f32> = (0..n).map(|k| 400.0 - 3.0 * (k / w) as f32 + 20.0 * ((k % w) as f32 * 0.3).sin()).collect();
+        let sea: Vec<bool> = z_m.iter().map(|&z| z <= 0.0).collect();
+        let lake_cell = |k: usize| {
+            let (x, y) = ((k % w) as f32, (k / w) as f32);
+            ((x - 40.0).powi(2) + (y - 40.0).powi(2)).sqrt() < 6.0
+        };
+        let lake_map: Vec<u32> = (0..n).map(|k| if lake_cell(k) { 7 } else { 0 }).collect();
+        let endorheic = std::collections::HashSet::new();
+        let acc: Vec<f32> = (0..n).map(|k| ((k * 7919) % 3000) as f32).collect();
+        let precip: Vec<f32> = vec![800.0; n];
+        let (nx, ny) = (64usize, 64usize);
+        let craton: Vec<bool> = (0..nx * ny).map(|c| c % nx < nx / 2).collect();
+        let belt: Vec<bool> = vec![false; nx * ny];
+        let rift: Vec<bool> = (0..nx * ny).map(|c| (40..46).contains(&(c % nx))).collect();
+        let inp = RockInputs {
+            w,
+            h,
+            z_m: &z_m,
+            sea: &sea,
+            lake_map: &lake_map,
+            endorheic: &endorheic,
+            acc: &acc,
+            cell_km: 0.4,
+            precip_mm: &precip,
+            nx,
+            ny,
+            craton: &craton,
+            belt: &belt,
+            rift: &rift,
+            sample_origin: [0.0, 0.0],
+            sample_size: 1.0,
+            edifices: &[],
+        };
+        let slope = slope_field(&z_m, w, h, 400.0);
+        // F152's monolithic order, restated
+        let cr = smooth_coarse(&craton, nx, ny, [0.0, 0.0], 1.0);
+        let be = smooth_coarse(&belt, nx, ny, [0.0, 0.0], 1.0);
+        let ri = smooth_coarse(&rift, nx, ny, [0.0, 0.0], 1.0);
+        let an = terrain_anomaly(&z_m, w, h);
+        let flood = floodplain(&slope, &acc, 0.4);
+        let lake: Vec<bool> = lake_map.iter().map(|&l| l != 0).collect();
+        let margin = dilate(&lake, w, h, LAKE_MARGIN_CELLS);
+        let steep: Vec<bool> = slope.iter().map(|&s| s > STEEP_SLOPE).collect();
+        let near_steep = dilate(&steep, w, h, SLOPE_FOOT_CELLS);
+        let old: Vec<u8> = (0..n)
+            .map(|c| {
+                let (x, y) = (c % w, c / w);
+                if lake_map[c] != 0 || sea[c] {
+                    NONE
+                } else if flood[c] || margin[c] || (near_steep[c] && slope[c] < SLOPE_FOOT_MAX) {
+                    LOOSE_DEPOSITS
+                } else if at_smooth(&ri, x, y, w, h) - SNAP_BETA * at_smooth(&an, x, y, w, h) > 0.5 {
+                    RIFT_FILL
+                } else if at_smooth(&be, x, y, w, h) + SNAP_BETA * at_smooth(&an, x, y, w, h) > 0.5 {
+                    BELT
+                } else if at_smooth(&cr, x, y, w, h) + SNAP_BETA * at_smooth(&an, x, y, w, h) > 0.5 {
+                    CRATON
+                } else {
+                    BASEMENT
+                }
+            })
+            .collect();
+        let rocks = build_rocks(&inp, &slope);
+        assert_eq!(rocks, old, "the split gives F152's grid");
+        let sub = build_substratum(&SubstratumInputs { w, h, z_m: &z_m, cell_km: 0.4, nx, ny, craton: &craton, belt: &belt, rift: &rift, sample_origin: [0.0, 0.0], sample_size: 1.0, edifices: &[] });
+        let surf = apply_surface(&sub, &SurfaceInputs { w, h, sea: &sea, lake_map: &lake_map, endorheic: &endorheic, acc: &acc, cell_km: 0.4, precip_mm: &precip }, &slope);
+        assert_eq!(surf, rocks, "the surface over the substratum is the rock grid");
+        for k in [RIFT_FILL, CRATON, BASEMENT] {
+            assert!(sub.contains(&k), "the substratum has class {k}");
+        }
+        // the negative control: a lake-margin land cell and a lake cell
+        let m = (0..n).find(|&c| margin[c] && !lake[c] && !sea[c]).expect("a margin cell");
+        assert_eq!(rocks[m], LOOSE_DEPOSITS, "the margin is loose deposits at the surface");
+        assert_ne!(sub[m], LOOSE_DEPOSITS, "its substratum is a rock");
+        let l = (0..n).find(|&c| lake[c]).expect("a lake cell");
+        assert_eq!(rocks[l], NONE);
+        assert!(ROCK_CLASSES[sub[l] as usize].hardness > 0 || sub[l] == RIFT_FILL, "a lake has a substratum");
+        assert!(sub.iter().all(|&k| ![NONE, LOOSE_DEPOSITS, EVAPORITES].contains(&k)), "the substratum holds no surface class");
+    }
 }
