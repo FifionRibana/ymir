@@ -1,0 +1,22 @@
+# F156 checks AFTER (transition_weight / blend_light_pass, light_mode 5 / 6; one lib test; the breach unchanged)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 47.78s
+test result: ok. 621 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 2.19s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 31 passed; 0 failed; 16 ignored; 0 measured; 0 filtered out; finished in 1.25s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+# the 6/6 guard through run_hd (ymir-viz f123_viz_guard)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+[HD timing] geology (2.08s: history 0.24 · rocks 0.78 · context 0.84 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.07s: history 0.24 · rocks 0.78 · context 0.85 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.02s: history 0.23 · rocks 0.76 · context 0.84 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.10s: history 0.24 · rocks 0.78 · context 0.87 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.09s: history 0.24 · rocks 0.80 · context 0.84 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.16s: history 0.25 · rocks 0.81 · context 0.88 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes = banc
+   C1 nue                 field = banc · lakes = banc
+   C2 /10 col (défaut)    field = banc · lakes = banc
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes = banc
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 46 filtered out; finished in 118.12s
+# done

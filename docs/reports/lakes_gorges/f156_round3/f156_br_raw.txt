@@ -1,0 +1,88 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+    Finished `release` profile [optimized] target(s) in 14.77s
+     Running tests\f156_round3.rs (target_f156\release\deps\f156_round3-438884d6084df601.exe)
+
+running 1 test
+
+==========  Finding 156 Br . the spill anchor on three new seeds (C2 /10 col, 45° / 40°)  ==========
+
+────────── seed 20261008001 · origin [0.0, 0.890625] · landmasses 13 ──────────
+test f156_br has been running for over 60 seconds
+   the instrument's floor copy = production, bit for bit: true
+   1. lakes: production 26 · spill 26 → unchanged
+   2. cells gained by a lake: **0** []
+   3. cells lost by the lakes **534** · of them NOT an old ramp's cell **204** · the old ramps' cells under a production lake 1097, of them still under a lake (not lost) 767 · GAP
+   4. below-sea land cells: production 267 · spill 17 · NEW **0**
+   raised 33587 · lowered 9 · river segments 23743 → 23935 (+0.81 %)
+   (471 s)
+
+────────── seed 20261008002 · origin [0.8125, 0.171875] · landmasses 4 ──────────
+
+thread 'f156_br' (30388) panicked at crates\ymir-core\src\tectonics_c1\drainage.rs:2831:9:
+ADR Finding 85: the level/outlet/balance fixed point did not converge in 16 passes (20 class merges) — the reported levels are from a half-solved state
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'f156_br' (30388) panicked at crates\ymir-core\src\tectonics_c1\drainage.rs:2831:9:
+ADR Finding 85: the level/outlet/balance fixed point did not converge in 16 passes (20 class merges) — the reported levels are from a half-solved state
+   the run_hd tail: production PANICKED · spill PANICKED
+      production: ADR Finding 85: the level/outlet/balance fixed point did not converge in 16 passes (20 class merges) — the reported levels are from a half-solved state
+      spill: ADR Finding 85: the level/outlet/balance fixed point did not converge in 16 passes (20 class merges) — the reported levels are from a half-solved state
+   (555 s)
+
+────────── seed 20261008003 · origin [0.484375, 0.640625] · landmasses 5 ──────────
+   the instrument's floor copy = production, bit for bit: true
+   1. lakes: production 30 · spill 30 → unchanged
+   2. cells gained by a lake: **0** []
+   3. cells lost by the lakes **1828** · of them NOT an old ramp's cell **1380** · the old ramps' cells under a production lake 2812, of them still under a lake (not lost) 2364 · GAP
+   4. below-sea land cells: production 101 · spill 13 · NEW **0**
+   raised 72005 · lowered 8 · river segments 25532 → 25675 (+0.56 %)
+   (601 s)
+
+   STOP RULE (declared): FIRES: seed 20261008001: a lost cell is not an old ramp's | seed 20261008002: a chain panicked | seed 20261008003: a lost cell is not an old ramp's
+
+==========  end Finding 156 Br . 1627.4 s  ==========
+
+test f156_br ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1627.37s
+

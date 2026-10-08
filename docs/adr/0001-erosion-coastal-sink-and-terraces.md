@@ -20847,3 +20847,61 @@ images and raw outputs: `docs/reports/lakes_gorges/f155_round2/finding_155.md`.
     candidate, the true transition (F156-T).
 - **The breach's second defect, queued**: in livré, the coastal pits whose spill lies 0.5–3 m above the sea still
   leave 6 294 land cells under it under the spill anchor. Their ramps start near the sea.
+
+## Finding 156 — lakes / gorges / falls resumed, round 3 of 4: the spill breach fails its blind criterion on three new seeds (the lakes also lose the pits the old ramps drained; one seed's production world crashes in the drainage), so nothing ships; d_t = 3 cells (146 m); the true transition T fails G-pits in all three worlds, exactly F144-P1's counts (the light pass's deposition on the design), and its walls are 2.1–2.6 × P0, so T is NOT retained; the diagnostic T-all (deposition weighted too) holds G-pits = 0 and G-rim = 0 everywhere
+
+**Status: measured; the transition built gated (`light_mode` 5 / 6); nothing promoted; the breach unchanged.
+Nothing committed.** Report, images and raw outputs: `docs/reports/lakes_gorges/f156_round3/finding_156.md`.
+- F155 committed (`42fffe2`), its ADR notes apart (`01530f1`).
+
+**The author's decisions (2026-10-08), recorded as given**:
+- the breach: « Nouvelle confirmation à l'aveugle sur 2–3 graines, critère précisé »;
+- the light pass: « Inacceptable : un dernier candidat, la vraie transition ».
+- Round 4 is the author's look, then the decision: ship or pause.
+
+**Br — not confirmed; nothing ships.**
+- The seeds: 20261008001 / 002 / 003, production C2 /10 col, the viz's automatic framing. The copy is F154's
+  amendment 2, untouched.
+- Seeds 001 and 003:
+  - the lake count is unchanged; no lake gains a cell; no below-sea land cell is created;
+  - **but 204 / 1 380 of the lost cells are not an old ramp's**.
+- **Localised (001)**: these are **the pits the old ramps drained**, 1–16 cells from them. The spill anchor leaves them
+  to the mop-up fill, which raises them +1 to +73 m, out of the lake. The criterion counted only the lowered cells.
+- **Seed 002: the run_hd tail panics in both chains**, production included, on F85's fixed-point assertion
+  (`drainage.rs:2831`). **A production defect, queued** (the third), separate from the breach.
+
+**T — d_t and the true transition.**
+- **d_t**:
+  - the declared profile (median z_C2 − z_P0 by band from the mask) is 0.00 m from the first band. It is blind
+    outside the mask, as at F144.
+  - The fallback: C2's p90 edge step is 69.9 m, giving **3 cells = 146 m** at 28°.
+- **T** (the lowering weighted by smoothstep(d / d_t); deposition free):
+  - **G-pits 1 792 / 2 330 / 2 487 — exactly F144-P1's**;
+  - G-rim 0;
+  - **walls 1 195 / 1 210 / 1 346 against P0's 573 / 500 / 523** (× 2.1–2.6);
+  - G-levels 15/18 at ×1;
+  - G-drained 7 176 / 11 118;
+  - θ IN; canyons 0 (in the zone too).
+  - **The declared rule: T NOT retained.**
+- **On the design, T and P1 are the same operation. The pits come from the light pass's DEPOSITION.**
+- **T-all** (the whole change weighted, a declared diagnostic): **G-pits 0 and G-rim 0 in all three worlds.** Its
+  walls are 1 120 / 1 127 / 1 259 (× 2.0–2.4 P0; C2's are 4 858–6 277).
+- **Attribution**: 24–31 % of G-ring's violators lie in the head falls' footprint; the majority is beyond it, at the
+  ring's edge.
+- T's cost is not isolated (+1 s at ×1.4 p 0; the other worlds ran under memory pressure).
+- The images (lakes 1, 2 and 11: P0, T, T-all, NP) are for round 4.
+
+**Checks**: before = F155's after-checks. After: `cargo check` clean, lib 621 (+1), viz 31, **the guard 6 / 6 = banc**
+(C2 /10 col `a8d2d538d692c2f0`); the breach unchanged.
+
+**Predictions**:
+- **The reviewer's**:
+  - held: d_t 3–8, G-rim, G-drained failing, meta;
+  - refuted: Br on every seed, T's G-pits, the walls ≤ 1.5 ×, G-ring in the footprint;
+  - the cost not determined.
+- **Mine**:
+  - held: T failing G-pits through the deposition (and not retained), T-all's G-pits 0, d_t's fallback;
+  - refuted: Br ≥ 2 of 3, T's and T-all's walls ≤ P0's, G-ring ≥ 60 % in the footprint.
+
+**Memory note**: two resumes of `f156_t` ran out of memory beside the IDE's language servers. At the author's choice,
+clangd and an older rust-analyzer were stopped.

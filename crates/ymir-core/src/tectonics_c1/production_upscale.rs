@@ -490,6 +490,8 @@ pub fn upscale_from_c1_with_progress(
     let mut design_mask: Option<Vec<bool>> = None;
     let mut design_floor: Option<GridF32> = None;
     let mut design_dist: Option<(Vec<f32>, f32)> = None;
+    // ADR Finding 156-T -- the true transition (5: the lowering weighted; 6: the whole change, T-all)
+    let mut transition: Option<(Vec<f32>, f32, bool)> = None;
     if let Some(vc) = &cfg.valley_construction {
         let domain_km = cfg.sample_size as f32 * volcanism.domain_km;
         let p3 = vc.gorge_retreat.filter(|g| g.light_mode == 3);
@@ -543,6 +545,9 @@ pub fn upscale_from_c1_with_progress(
             match g.light_mode {
                 2 => {
                     design_dist = Some((crate::tectonics_c1::valley_construction::gorge_design_distance_m(&mask, &sk), g.light_dt_m))
+                }
+                5 | 6 => {
+                    transition = Some((crate::tectonics_c1::valley_construction::gorge_design_distance_m(&mask, &sk), g.light_dt_m, g.light_mode == 6))
                 }
                 // ADR Finding 154-L -- P4: the kept bodies' catchments on the pass's input are restored after it (C2's restore)
                 4 => {
@@ -622,8 +627,11 @@ pub fn upscale_from_c1_with_progress(
                     light.slope_floor_uk = Some(s_eq);
                     light.depression_floor = true;
                 }
-                let before = (design_mask.is_some() || design_dist.is_some()).then(|| result.heightmap.clone());
+                let before = (design_mask.is_some() || design_dist.is_some() || transition.is_some()).then(|| result.heightmap.clone());
                 result.heightmap = once(&result.heightmap, &light);
+                if let (Some(b), Some((dist, dt, all))) = (before.as_ref(), transition.as_ref()) {
+                    crate::tectonics_c1::valley_construction::blend_light_pass(b, &mut result.heightmap, dist, *dt, *all);
+                }
                 if let Some(b) = before {
                     match (design_mask.as_ref(), design_floor.as_ref(), design_dist.as_ref()) {
                         // ADR Finding 144-P1 / P3 -- the design is a floor (deposition stays allowed)

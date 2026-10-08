@@ -240,7 +240,9 @@ pub struct GorgeRetreat {
     /// ADR Finding 144-P — BENCH OPTION, how the light pass meets the designed geometry: 0 free (P0), 1 a floor at the
     /// construction on the design (P1), 2 its erosion weighted by w(d) = min(1, d/`light_dt_m`) from the design (P2),
     /// 3 the light pass on the construction without gorge, rim and plain, the design laid after it (P3); ADR Finding
-    /// 154-L: 4 the light pass not applied on the kept bodies' catchments ([`gorge_catchment_mask`], P4).
+    /// 154-L: 4 the light pass not applied on the kept bodies' catchments ([`gorge_catchment_mask`], P4); ADR Finding
+    /// 156-T: 5 the TRUE TRANSITION, the light pass's lowering weighted by [`transition_weight`] over `light_dt_m` from
+    /// the design (T), and 6 the same weighting of the whole change, deposition included (T-all, a diagnostic).
     #[serde(default, skip_serializing_if = "is_zero_u8")]
     pub light_mode: u8,
     #[serde(default, skip_serializing_if = "is_zero_f32")]
@@ -1454,6 +1456,30 @@ pub fn gorge_design_mask(sk: &Skeleton) -> Vec<bool> {
 
 /// ADR Finding 144-P2 — the distance (m) of every cell from the designed geometry ([`gorge_design_mask`]): a
 /// multi-source 8-connected BFS, one cell per step (Chebyshev), times the cell size. 0 on the design.
+/// ADR Finding 156-T — the transition's weight at a distance `d_m` from the designed geometry: 0 on it, 1 from `d_t_m` on,
+/// a smoothstep x²(3 − 2x) between (flat at both ends, so the weighted surface meets the design and the free light
+/// pass without a kink). The shape is a DECISION; d_t is MEASURED (F156). `d_t_m ≤ 0` gives 1 everywhere.
+#[must_use]
+pub fn transition_weight(d_m: f32, d_t_m: f32) -> f32 {
+    if d_t_m <= 0.0 {
+        return 1.0;
+    }
+    let x = (d_m / d_t_m).clamp(0.0, 1.0);
+    x * x * (3.0 - 2.0 * x)
+}
+
+/// ADR Finding 156-T — blend the light pass's output `after` with its input `before` by [`transition_weight`] of each
+/// cell's distance from the design (`dist_m`, [`gorge_design_distance_m`]). `all = false` weights the LOWERING only
+/// (deposition passes, T); `all = true` weights the whole change (T-all).
+pub fn blend_light_pass(before: &GridF32, after: &mut GridF32, dist_m: &[f32], d_t_m: f32, all: bool) {
+    for (k, z1) in after.data.iter_mut().enumerate() {
+        let z0 = before.data[k];
+        if all || *z1 < z0 {
+            *z1 = z0 + transition_weight(dist_m[k], d_t_m) * (*z1 - z0);
+        }
+    }
+}
+
 pub fn gorge_design_distance_m(mask: &[bool], sk: &Skeleton) -> Vec<f32> {
     use std::collections::VecDeque;
     let (w, h) = (sk.width, sk.height);
@@ -3242,6 +3268,37 @@ mod tests {
         assert!(b.col != u32::MAX && !e[b.col as usize], "the col drains away from its body");
         let off = skeleton(&f, &ext, &ss, 51.2);
         assert!(gorge_catchment_mask(&f, &off, 0.5).iter().all(|&x| !x), "empty when the gate is off");
+    }
+
+    /// ADR Finding 156-T, rule 13 — the transition: w(0) = 0, w(d_t) = 1, monotone between; on the design (d = 0) the
+    /// light pass's lowering is undone, beyond d_t it is kept, in between it is partial; deposition passes under T and
+    /// is weighted under T-all. Negative control first: without the blend the design cell is lowered.
+    #[test]
+    fn the_transition_spares_the_design_and_fades_out() {
+        let dt = 200.0f32;
+        assert_eq!(transition_weight(0.0, dt), 0.0);
+        assert_eq!(transition_weight(dt, dt), 1.0);
+        assert_eq!(transition_weight(3.0 * dt, dt), 1.0);
+        let mut prev = 0.0;
+        for i in 1..=20 {
+            let w = transition_weight(i as f32 * dt / 20.0, dt);
+            assert!(w >= prev, "monotone");
+            prev = w;
+        }
+        // four cells: on the design (lowered), mid-way (lowered), beyond d_t (lowered), on the design (raised)
+        let before = GridF32 { width: 4, height: 1, data: vec![10.0, 10.0, 10.0, 10.0] };
+        let pass = GridF32 { width: 4, height: 1, data: vec![6.0, 6.0, 6.0, 12.0] };
+        let dist = [0.0, 0.5 * dt, 2.0 * dt, 0.0];
+        assert!(pass.data[0] < before.data[0], "negative control: the free pass lowers the design cell");
+        let mut t = pass.clone();
+        blend_light_pass(&before, &mut t, &dist, dt, false);
+        assert_eq!(t.data[0], 10.0, "the design is spared");
+        assert!((t.data[1] - 8.0).abs() < 1e-6, "half-way, half the lowering (smoothstep(0.5) = 0.5)");
+        assert_eq!(t.data[2], 6.0, "beyond d_t the pass is free");
+        assert_eq!(t.data[3], 12.0, "T: deposition passes");
+        let mut ta = pass.clone();
+        blend_light_pass(&before, &mut ta, &dist, dt, true);
+        assert_eq!(ta.data[3], 10.0, "T-all: deposition on the design is undone too");
     }
 
     /// ADR Finding 155-F, rule 13 — the soft-lip rule on v5's synthetic world: with every cell soft, v6 gives every body
