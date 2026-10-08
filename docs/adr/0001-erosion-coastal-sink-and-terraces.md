@@ -20832,3 +20832,18 @@ images and raw outputs: `docs/reports/lakes_gorges/f155_round2/finding_155.md`.
   - refuted: Br (every footprint changes), relief < 2 % (+9.8 %), G-levels.
 - **Mine**: refuted are P-Br1, P-Br3, P-Br4 (livré, A1+B2), the lakes +10–40 %, the planar walls ≥ 3×, "the sharp
   crests and the comb tile rise", and "G-sea holds".
+
+**Recorded at commit (F156).**
+- **The Br stop rule was badly written by the reviewer.** It counted as a failure any loss of footprint, while the
+  correction is precisely what takes from the lakes the cells the old ramps carved under them. The rule is not
+  rewritten after the fact: a new blind confirmation is made (F156-Br).
+- **What the light pass brings**:
+  - relief p50 −9 % against the bare world (515.4 against 565.8 m);
+  - R8 terrain 0.0451 against 0.0577;
+  - the parallel bundles ÷ 2.5 (1 626 against 4 133);
+  - the planar walls halved (9.5 against 18.2 % of the land);
+  - the A1+B2 closure.
+  - **The author's verdict on the hillshades: without it, unacceptable.** Options (a) and (b) are set aside; one last
+    candidate, the true transition (F156-T).
+- **The breach's second defect, queued**: in livré, the coastal pits whose spill lies 0.5–3 m above the sea still
+  leave 6 294 land cells under it under the spill anchor. Their ramps start near the sea.
