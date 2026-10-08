@@ -19985,7 +19985,8 @@ hidden). The base is treated, starting with the cones.
 `docs/adr/accepted_defects.md` (§ 1). The reasons:
 - the "defect" is measured against the divides of before the carving;
 - 64 % of its cells lie within 2 cells of the old divide, where the ridge becomes the intersection of the two valleys'
-  28° walls: the normal geometry of a dissected range;
+  28° walls: the normal geometry of a dissected range; **[CORRECTED in F158: false. The crests are intersections of
+  planar walls, a mosaic no real range forms; `accepted_defects.md` § 1 is reopened.]**
 - the captures (~70 km²) are below the measure's noise;
 - C1 adds a seam (walls ×1.49).
 - **The one exception is the drained bowls (F144-Z)**, which belong to the paused gorge.
@@ -20905,3 +20906,116 @@ Nothing committed.** Report, images and raw outputs: `docs/reports/lakes_gorges/
 
 **Memory note**: two resumes of `f156_t` ran out of memory beside the IDE's language servers. At the author's choice,
 clangd and an older rust-analyzer were stopped.
+
+## Finding 157 — the gorge's retreat PAUSED (closing entry); the lakes' outline on the hillshade; the lake base alone ready for the author's look: F133's table to the digit, the same 11 new lakes, 6 steps > 200 m below the based lakes, both worlds exported for Living Landz, no measurable cost; the production defects inventoried, all born at the construction
+
+**Status: the viz outline built; the rest measured; nothing promoted. Nothing committed.** Report, images and raw
+outputs: `docs/reports/lakes_gorges/f157_close/finding_157.md`.
+- F156 was committed (`e796eb1`).
+- **The breach's production patch is NOT applied.** It is saved as `f157_close/breach_spill_anchor.patch`
+  (uncompiled; its comments must be corrected).
+
+**The author's criterion, recorded as given**:
+- « Je ne suis pas convaincu. Je ne vois pas où s'arrête le lac, mais je vois un rebord qui apparaît en T-all par
+  rapport à P0 (et en T d'ailleurs). »
+- The gorge: « Pause, avec bilan de clôture ».
+- The lake base: « La valider pour la promouvoir (crops restants + Living Landz) ».
+- Seed 20261008002: « Le laisser dans la file ».
+- **The reviewer's reading (a hypothesis to check)**: the rim is the ring's clamp (G-ring); protecting the design
+  leaves the edge standing; the defect is in the construction.
+
+### The gorge — closing entry (paused 2026-10-08)
+
+- **The state for a resumption**: `docs/reports/lakes_gorges/f157_close/etat_gorge_pause.md`. Gated, the toggle
+  hidden.
+- **Built**:
+  - `GorgeRetreat` v3 → v6: the retreat per lake, the 18 bodies, the minimal plain, the capped falls, the soft-lip
+    falls' rule;
+  - the light pass's bench candidates P1–P4, C2, T, T-all.
+- **Holds**:
+  - the construction leaves no closed hollow; the plain equals the bench's; the bodies 1:1; F38 never fires;
+  - the falls' rule;
+  - G-pits / G-rim held whenever the design is protected (C2, T-all).
+- **Fails, with its cause**:
+  - **the ring's clamp** (G-ring, the rim the author sees; 24–31 % only in the head falls' footprint);
+  - **the light pass undoing the design**, its erosion and **its deposition** (F156);
+  - **the cones in the drained bowls** (G-drained, laid from outside their catchment, F144-Z).
+- **Set aside**:
+  - P1 (the deposition's pits); P2 (= P1); P3 (walls, +54–189 s);
+  - P4 (G-pits 2–18); C2 (walls ×9–12);
+  - no light pass (« Inacceptable »);
+  - T (= P1 on the design); T-all (walls ×2–2.4, the rim).
+- **The track (a hypothesis to check)**: bound the floor of every line whose cones reach the ring before the cones,
+  instead of clamping the ring after.
+- **The queue**:
+  - the breach's floor anchor (the patch ready; its confirmation criterion to rewrite);
+  - livré's coastal pits (6 294 cells);
+  - seed 20261008002's F85 non-convergence;
+  - basin 1000001.
+- `accepted_defects.md` is unchanged: paused is not accepted.
+
+### V — the lakes' outline (viz)
+
+- Relief → Ombrage draws `run_hd`'s final lake mask: a cyan line on the water, a dark navy line on the shore.
+- « Contour des lacs » hides it.
+- A view; permanent test `the_outline_rings_each_lake_inside_and_out`.
+
+### B — the lake base alone (`InputLakesAndBasins`, gorge off)
+
+- **B1**: F133's table (`f135_w3m`, unchanged) is reproduced **to the digit**. OFF / F132 / extended:
+  - canyons 0 / 0 / 0; coast 0.0142;
+  - R8 0.0452 / 0.0395 / 0.0411; relief 515.4 / 551.9 / 546.6 m;
+  - Δz 1 150 588 / 235 602 / 12 509;
+  - lakes 26 / 34 / 34;
+  - θ carved 0.493 / 0.436 / 0.439.
+  - **The cost**: `build_world` 151 / 147 s, the tail 100 / 98 s: **none measurable**.
+- **B2**:
+  - the same 11 new lakes (1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 19) at F133v's centres;
+  - **no 615² window has zero changed cells**; the control crop at |Δz| ≤ 1 m is at (2688, 5888).
+- **B3**: 24 hillshade crops with the outline, north up, OFF and ON.
+- **B4** (F136-K6b completed):
+  - **6 steps > 200 m**: lakes 1 (290 m), 2 (862), 7 (317), 9 (266), 10 (811), 11 (260);
+  - mean slopes 8.5–15.0°; max over 100 m up to **47.1° (lake 10)** and 43.6° (lake 2);
+  - 12 lakes drain by spillway (no D8 receiver).
+- **B5**: `exports/f157/{off,on}/seed10481999410520546993_8192.ymir/`, written by `run_hd` as the production world
+  (≈ 1.1 GB each, git-ignored).
+- **B6, what the promotion would change**:
+  - the production field (ON `a620a9aa0d5882a0` against `a8d2d538d692c2f0`);
+  - the default state's guard entry, or the four construction states' if inside `ValleyConstruction::new`;
+  - the lake references (26 → 34; 3 492.8 → 4 446.2 km²);
+  - the exports' lakes, rivers, biomes and geology;
+  - the cost: none measurable.
+- **B7, the production defects** (12 crops, OFF):
+  - Production has no droplet pass (`upscale.rs:410`), so the light pass is the only stage after the construction on
+    land.
+  - Planar walls 0.10 → **17.15 %** (construction) → 9.07 % (OFF);
+  - terrain R8 0.0428 → **0.0933** → 0.0876;
+  - comb teeth on the construction's walls in all 12 crops (371 of 7 267 reaches in OFF).
+  - **All three are born at the construction**; the light pass halves the planar walls only.
+  - No remedy: the inventory of a possible work.
+
+**Predictions**:
+- **The reviewer's**: B1 and B4 (≥ 4 > 200 m, ≥ 1 > 40°) held; B4's classes not judged (not defined).
+- **Mine**: B1, B2, B4, B5 and B6 held; P-B7's ranges refuted (planar 1.5–22.6 %, R8 0.034–0.120).
+- **Checks after**: `cargo check` clean, lib 621, viz 32 (+1), **the guard 6 / 6 = banc** (C2 /10 col `a8d2d538d692c2f0`).
+- The reviewer's meta (« au moins une est fausse ») is refuted: all of the reviewer's judged predictions held.
+
+**Recorded at commit (F158).**
+- **The author's look at the validation crops (2026-10-08), recorded as given**:
+  - upstream « oui »; downstream « non »; non-regression « pas spécialement »; the added lakes « oui globalement ».
+  - « En sortie de lac (et à certains endroits le long d'une rivière), on voit un promontoire en demi-cercle. La
+    rivière le contourne. C'est très étrange. »
+  - « Les crêtes sont horribles ! Il y a aussi des murs systématiquement de quasiment 900 m entre le haut et le bas
+    de la chaîne de montagne. »
+  - « Les incisions dans le relief sont toujours comme un pinceau qu'on a utilisé pour creuser. Ça ne fait en aucun
+    cas naturel. »
+  - « À mon avis, la méthode utilisée a résolu des problèmes mais donne un relief qui est trop artificiel. »
+- **The lake base is NOT promoted.** It stays gated.
+- **The reviewer's correction**: F145's closing of the cones (« the normal geometry of a dissected range ») was
+  false. The crests are intersections of planar walls, a mosaic no real range forms. `accepted_defects.md` § 1 is
+  reopened, the correction marked there and at F146.
+- **The attribution of the author's three defects. Hypotheses to check, none measured:**
+  - the half-circle promontory = the cone of a polyline's last sample;
+  - the crests = the intersections of the 28° walls;
+  - the ~900 m walls = flat-floored valleys carved down to the law;
+  - the "brush" = polyline × width × cones.

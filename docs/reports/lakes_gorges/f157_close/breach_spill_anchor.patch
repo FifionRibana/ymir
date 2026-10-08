@@ -1,0 +1,254 @@
+diff --git a/crates/ymir-core/src/cache.rs b/crates/ymir-core/src/cache.rs
+index b2c3a93..fb4b2ef 100644
+--- a/crates/ymir-core/src/cache.rs
++++ b/crates/ymir-core/src/cache.rs
+@@ -64,12 +64,17 @@ pub const ALGO_DRAINAGE: u32 = 9; // Finding 124-3: own-end reach values; a junc
+ 
+ /// Version of the climate build (`c1_climate_placed` / `c1_climate_windowed`).
+ /// ⚠️ BUMP on ANY code change to that step (see above).
+-pub const ALGO_CLIMATE: u32 = 1;
++/// `2` — ADR Finding 155-Br: the climate reads the CONDITIONED field (the breach output) but is keyed on the eroded
++/// key, so the breach's spill anchor moves it without moving its key.
++pub const ALGO_CLIMATE: u32 = 2;
+ 
+ /// Version of the relief-v3 BREACH conditioning (`breach_monotone` applied to the eroded
+ /// field with the pre-breach lakes). ⚠️ BUMP on ANY code change to `breach_monotone` — a
+ /// stale conditioned field would carry the OLD breach into every downstream layer.
+-pub const ALGO_BREACH: u32 = 1;
++/// `2` — ADR Finding 155-Br: the HD conditioning's ramp is anchored at the pit's spill ([`RampAnchor::Spill`]).
++///
++/// [`RampAnchor::Spill`]: crate::terrain::flow::RampAnchor::Spill
++pub const ALGO_BREACH: u32 = 2;
+ 
+ /// Version of the HD relief-v3 drainage BUNDLE (final drainage after the below-sea
+ /// water-balance merge + river clip + spillway append + geographic-scale, plus the
+@@ -87,7 +92,9 @@ pub const ALGO_BREACH: u32 = 1;
+ /// evaporative equilibrium (level + footprint), draining the exposed floor from `lake_map` —
+ /// the GEOMETRY half of the same discard H-1 fixed for the classification. Lake outlines,
+ /// river clipping, wetlands and biomes all move.
+-pub const ALGO_HD_DRAINAGE: u32 = 12; // Finding 149-K: a segment tagged with its lake (its spillway) is the lake's outlet
++/// `13` — ADR Finding 155-Br: the bundle reads the conditioned field and the climate but is keyed on the eroded key, so
++/// the breach's spill anchor must move it (`ALGO_BREACH` alone would serve stale lakes and rivers).
++pub const ALGO_HD_DRAINAGE: u32 = 13; // Finding 155-Br: the breach's ramp anchored at the pit's spill
+ 
+ // ── Cache key ──────────────────────────────────────────────────────────────
+ 
+diff --git a/crates/ymir-core/src/tectonics_c1/valley_construction.rs b/crates/ymir-core/src/tectonics_c1/valley_construction.rs
+index 15569a9..326bfc4 100644
+--- a/crates/ymir-core/src/tectonics_c1/valley_construction.rs
++++ b/crates/ymir-core/src/tectonics_c1/valley_construction.rs
+@@ -44,7 +44,7 @@ use crate::tectonics_c1::drainage::{C1_SEA_LEVEL_NORM, C1DrainageConfig, c1_drai
+ use crate::tectonics_c1::production_upscale::{
+     c1_altitude_norm_to_metres, c1_metres_to_altitude_norm,
+ };
+-use crate::terrain::flow::{D8_DX, D8_DY, DIR_NONE, FlowConfig, breach_monotone, compute_flow};
++use crate::terrain::flow::{D8_DX, D8_DY, DIR_NONE, FlowConfig, RampAnchor, breach_monotone_anchored, compute_flow};
+ use serde::{Deserialize, Serialize};
+ use std::cmp::Ordering;
+ use std::collections::BinaryHeap;
+@@ -618,6 +618,11 @@ fn recv(dir: &[u8], k: usize, w: usize, h: usize) -> Option<usize> {
+     Some(ny * w + nx)
+ }
+ 
++/// ADR Finding 156-Br — the skeleton's breach keeps the FLOOR anchor (F120's A0 instrument, the construction as
++/// measured since F121): only the HD assembly's conditioning takes the spill anchor, so the eroded field is unchanged.
++/// A test pins it.
++pub const SKELETON_RAMP_ANCHOR: RampAnchor = RampAnchor::Floor;
++
+ /// Build the skeleton of `field` (normalised altitude). `domain_km` is the span of the grid.
+ ///
+ /// The flow is Finding 120's: `c1_drainage_windowed` → `breach_monotone` → the drainage chain's
+@@ -674,7 +679,7 @@ fn skeleton_impl(
+     let dcfg = C1DrainageConfig::default();
+     let (bf, lake_map, lake_level) = {
+         let pre = c1_drainage_windowed(field, None, &dcfg, ss, domain_km);
+-        let bf = breach_monotone(field, &pre.flow.filled, &pre.lake_map, C1_SEA_LEVEL_NORM, w, h);
++        let bf = breach_monotone_anchored(field, &pre.flow.filled, &pre.lake_map, C1_SEA_LEVEL_NORM, w, h, None, SKELETON_RAMP_ANCHOR);
+         // ADR Finding 132-P4 -- the input's lakes and their surface (m), kept only when asked for
+         let level: Option<Vec<f32>> = vc.lake_base.map(|_| {
+             (0..n)
+@@ -3270,6 +3275,33 @@ mod tests {
+         assert!(gorge_catchment_mask(&f, &off, 0.5).iter().all(|&x| !x), "empty when the gate is off");
+     }
+ 
++    /// ADR Finding 156-Br, rule 13 — the skeleton's breach is the floor anchor, i.e. `breach_monotone` exactly; negative
++    /// control: on a field where a pit's floor ramp crosses the sea, the spill anchor differs, so the choice matters.
++    #[test]
++    fn the_skeleton_keeps_the_floor_anchor() {
++        use crate::terrain::flow::breach_monotone;
++        assert_eq!(SKELETON_RAMP_ANCHOR, RampAnchor::Floor);
++        let (w, h) = (128usize, 5usize);
++        let sea = 0.5f32;
++        let mut height = vec![sea + 1e-2; w * h];
++        let mut lake_map = vec![0u32; w * h];
++        for x in 0..4 {
++            height[2 * w + x] = sea - 1e-3;
++            lake_map[2 * w + x] = 1;
++        }
++        for x in 4..104 {
++            height[2 * w + x] = sea + 3e-4;
++        }
++        height[2 * w + 104] = sea + 5e-4;
++        height[2 * w + 105] = sea + 2e-4;
++        let hm = GridF32::from_vec(w, h, height);
++        let flow = compute_flow(&hm, &FlowConfig { sea_level: sea, ..Default::default() });
++        let sk = breach_monotone_anchored(&hm, &flow.filled, &lake_map, sea, w, h, None, SKELETON_RAMP_ANCHOR);
++        assert_eq!(sk.data, breach_monotone(&hm, &flow.filled, &lake_map, sea, w, h).data, "the skeleton's breach is `breach_monotone`");
++        let spill = breach_monotone_anchored(&hm, &flow.filled, &lake_map, sea, w, h, None, RampAnchor::Spill);
++        assert_ne!(spill.data, sk.data, "negative control: the spill anchor differs here");
++    }
++
+     /// ADR Finding 156-T, rule 13 — the transition: w(0) = 0, w(d_t) = 1, monotone between; on the design (d = 0) the
+     /// light pass's lowering is undone, beyond d_t it is kept, in between it is partial; deposition passes under T and
+     /// is weighted under T-all. Negative control first: without the blend the design cell is lowered.
+diff --git a/crates/ymir-core/src/terrain/flow.rs b/crates/ymir-core/src/terrain/flow.rs
+index d66114d..f50df22 100644
+--- a/crates/ymir-core/src/terrain/flow.rs
++++ b/crates/ymir-core/src/terrain/flow.rs
+@@ -1023,6 +1023,35 @@ pub fn breach_monotone_protected(
+     w: usize,
+     h: usize,
+     protect: Option<&[bool]>,
++) -> GridF32 {
++    breach_monotone_anchored(height, filled, lake_map, sea_level, w, h, protect, RampAnchor::Floor)
++}
++
++/// ADR Finding 155-Br — where a pit's breach ramp starts.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum RampAnchor {
++    /// The pit's FLOOR (`height[nb]`): the ramp descends from it, 1e-5 per cell, towards the flood's root, without
++    /// reading the pit's spill (F141 γ). A row of pits along a below-sea lake's fringe sends its ramps under the sea
++    /// (ON: 292 land cells, held only by the lake covering them). Kept for [`breach_monotone`] /
++    /// [`breach_monotone_protected`], hence for the valley construction's skeleton (F120's A0 instrument).
++    Floor,
++    /// The pit's SPILL on the pre-breach flood (`max(height[nb], filled[nb])`): the ramp never descends below the level
++    /// the pit overflows at, and the mop-up fill raises the pit to its outlet. F154 amendment 2, confirmed blind on the
++    /// guard's six states (F156): no lake moves, no land cell is left below the sea. The HD conditioning's anchor.
++    Spill,
++}
++
++/// [`breach_monotone_protected`] with the ramp's anchor given (ADR Finding 155-Br).
++#[allow(clippy::too_many_arguments)]
++pub fn breach_monotone_anchored(
++    height: &GridF32,
++    filled: &GridF32,
++    lake_map: &[u32],
++    sea_level: f32,
++    w: usize,
++    h: usize,
++    protect: Option<&[bool]>,
++    anchor: RampAnchor,
+ ) -> GridF32 {
+     let n = w * h;
+     let prot = |k: usize| protect.is_some_and(|p| p[k]);
+@@ -1067,7 +1096,10 @@ pub fn breach_monotone_protected(
+             if height.data[nb] < z[ci] {
+                 // `nb` is lower than its only outlet `ci` → a pit. Breach: carve the outlet
+                 // path (ci → backlink → … → base) down to a descending ramp under nb.
+-                let mut target = height.data[nb] - EPS;
++                let mut target = match anchor {
++                    RampAnchor::Floor => height.data[nb] - EPS,
++                    RampAnchor::Spill => height.data[nb].max(filled.data[nb]) - EPS,
++                };
+                 let mut cur = ci;
+                 while cur != usize::MAX && !is_base(cur, &z) && z[cur] > target {
+                     z[cur] = target;
+@@ -1496,6 +1528,42 @@ fn compute_strahler(segments: &mut [RiverSegment]) {
+ mod tests {
+     use super::*;
+ 
++    /// ADR Finding 155-Br, rule 13 — a pit behind a long plateau just above the sea, its only outlet a rim, the base a
++    /// lake beyond the plateau (F154's row of pits along lake 1000016, reduced to one). The spill anchor sends no ramp
++    /// below the sea and leaves every land cell above it. Negative control FIRST: the floor anchor carves the plateau
++    /// from the pit's floor, 1e-5 per cell, under the sea.
++    #[test]
++    fn a_spill_anchored_ramp_stays_above_the_sea() {
++        let (w, h) = (128usize, 5usize);
++        let n = w * h;
++        let sea = 0.5f32;
++        let mut height = vec![sea + 1e-2; n];
++        let mut lake_map = vec![0u32; n];
++        let y = 2usize;
++        for x in 0..4 {
++            height[y * w + x] = sea - 1e-3;
++            lake_map[y * w + x] = 1;
++        }
++        for x in 4..104 {
++            height[y * w + x] = sea + 3e-4; // the plateau, ≈ 3.4 m above the sea
++        }
++        height[y * w + 104] = sea + 5e-4; // the rim
++        height[y * w + 105] = sea + 2e-4; // the pit, its floor ≈ 2.3 m above the sea
++        let hm = GridF32::from_vec(w, h, height);
++        let flow = compute_flow(&hm, &FlowConfig { sea_level: sea, ..Default::default() });
++        let land_below = |g: &GridF32| (0..n).filter(|&k| hm.data[k] > sea && lake_map[k] == 0 && g.data[k] <= sea).count();
++        let floor = breach_monotone_anchored(&hm, &flow.filled, &lake_map, sea, w, h, None, RampAnchor::Floor);
++        assert!(land_below(&floor) > 10, "negative control: the floor anchor carves the plateau under the sea ({})", land_below(&floor));
++        assert_eq!(
++            breach_monotone_protected(&hm, &flow.filled, &lake_map, sea, w, h, None).data,
++            floor.data,
++            "`breach_monotone_protected` is the floor anchor"
++        );
++        let spill = breach_monotone_anchored(&hm, &flow.filled, &lake_map, sea, w, h, None, RampAnchor::Spill);
++        assert_eq!(land_below(&spill), 0, "the spill anchor leaves no land cell below the sea");
++        assert!(spill.data[y * w + 105] >= hm.data[y * w + 105], "the pit is filled, not trenched");
++    }
++
+     /// ADR Finding 124-3 (T3) — **a tributary links to the reach its water enters.** T1 and T2 meet
+     /// at J, D's first cell; T' joins D at its SECOND cell P2, itself a junction D runs through
+     /// (a reach of one point does not stop at one). Before the fix, T2 and T' overwrote the claims
+diff --git a/crates/ymir-core/tests/common/mod.rs b/crates/ymir-core/tests/common/mod.rs
+index 7d7cd85..86d20bf 100644
+--- a/crates/ymir-core/tests/common/mod.rs
++++ b/crates/ymir-core/tests/common/mod.rs
+@@ -544,14 +544,17 @@ pub fn viz_hd_lakes(k: Knobs, pseed: u64, lat: f32, span: f32) -> VizLakes {
+ }
+ 
+ pub fn viz_hd_lakes_on(wd: &World, k: Knobs, pseed: u64, lat: f32, span: f32) -> VizLakes {
+-    viz_hd_lakes_with(wd, k, pseed, lat, span, &ymir_core::terrain::flow::breach_monotone_protected)
++    // ADR Finding 155-Br -- the viz's breach: the ramp anchored at the pit's spill
++    viz_hd_lakes_with(wd, k, pseed, lat, span, &|a, b, c, d, e, f, p| {
++        ymir_core::terrain::flow::breach_monotone_anchored(a, b, c, d, e, f, p, ymir_core::terrain::flow::RampAnchor::Spill)
++    })
+ }
+ 
+ /// The breach's signature (`breach_monotone_protected`'s), for a bench copy.
+ pub type BreachFn<'a> = dyn Fn(&GridF32, &GridF32, &[u32], f32, usize, usize, Option<&[bool]>) -> GridF32 + 'a;
+ 
+-/// [`viz_hd_lakes_on`] with the breach given (ADR Finding 154-Br: a bench copy of it). The production breach gives
+-/// exactly `viz_hd_lakes_on`.
++/// [`viz_hd_lakes_on`] with the breach given (ADR Finding 154-Br: a bench copy of it). The viz's breach (since F155,
++/// `breach_monotone_anchored(.., RampAnchor::Spill)`) gives exactly `viz_hd_lakes_on`.
+ pub fn viz_hd_lakes_with(wd: &World, k: Knobs, pseed: u64, lat: f32, span: f32, breach: &BreachFn) -> VizLakes {
+     use ymir_core::climate::precipitation::PrecipParams;
+     use ymir_core::tectonics_c1::cached_product::hd_drainage_key;
+diff --git a/crates/ymir-viz/src/bridge/c1/hd.rs b/crates/ymir-viz/src/bridge/c1/hd.rs
+index a599f8b..b4b917e 100644
+--- a/crates/ymir-viz/src/bridge/c1/hd.rs
++++ b/crates/ymir-viz/src/bridge/c1/hd.rs
+@@ -58,7 +58,7 @@ use ymir_core::tectonics_c1::land_topology::{
+ };
+ use ymir_core::tectonics_c1::production_upscale::EroProgress;
+ use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
+-use ymir_core::terrain::flow::breach_monotone_protected;
++use ymir_core::terrain::flow::{RampAnchor, breach_monotone_anchored};
+ use ymir_core::terrain::upscale::FbmUpscaleConfig;
+ 
+ use super::events::C1Event;
+@@ -966,7 +966,8 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
+         let t_breach = Instant::now();
+         let conditioned = match cached::<GridF32>(&cache_dir, "conditioned", &cond_key, || {
+             let p = prebreach.as_ref().expect("prebreach is present on a conditioned MISS");
+-            breach_monotone_protected(
++            // ADR Finding 155-Br -- the ramp anchored at the pit's spill (no land cell left below the sea)
++            breach_monotone_anchored(
+                 &eroded,
+                 &p.flow.filled,
+                 &p.lake_map,
+@@ -974,6 +975,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
+                 gw,
+                 gh,
+                 crater_protect.as_deref(),
++                RampAnchor::Spill,
+             )
+         }) {
+             Ok(g) => g,

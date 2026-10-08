@@ -375,6 +375,8 @@ struct WorkspaceState {
     /// ADR Finding 135-V -- how the Relief layer is drawn: 0 hypsometry (the shipped layer), 1 hillshade,
     /// 2 the signed difference against `diff_ref`. A VIEW: it reads the world and never writes it.
     relief_view: usize,
+    /// ADR Finding 157-V -- the lakes' outline on the hillshade (a view; on by default, can be hidden).
+    lake_outline: bool,
     /// ADR Finding 135-V -- the reference world of the difference view, stored by the author.
     diff_ref: Option<Arc<HdResult>>,
     /// ADR Finding 135-V -- the difference's saturation, an index into `DIFF_SAT_M`.
@@ -498,6 +500,7 @@ impl Default for WorkspaceState {
             overlays: TectonicOverlays::default(),
             tex_overlays: TectonicOverlays::default(),
             relief_view: 0, // ADR Finding 135-V -- the shipped layer
+            lake_outline: true,
             diff_ref: None,
             diff_sat: 2,
             diff_stats: None,
@@ -2674,7 +2677,7 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
             let rm = ws.river_map.as_ref().unwrap();
             // ADR Finding 135-V -- the relief view
             let relief = match (ws.relief_view, &ws.diff_ref) {
-                (1, _) => ReliefView::Shade,
+                (1, _) => ReliefView::Shade { outline: ws.lake_outline },
                 (2, Some(r)) => ReliefView::Diff(r, DIFF_SAT_M[ws.diff_sat.min(2)]),
                 _ => ReliefView::Hypso,
             };
@@ -3197,6 +3200,19 @@ fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) 
                                     ws.relief_view = i;
                                     ws.texture = None;
                                 }
+                            }
+                            // ADR Finding 157-V -- the lakes' outline on the hillshade
+                            if ws.relief_view == 1
+                                && ui
+                                    .checkbox(&mut ws.lake_outline, "Contour des lacs")
+                                    .on_hover_text(
+                                        "Le contour des lacs du monde (le masque final de run_hd) sur l'ombrage : \
+                                         un trait cyan côté lac doublé d'un trait sombre côté berge, lisible sur \
+                                         les versants clairs comme sombres. Une vue : le monde ne change pas.",
+                                    )
+                                    .changed()
+                            {
+                                ws.texture = None;
                             }
                             ui.separator();
                             if ui
@@ -3791,8 +3807,8 @@ fn blend_tectonic_overlays(rgba: &mut [u8], hd: &HdResult, ov: TectonicOverlays)
 enum ReliefView<'a> {
     /// The shipped hypsometric layer.
     Hypso,
-    /// The hypsometric colour times a hillshade.
-    Shade,
+    /// The hypsometric colour times a hillshade; `outline` draws the lakes' outline over it (ADR Finding 157-V).
+    Shade { outline: bool },
     /// The current world minus a reference world (m), saturated at the given magnitude.
     Diff(&'a HdResult, f32),
 }
@@ -3869,7 +3885,7 @@ fn layer_color_image(
         v => v,
     };
     let shade = match (layer, relief) {
-        (HdLayer::Relief, ReliefView::Shade | ReliefView::Diff(..)) => Some(hillshade(hd)),
+        (HdLayer::Relief, ReliefView::Shade { .. } | ReliefView::Diff(..)) => Some(hillshade(hd)),
         _ => None,
     };
     let ss = SteinSteinParams::default();
@@ -3878,7 +3894,7 @@ fn layer_color_image(
         let c = match layer {
             HdLayer::Relief => match relief {
                 ReliefView::Hypso => relief_color(hd.eroded.data[k]),
-                ReliefView::Shade => {
+                ReliefView::Shade { .. } => {
                     let [r, g, b] = relief_color(hd.eroded.data[k]);
                     let f = (0.25 + 0.75 * shade.as_ref().map_or(1.0, |s| s[k])).min(1.35);
                     [(r as f32 * f).min(255.0) as u8, (g as f32 * f).min(255.0) as u8, (b as f32 * f).min(255.0) as u8]
@@ -3922,6 +3938,10 @@ fn layer_color_image(
             ymir_core::geology::render::chances_rgba(zoning, only, w, h, &mut rgba);
         }
     }
+    // ADR Finding 157-V -- the lakes' outline on the hillshade (before the rivers, which stay on top)
+    if layer == HdLayer::Relief && matches!(relief, ReliefView::Shade { outline: true }) {
+        draw_lake_outline(&mut rgba, &lake_outline_mask(&hd.drainage.lake_map, w, h));
+    }
     if overlay {
         draw_river_overlay(&mut rgba, hd);
     }
@@ -3934,6 +3954,41 @@ fn layer_color_image(
     flip_rows_rgba(&mut rgba, w, h);
     let stats = matches!((layer, relief), (HdLayer::Relief, ReliefView::Diff(..))).then_some((n_sat, n_diff));
     (egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba), stats)
+}
+
+/// ADR Finding 157-V -- the lakes' outline: 1 on a lake cell with a 4-neighbour outside its lake (the inner line), 2 on a
+/// non-lake cell with a 4-neighbour in a lake (the outer line), 0 elsewhere. Two lakes side by side each get their inner
+/// line; the map's border closes nothing.
+fn lake_outline_mask(lake_map: &[u32], w: usize, h: usize) -> Vec<u8> {
+    let mut m = vec![0u8; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let k = y * w + x;
+            let id = lake_map[k];
+            let nb = [(x > 0).then(|| k - 1), (x + 1 < w).then(|| k + 1), (y > 0).then(|| k - w), (y + 1 < h).then(|| k + w)];
+            if id != 0 {
+                if nb.iter().flatten().any(|&j| lake_map[j] != id) {
+                    m[k] = 1;
+                }
+            } else if nb.iter().flatten().any(|&j| lake_map[j] != 0) {
+                m[k] = 2;
+            }
+        }
+    }
+    m
+}
+
+/// ADR Finding 157-V -- paint [`lake_outline_mask`]: a bright cyan inner line on the water, a dark navy outer line on the
+/// shore, so the outline reads on a light slope and on a dark one alike.
+fn draw_lake_outline(rgba: &mut [u8], mask: &[u8]) {
+    for (k, &v) in mask.iter().enumerate() {
+        let c = match v {
+            1 => [0u8, 229, 255],
+            2 => [10, 22, 48],
+            _ => continue,
+        };
+        rgba[k * 4..k * 4 + 3].copy_from_slice(&c);
+    }
 }
 
 /// Vertically mirror a row-major RGBA buffer in place: display row `j` ↔ data row
@@ -6829,6 +6884,41 @@ ANATOMY of the largest duplicated terminal, at cell {cell:?}:"
 /// ADR Finding 151-0 — the viz starts as the author's production, which is the 6/6 guard's world: C-2, C-3 and C-3b
 /// checked, H-1 not. The guard's literal (`f123_viz_guard::run`) and these defaults must not drift apart.
 #[cfg(test)]
+mod lake_outline {
+    use super::*;
+
+    /// ADR Finding 157-V, rule 13 -- the outline: a 3 x 3 lake in a 7 x 7 map gets its 8 border cells as the inner
+    /// line and the 12 shore cells around it (4-adjacent) as the outer line; its centre is not outlined. Negative
+    /// control first: a map without a lake has no outline. Two touching lakes each get their inner line.
+    #[test]
+    fn the_outline_rings_each_lake_inside_and_out() {
+        let (w, h) = (7usize, 7usize);
+        assert!(lake_outline_mask(&vec![0u32; w * h], w, h).iter().all(|&v| v == 0), "negative control: no lake, no outline");
+        let mut lm = vec![0u32; w * h];
+        for y in 2..5 {
+            for x in 2..5 {
+                lm[y * w + x] = 7;
+            }
+        }
+        let m = lake_outline_mask(&lm, w, h);
+        assert_eq!(m.iter().filter(|&&v| v == 1).count(), 8, "the inner line");
+        assert_eq!(m.iter().filter(|&&v| v == 2).count(), 12, "the outer line, 4-adjacent shore cells");
+        assert_eq!(m[3 * w + 3], 0, "the lake's centre is not outlined");
+        // two lakes side by side
+        let mut two = vec![0u32; w * h];
+        two[3 * w + 2] = 1;
+        two[3 * w + 3] = 2;
+        let m2 = lake_outline_mask(&two, w, h);
+        assert_eq!((m2[3 * w + 2], m2[3 * w + 3]), (1, 1), "each lake gets its own inner line");
+        // the paint leaves non-outline pixels alone
+        let mut rgba = vec![100u8; w * h * 4];
+        draw_lake_outline(&mut rgba, &m);
+        assert_eq!(&rgba[0..4], &[100, 100, 100, 100]);
+        assert_eq!(&rgba[(2 * w + 2) * 4..(2 * w + 2) * 4 + 3], &[0, 229, 255]);
+    }
+}
+
+#[cfg(test)]
 mod startup_defaults {
     #[test]
     fn the_workspace_starts_with_the_guards_closures() {
@@ -6975,6 +7065,11 @@ mod f133v_bench {
     const PSEED: u64 = 10_481_999_410_520_546_993;
 
     fn run(valley: ValleyConstruction) -> Arc<HdResult> {
+        run_with(valley, None)
+    }
+
+    /// [`run`] with the `.ymir` export written to `export` (ADR Finding 157-B5).
+    fn run_with(valley: ValleyConstruction, export: Option<std::path::PathBuf>) -> Arc<HdResult> {
         let spec = C1RunSpec { seed: PSEED, ..C1RunSpec::default() };
         // f123_viz_guard's literal (the workspace's own), for "C2 /10 col (défaut)"
         let params = HdParams {
@@ -6994,7 +7089,7 @@ mod f133v_bench {
             base_level_off: false,
             geo_scale_ratio: 7.5,
             latitude_span_deg: Some(40.0),
-            export_dir: None,
+            export_dir: export,
             volcanism: Some(VolcanismConfig { enabled: true, ..Default::default() }),
             lithology: Some(LithologyConfig {
                 enabled: true,
@@ -7018,6 +7113,162 @@ mod f133v_bench {
             }
         }
         panic!("the HD worker hung up")
+    }
+
+    /// ADR Finding 157-B2 / B3 / B5 — the lake base alone, on `run_hd` itself (the guard's C2 /10 col literal), OFF and ON
+    /// extended: the lake counts and badges, the new lakes' crops (F133v's rule, 615 cells), the control crop (zero
+    /// changed cells, else |Δz| ≤ 1 m declared), the lakes per crop, the hillshade crops with the lakes' outline
+    /// (`layer_color_image`'s own buffer, north up), and the two `.ymir` exports for Living Landz. Declared in
+    /// `docs/reports/lakes_gorges/f157_close/f157_declared.md`.
+    ///
+    /// Run: cargo test -p ymir-viz --release f157_viz -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn f157_viz() {
+        use ymir_core::tectonics_c1::bench_guard::{field_hash, lake_fingerprint};
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let out = root.join("docs/reports/lakes_gorges/f157_close");
+        let ex = root.join("exports/f157");
+        for d in ["off", "on"] {
+            std::fs::create_dir_all(ex.join(d)).expect("the export folder");
+        }
+        eprintln!("\n==========  Finding 157 B . the lake base alone on the viz path (run_hd), OFF / ON extended  ==========");
+        let ss = SteinSteinParams::default();
+        let base = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+        let t = std::time::Instant::now();
+        let off = run_with(base, Some(ex.join("off")));
+        let t_off = t.elapsed().as_secs_f64();
+        let t = std::time::Instant::now();
+        let on = run_with(ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..base }, Some(ex.join("on")));
+        let t_on = t.elapsed().as_secs_f64();
+        let (w, h) = (off.width, off.height);
+        let n = w * h;
+        let cell_km2 = off.km_per_cell * off.km_per_cell;
+        let (lm_off, lm_on) = (&off.drainage.lake_map, &on.drainage.lake_map);
+        eprintln!("   lakes on the viz path: OFF **{}** · ON **{}** (F135-W: 26 / 34)", off.drainage.lakes.len(), on.drainage.lakes.len());
+        eprintln!(
+            "   field hashes: OFF {:016x} · ON {:016x} · badges: field OFF {:?} · ON {:?} · lakes OFF {:?} · ON {:?}",
+            field_hash(&off.eroded),
+            field_hash(&on.eroded),
+            off.bench_guard,
+            on.bench_guard,
+            off.lake_guard,
+            on.lake_guard
+        );
+        eprintln!("   lake fingerprints: OFF {} · ON {}", lake_fingerprint(lm_off, &off.drainage.lakes), lake_fingerprint(lm_on, &on.drainage.lakes));
+        eprintln!("   run_hd wall time (the cache may HIT): OFF {t_off:.0} s · ON {t_on:.0} s");
+        for d in ["off", "on"] {
+            let mut files: Vec<String> = std::fs::read_dir(ex.join(d))
+                .map(|r| r.flatten().map(|e| format!("{} ({:.1} MB)", e.file_name().to_string_lossy(), e.metadata().map(|m| m.len() as f64 / 1e6).unwrap_or(0.0))).collect())
+                .unwrap_or_default();
+            files.sort();
+            eprintln!("   export {d}: {} · {:?}", ex.join(d).canonicalize().map(|p| p.display().to_string()).unwrap_or_default(), files);
+        }
+        let zo: Vec<f32> = off.eroded.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect();
+        let zn: Vec<f32> = on.eroded.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect();
+        let diff: Vec<bool> = (0..n).map(|i| off.eroded.data[i] != on.eroded.data[i]).collect();
+        eprintln!("   conditioned cells that differ OFF vs ON: {}", diff.iter().filter(|&&b| b).count());
+        let half = 307usize;
+        let crop = |cx: usize, cy: usize| -> (usize, usize) { (cx.clamp(half, w - 1 - half) - half, cy.clamp(half, h - 1 - half) - half) };
+        let lakes_in = |lm: &[u32], (x0, y0): (usize, usize)| -> usize {
+            let mut st = HashSet::new();
+            for y in y0..y0 + 2 * half + 1 {
+                for x in x0..x0 + 2 * half + 1 {
+                    let l = lm[y * w + x];
+                    if l != 0 {
+                        st.insert(l);
+                    }
+                }
+            }
+            st.len()
+        };
+        // the crops: the new lakes of ON
+        let mut cells_of: HashMap<u32, Vec<usize>> = HashMap::new();
+        for i in 0..n {
+            if lm_on[i] != 0 {
+                cells_of.entry(lm_on[i]).or_default().push(i);
+            }
+        }
+        let mut crops: Vec<(String, usize, usize)> = Vec::new();
+        let mut ids: Vec<&u32> = cells_of.keys().collect();
+        ids.sort();
+        for &id in ids {
+            let cells = &cells_of[&id];
+            let under = cells.iter().filter(|&&i| lm_off[i] != 0).count();
+            if (under as f32) < 0.5 * cells.len() as f32 {
+                let cx = (cells.iter().map(|&i| (i % w) as f64).sum::<f64>() / cells.len() as f64).round() as usize;
+                let cy = (cells.iter().map(|&i| (i / w) as f64).sum::<f64>() / cells.len() as f64).round() as usize;
+                crops.push((format!("lake{id}"), cx, cy));
+                eprintln!("      new lake {id} ({:.1} km²) centre ({cx}, {cy})", cells.len() as f32 * cell_km2);
+            }
+        }
+        // the control crop: zero changed cells, else every cell |Δz| ≤ 1 m (declared), the most land
+        let sat = |f: &dyn Fn(usize) -> bool| -> Vec<u64> {
+            let mut s = vec![0u64; (w + 1) * (h + 1)];
+            for y in 0..h {
+                for x in 0..w {
+                    s[(y + 1) * (w + 1) + x + 1] = f(y * w + x) as u64 + s[y * (w + 1) + x + 1] + s[(y + 1) * (w + 1) + x] - s[y * (w + 1) + x];
+                }
+            }
+            s
+        };
+        let rect = |s: &[u64], x0: usize, y0: usize| {
+            let (x1, y1) = (x0 + 2 * half, y0 + 2 * half);
+            s[(y1 + 1) * (w + 1) + x1 + 1] + s[y0 * (w + 1) + x0] - s[y0 * (w + 1) + x1 + 1] - s[(y1 + 1) * (w + 1) + x0]
+        };
+        let sl = sat(&|i| off.eroded.data[i] > 0.5);
+        let mut control: Option<(String, usize, usize)> = None;
+        for (rule, test) in [("zero changed cells", Box::new(|i: usize| diff[i]) as Box<dyn Fn(usize) -> bool>), ("|Δz| ≤ 1 m (declared threshold)", Box::new(|i: usize| (zn[i] - zo[i]).abs() > 1.0))] {
+            let sd = sat(&*test);
+            let mut best: Option<(u64, usize, usize)> = None;
+            for y0 in (0..h - 2 * half).step_by(64) {
+                for x0 in (0..w - 2 * half).step_by(64) {
+                    if rect(&sd, x0, y0) == 0 {
+                        let land = rect(&sl, x0, y0);
+                        if best.is_none_or(|b| land > b.0) {
+                            best = Some((land, x0, y0));
+                        }
+                    }
+                }
+            }
+            match best {
+                Some((land, x0, y0)) => {
+                    eprintln!("   control crop ({rule}): origin ({x0}, {y0}) · land {:.0} % of the window", 100.0 * land as f64 / ((2 * half + 1) * (2 * half + 1)) as f64);
+                    control = Some(("control".to_string(), x0 + half, y0 + half));
+                    break;
+                }
+                None => eprintln!("   control crop ({rule}): NONE at 615 × 615"),
+            }
+        }
+        if let Some(c) = control {
+            crops.push(c);
+        }
+        // the lakes per crop, and the hillshade with the outline (the viz's own buffer), north up
+        let ov = TectonicOverlays::default();
+        let (img_off, _) = layer_color_image(&off, HdLayer::Relief, &RiverCellMap::from_drainage(&off.drainage), false, ov, ReliefView::Shade { outline: true }, None);
+        let (img_on, _) = layer_color_image(&on, HdLayer::Relief, &RiverCellMap::from_drainage(&on.drainage), false, ov, ReliefView::Shade { outline: true }, None);
+        let save = |img: &egui::ColorImage, (x0, y0): (usize, usize), name: &str| {
+            let side = (2 * half + 1) as u32;
+            let mut im = image::RgbaImage::new(side, side);
+            // the image is north up: data row y is image row h − 1 − y
+            for yy in 0..side as usize {
+                for xx in 0..side as usize {
+                    let (x, y) = (x0 + xx, h - 1 - (y0 + 2 * half - yy));
+                    let c = img.pixels[y * w + x];
+                    im.put_pixel(xx as u32, yy as u32, image::Rgba([c.r(), c.g(), c.b(), 255]));
+                }
+            }
+            im.save(out.join(name)).expect("png");
+        };
+        eprintln!("   the crops (615², data origin x0, y0 south-first; images north up):");
+        for (name, cx, cy) in &crops {
+            let o = crop(*cx, *cy);
+            let ch = (o.1..o.1 + 2 * half + 1).flat_map(|y| (o.0..o.0 + 2 * half + 1).map(move |x| y * w + x)).filter(|&k| diff[k]).count();
+            eprintln!("      {name:<12} centre ({cx}, {cy}) · origin {o:?} · lakes OFF **{}** · ON **{}** · changed cells {ch}", lakes_in(lm_off, o), lakes_in(lm_on, o));
+            save(&img_off, o, &format!("f157_{name}_off.png"));
+            save(&img_on, o, &format!("f157_{name}_on.png"));
+        }
+        eprintln!("\n==========  end Finding 157 B (viz)  ==========\n");
     }
 
     #[test]
@@ -7277,9 +7528,9 @@ mod f133v_bench {
             eprintln!("   difference ON − OFF at ±{sat} m: (saturated, ≠ 0) = {st:?}");
             save(&img, name);
         }
-        let (img, _) = layer_color_image(&off, HdLayer::Relief, &rm_off, false, ov, ReliefView::Shade, None);
+        let (img, _) = layer_color_image(&off, HdLayer::Relief, &rm_off, false, ov, ReliefView::Shade { outline: false }, None);
         save(&img, "v_shade_lake2_OFF.png");
-        let (img, _) = layer_color_image(&on, HdLayer::Relief, &rm_on, false, ov, ReliefView::Shade, None);
+        let (img, _) = layer_color_image(&on, HdLayer::Relief, &rm_on, false, ov, ReliefView::Shade { outline: false }, None);
         save(&img, "v_shade_lake2_ON.png");
         let (img, _) = layer_color_image(&off, HdLayer::Relief, &rm_off, false, ov, ReliefView::Hypso, None);
         save(&img, "v_hypso_lake2_OFF.png");

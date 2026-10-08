@@ -10,7 +10,18 @@ Each entry gives:
 
 An entry is removed only by a later Finding that reopens it.
 
-## 1. `carve_diag`'s cones lay cells across the pre-carve divides (accepted 2026-10-04, F146 closing F145)
+## 1. ~~`carve_diag`'s cones lay cells across the pre-carve divides~~ — REOPENED at F158 (2026-10-08), no longer accepted
+
+- **The correction (the reviewer, F158)**: this entry's reason, « at the old divide the ridge becomes the intersection
+  of the two valleys' 28° walls: the normal geometry of a dissected range », **was false**. The crests are
+  intersections of planar walls, a mosaic that no real range forms.
+- **The author's look (2026-10-08)**: « Les crêtes sont horribles ! » and « des murs systématiquement de quasiment
+  900 m »; the incisions are « comme un pinceau ».
+- The defect returns to the open work (F158: the relief method itself is under review). **The original entry is kept
+  below, struck, for the record.**
+
+<details><summary>The original entry (accepted 2026-10-04, F146 closing F145)</summary>
+
 
 - **What**: the valley construction gives a cell its nearest sample whose 28° cone lies below the terrain
   (`valley_construction.rs`, `carve_diag`). Nothing bounds a cone but the terrain, so a valley's wall lays cells on the
@@ -30,6 +41,8 @@ An entry is removed only by a later Finding that reopens it.
   - the own-basin restriction (C1) adds a seam: walls across the divides ×1.49 (×3.85 in B2 → A_c).
 - **Exception, not accepted**: the drained bowls (F144-Z: 94–99 % of G-drained's violators are laid from outside
   their catchment). That belongs to the gorge's retreat, which is paused.
+
+</details>
 
 ## 2. The smoothed river polylines clip the corners of off-valley cells (accepted 2026-10-06, F149 closing F148-J2)
 

@@ -1,0 +1,138 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+warning: unused import: `SegmentKind`
+     --> crates\ymir-core\tests\f126_coast.rs:17740:55
+      |
+17740 |     use ymir_core::tectonics_c1::drainage::{LakeType, SegmentKind};
+      |                                                       ^^^^^^^^^^^
+      |
+      = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `HashSet`
+     --> crates\ymir-core\tests\f126_coast.rs:20764:37
+      |
+20764 |     use std::collections::{HashMap, HashSet};
+      |                                     ^^^^^^^
+
+warning: unused variable: `skn`
+     --> crates\ymir-core\tests\f126_coast.rs:10710:9
+      |
+10710 |     let skn = skeleton(&s1, &ext, &ss, DOMAIN_KM);
+      |         ^^^ help: if this is intentional, prefix it with an underscore: `_skn`
+      |
+      = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `t_on_con` is never read
+     --> crates\ymir-core\tests\f126_coast.rs:11447:24
+      |
+11447 |     let mut t_on_con = 0f64;
+      |                        ^^^^ this value is reassigned later and never used
+...
+11496 |         t_on_con = t.elapsed().as_secs_f64();
+      |         ------------------------------------ `t_on_con` is overwritten here before the previous value is read
+      |
+      = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `ci`, `floor`, `stop`, and `crossed` are never read
+     --> crates\ymir-core\tests\f126_coast.rs:13985:9
+      |
+13983 |     struct Ev {
+      |            -- fields in this struct
+13984 |         pit: usize,
+13985 |         ci: usize,
+      |         ^^
+13986 |         floor: f32,
+      |         ^^^^^
+13987 |         steps: u32,
+13988 |         stop: u8, // 0 a base, 1 a cell already lower than the ramp, 2 the chain's end
+      |         ^^^^
+13989 |         stop_cell: usize,
+13990 |         crossed: u32,
+      |         ^^^^^^^
+      |
+      = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `step_of` and `backlink` are never read
+     --> crates\ymir-core\tests\f126_coast.rs:13996:9
+      |
+13993 |     struct Br {
+      |            -- fields in this struct
+...
+13996 |         step_of: Vec<u32>,
+      |         ^^^^^^^
+13997 |         backlink: Vec<usize>,
+      |         ^^^^^^^^
+
+warning: `ymir-core` (test "f126_coast") generated 6 warnings (run `cargo fix --test "f126_coast" -p ymir-core` to apply 3 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.27s
+     Running tests\f126_coast.rs (target_f157\release\deps\f126_coast-4c9d86223520af77.exe)
+
+running 1 test
+
+==========  Finding 157 B . the cost, the steps below the based lakes, the production defects  ==========
+test f157_b has been running for over 60 seconds
+   COST · build_world OFF 151 s · ON 147 s (-3 s) · the run_hd tail OFF 100 s · ON 98 s · lakes OFF 26 · ON 34
+   control crop (zero changed cells): NONE
+   control crop (|Δz| ≤ 1 m): origin (2688, 5888)
+   crops (origin, 615²): [("lake1", 3184, 2193), ("lake2", 3712, 2532), ("lake3", 3817, 2789), ("lake4", 1913, 3277), ("lake7", 1599, 3390), ("lake8", 3753, 3701), ("lake9", 4024, 3800), ("lake10", 2644, 3906), ("lake11", 1122, 3980), ("lake12", 3161, 4386), ("lake19", 3035, 5491), ("control", 2688, 5888)]
+
+   B4 · the steps below the based lakes (ON; ≥ 1 km², not a crater lake, a D8 receiver at the outlet):
+      lake        1   132.8 km² level   327.2 m · drop ** 290.1 m** over  1.94 km · mean  8.49° · max over 100 m ** 27.3°** · level − col    0.0 m · crop lake1
+      lake        2    35.5 km² level  1292.0 m · drop ** 862.1 m** over  3.31 km · mean 14.62° · max over 100 m ** 43.6°** · level − col    0.0 m · crop lake2+lake3
+      lake        3   159.7 km² level  1314.5 m · drop **   0.0 m** over  0.00 km · mean   NaN° · max over 100 m **  0.0°** · level − col    0.0 m · crop lake2+lake3
+      lake        4    45.8 km² level   168.2 m · drop ** 119.0 m** over  0.39 km · mean 16.81° · max over 100 m ** 22.4°** · level − col    0.0 m · crop lake4+lake7
+      lake        7     5.3 km² level   383.4 m · drop ** 316.6 m** over  1.85 km · mean  9.73° · max over 100 m ** 31.3°** · level − col    0.0 m · crop lake7
+      lake        8    12.3 km² level   520.5 m · drop **  51.3 m** over  0.12 km · mean 23.53° · max over 100 m ** 23.5°** · level − col    0.0 m · crop lake8+lake9
+      lake        9    79.7 km² level   418.0 m · drop ** 265.9 m** over  1.50 km · mean 10.05° · max over 100 m ** 27.0°** · level − col    0.0 m · crop lake9
+      lake       10   249.0 km² level   974.5 m · drop ** 810.7 m** over  3.02 km · mean 15.01° · max over 100 m ** 47.1°** · level − col    0.0 m · crop lake10
+      lake       11   163.0 km² level   362.0 m · drop ** 260.4 m** over  1.55 km · mean  9.54° · max over 100 m ** 27.8°** · level − col    0.0 m · crop lake11
+      lake       12    10.2 km² level   118.9 m · drop **   0.0 m** over  0.00 km · mean   NaN° · max over 100 m **  0.0°** · level − col    0.0 m · crop lake12
+      lake       13   133.1 km² level   239.3 m · drop **   0.0 m** over  0.00 km · mean   NaN° · max over 100 m **  0.0°** · level − col    0.0 m · crop —
+      lake       15    17.4 km² level   154.9 m · no graded reach within 10 km
+      lake       19    72.0 km² level   197.6 m · drop **   0.0 m** over  0.00 km · mean   NaN° · max over 100 m **  0.0°** · level − col    0.0 m · crop lake19
+      lake       20    33.2 km² level   127.6 m · drop **  23.9 m** over  0.12 km · mean 11.48° · max over 100 m ** 11.5°** · level − col    0.0 m · crop —
+   B4 · steps > 200 m: **6** ["lake 1 (290 m, mean 8.5°, max 27.3°, crop lake1)", "lake 2 (862 m, mean 14.6°, max 43.6°, crop lake2+lake3)", "lake 7 (317 m, mean 9.7°, max 31.3°, crop lake7)", "lake 9 (266 m, mean 10.1°, max 27.0°, crop lake9)", "lake 10 (811 m, mean 15.0°, max 47.1°, crop lake10)", "lake 11 (260 m, mean 9.5°, max 27.8°, crop lake11)"] · lakes without a D8 receiver: 12
+memory allocation of 536870912 bytes failed
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: test failed, to rerun pass `-p ymir-core --test f126_coast`
+
+Caused by:
+  process didn't exit successfully: `D:\Personnel\Projects\ymir\target_f157\release\deps\f126_coast-4c9d86223520af77.exe --ignored --exact f157_b --nocapture` (exit code: 0xc0000409, STATUS_STACK_BUFFER_OVERRUN)

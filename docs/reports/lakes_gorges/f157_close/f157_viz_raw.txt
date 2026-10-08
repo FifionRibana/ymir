@@ -1,0 +1,300 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+warning: unnecessary parentheses around `if` condition
+   --> crates\ymir-viz\src\ui\workspace.rs:701:8
+    |
+701 |     if (resp.dragged() || resp.clicked()) {
+    |        ^                                ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+    |
+701 -     if (resp.dragged() || resp.clicked()) {
+701 +     if resp.dragged() || resp.clicked() {
+    |
+
+warning: use of deprecated method `bevy_egui::egui::ScrollArea::drag_to_scroll`: Use `ScrollArea::scroll_source()
+    --> crates\ymir-viz\src\ui\workspace.rs:2590:58
+     |
+2590 |     egui::ScrollArea::both().auto_shrink([false, false]).drag_to_scroll(false).show(ui, |ui| {
+     |                                                          ^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+
+warning: variant `Cancel` is never constructed
+  --> crates\ymir-viz\src\bridge\c1\commands.rs:58:5
+   |
+30 | pub enum C1Command {
+   |          --------- variant in this enum
+...
+58 |     Cancel,
+   |     ^^^^^^
+   |
+   = note: `C1Command` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `spec` is never read
+  --> crates\ymir-viz\src\bridge\c1\events.rs:86:17
+   |
+86 |     HdStarted { spec: C1RunSpec, params: HdParams },
+   |     ---------   ^^^^
+   |     |
+   |     field in this variant
+   |
+   = note: `C1Event` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: field `elapsed` is never read
+   --> crates\ymir-viz\src\bridge\c1\events.rs:105:48
+    |
+105 |     PreviewReady { preview: Arc<PreviewShape>, elapsed: Duration },
+    |     ------------ field in this variant         ^^^^^^^
+    |
+    = note: `C1Event` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: variant `Failed` is never constructed
+  --> crates\ymir-viz\src\bridge\c1\events.rs:81:5
+   |
+63 | pub enum C1Event {
+   |          ------- variant in this enum
+...
+81 |     Failed { error: String },
+   |     ^^^^^^
+   |
+   = note: `C1Event` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: field `params` is never read
+   --> crates\ymir-viz\src\bridge\c1\hd.rs:365:9
+    |
+364 |     Running {
+    |     ------- field in this variant
+365 |         params: HdParams,
+    |         ^^^^^^
+    |
+    = note: `HdState` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `altitude_norm` is never read
+   --> crates\ymir-viz\src\bridge\c1\inspect.rs:110:9
+    |
+107 | pub struct CellInspection {
+    |            -------------- field in this struct
+...
+110 |     pub altitude_norm: f32,
+    |         ^^^^^^^^^^^^^
+    |
+    = note: `CellInspection` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: fields `spec` and `kind` are never read
+  --> crates\ymir-viz\src\bridge\c1\plugin.rs:77:9
+   |
+76 |     Completed {
+   |     --------- fields in this variant
+77 |         spec: C1RunSpec,
+   |         ^^^^
+78 |         /// Pipeline kind of the completed run (Issue #139 Stage E2).
+79 |         kind: C1RunKind,
+   |         ^^^^
+   |
+   = note: `C1RunState` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: fields `dx` and `dy` are never read
+  --> crates\ymir-viz\src\bridge\c1\snapshot.rs:62:9
+   |
+55 | pub struct C1Snapshot {
+   |            ---------- fields in this struct
+...
+62 |     pub dx: f64,
+   |         ^^
+63 |     pub dy: f64,
+   |         ^^
+   |
+   = note: `C1Snapshot` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: methods `live_plates` and `kinematics` are never used
+   --> crates\ymir-viz\src\bridge\c1\snapshot.rs:172:12
+    |
+ 89 | impl C1Snapshot {
+    | --------------- methods in this implementation
+...
+172 |     pub fn live_plates(&self) -> usize {
+    |            ^^^^^^^^^^^
+...
+180 |     pub fn kinematics(&self) -> PlateKinematics {
+    |            ^^^^^^^^^^
+
+warning: function `snapshot_event_summary` is never used
+   --> crates\ymir-viz\src\visualization\c1_viz.rs:358:8
+    |
+358 | pub fn snapshot_event_summary(snapshot: &C1Snapshot) -> (usize, usize, usize, usize, usize) {
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `slope_color` is never used
+  --> crates\ymir-viz\src\visualization\colormap.rs:36:8
+   |
+36 | pub fn slope_color(gx: f32, gy: f32) -> [u8; 4] {
+   |        ^^^^^^^^^^^
+
+warning: function `log_hot` is never used
+   --> crates\ymir-viz\src\visualization\colormap.rs:137:8
+    |
+137 | pub fn log_hot(t: f64) -> [u8; 4] {
+    |        ^^^^^^^
+
+warning: function `log_normalize` is never used
+   --> crates\ymir-viz\src\visualization\colormap.rs:151:8
+    |
+151 | pub fn log_normalize(value: f64, lo: f64, hi: f64) -> f64 {
+    |        ^^^^^^^^^^^^^
+
+warning: calls to `std::mem::drop` with a value that implements `Copy` does nothing
+   --> crates\ymir-viz\src\bridge\c1\hd.rs:862:9
+    |
+862 |         drop(progress);
+    |         ^^^^^--------^
+    |              |
+    |              argument has type `{closure@crates\ymir-viz\src\bridge\c1\hd.rs:815:28: 815:44}`
+    |
+    = note: `#[warn(dropping_copy_types)]` on by default
+help: use `let _ = ...` to ignore the expression or result
+    |
+862 -         drop(progress);
+862 +         let _ = progress;
+    |
+
+warning: `ymir-viz` (bin "ymir-viz" test) generated 16 warnings (run `cargo fix --bin "ymir-viz" -p ymir-viz --tests` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.41s
+     Running unittests src\lib.rs (target_f157\release\deps\ymir_viz-9f8f90df5d4490fe.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target_f157\release\deps\ymir_viz-1c955b3a3fa74abc.exe)
+
+running 1 test
+
+==========  Finding 157 B . the lake base alone on the viz path (run_hd), OFF / ON extended  ==========
+[HD] SHIPPED relief-v3 config from production_hd_config (MFD p=2.0, C-3 litho ON, C-3b fracture ON)
+[HD] VALLEY CONSTRUCTION ON (ADR Finding 121): trunks A >= 10 km2, age k = 0.07183 (PROXY), W = 200 m at 10 km2, walls 28 deg, then ONE light pass at 0.100 x k_time
+[HD] AGE OF THE CONTINENT ON (ADR Finding 109): absolute slope floor S_eq = 0.024·A^(-1/2) + A1. Window {0.021, 0.024, 0.027} (Findings 106/108). Lakes, rivers and biomes are re-derived.
+[HD timing] coarse land report 0.3s
+[C1 land] seed 10481999410520546993 — 5 landmass(es); largest 160512 km² (15.3% of torus), wraps x=false y=false, bbox 608×592 km; coarse emerged 15.6%; roll (0,37) cells → offset [0.094,0.578]
+[HD] bench guard (cf1d4539c7afe588): Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" }
+[HD volcanism] 15 resolved crater records (7 active/acidic, 8 extinct)
+[HD timing] eroded HIT (0.6s)
+[HD] relief-v3 breach conditioning HIT (0.3s)
+[HD timing] climate HIT (0.8s)
+[HD] H-1 infiltration ON (f_cap 0.70, k_ref 2.7e-3 m/day)
+[HD timing] drainage HIT (5.6s)
+[HD volcanism] crater lakes: 1 acidic | 6 dry craters
+[HD] lake guard (10a49b95dd2e73f8): Match { label: "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°" }
+[HD timing] biomes (2.2s)
+[HD timing] geology (2.32s: history 0.23 · rocks 0.89 · context 0.96 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] export .ymir (5.3s)
+[C1 land] post-FBM+erosion emerged fraction (window) = 16.9%
+[HD timing] rivers_ll 10246 rivers (0.36s)
+[HD timing] run_hd TOTAL 27.3s (render is separate, on the UI thread)
+[HD] SHIPPED relief-v3 config from production_hd_config (MFD p=2.0, C-3 litho ON, C-3b fracture ON)
+[HD] VALLEY CONSTRUCTION ON (ADR Finding 121): trunks A >= 10 km2, age k = 0.07183 (PROXY), W = 200 m at 10 km2, walls 28 deg, then ONE light pass at 0.100 x k_time
+[HD] AGE OF THE CONTINENT ON (ADR Finding 109): absolute slope floor S_eq = 0.024·A^(-1/2) + A1. Window {0.021, 0.024, 0.027} (Findings 106/108). Lakes, rivers and biomes are re-derived.
+[HD timing] coarse land report 0.2s
+[C1 land] seed 10481999410520546993 — 5 landmass(es); largest 160512 km² (15.3% of torus), wraps x=false y=false, bbox 608×592 km; coarse emerged 15.6%; roll (0,37) cells → offset [0.094,0.578]
+[HD] bench guard (834fa66b41d6e05d): NoReference { viz: "a620a9aa0d5882a0" }
+[HD volcanism] 15 resolved crater records (7 active/acidic, 8 extinct)
+[HD timing] eroded HIT (0.5s)
+[HD timing] prebreach drainage 1.6s
+[HD] relief-v3 breach conditioning HIT (0.3s)
+[HD timing] climate HIT (0.7s)
+[HD] H-1 infiltration ON (f_cap 0.70, k_ref 2.7e-3 m/day)
+[HD] H-1c surface water balance APPLIED: 21 → 21 lakes | 1449 → 1449 km² water (0 km² floor exposed) | 0 endorheic
+[HD] below-sea cleanup: 7 detected lake(s) submerged by a filled below-sea lake -> dropped
+[HD] below-sea basins: 19 lakes (15 exorheic, 4 endorheic); 15 spillways (6 -> sea, 9 chained)
+[HD] rivers clipped to lakes: 20621 -> 13462 segments (terminate at sinks)
+[HD] geographic scale ratio 7.50 -> hydrology signifies x56.2 area
+test ui::workspace::f133v_bench::f157_viz has been running for over 60 seconds
+[HD timing] drainage MISS (32.1s)
+[HD volcanism] crater lakes: 1 acidic | 6 dry craters
+[HD] lake guard (d78ac5776d3456d8): NoReference { viz: "d7a888b0a90d795a/5f8cfe75eb866a0e" }
+[HD timing] biomes (1.8s)
+[HD timing] geology (2.26s: history 0.25 · rocks 0.85 · context 0.89 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] export .ymir (4.9s)
+[C1 land] post-FBM+erosion emerged fraction (window) = 16.9%
+[HD timing] rivers_ll 8857 rivers (0.31s)
+[HD timing] run_hd TOTAL 54.4s (render is separate, on the UI thread)
+   lakes on the viz path: OFF **26** · ON **34** (F135-W: 26 / 34)
+   field hashes: OFF cfc153548c184465 · ON 3e2053926ba36218 · badges: field OFF Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" } · ON NoReference { viz: "a620a9aa0d5882a0" } · lakes OFF Match { label: "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°" } · ON NoReference { viz: "d7a888b0a90d795a/5f8cfe75eb866a0e" }
+   lake fingerprints: OFF b7e502b2c1e126c3/e2dc847cd255850e · ON d7a888b0a90d795a/5f8cfe75eb866a0e
+   run_hd wall time (the cache may HIT): OFF 27 s · ON 54 s
+   export off: \\?\D:\Personnel\Projects\ymir\exports\f157\off · ["seed10481999410520546993_8192.ymir (0.0 MB)"]
+   export on: \\?\D:\Personnel\Projects\ymir\exports\f157\on · ["seed10481999410520546993_8192.ymir (0.0 MB)"]
+   conditioned cells that differ OFF vs ON: 44268342
+      new lake 1 (132.8 km²) centre (3491, 2500)
+      new lake 2 (35.5 km²) centre (4019, 2839)
+      new lake 3 (159.7 km²) centre (4124, 3096)
+      new lake 4 (45.8 km²) centre (2220, 3584)
+      new lake 7 (5.3 km²) centre (1906, 3697)
+      new lake 8 (12.3 km²) centre (4060, 4008)
+      new lake 9 (79.7 km²) centre (4331, 4107)
+      new lake 10 (249.0 km²) centre (2951, 4213)
+      new lake 11 (163.0 km²) centre (1429, 4287)
+      new lake 12 (10.2 km²) centre (3468, 4693)
+      new lake 19 (72.0 km²) centre (3342, 5798)
+   control crop (zero changed cells): NONE at 615 × 615
+   control crop (|Δz| ≤ 1 m (declared threshold)): origin (2688, 5888) · land 78 % of the window
+   the crops (615², data origin x0, y0 south-first; images north up):
+      lake1        centre (3491, 2500) · origin (3184, 2193) · lakes OFF **0** · ON **1** · changed cells 198226
+      lake2        centre (4019, 2839) · origin (3712, 2532) · lakes OFF **0** · ON **2** · changed cells 305223
+      lake3        centre (4124, 3096) · origin (3817, 2789) · lakes OFF **0** · ON **2** · changed cells 271278
+      lake4        centre (2220, 3584) · origin (1913, 3277) · lakes OFF **7** · ON **9** · changed cells 82772
+      lake7        centre (1906, 3697) · origin (1599, 3390) · lakes OFF **1** · ON **3** · changed cells 130034
+      lake8        centre (4060, 4008) · origin (3753, 3701) · lakes OFF **3** · ON **4** · changed cells 189167
+      lake9        centre (4331, 4107) · origin (4024, 3800) · lakes OFF **4** · ON **5** · changed cells 129053
+      lake10       centre (2951, 4213) · origin (2644, 3906) · lakes OFF **0** · ON **1** · changed cells 275562
+      lake11       centre (1429, 4287) · origin (1122, 3980) · lakes OFF **1** · ON **1** · changed cells 208717
+      lake12       centre (3468, 4693) · origin (3161, 4386) · lakes OFF **3** · ON **3** · changed cells 109537
+      lake19       centre (3342, 5798) · origin (3035, 5491) · lakes OFF **2** · ON **2** · changed cells 171536
+      control      centre (2995, 6195) · origin (2688, 5888) · lakes OFF **1** · ON **1** · changed cells 3051
+
+==========  end Finding 157 B (viz)  ==========
+
+test ui::workspace::f133v_bench::f157_viz ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 48 filtered out; finished in 88.31s
+

@@ -1,0 +1,71 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.93s
+     Running tests\f157_b7.rs (target_f157\release\deps\f157_b7-d426b82dbd137692.exe)
+
+running 1 test
+
+==========  Finding 157 B7 . the production defects on the crops (OFF), stage by stage  ==========
+test f157_b7 has been running for over 60 seconds
+   S1 and the construction measured (124 s)
+   C1 bare measured (344 s)
+
+   per crop · planar walls (% of the land at 28° ± 0.5°) / terrain R8, per stage · comb teeth / watercourse reaches and the 1–3 km² network R8, C1 bare and OFF:
+      lake1    (3184, 2193) · S1 0.00 % / 0.0110 · construction 19.74 % / 0.1092 · C1 bare 19.74 % / 0.1092 · OFF 14.11 % / 0.1110 · teeth C1 bare 26/455 (R8 NaN) · OFF 12/535 (R8 NaN)
+      lake2    (3712, 2532) · S1 0.01 % / 0.0417 · construction 48.33 % / 0.1345 · C1 bare 48.33 % / 0.1345 · OFF 22.62 % / 0.0935 · teeth C1 bare 73/590 (R8 NaN) · OFF 127/714 (R8 NaN)
+      lake3    (3817, 2789) · S1 0.00 % / 0.0152 · construction 32.38 % / 0.0937 · C1 bare 32.38 % / 0.0937 · OFF 16.49 % / 0.1140 · teeth C1 bare 49/740 (R8 0.317) · OFF 92/747 (R8 0.317)
+      lake4    (1913, 3277) · S1 0.52 % / 0.0325 · construction 4.35 % / 0.0627 · C1 bare 4.35 % / 0.0627 · OFF 1.66 % / 0.0612 · teeth C1 bare 28/655 (R8 NaN) · OFF 8/578 (R8 NaN)
+      lake7    (1599, 3390) · S1 0.34 % / 0.0214 · construction 13.05 % / 0.0618 · C1 bare 13.05 % / 0.0618 · OFF 3.88 % / 0.0344 · teeth C1 bare 53/580 (R8 NaN) · OFF 25/540 (R8 NaN)
+      lake8    (3753, 3701) · S1 0.00 % / 0.0410 · construction 10.29 % / 0.0638 · C1 bare 10.29 % / 0.0638 · OFF 5.40 % / 0.0572 · teeth C1 bare 21/521 (R8 0.641) · OFF 16/662 (R8 0.342)
+      lake9    (4024, 3800) · S1 0.00 % / 0.0334 · construction 5.19 % / 0.0518 · C1 bare 5.19 % / 0.0518 · OFF 2.74 % / 0.0663 · teeth C1 bare 7/424 (R8 0.585) · OFF 5/554 (R8 0.921)
+      lake10   (2644, 3906) · S1 0.00 % / 0.0991 · construction 28.26 % / 0.1707 · C1 bare 28.26 % / 0.1707 · OFF 17.52 % / 0.1200 · teeth C1 bare 21/622 (R8 NaN) · OFF 27/952 (R8 NaN)
+      lake11   (1122, 3980) · S1 0.31 % / 0.0068 · construction 16.43 % / 0.0922 · C1 bare 16.43 % / 0.0922 · OFF 9.45 % / 0.1165 · teeth C1 bare 69/707 (R8 0.342) · OFF 19/707 (R8 1.000)
+      lake12   (3161, 4386) · S1 0.00 % / 0.0666 · construction 9.02 % / 0.1090 · C1 bare 9.02 % / 0.1090 · OFF 5.48 % / 0.0982 · teeth C1 bare 35/666 (R8 0.290) · OFF 17/613 (R8 0.396)
+      lake19   (3035, 5491) · S1 0.05 % / 0.0820 · construction 16.03 % / 0.1141 · C1 bare 16.03 % / 0.1141 · OFF 7.95 % / 0.0965 · teeth C1 bare 43/665 (R8 0.548) · OFF 22/566 (R8 0.459)
+      control  (2688, 5888) · S1 0.00 % / 0.0634 · construction 2.71 % / 0.0563 · C1 bare 2.71 % / 0.0563 · OFF 1.53 % / 0.0820 · teeth C1 bare 3/59 (R8 0.276) · OFF 1/99 (R8 0.963)
+   mean over the 12 crops · planar S1 0.10 → construction 17.15 → C1 bare 17.15 → OFF 9.07 % · terrain R8 0.0428 → 0.0933 → 0.0933 → 0.0876 · teeth C1 bare 428 → OFF 371 (of 6684 / 7267 reaches)
+
+==========  end Finding 157 B7 . 587.8 s  ==========
+
+test f157_b7 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 587.79s
+

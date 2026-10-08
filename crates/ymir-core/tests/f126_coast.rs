@@ -20750,3 +20750,283 @@ fn f156_t() {
     eprintln!("\n   SUMMARY · {}", summary.join("\n   SUMMARY · "));
     eprintln!("\n==========  end Finding 156-T . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
 }
+
+/// ADR Finding 157-B — the lake base alone, on the bench: the cost OFF / ON (B1 / B6), the steps below the based lakes
+/// (B4, F136's amended instrument completed: drop, length, mean slope, max slope over 100 m), and the production
+/// defects on the crops, stage by stage (B7: comb teeth, planar walls, axis alignment). Declared in
+/// `docs/reports/lakes_gorges/f157_close/f157_declared.md`.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored --exact f157_b --nocapture
+#[test]
+#[ignore]
+fn f157_b() {
+    use common::{aniso, build_world, viz_hd_lakes_on};
+    use std::collections::{HashMap, HashSet};
+    use ymir_core::tectonics_c1::drainage::LakeType;
+    use ymir_core::tectonics_c1::valley_construction::LakeBase;
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    fn chords(points: &[(u32, u32)], l: usize) -> Vec<f32> {
+        let mut out = Vec::new();
+        let mut i = 0usize;
+        while i + l < points.len() {
+            let (dx, dy) = (points[i + l].0 as f32 - points[i].0 as f32, points[i + l].1 as f32 - points[i].1 as f32);
+            if dx != 0.0 || dy != 0.0 {
+                let mut t = dy.atan2(dx);
+                if t < 0.0 {
+                    t += std::f32::consts::PI;
+                }
+                out.push(t);
+            }
+            i += l.max(1);
+        }
+        out
+    }
+    fn r8c8(thetas: &[f32]) -> f32 {
+        if thetas.is_empty() {
+            return f32::NAN;
+        }
+        let (mut c8, mut s8) = (0f64, 0f64);
+        for &t in thetas {
+            c8 += (8.0 * t as f64).cos();
+            s8 += (8.0 * t as f64).sin();
+        }
+        ((c8 * c8 + s8 * s8).sqrt() / thetas.len() as f64) as f32
+    }
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    let cell_km2 = CELL_KM * CELL_KM;
+    let metres = |g: &GridF32| -> Vec<f32> { g.data.iter().map(|&v| c1_altitude_norm_to_metres(v, &ss)).collect() };
+    let off = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let on = ValleyConstruction { lake_base: Some(LakeBase::InputLakesAndBasins), ..off };
+    let bare = ValleyConstruction { light_k_time_fraction: None, ..off };
+    let kn = |vc: ValleyConstruction| Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) };
+    eprintln!("\n==========  Finding 157 B . the cost, the steps below the based lakes, the production defects  ==========");
+    // ── the cost (B1 / B6)
+    let tb = Instant::now();
+    let w_off = build_world(kn(off), None, PSEED, None);
+    let t_off = tb.elapsed().as_secs_f64();
+    let tb = Instant::now();
+    let v_off = viz_hd_lakes_on(&w_off, kn(off), PSEED, 45.0, 40.0);
+    let tt_off = tb.elapsed().as_secs_f64();
+    let tb = Instant::now();
+    let w_on = build_world(kn(on), None, PSEED, None);
+    let t_on = tb.elapsed().as_secs_f64();
+    let tb = Instant::now();
+    let v_on = viz_hd_lakes_on(&w_on, kn(on), PSEED, 45.0, 40.0);
+    let tt_on = tb.elapsed().as_secs_f64();
+    let (w, h) = (w_off.heightmap.width, w_off.heightmap.height);
+    let n = w * h;
+    eprintln!(
+        "   COST · build_world OFF {t_off:.0} s · ON {t_on:.0} s ({:+.0} s) · the run_hd tail OFF {tt_off:.0} s · ON {tt_on:.0} s · lakes OFF {} · ON {}",
+        t_on - t_off,
+        v_off.drainage.lakes.len(),
+        v_on.drainage.lakes.len()
+    );
+    // ── the crops (F133v's rule, as the viz bench)
+    let (lm_off, lm_on) = (&v_off.drainage.lake_map, &v_on.drainage.lake_map);
+    let mut cells_of: HashMap<u32, Vec<usize>> = HashMap::new();
+    for i in 0..n {
+        if lm_on[i] != 0 {
+            cells_of.entry(lm_on[i]).or_default().push(i);
+        }
+    }
+    let half = 307usize;
+    let mut crops: Vec<(String, usize, usize)> = Vec::new();
+    let mut ids: Vec<&u32> = cells_of.keys().collect();
+    ids.sort();
+    for &id in ids {
+        let cells = &cells_of[&id];
+        if (cells.iter().filter(|&&i| lm_off[i] != 0).count() as f32) < 0.5 * cells.len() as f32 {
+            let cx = (cells.iter().map(|&i| (i % w) as f64).sum::<f64>() / cells.len() as f64).round() as usize;
+            let cy = (cells.iter().map(|&i| (i / w) as f64).sum::<f64>() / cells.len() as f64).round() as usize;
+            crops.push((format!("lake{id}"), cx.clamp(half, w - 1 - half) - half, cy.clamp(half, h - 1 - half) - half));
+        }
+    }
+    // the control crop (as the viz bench): zero changed conditioned cells, else every cell |Δz| ≤ 1 m (declared), the most land
+    {
+        let (co, cn2) = (metres(&v_off.conditioned), metres(&v_on.conditioned));
+        let sat = |f: &dyn Fn(usize) -> bool| -> Vec<u64> {
+            let mut st = vec![0u64; (w + 1) * (h + 1)];
+            for y in 0..h {
+                for x in 0..w {
+                    st[(y + 1) * (w + 1) + x + 1] = f(y * w + x) as u64 + st[y * (w + 1) + x + 1] + st[(y + 1) * (w + 1) + x] - st[y * (w + 1) + x];
+                }
+            }
+            st
+        };
+        let rect = |st: &[u64], x0: usize, y0: usize| {
+            let (x1, y1) = (x0 + 2 * half, y0 + 2 * half);
+            st[(y1 + 1) * (w + 1) + x1 + 1] + st[y0 * (w + 1) + x0] - st[y0 * (w + 1) + x1 + 1] - st[(y1 + 1) * (w + 1) + x0]
+        };
+        let sl = sat(&|k| v_off.conditioned.data[k] > SEA);
+        let tests: [(&str, Box<dyn Fn(usize) -> bool>); 2] = [
+            ("zero changed cells", Box::new(|k: usize| v_off.conditioned.data[k] != v_on.conditioned.data[k])),
+            ("|Δz| ≤ 1 m", Box::new(|k: usize| (cn2[k] - co[k]).abs() > 1.0)),
+        ];
+        for (rule, t) in tests.iter() {
+            let sd = sat(&**t);
+            let mut best: Option<(u64, usize, usize)> = None;
+            for y0 in (0..h - 2 * half).step_by(64) {
+                for x0 in (0..w - 2 * half).step_by(64) {
+                    if rect(&sd, x0, y0) == 0 && best.is_none_or(|b| rect(&sl, x0, y0) > b.0) {
+                        best = Some((rect(&sl, x0, y0), x0, y0));
+                    }
+                }
+            }
+            if let Some((_, x0, y0)) = best {
+                eprintln!("   control crop ({rule}): origin ({x0}, {y0})");
+                crops.push(("control".to_string(), x0, y0));
+                break;
+            }
+            eprintln!("   control crop ({rule}): NONE");
+        }
+    }
+    eprintln!("   crops (origin, 615²): {:?}", crops);
+    let crop_of = |c: usize| -> String {
+        let (x, y) = (c % w, c / w);
+        crops.iter().filter(|(_, x0, y0)| x >= *x0 && x <= x0 + 2 * half && y >= *y0 && y <= y0 + 2 * half).map(|c2| c2.0.clone()).collect::<Vec<_>>().join("+")
+    };
+    // ── B4: the steps below the based lakes (ON)
+    let cn = metres(&v_on.conditioned);
+    let dir = &v_on.drainage.flow.direction;
+    let recv = |c: usize| -> Option<usize> {
+        let d = dir[c];
+        if d == DIR_NONE {
+            return None;
+        }
+        let (x, y) = ((c % w) as i32 + D8_DX[d as usize], (c / w) as i32 + D8_DY[d as usize]);
+        if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 { None } else { Some(y as usize * w + x as usize) }
+    };
+    let step_len = |a: usize, b: usize| CELL_KM * if (a % w != b % w) && (a / w != b / w) { std::f32::consts::SQRT_2 } else { 1.0 };
+    eprintln!("\n   B4 · the steps below the based lakes (ON; ≥ 1 km², not a crater lake, a D8 receiver at the outlet):");
+    let (mut big, mut none) = (Vec::new(), 0usize);
+    for l in v_on.drainage.lakes.iter().filter(|l| l.area_km2 >= 1.0 && !matches!(l.lake_type, LakeType::CraterAcidic | LakeType::CraterNeutral)) {
+        let o = l.base.outlet.1 as usize * w + l.base.outlet.0 as usize;
+        let Some(col) = recv(o) else {
+            none += 1;
+            continue;
+        };
+        let (mut path, mut d) = (vec![col], vec![0f32]);
+        let mut c = col;
+        while *d.last().unwrap() < 30.0 && cn[c] > 0.0 {
+            let Some(r) = recv(c) else { break };
+            d.push(d.last().unwrap() + step_len(c, r));
+            path.push(r);
+            if lm_on[r] != 0 && lm_on[r] != l.base.id {
+                break;
+            }
+            c = r;
+        }
+        let z: Vec<f32> = path.iter().map(|&p| cn[p]).collect();
+        let s2 = |i: usize| -> Option<f32> {
+            let j = (i..path.len()).find(|&j| d[j] >= d[i] + 2.0)?;
+            Some((z[i] - z[j]) / ((d[j] - d[i]) * 1000.0))
+        };
+        let g = (0..path.len()).find(|&i| d[i] <= 10.0 && s2(i).is_some_and(|s| s < 0.02));
+        let Some(gi) = g else {
+            eprintln!("      lake {:>8} {:>7.1} km² level {:>7.1} m · no graded reach within 10 km", l.base.id, l.area_km2, l.level_m);
+            continue;
+        };
+        let (drop, len) = (l.level_m - z[gi], d[gi]);
+        let mean = if len > 0.0 { (drop / (len * 1000.0)).atan().to_degrees() } else { f32::NAN };
+        let mut mx = 0f32;
+        for i in 0..=gi {
+            if let Some(j) = (i..=gi).find(|&j| d[j] >= d[i] + 0.1) {
+                mx = mx.max((z[i] - z[j]) / ((d[j] - d[i]) * 1000.0));
+            }
+        }
+        // the lake's own first step: from its level to the col
+        let lip = l.level_m - z[0];
+        let mx_deg = mx.atan().to_degrees();
+        let crop_name = {
+            let cells = cells_of.get(&l.base.id);
+            cells.map(|cs| crop_of(cs[cs.len() / 2])).unwrap_or_default()
+        };
+        eprintln!(
+            "      lake {:>8} {:>7.1} km² level {:>7.1} m · drop **{drop:>6.1} m** over {len:>5.2} km · mean {mean:>5.2}° · max over 100 m **{mx_deg:>5.1}°** · level − col {lip:>6.1} m · crop {}",
+            l.base.id,
+            l.area_km2,
+            l.level_m,
+            if crop_name.is_empty() { "—" } else { &crop_name }
+        );
+        if drop > 200.0 {
+            big.push(format!("lake {} ({drop:.0} m, mean {mean:.1}°, max {mx_deg:.1}°, crop {})", l.base.id, if crop_name.is_empty() { "—" } else { &crop_name }));
+        }
+    }
+    eprintln!("   B4 · steps > 200 m: **{}** {:?} · lakes without a D8 receiver: {none}", big.len(), big);
+    drop((v_on, w_on));
+    // ── B7: the production defects on the crops (OFF), stage by stage
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let sk = skeleton(&s1, &off, &ss, DOMAIN_KM);
+    let (built, mk) = carve(&s1, &sk, &off, &ss);
+    drop(sk);
+    let walls: Vec<bool> = (0..n).map(|k| mk.carved[k] && !mk.floor[k]).collect();
+    drop(mk);
+    let w_bare = build_world(kn(bare), None, PSEED, None);
+    let v_bare = viz_hd_lakes_on(&w_bare, kn(bare), PSEED, 45.0, 40.0);
+    let fields: [(&str, &GridF32); 4] = [("S1", &s1), ("construction", &built), ("C1 bare", &w_bare.heightmap), ("OFF", &w_off.heightmap)];
+    let planar_share = |z: &[f32], g: &GridF32, x0: usize, y0: usize| -> f64 {
+        let cm = CELL_KM * 1000.0;
+        let (mut land, mut pl) = (0usize, 0usize);
+        for y in y0.max(1)..(y0 + 2 * half + 1).min(h - 1) {
+            for x in x0.max(1)..(x0 + 2 * half + 1).min(w - 1) {
+                let k = y * w + x;
+                if g.data[k] <= SEA {
+                    continue;
+                }
+                land += 1;
+                let gx = (z[k + 1] - z[k - 1]) / (2.0 * cm);
+                let gy = (z[k + w] - z[k - w]) / (2.0 * cm);
+                if ((gx * gx + gy * gy).sqrt().atan().to_degrees() - 28.0).abs() <= 0.5 {
+                    pl += 1;
+                }
+            }
+        }
+        100.0 * pl as f64 / land.max(1) as f64
+    };
+    let r8_terr = |g: &GridF32, x0: usize, y0: usize| -> f32 {
+        let s = 2 * half + 1;
+        let mut c = GridF32::new(s, s, 0.0);
+        for y in 0..s {
+            for x in 0..s {
+                c.data[y * s + x] = g.data[(y0 + y) * w + x0 + x];
+            }
+        }
+        let land: Vec<bool> = c.data.iter().map(|&v| v > SEA).collect();
+        aniso(&c, &land, 16).r8
+    };
+    let net = |dr: &ymir_core::tectonics_c1::drainage::C1DrainageResult, x0: usize, y0: usize| -> (usize, usize, f32) {
+        let inside = |&(x, y): &(u32, u32)| (x as usize) >= x0 && (x as usize) <= x0 + 2 * half && (y as usize) >= y0 && (y as usize) <= y0 + 2 * half;
+        let (mut teeth, mut reaches, mut th) = (0usize, 0usize, Vec::new());
+        for (i, sg) in dr.rivers.segments.iter().enumerate() {
+            if dr.segment_kind[i] != SegmentKind::Watercourse || sg.points.len() < 2 || !sg.points.iter().any(inside) {
+                continue;
+            }
+            reaches += 1;
+            let on_wall = sg.points.iter().filter(|&&(x, y)| walls[y as usize * w + x as usize]).count();
+            if on_wall as f32 >= 0.8 * sg.points.len() as f32 {
+                teeth += 1;
+            }
+            let (lx, ly) = *sg.points.last().unwrap();
+            let a = dr.flow.accumulation.data[ly as usize * w + lx as usize] * cell_km2;
+            if (1.0..=3.0).contains(&a) {
+                let pts: Vec<(u32, u32)> = sg.points.iter().copied().filter(inside).collect();
+                th.extend(chords(&pts, 32));
+            }
+        }
+        (teeth, reaches, r8c8(&th))
+    };
+    let crops_all = crops.clone();
+    eprintln!("\n   B7 · the production defects (OFF), per crop and stage · planar walls (% of the land at 28° ± 0.5°) · terrain R8 · comb teeth / watercourse reaches · network R8 (1–3 km² chords)");
+    let zs: Vec<Vec<f32>> = fields.iter().map(|(_, g)| metres(g)).collect();
+    for (name, x0, y0) in &crops_all {
+        let mut cols = Vec::new();
+        for (fi, (fname, g)) in fields.iter().enumerate() {
+            cols.push(format!("{fname}: planar {:.2} % · R8 {:.4}", planar_share(&zs[fi], g, *x0, *y0), r8_terr(g, *x0, *y0)));
+        }
+        let (tb_, rb_, nb_) = net(&v_bare.drainage, *x0, *y0);
+        let (to_, ro_, no_) = net(&v_off.drainage, *x0, *y0);
+        eprintln!("      {name:<12} {} · teeth C1 bare {tb_}/{rb_} (net R8 {nb_:.3}) · OFF {to_}/{ro_} (net R8 {no_:.3})", cols.join(" · "));
+    }
+    eprintln!("\n==========  end Finding 157 B . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
