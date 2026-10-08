@@ -21019,3 +21019,81 @@ outputs: `docs/reports/lakes_gorges/f157_close/finding_157.md`.
   - the crests = the intersections of the 28° walls;
   - the ~900 m walls = flat-floored valleys carved down to the law;
   - the "brush" = polyline × width × cones.
+
+## Finding 158 — changing the relief method: the current chain audited from the code (one bilinear jump 64² → 8192², FBM in between, an IMPLICIT stream power with diffusion and talus at 8192² only, no uplift, no deposition, depressions filled), the literature gathered, and a multi-scale cascade sketched with three costed paths and a first prototype for F159 (no production code)
+
+**Status: an audit and a bibliography; no code, nothing measured on a world. Nothing committed.** Checks before and
+after: lib 621, viz 32, **the guard 6 / 6 = banc** (C2 /10 col `a8d2d538d692c2f0`). Report:
+`docs/reports/relief_method/f158_audit/finding_158.md`.
+- F157 was committed (`a8723db`) with its verdict.
+  - The lake base is not promoted.
+  - `accepted_defects.md` § 1 (the cones) is reopened, and F145's « normal geometry of a dissected range » is marked
+    corrected.
+
+**The author's criterion, recorded as given**:
+- « Les crêtes sont horribles ! … des murs systématiquement de quasiment 900 m … comme un pinceau ».
+- « la méthode utilisée a résolu des problèmes mais donne un relief qui est trop artificiel … Il doit bien exister
+  quelque chose qui peut caractériser le relief d'un continent vieux avec ses lacs et rivières. »
+- The proposed approach: « raffinant une carte d'abord à 64², puis 128², puis 256², jusqu'au 8192². Chaque niveau
+  produirait la forme ou le relief répondant à la résolution … Typiquement le principe du LOD. »
+
+**A — the audit (lines cited in the report)**:
+- **The jump**: C1 at 64² → **one bilinear jump** to 8192² (`upscale.rs:662`) plus a slope-oriented FBM, its amplitude
+  capped by C-1. **No intermediate computation resolution.**
+- **The incision**: **implicit Braun & Willett** (a receiver stack, « unconditionally stable »), E = K A^0.5 S, MFD p = 2
+  for the area. Delivered: 2 passes at k_time 9 000; the témoin: one light pass. ≈ 30 s per 8192² pass.
+- **Diffusion and talus**: linear explicit hillslope diffusion D = 0.08 and a talus at tan 33°, both on.
+- **Deposition**: none (detachment-limited; droplets off, `upscale.rs:410`).
+- **Depressions**: priority-flood filling plus A1, then `run_hd`'s breach. No basin graph.
+- **No uplift**: time is a K·dt budget.
+- **The ×7.5 scale ratio** acts on the hydrology only.
+- **The construction (F121)** was added against the delivered world's: canyons, stripes (R8 0.092), coast spurs
+  (+115), entrenchment, lakes, and the oracle's cost (300 passes, 6 210 s).
+
+**B — the bibliography** (`docs/refs`):
+- **Schott et al. 2024**, the multi-scale amplification, is the author's cascade:
+  - bicubic ×2–4 per level; a clamped stream power; a talus with a noisy critical slope; separate deposition;
+  - re-targeting of the coarse peaks and saddles; a multi-scale breach;
+  - 256² → 8192²; GPU, ms per iteration.
+- Schott 2023 (uplift-driven); Cordonnier 2016, whose DEM comes from blended kernels, **the family of Ymir's
+  construction**.
+- **Braun & Willett 2013 (not openly available)**; Cordonnier 2019 (basin-graph routing); Yuan 2019 (implicit
+  erosion–deposition).
+- **Perron 2009** (valley spacing ∝ L_c = f(D/K)); Salles 2020 (goSPL).
+- **Kwang & Parker 2017** (m/n = 0.5 without diffusion is scale-free); **Armitage 2019** (sub-grid routing makes the
+  valley spacing resolution-independent).
+- **Braun & Robert 2005 and Baldwin et al. 2003** (post-orogenic decay: relief ÷2.5–4.5 over 60–80 Myr; 1–10 Myr
+  lengthened by isostasy and thresholds).
+- **No geoscience precedent was found for a coarse-to-fine LEM cascade.**
+
+**S — the synthesis (ESTIMATES)**:
+- **The cascade**: 64² (tectonics, as now) → 128²–1024² (uplift + implicit stream power + diffusion + deposition +
+  basin-graph lakes, to a decay age; the trunks and lakes frozen progressively) → 2048²–8192² (bounded erosion, talus,
+  a multi-scale breach). **2–4 min per world.**
+- **The pieces**:
+  - reusable: tectonics, isostasy, the implicit solver, climate, geology, rivers_ll, the export;
+  - missing: uplift, deposition, the basin graph, the levels, the multi-scale breach;
+  - dropped: the construction, the gorge, the cones.
+- **The hard points**: the resolution dependence (a physical length scale per level), keeping the coarse level, the
+  interpolation, the share of noise.
+- **The paths**:
+  - **(a)** the cascade, 2–4 min;
+  - **(b)** an LEM at one coarse resolution + the current upscale, 1–3 min;
+  - **(c)** the delivered + the missing pieces, without the construction, 5–60 min.
+- **The F159 prototype (proposed)**: 64² → 512² on the témoin with uplift, many implicit steps and diffusion per
+  level. It is measured on:
+  - planar walls, crests and teeth;
+  - the stability of the 128² trunks at 512²;
+  - the valley spacing against L_c;
+  - R8 and θ;
+  - the cost per level;
+  - images.
+  - A stop rule is to be written before measuring.
+
+**Predictions**:
+- **The reviewer's**:
+  - « no intermediate resolution », « fill/breach, no graph » and « the downstream stages reusable » held;
+  - « explicit, without deposition or diffusion » refuted: implicit, with diffusion; no deposition held.
+- **Mine**:
+  - held: all of A except P-A7 (diffusion is on, refuted) and P-A6's detail;
+  - P-B2's fix refuted (a length scale and sub-grid routing, not K scaling).
