@@ -1,0 +1,7 @@
+   P0: peak 2873 m · λ 17.64 km
+   P-mfd: peak 2719 m · λ 16.62 km
+   P-bruit: peak 2881 m · λ 17.84 km
+   P-dis p6: peak 2890 m · λ 13.41 km
+   P-mfd + P-dis: peak 2911 m · λ 13.44 km
+   P-bruit + P-dis: peak 2863 m · λ 13.40 km
+   images f163_physics_256_crops.png (row 1: P0, P-mfd, P-bruit; row 2: P-dis p6, P-mfd + P-dis, P-bruit + P-dis), the land 168 cells (262 km) ×3, and f163_physics_256_corse.png (Corsica 1563 m, 200 km, same scale) · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved

@@ -21569,3 +21569,110 @@ after: lib 621, viz 32, **the guard 6 / 6 = banc** (C2 /10 col `a8d2d538d692c2f0
 - **The « recalage n − 3 » track is set aside**: the fine levels cannot create forms of several km.
 - F163 follows: redo the physics level (a network less aligned on the grid, more dissected), and name what the author
   sees (directions, sinuosity, flat interfluves).
+
+## Finding 163 — the cascade, round 5: the physics level redone (a weighted random receiver, an initial roughness, the MFD exponent) and what the author sees named (the network's grid alignment, the trunks' sinuosity, the flat interfluves), each instrument validated on its controls: at 2 048² the cascade's rivers are aligned on the grid twice as often as Corsica's isotropic network and its flat interfluves are twice Corsica's; the physics level's only lever is the MFD exponent (p = 6: λ 17.6 → 13.4 km, facets 13 → 5 %), and the best variant (roughness + p = 6) through R4+π is the first chain with every 0.4–12.5 km octave within ×1.5 of Corsica, yet rejected on the directions, the sinuosity and the flat interfluves; production unchanged
+
+**Status: built, measured, gated; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f163_physics_level/finding_163.md`.
+- Declared before any measurement: `f163_declared.md`. Two amendments were made at their controls, before any
+  measurement on Corsica or the cascade.
+- Predictions: `f163_predictions.md`.
+- F162 committed (`dca1dcb`) with the reviewer's uncontested decisions:
+  - R4+π the default;
+  - Horton and the spectral peakiness set aside;
+  - the reviewer's reading of the D8 trunks, as a hypothesis;
+  - the n − 3 retargeting set aside.
+
+**I — the instruments** (`cascade::planform`):
+- **A_dir**: the aligned share (±5° of 0/45/90/135°) of the order-≥ 2 rivers' 8-step chords. Isotropic directions read
+  22.2 %.
+- **S_W**: path / chord of D8 walks of 2, 5 and 10 km down the network draining ≥ 10 km², read on S − 1 (declared, for
+  the author to confirm).
+- **F**: the land with slope < 0.05 farther than 3 cells from an order-≥ 2 river.
+- **The controls**:
+  - a D8 plane at 10° reads 97 % aligned; Corsica 20.6 % at 195 m (isotropic). A synthetic fractal reads 43 %: a smooth
+    noise lets D8 run straight;
+  - a straight valley reads S − 1 = 0 at 0° and 0.08 at 22.5° (the D8 floor), against Corsica's 0.17–0.28;
+  - a terraced field reads F 79–89 %, against Corsica's 4.3–4.5 %.
+- **Verdict**: all pass at 195 m; at 1 563 m the sinuosity is blind (the D8 floor ≥ Corsica / 1.5), and Corsica's
+  network has only 18 order-≥ 2 pieces.
+- **Amended at their controls**:
+  - I1's « high » control (a funnel converges on the 22.5° bisectors, so a plane at 10°);
+  - I3's terraced field (its treads tilted 1 % toward the valley: flat treads grew order-2 streams).
+
+**D — the physics level at 256²** (code facts first: the area is already MFD p = 2; the head threshold and the
+diffusion are sub-cell, so they cannot densify):
+- **P-mfd, a weighted random receiver** (τ 0.5, drawn anew each step; `StreamPowerConfig::random_receiver`, None in
+  production):
+  - A_dir 42 → 34 %, nothing else;
+  - it never reaches equilibrium (300-step cap), so the peak's rescale misses (2 719 m; with the roughness 2 610 m,
+    excluded).
+- **P-bruit, a roughness** of 42.5 m (0.5 × Corsica's 3–6 km octave): erased by the equilibrium,
+  var(Δz) / var(z) = 1.3 %.
+- **P-dissection, the MFD exponent**:
+  - λ falls monotonically with p (19.8 km at p = 1 → 13.4 km at p = 6; D8 14.1 km);
+  - the facets fall from 13 % to 5 %;
+  - p = 6 is kept, not within ×1.25 of 9.08 km.
+- **The best: P-bruit + p = 6** (2 measures out of ×1.5: the 3–6 km octave, F). P0 ranks 10th.
+- **No variant moves F** (8.8–9.9 % against 4.5 %) or S_10.
+
+**R — at 2 048² against Corsica 195 m** (written before measuring; per level everything holds):
+
+| | N1 | R4+π·P0 | R4+π·best | Corsica |
+|---|---|---|---|---|
+| octaves 1.6–3.1 / 3.1–6.3 km (m) | 33.7 / 46.3 | 39.7 / 58.4 | **42.7 / 75.6** | 62.9 / 100.9 |
+| A_dir | 48.0 % | 40.3 % | 44.8 % | 20.6 % |
+| S − 1 at 2 / 5 / 10 km | 0.088 / 0.125 / 0.166 | 0.129 / 0.171 / 0.201 | 0.112 / 0.150 / 0.185 | 0.172 / 0.239 / 0.282 |
+| F | 15.0 % | 9.0 % | 8.8 % | 4.3 % |
+
+- **Every chain is rejected.**
+- **R4+π·best is the first with every 0.4–12.5 km octave within ×1.5**; it fails A_dir, S − 1 and F.
+- R4+π·P0 fails the two octaves, A_dir and F; its sinuosity passes.
+
+**The reading** (hypotheses to check):
+- **The grid alignment at 2 048² is a 1.5 km STEP effect.** An 8-step piece at 2 048² is one physics-level cell, and
+  each D8 step of a physics trunk is a straight 0°/45° segment carried by the bicubic and the retargeting.
+  - That is why the random receiver, which reorders the steps without changing their directions, cannot help.
+  - The reviewer's reading holds at that scale.
+- **p = 6 trades the sinuosity for the octaves** and brings back a comb of parallel gullies on the range's flanks
+  (crop A), the one relief_v3's MFD p = 2 was chosen against (Findings 10/11). R2_g does not see it.
+- **The flat interfluves come with the physics level and stay.** A candidate is its low hypsometry (deciles 9 / 35 /
+  84 m against Corsica's 57 / 126 / 224 m), i.e. the tectonics' note.
+
+**Predictions**:
+- **The reviewer's**:
+  - « ≥ 2× aligned, sinuosity ≥ 20 % lower » refuted as written: ×1.17 at 256², ×1.96 / ×2.33 at 2 048²; S −5.5 %,
+    S − 1 −28 %;
+  - « P-mfd within ×1.5 » held at 256², where P0 already was;
+  - « P-dissection brings λ, the 3–6 km octave and the facets » held;
+  - « the best misses no octave » held;
+  - meta held.
+- **Mine**:
+  - held: the instruments' verdicts, C3, M1-A_dir, D1 (within ×1.5, λ, cost), D3 (×1.25), D4 (rejected, F, A_dir worse),
+    the bench < 30 min, meta;
+  - refuted: Corsica's A_dir (20.6 %, not 25–35 %), the fractal, P0's ratio and S, the facets under P-mfd, P-bruit's λ
+    and octave, D8's facets, « the best includes the receiver », « rejected on the octaves », the chains' cost.
+
+**Cost**:
+- a physics variant takes 2–13 s;
+- R4+π takes 383–477 s per chain, 330–400 s of it the calibration;
+- the bench took 27 min.
+
+**Open, for the author** (nothing chosen):
+- (a) bend the trunks inside a physics cell, in the amplification (a random receiver in N1, a wandering course);
+- (b) p = 6 as the physics exponent (the octaves against the sinuosity and the comb);
+- (c) the flat interfluves: the hypsometry (the tectonics) or the level's own plains;
+- (d) I2 on S − 1, to confirm.
+
+**At commit (2026-10-09), decided (the reviewer's proposals, not contested by the author)**:
+- **The sinuosity is read on S − 1** (I2's declared reading, confirmed).
+- **p = 6 is not adopted as is**: its octaves are within ×1.5, but the sinuosity drops and the comb comes back on the
+  flanks (crop A).
+- **The reading kept** (hypothesis to check):
+  - the straight trunks are the physics level's D8 steps (1.56 km = 8 steps at 2 048²), kept by the upscaling and the
+    retargeting;
+  - a course does not bend by reordering its steps.
+- **A notable control**: a smooth fractal surface reads 43 % aligned at 195 m. Noise alone does not make a natural
+  network.
+- F164 follows: bend the inherited trunks (a smooth, invertible warp of the upscaled field), arbitrate p, and
+  attribute the flat interfluves.

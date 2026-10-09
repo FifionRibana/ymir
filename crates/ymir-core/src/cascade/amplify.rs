@@ -373,7 +373,7 @@ pub fn lift_interior(z: &mut GridF32, ocean: &[bool], to_m: f32) -> (usize, f32)
 }
 
 /// A fractal noise in world coordinates (km), rescaled to [0, 1] over the grid (min–max).
-fn noise01(n: usize, cell_km: f32, wavelength_km: f32, octaves: usize, seed: u64, phase: &str) -> Vec<f32> {
+pub(crate) fn noise01(n: usize, cell_km: f32, wavelength_km: f32, octaves: usize, seed: u64, phase: &str) -> Vec<f32> {
     let s = WorldSeed::new(seed).derive_seed(phase) as u32;
     let src = SeededNoise::new(s, octaves);
     let mut v: Vec<f32> = (0..n * n)

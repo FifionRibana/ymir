@@ -21,11 +21,14 @@
 pub mod amplify;
 pub mod hydro;
 pub mod measure;
+pub mod planform;
 pub mod predict;
 
 use crate::erosion::stream_power::{
-    RELIEF_V1_A_C_KM2, StreamPowerConfig, incise_with_floor, linear_diffusion, talus_sweep,
+    RELIEF_V1_A_C_KM2, RELIEF_V3_MFD_P, RandomReceiver, StreamPowerConfig, incise_with_floor, linear_diffusion,
+    talus_sweep,
 };
+use crate::seed::WorldSeed;
 use crate::grid::GridF32;
 use std::time::Instant;
 
@@ -85,6 +88,16 @@ pub struct CascadeConfig {
     pub max_steps: Vec<usize>,
     /// The linear diffusion's explicit sub-steps.
     pub diffusion_substeps: usize,
+    /// ADR Finding 163-D -- the solver's MFD exponent for the incision's area (`relief_v3`'s p = 2, F159–F162; `None`
+    /// = the D8 area). P-dissection's lever.
+    pub mfd_exponent: Option<f32>,
+    /// ADR Finding 163-D -- the weighted random receiver's τ (`None` = the D8 receivers, F159–F162). P-mfd.
+    pub receiver_tau: Option<f32>,
+    /// ADR Finding 163-D -- the physics level's initial roughness, RMS over the land (m; 0 = none). P-bruit.
+    pub roughness_m: f32,
+    /// The seed of the receivers' draws and of the roughness (`WorldSeed` phases "cascade_phys_receiver",
+    /// "cascade_phys_rough").
+    pub seed: u64,
 }
 
 impl CascadeConfig {
@@ -106,6 +119,10 @@ impl CascadeConfig {
             eq_window: 5,
             max_steps: vec![400, 300, 200],
             diffusion_substeps: 4,
+            mfd_exponent: Some(RELIEF_V3_MFD_P),
+            receiver_tau: None,
+            roughness_m: 0.0,
+            seed: 0,
         }
     }
     /// Metres per norm unit (`c1_altitude_norm_to_metres`' slope).
@@ -136,6 +153,7 @@ impl CascadeConfig {
         sp.sea_level = self.sea_level;
         sp.diffusion = 0.0;
         sp.talus_slope = 0.0;
+        sp.mfd_exponent = self.mfd_exponent;
         sp
     }
     /// The hillslope config at a level: the talus and the linear diffusion at the level's weight.
@@ -411,8 +429,10 @@ fn run_level(
     let cells = n * n;
     let land = land_mask(&upscaled, cfg.sea_level);
     let n2m = cfg.norm_to_m();
-    let solver = cfg.solver(n);
+    let mut solver = cfg.solver(n);
     let hill = cfg.hillslope(n);
+    // ADR Finding 163-D: the random receivers are drawn anew at every step
+    let receiver_seed = WorldSeed::new(cfg.seed).derive_seed("cascade_phys_receiver");
     let cell_m = cfg.cell_km(n) * 1000.0;
     // the sea is the base level: held at sea level during the level (D3)
     let mut z = upscaled.clone();
@@ -443,6 +463,10 @@ fn run_level(
         // 2. erosion (the implicit stream power, one iteration, talus and diffusion off inside)
         let t = Instant::now();
         let before = z.data.clone();
+        solver.random_receiver = cfg.receiver_tau.map(|tau| RandomReceiver {
+            seed: receiver_seed ^ (steps as u64 + 1).wrapping_mul(0xA24B_AED4_963E_E407),
+            tau,
+        });
         z = incise_with_floor(&z, &solver, None, None, &mut |_, _| {});
         for k in 0..cells {
             s_ero[k] += z.data[k] - before[k];
@@ -558,6 +582,20 @@ pub fn physics_level(
             lifted_mask[k] = true;
             depth += ((cfg.sea_level - z0.data[k]) * n2m) as f64;
             z0.data[k] = cfg.sea_level + 1.0 / n2m;
+        }
+    }
+    // ADR Finding 163-D, P-bruit: the initial roughness, a band noise of 8 and 4 cells at unit RMS over the land (the
+    // D5 cells untouched), times `roughness_m`, never below sea + 1 m
+    if cfg.roughness_m > 0.0 {
+        let cell_km = cfg.cell_km(n);
+        let g = amplify::noise01(n, cell_km, 8.0 * cell_km, 2, cfg.seed, "cascade_phys_rough");
+        let land: Vec<usize> = (0..n * n).filter(|&k| !ocean[k] && !lifted_mask[k]).collect();
+        let mean = land.iter().map(|&k| g[k] as f64).sum::<f64>() / land.len().max(1) as f64;
+        let rms = (land.iter().map(|&k| (g[k] as f64 - mean).powi(2)).sum::<f64>() / land.len().max(1) as f64).sqrt();
+        let floor = cfg.sea_level + 1.0 / n2m;
+        for &k in &land {
+            let r = ((g[k] as f64 - mean) / rms.max(1e-12)) as f32 * cfg.roughness_m / n2m;
+            z0.data[k] = (z0.data[k] + r).max(floor);
         }
     }
     let u_of = |u0: f32| upsample_to(&uplift_field(coarse, u0, cfg), n).map_nonneg();

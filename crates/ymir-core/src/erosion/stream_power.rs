@@ -321,6 +321,23 @@ pub struct StreamPowerConfig {
     /// unchanged; `the_f159_extraction_changes_no_output` pins the `None` path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub area_cap_cells: Option<f32>,
+    /// ADR Finding 163 -- **the weighted random receiver** (the cascade's physics level, P-mfd): each cell's receiver is
+    /// drawn among its in-map neighbours strictly lower on the filled surface with a drop slope ≥ τ·s_max, with a
+    /// probability ∝ the slope, from a hash of (seed, cell); flats, sills and off-map D8 receivers keep D8, and a draw
+    /// is always strictly lower, so no cycle can form. The D8 accumulation is recomputed on the drawn receivers; the
+    /// MFD area is unchanged. `None` in every production path, skipped in serialisation, so the cache digests are
+    /// unchanged; `the_f159_extraction_changes_no_output` pins the `None` path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub random_receiver: Option<RandomReceiver>,
+}
+
+/// ADR Finding 163 -- [`StreamPowerConfig::random_receiver`]'s parameters. The caller draws anew by changing `seed`
+/// (the cascade passes one seed per step).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct RandomReceiver {
+    pub seed: u64,
+    /// The candidates' slope floor, as a fraction of the steepest drop (F163: 0.5).
+    pub tau: f32,
 }
 
 /// Relief-v1 reference: physical critical drainage area (km²) for the channel head.
@@ -380,6 +397,7 @@ impl StreamPowerConfig {
             mfd_exponent: None,
             a1_exempt: None,
             area_cap_cells: None,
+            random_receiver: None,
         }
     }
 
@@ -536,6 +554,7 @@ impl Default for StreamPowerConfig {
             mfd_exponent: None,
             a1_exempt: None,
             area_cap_cells: None,
+            random_receiver: None,
         }
     }
 }
@@ -603,7 +622,11 @@ pub fn incise_with_floor(
 
     for iter in 0..cfg.iterations {
         // 1. Route on the current surface (depression fill + D8 + accumulation).
-        let flow = compute_flow(&field, &flow_cfg);
+        let mut flow = compute_flow(&field, &flow_cfg);
+        // ADR Finding 163 -- the weighted random receiver (`None` in production)
+        if let Some(rr) = &cfg.random_receiver {
+            randomize_receivers(&mut flow, rr, cfg.sea_level, w, h);
+        }
         // MFD area for the incision ONLY (D8 receiver/stack + rivers/lakes stay D8). When
         // set, the drainage area A is dispersed so the rilling feedback cannot run away.
         let mfd_acc = cfg
@@ -912,6 +935,100 @@ pub fn incise_with_floor(
         progress(iter, &field);
     }
     field
+}
+
+/// A deterministic hash of (seed, cell) in [0, 1) (splitmix64).
+fn receiver_hash(k: u64, seed: u64) -> f32 {
+    let mut x = k.wrapping_add(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15)).wrapping_add(0x9E37_79B9_7F4A_7C15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^= x >> 31;
+    (x >> 40) as f32 / (1u64 << 24) as f32
+}
+
+/// ADR Finding 163 -- redraw the D8 receivers of `flow` ([`StreamPowerConfig::random_receiver`]) and recompute its D8
+/// accumulation on them (1 per land cell, in topological order; the off-map wrap as in `compute_flow`).
+fn randomize_receivers(flow: &mut crate::terrain::flow::FlowResult, rr: &RandomReceiver, sea: f32, w: usize, h: usize) {
+    let n = w * h;
+    let z = &flow.filled.data;
+    let mut dir = flow.direction.clone();
+    for k in 0..n {
+        let d = flow.direction[k];
+        if d == DIR_NONE || z[k] <= sea {
+            continue;
+        }
+        let (x, y) = ((k % w) as i32, (k / w) as i32);
+        let (dx, dy) = (x + D8_DX[d as usize], y + D8_DY[d as usize]);
+        if dx < 0 || dy < 0 || dx >= w as i32 || dy >= h as i32 {
+            continue; // the D8 receiver leaves the map: an outlet, kept
+        }
+        let mut s = [0f32; 8];
+        let mut smax = 0f32;
+        for (dd, sd) in s.iter_mut().enumerate() {
+            let (nx, ny) = (x + D8_DX[dd], y + D8_DY[dd]);
+            if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                continue;
+            }
+            let drop = z[k] - z[ny as usize * w + nx as usize];
+            if drop > 0.0 {
+                *sd = drop / D8_DIST[dd];
+                smax = smax.max(*sd);
+            }
+        }
+        if smax <= 0.0 {
+            continue; // a flat or a sill: the Garbrecht-Martz D8 receiver, kept
+        }
+        let floor = rr.tau * smax;
+        let total: f32 = s.iter().filter(|&&v| v >= floor).sum();
+        let mut u = receiver_hash(k as u64, rr.seed) * total;
+        let mut pick = d;
+        for (dd, &v) in s.iter().enumerate() {
+            if v >= floor && v > 0.0 {
+                pick = dd as u8;
+                if u < v {
+                    break;
+                }
+                u -= v;
+            }
+        }
+        dir[k] = pick;
+    }
+    // the D8 accumulation on the drawn receivers (Kahn: donors before receivers)
+    let is_ocean: Vec<bool> = (0..n).map(|k| flow.filled.data[k] <= sea).collect();
+    let recv = |k: usize| -> Option<usize> {
+        let d = dir[k];
+        if d == DIR_NONE || is_ocean[k] {
+            return None;
+        }
+        let (x, y) = ((k % w) as i32, (k / w) as i32);
+        let nx = ((x + D8_DX[d as usize]) % w as i32 + w as i32) as usize % w;
+        let ny = ((y + D8_DY[d as usize]) % h as i32 + h as i32) as usize % h;
+        Some(ny * w + nx)
+    };
+    let mut indeg = vec![0u32; n];
+    for k in 0..n {
+        if let Some(r) = recv(k) {
+            indeg[r] += 1;
+        }
+    }
+    let mut acc = vec![0f32; n];
+    for k in 0..n {
+        if !is_ocean[k] {
+            acc[k] = 1.0;
+        }
+    }
+    let mut queue: Vec<usize> = (0..n).filter(|&k| indeg[k] == 0).collect();
+    while let Some(k) = queue.pop() {
+        if let Some(r) = recv(k) {
+            acc[r] += acc[k];
+            indeg[r] -= 1;
+            if indeg[r] == 0 {
+                queue.push(r);
+            }
+        }
+    }
+    flow.direction = dir;
+    flow.accumulation.data = acc;
 }
 
 /// ADR Finding 159 -- step 4c of [`incise_with_floor`], the TALUS sweep, extracted UNCHANGED so the cascade
@@ -1569,6 +1686,51 @@ mod tests {
     /// [`linear_diffusion`] so the cascade can run them as its own sub-step. The extraction must change NOTHING: this
     /// pins the bits of a relief-v3 run (talus active on a steep field, diffusion on, lateral erosion on) to the hash
     /// measured on the code BEFORE the extraction (commit 38a353e).
+    #[test]
+    /// ADR Finding 163 -- the random receiver: the same seed gives the same field, another seed or D8 another; on a
+    /// plane falling due west it draws W and the two forward diagonals (≈ 41 / 29 / 29 %), never anything else.
+    fn the_random_receiver_is_deterministic_and_unbiased() {
+        let (w, h) = (64usize, 64usize);
+        let mut f = GridF32::new(w, h, 0.0);
+        for y in 0..h {
+            for x in 0..w {
+                f.data[y * w + x] = if x < 2 { 0.4 } else { 0.51 + 0.001 * x as f32 };
+            }
+        }
+        let mut flow = compute_flow(&f, &FlowConfig { sea_level: 0.5, ..Default::default() });
+        randomize_receivers(&mut flow, &RandomReceiver { seed: 7, tau: 0.5 }, 0.5, w, h);
+        let mut count = [0usize; 8];
+        for y in 2..h - 2 {
+            for x in 3..w - 1 {
+                count[flow.direction[y * w + x] as usize] += 1;
+            }
+        }
+        let total: usize = count.iter().sum();
+        let west = (0..8).find(|&d| D8_DX[d] == -1 && D8_DY[d] == 0).unwrap();
+        let share = count[west] as f32 / total as f32;
+        assert!((share - 0.414).abs() < 0.05, "W share {share} ({count:?})");
+        for d in 0..8 {
+            if D8_DX[d] != -1 {
+                assert_eq!(count[d], 0, "no draw goes east or across ({count:?})");
+            }
+        }
+        let mut cfg = StreamPowerConfig::relief_v3(0.0625, 5000.0);
+        cfg.iterations = 2;
+        let mut g = f.clone();
+        for y in 0..h {
+            for x in 2..w {
+                g.data[y * w + x] += 0.01 * ((x as f32 * 0.37).sin() * (y as f32 * 0.23).cos());
+            }
+        }
+        let d8 = incise_with_floor(&g, &cfg, None, None, &mut |_, _| {});
+        let a = incise_with_floor(&g, &StreamPowerConfig { random_receiver: Some(RandomReceiver { seed: 1, tau: 0.5 }), ..cfg.clone() }, None, None, &mut |_, _| {});
+        let b = incise_with_floor(&g, &StreamPowerConfig { random_receiver: Some(RandomReceiver { seed: 1, tau: 0.5 }), ..cfg.clone() }, None, None, &mut |_, _| {});
+        let c = incise_with_floor(&g, &StreamPowerConfig { random_receiver: Some(RandomReceiver { seed: 2, tau: 0.5 }), ..cfg.clone() }, None, None, &mut |_, _| {});
+        assert_eq!(a.data, b.data);
+        assert_ne!(a.data, c.data);
+        assert_ne!(a.data, d8.data);
+    }
+
     #[test]
     fn the_f159_extraction_changes_no_output() {
         let (w, h) = (96usize, 96usize);

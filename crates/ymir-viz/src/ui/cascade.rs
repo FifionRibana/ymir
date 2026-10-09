@@ -82,8 +82,8 @@ impl Process {
 }
 
 enum Cmd {
-    /// The physics level at n cells (resets the amplification).
-    Physics(usize),
+    /// The physics level at n cells with F163's variants (resets the amplification).
+    Physics(usize, PhysOpts),
     /// The amplification's settings: variant, budget scale, k multiplier (resets the amplification, keeps the physics).
     Config(Variant, f32, f32, Remedies),
     /// The next level at this budget (and, for N1, this k).
@@ -165,6 +165,12 @@ pub struct CascadeUi {
     pi_on: bool,
     pi_factor: f32,
     r4_on: bool,
+    /// F163-V: the physics level's variants, read when « Calculer la physique » is pressed.
+    rr_on: bool,
+    rr_tau: f32,
+    rough_on: bool,
+    rough_m: f32,
+    mfd_p: Option<f32>,
     /// F161-V: « k du niveau » (N1) for the next level, and the level it was set for.
     n1_k: f32,
     n1_k_for: usize,
@@ -211,6 +217,11 @@ impl Default for CascadeUi {
             pi_on: false,
             pi_factor: 0.15,
             r4_on: false,
+            rr_on: false,
+            rr_tau: 0.5,
+            rough_on: false,
+            rough_m: 42.4,
+            mfd_p: Some(2.0),
             n1_k: 100.0,
             n1_k_for: 0,
             corse: true,
@@ -298,8 +309,16 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                 stop.store(false, Ordering::Relaxed);
                 let cancel = || stop.load(Ordering::Relaxed);
                 match cmd {
-                    Cmd::Physics(n) => {
+                    Cmd::Physics(n, o) => {
                         let cap = if n <= 128 { 400 } else { 300 };
+                        // F163-V: the physics level's variants (the random receiver, the roughness, the MFD exponent)
+                        let ccfg = CascadeConfig {
+                            receiver_tau: o.tau,
+                            roughness_m: o.rough_m,
+                            mfd_exponent: o.mfd,
+                            seed,
+                            ..ccfg.clone()
+                        };
                         let ptx = etx.clone();
                         let mut prog = |p: CascadeProgress| {
                             let what = if p.level.is_none() { "physique, essai" } else { "physique, calée" };
@@ -567,12 +586,30 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
         }
         if button(ui, "Calculer la physique", ready) {
             let n = cu.phys_n;
-            cu.send(Cmd::Physics(n));
+            let o = phys_opts(cu);
+            cu.send(Cmd::Physics(n, o));
         }
         if cu.busy && cu.coarse.is_some() && ui.button("Annuler").clicked() {
             if let Some(w) = &cu.worker {
                 w.cancel.store(true, Ordering::Relaxed);
             }
+        }
+    });
+    // F163-V: the physics level's variants (taken when « Calculer la physique » is pressed)
+    ui.horizontal(|ui| {
+        ui.label(small("Variantes de la physique :".into()));
+        ui.checkbox(&mut cu.rr_on, "récepteur aléatoire").on_hover_text(
+            "P-mfd, F163-D : à chaque pas, le récepteur est tiré parmi les voisins plus bas dont la pente ≥ τ × la plus forte, avec une probabilité ∝ la pente ; les plats gardent le D8",
+        );
+        ui.add_enabled(cu.rr_on, egui::DragValue::new(&mut cu.rr_tau).range(0.05..=1.0).speed(0.01).prefix("τ "));
+        ui.checkbox(&mut cu.rough_on, "rugosité initiale").on_hover_text(
+            "P-bruit, F163-D : un bruit de bande (8 et 4 cellules) ajouté aux terres avant la physique ; 42,4 m = 0,5 × l'octave 3–6 km de la Corse à 1 563 m",
+        );
+        ui.add_enabled(cu.rough_on, egui::DragValue::new(&mut cu.rough_m).range(0.0..=300.0).speed(0.5).suffix(" m"));
+        ui.separator();
+        ui.label(small("MFD p :".into())).on_hover_text("P-dissection, F163-D : l'exposant de l'aire MFD de l'incision (2 = F159–F162 ; D8 = sans MFD)");
+        for (name, p) in [("1", Some(1.0f32)), ("1,5", Some(1.5)), ("2", Some(2.0)), ("3", Some(3.0)), ("4", Some(4.0)), ("6", Some(6.0)), ("D8", None)] {
+            ui.selectable_value(&mut cu.mfd_p, p, name);
         }
     });
     // ── 2. the amplification's settings and the next level's budget ──
@@ -956,6 +993,28 @@ fn build_image(cu: &mut CascadeUi) -> Option<egui::ColorImage> {
     Some(egui::ColorImage::from_rgba_unmultiplied([n, n], &rgba))
 }
 
+/// F163-D: the physics level's variants.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PhysOpts {
+    /// The weighted random receiver's τ (`None` = D8).
+    tau: Option<f32>,
+    /// The initial roughness (m RMS, 0 = none).
+    rough_m: f32,
+    /// The incision area's MFD exponent (`None` = D8 area).
+    mfd: Option<f32>,
+}
+
+impl Default for PhysOpts {
+    /// P0, F159–F162's level.
+    fn default() -> Self {
+        Self { tau: None, rough_m: 0.0, mfd: Some(2.0) }
+    }
+}
+
+fn phys_opts(cu: &CascadeUi) -> PhysOpts {
+    PhysOpts { tau: cu.rr_on.then_some(cu.rr_tau), rough_m: if cu.rough_on { cu.rough_m } else { 0.0 }, mfd: cu.mfd_p }
+}
+
 /// F162-V: the remedies the worker builds its `AmpConfig` from.
 #[derive(Clone, Debug, Default)]
 struct Remedies {
@@ -1041,7 +1100,7 @@ mod tests {
         let unrolled = cascade_coarse(1, [0, 0]);
         let framed = cascade_coarse(1, [6, 37]);
         assert_eq!(framed.data[0], unrolled.data[37 * 64 + 6], "the roll is the framing's");
-        w.tx.send(Cmd::Physics(128)).unwrap();
+        w.tx.send(Cmd::Physics(128, PhysOpts::default())).unwrap();
         let e = wait(|e| matches!(e, Evt::Idle));
         let phys = e.iter().find_map(|e| if let Evt::Physics(s, _, _) = e { Some(s.clone()) } else { None }).expect("a physics level");
         assert_eq!(phys.n, 128);

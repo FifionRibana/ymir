@@ -1,0 +1,192 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.25s
+     Running tests\f163_cascade.rs (target_f163\release\deps\f163_cascade-8f9e8760263d36d1.exe)
+
+running 1 test
+
+==========  Finding 163 . the cascade, round 5: the physics level redone; directions, sinuosity, flat interfluves  ==========
+      Corse 1562 m                   A_dir 35.6 % (18 pieces; trunks ≥ 100 km² 57.6 %, 2) · S_2 — · S_5 — · S_10 1.115 (171) · F 4.48 %
+      Corse 391 m                    A_dir 20.8 % (406 pieces; trunks ≥ 100 km² 0.0 %, 2) · S_2 1.112 (1082) · S_5 1.161 (433) · S_10 1.194 (75) · F 2.70 %
+      Corse 195 m                    A_dir 20.6 % (1222 pieces; trunks ≥ 100 km² 18.3 %, 201) · S_2 1.172 (6062) · S_5 1.239 (5155) · S_10 1.282 (4122) · F 4.25 %
+
+   I — the controls:
+   at 256² (1562 m), against Corsica at the same cell:
+      D8 plane at 10° (high)         A_dir 97.2 % (2084 pieces; trunks ≥ 100 km² 97.2 %, 2051) · S_2 — · S_5 — · S_10 1.002 (59768) · F 15.74 %
+      fractal (reported)             A_dir 23.8 % (987 pieces; trunks ≥ 100 km² 24.2 %, 567) · S_2 — · S_5 — · S_10 1.196 (18894) · F 6.16 %
+      terraced field (high F)        A_dir 100.0 % (34 pieces; trunks ≥ 100 km² 100.0 %, 34) · S_2 — · S_5 — · S_10 1.010 (25734) · F 88.55 %
+      straight valley 0°             A_dir 100.0 % (961 pieces; trunks ≥ 100 km² 100.0 %, 930) · S_2 — · S_5 — · S_10 1.000 (7502) · F 5.84 %
+      straight valley 22.5°          A_dir 0.1 % (897 pieces; trunks ≥ 100 km² 0.1 %, 858) · S_2 — · S_5 — · S_10 1.080 (8590) · F 0.00 %
+      straight valley 30°            A_dir 0.2 % (843 pieces; trunks ≥ 100 km² 0.2 %, 816) · S_2 — · S_5 — · S_10 1.070 (9917) · F 0.00 %
+      sine valley (a 4, P 32 cells)  A_dir 0.0 % (473 pieces; trunks ≥ 100 km² 0.0 %, 458) · S_2 — · S_5 — · S_10 1.136 (19890) · F 3.17 %
+      sine reference (the continuous curve): S_2 1.001 · S_5 1.004 · S_10 1.013
+      Corsica                        A_dir 35.6 % (18 pieces; trunks ≥ 100 km² 57.6 %, 2) · S_2 — · S_5 — · S_10 1.115 (171) · F 4.48 %
+      → A_dir PASSES · S−1 2 km not read, 5 km not read, 10 km FAILS · F PASSES
+   at 512² (195 m), against Corsica at the same cell:
+      D8 plane at 10° (high)         A_dir 97.5 % (10754 pieces; trunks ≥ 100 km² NaN %, 0) · S_2 1.001 (79741) · S_5 1.002 (75739) · S_10 1.002 (68776) · F 11.36 %
+      fractal (reported)             A_dir 43.1 % (1768 pieces; trunks ≥ 100 km² 49.4 %, 302) · S_2 1.145 (9372) · S_5 1.215 (8991) · S_10 1.277 (8421) · F 9.22 %
+      terraced field (high F)        A_dir 100.0 % (425 pieces; trunks ≥ 100 km² NaN %, 0) · S_2 1.000 (106) · S_5 — · S_10 — · F 78.84 %
+      straight valley 0°             A_dir NaN % (0 pieces; trunks ≥ 100 km² NaN %, 0) · S_2 1.000 (29085) · S_5 1.000 (28140) · S_10 1.000 (26502) · F 12.20 %
+      straight valley 22.5°          A_dir 0.0 % (1 pieces; trunks ≥ 100 km² 0.0 %, 1) · S_2 1.081 (26650) · S_5 1.082 (25629) · S_10 1.082 (23963) · F 6.67 %
+      straight valley 30°            A_dir NaN % (0 pieces; trunks ≥ 100 km² NaN %, 0) · S_2 1.073 (24867) · S_5 1.073 (23889) · S_10 1.073 (22223) · F 4.50 %
+      sine valley (a 4, P 32 cells)  A_dir 0.0 % (1922 pieces; trunks ≥ 100 km² 0.0 %, 1302) · S_2 1.087 (14957) · S_5 1.181 (14508) · S_10 1.199 (13857) · F 3.19 %
+      sine reference (the continuous curve): S_2 1.031 · S_5 1.119 · S_10 1.132
+      Corsica                        A_dir 20.6 % (1222 pieces; trunks ≥ 100 km² 18.3 %, 201) · S_2 1.172 (6062) · S_5 1.239 (5155) · S_10 1.282 (4122) · F 4.25 %
+      → A_dir PASSES · S−1 2 km passes, 5 km passes, 10 km passes · F PASSES
+test f163_cascade has been running for over 60 seconds
+   the témoin's coarse field built (518 s)
+
+   D — the physics level at 256² (U₀ calibrated on 2850 m); Corsica 1563 m: λ 9.08 km · facets 3.45 % · octaves 84.9 / 152.4 m · roughness A = 0.5 × 84.9 = 42.5 m · facet control pyramids 87.3 % / paraboloids 2.4 %
+   ── P0                     (4.6 s, 125 steps, U₀ 4.420e-4) peak 2873 · λ 17.64 km · facets 13.00 % · octaves 32.6 / 121.4 m · slope p50/p90 0.063/0.174 · density 0.170
+      P0                             A_dir 41.6 % (60 pieces; trunks ≥ 100 km² 33.4 %, 23) · S_2 — · S_5 — · S_10 1.105 (874) · F 8.75 %
+   ── P-mfd (receiver)       (13.4 s, 300 steps, U₀ 3.800e-4) peak 2719 · λ 16.62 km · facets 12.26 % · octaves 37.2 / 123.0 m · slope p50/p90 0.062/0.170 · density 0.160
+      P-mfd (receiver)               A_dir 33.5 % (67 pieces; trunks ≥ 100 km² 23.5 %, 24) · S_2 — · S_5 — · S_10 1.102 (828) · F 9.20 %
+   ── P-bruit                (4.6 s, 118 steps, U₀ 4.387e-4) peak 2881 · λ 17.84 km · facets 12.61 % · octaves 32.6 / 121.8 m · slope p50/p90 0.063/0.172 · density 0.170
+      P-bruit                        A_dir 35.9 % (68 pieces; trunks ≥ 100 km² 27.0 %, 27) · S_2 — · S_5 — · S_10 1.103 (858) · F 9.03 %
+   ── p-scan p = 1           (5.2 s, 122 steps, U₀ 4.362e-4) peak 2837 · λ 19.84 km · facets 16.99 % · octaves 28.8 / 112.1 m · slope p50/p90 0.060/0.167 · density 0.189
+      p-scan p = 1                   A_dir 36.6 % (62 pieces; trunks ≥ 100 km² 31.5 %, 26) · S_2 — · S_5 — · S_10 1.098 (931) · F 9.53 %
+   ── p-scan p = 1.5         (5.8 s, 122 steps, U₀ 4.501e-4) peak 2929 · λ 18.83 km · facets 14.85 % · octaves 31.1 / 121.8 m · slope p50/p90 0.063/0.175 · density 0.177
+      p-scan p = 1.5                 A_dir 39.1 % (66 pieces; trunks ≥ 100 km² 28.7 %, 27) · S_2 — · S_5 — · S_10 1.100 (885) · F 8.81 %
+   ── p-scan p = 3           (8.7 s, 122 steps, U₀ 4.264e-4) peak 2751 · λ 16.18 km · facets 9.26 % · octaves 38.7 / 116.8 m · slope p50/p90 0.062/0.169 · density 0.158
+      p-scan p = 3                   A_dir 37.1 % (60 pieces; trunks ≥ 100 km² 27.1 %, 25) · S_2 — · S_5 — · S_10 1.101 (856) · F 8.89 %
+   ── p-scan p = 4           (5.7 s, 119 steps, U₀ 4.331e-4) peak 2797 · λ 15.00 km · facets 7.38 % · octaves 44.3 / 117.0 m · slope p50/p90 0.063/0.172 · density 0.158
+      p-scan p = 4                   A_dir 31.8 % (60 pieces; trunks ≥ 100 km² 17.9 %, 24) · S_2 — · S_5 — · S_10 1.106 (900) · F 9.03 %
+   ── p-scan p = 6           (4.3 s, 127 steps, U₀ 4.361e-4) peak 2890 · λ 13.41 km · facets 5.12 % · octaves 50.8 / 113.9 m · slope p50/p90 0.064/0.173 · density 0.158
+      p-scan p = 6                   A_dir 36.5 % (58 pieces; trunks ≥ 100 km² 24.6 %, 24) · S_2 — · S_5 — · S_10 1.110 (935) · F 9.14 %
+   ── p-scan D8              (2.1 s, 57 steps, U₀ 4.115e-4) peak 2934 · λ 14.08 km · facets 3.98 % · octaves 40.4 / 108.2 m · slope p50/p90 0.061/0.169 · density 0.181
+      p-scan D8                      A_dir 34.0 % (55 pieces; trunks ≥ 100 km² 24.7 %, 26) · S_2 — · S_5 — · S_10 1.128 (995) · F 9.91 %
+   P-dissection: λ by p 2: 17.64 · 1: 19.84 · 1.5: 18.83 · 3: 16.18 · 4: 15.00 · 6: 13.41 · D8: 14.08 → kept p = 6 (λ 13.41 km, NOT within of 9.08 km ×1.25)
+   ── P-mfd + P-bruit        (12.1 s, 300 steps, U₀ 3.679e-4) peak 2610 · λ 17.00 km · facets 12.72 % · octaves 37.5 / 118.5 m · slope p50/p90 0.060/0.164 · density 0.160
+      P-mfd + P-bruit                A_dir 43.8 % (60 pieces; trunks ≥ 100 km² 36.2 %, 22) · S_2 — · S_5 — · S_10 1.100 (860) · F 9.79 %
+   ── P-mfd + P-dis          (10.8 s, 300 steps, U₀ 4.144e-4) peak 2911 · λ 13.44 km · facets 6.65 % · octaves 57.3 / 127.7 m · slope p50/p90 0.069/0.187 · density 0.153
+      P-mfd + P-dis                  A_dir 21.3 % (59 pieces; trunks ≥ 100 km² 22.3 %, 26) · S_2 — · S_5 — · S_10 1.112 (923) · F 8.76 %
+   ── P-bruit + P-dis        (4.6 s, 134 steps, U₀ 4.345e-4) peak 2863 · λ 13.40 km · facets 4.83 % · octaves 48.8 / 114.8 m · slope p50/p90 0.064/0.172 · density 0.157
+      P-bruit + P-dis                A_dir 35.8 % (60 pieces; trunks ≥ 100 km² 17.9 %, 23) · S_2 — · S_5 — · S_10 1.109 (911) · F 9.26 %
+   ── P-mfd + P-bruit + P-dis (11.4 s, 300 steps, U₀ 4.106e-4) peak 2934 · λ 13.34 km · facets 6.53 % · octaves 58.6 / 124.9 m · slope p50/p90 0.069/0.182 · density 0.152
+      P-mfd + P-bruit + P-dis        A_dir 27.9 % (53 pieces; trunks ≥ 100 km² 24.0 %, 22) · S_2 — · S_5 — · S_10 1.108 (905) · F 9.03 %
+   roughness share, P-bruit: (a) A² / final 3.1–12.5 km band 11.3 % · (b) var(z − z_P0) / var(z) 1.3 %
+   roughness share, P-mfd + P-bruit: (a) A² / final 3.1–12.5 km band 11.7 % · (b) var(z − z_P0) / var(z) 5.0 %
+   roughness share, P-bruit + P-dis: (a) A² / final 3.1–12.5 km band 11.6 % · (b) var(z − z_P0) / var(z) 3.2 %
+   roughness share, P-mfd + P-bruit + P-dis: (a) A² / final 3.1–12.5 km band 9.5 % · (b) var(z − z_P0) / var(z) 5.0 %
+
+   the ranking at 256² (measures outside ×1.5 of Corsica 1563 m, among the validated; Σ |ln ratio|):
+   P0                         4 out · Σ 4.00 · λ 17.637/9.080 ✗ · facets 12.997/3.455 ✗ · oct 3.1–6.25 32.562/84.921 ✗ · oct 6.25–12.5 121.358/152.388 · A_dir 0.416/0.356 · S_10 − 1 0.105/0.115 (blind) · F 0.087/0.045 ✗
+   P-mfd (receiver)           4 out · Σ 3.69 · λ 16.623/9.080 ✗ · facets 12.256/3.455 ✗ · oct 3.1–6.25 37.207/84.921 ✗ · oct 6.25–12.5 123.001/152.388 · A_dir 0.335/0.356 · S_10 − 1 0.102/0.115 (blind) · F 0.092/0.045 ✗
+   P-bruit                    4 out · Σ 3.86 · λ 17.835/9.080 ✗ · facets 12.605/3.455 ✗ · oct 3.1–6.25 32.622/84.921 ✗ · oct 6.25–12.5 121.754/152.388 · A_dir 0.359/0.356 · S_10 − 1 0.103/0.115 (blind) · F 0.090/0.045 ✗
+   p-scan p = 1               4 out · Σ 4.55 · λ 19.835/9.080 ✗ · facets 16.995/3.455 ✗ · oct 3.1–6.25 28.754/84.921 ✗ · oct 6.25–12.5 112.094/152.388 · A_dir 0.366/0.356 · S_10 − 1 0.098/0.115 (blind) · F 0.095/0.045 ✗
+   p-scan p = 1.5             4 out · Σ 4.19 · λ 18.829/9.080 ✗ · facets 14.849/3.455 ✗ · oct 3.1–6.25 31.126/84.921 ✗ · oct 6.25–12.5 121.815/152.388 · A_dir 0.391/0.356 · S_10 − 1 0.100/0.115 (blind) · F 0.088/0.045 ✗
+   p-scan p = 3               4 out · Σ 3.34 · λ 16.184/9.080 ✗ · facets 9.261/3.455 ✗ · oct 3.1–6.25 38.742/84.921 ✗ · oct 6.25–12.5 116.790/152.388 · A_dir 0.371/0.356 · S_10 − 1 0.101/0.115 (blind) · F 0.089/0.045 ✗
+   p-scan p = 4               4 out · Σ 2.99 · λ 14.998/9.080 ✗ · facets 7.380/3.455 ✗ · oct 3.1–6.25 44.269/84.921 ✗ · oct 6.25–12.5 117.046/152.388 · A_dir 0.318/0.356 · S_10 − 1 0.106/0.115 (blind) · F 0.090/0.045 ✗
+   p-scan p = 6               2 out · Σ 2.33 · λ 13.412/9.080 · facets 5.124/3.455 · oct 3.1–6.25 50.825/84.921 ✗ · oct 6.25–12.5 113.948/152.388 · A_dir 0.365/0.356 · S_10 − 1 0.110/0.115 (blind) · F 0.091/0.045 ✗
+   p-scan D8                  3 out · Σ 2.50 · λ 14.078/9.080 ✗ · facets 3.979/3.455 · oct 3.1–6.25 40.428/84.921 ✗ · oct 6.25–12.5 108.242/152.388 · A_dir 0.340/0.356 · S_10 − 1 0.128/0.115 (blind) · F 0.099/0.045 ✗
+   P-mfd + P-bruit            4 out · Σ 3.99 · λ 16.998/9.080 ✗ · facets 12.721/3.455 ✗ · oct 3.1–6.25 37.471/84.921 ✗ · oct 6.25–12.5 118.503/152.388 · A_dir 0.438/0.356 · S_10 − 1 0.100/0.115 (blind) · F 0.098/0.045 ✗ · EXCLUDED: peak 2610 m
+   P-mfd + P-dis              3 out · Σ 2.80 · λ 13.442/9.080 · facets 6.654/3.455 ✗ · oct 3.1–6.25 57.297/84.921 · oct 6.25–12.5 127.712/152.388 · A_dir 0.213/0.356 ✗ · S_10 − 1 0.112/0.115 (blind) · F 0.088/0.045 ✗
+   P-bruit + P-dis            2 out · Σ 2.29 · λ 13.400/9.080 · facets 4.826/3.455 · oct 3.1–6.25 48.841/84.921 ✗ · oct 6.25–12.5 114.776/152.388 · A_dir 0.358/0.356 · S_10 − 1 0.109/0.115 (blind) · F 0.093/0.045 ✗
+   P-mfd + P-bruit + P-dis    2 out · Σ 2.53 · λ 13.341/9.080 · facets 6.526/3.455 ✗ · oct 3.1–6.25 58.643/84.921 · oct 6.25–12.5 124.940/152.388 · A_dir 0.279/0.356 · S_10 − 1 0.108/0.115 (blind) · F 0.090/0.045 ✗
+   → best variant: P-bruit + P-dis (P0 ranks 10)
+   image f163_physics_256.png: P0, P-mfd (receiver), P-bruit, p-scan p = 1, p-scan p = 1.5, p-scan p = 3, p-scan p = 4, p-scan p = 6, p-scan D8, P-mfd + P-bruit, P-mfd + P-dis, P-bruit + P-dis, P-mfd + P-bruit + P-dis then Corsica 1563 m (same km per pixel), rivers order ≥ 2 · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+
+   chain N1 (F161 as committed) from P0:
+      N1 512² (4.2 s) · k 1.000e3 · peak 3034 · drift -0.28 % · trunk p90 0.71 · octave 0 21.52 m (Corse 53.58)
+      N1 1024² (16.7 s) · k 1.000e3 · peak 3080 · drift -0.07 % · trunk p90 1.00 · octave 0 20.41 m (Corse 30.43)
+      N1 2048² (132.2 s) · k 1.778e2 · peak 3118 · drift -0.01 % · trunk p90 1.58 · octave 0 14.15 m (Corse 15.32)
+
+   chain R4+π from P0:
+      R4+π·P0 calibration 512²: target 53.58 m → k 5.623e2 (7 trials, 56 s)
+      R4+π·P0 512² (8.2 s) · k 5.623e2 · peak 3031 · drift -0.43 % · trunk p90 1.00 · octave 0 22.92 m (Corse 53.58)
+      R4+π·P0 calibration 1024²: target 30.43 m → k 1.000e3 (7 trials, 77 s)
+      R4+π·P0 1024² (11.0 s) · k 1.000e3 · peak 3125 · drift +0.09 % · trunk p90 1.12 · octave 0 19.55 m (Corse 30.43)
+      R4+π·P0 calibration 2048²: target 15.32 m → k 3.162e2 (5 trials, 264 s)
+      R4+π·P0 2048² (52.9 s) · k 3.162e2 · peak 3121 · drift -0.14 % · trunk p90 1.80 · octave 0 16.48 m (Corse 15.32)
+
+   chain R4+π·P-bruit + P-dis:
+      R4+π·P-bruit + P-dis calibration 512²: target 53.58 m → k 5.623e2 (7 trials, 55 s)
+      R4+π·P-bruit + P-dis 512² (7.9 s) · k 5.623e2 · peak 3003 · drift -0.44 % · trunk p90 1.00 · octave 0 26.67 m (Corse 53.58)
+      R4+π·P-bruit + P-dis calibration 1024²: target 30.43 m → k 1.000e3 (7 trials, 76 s)
+      R4+π·P-bruit + P-dis 1024² (10.8 s) · k 1.000e3 · peak 3120 · drift +0.11 % · trunk p90 1.12 · octave 0 19.26 m (Corse 30.43)
+      R4+π·P-bruit + P-dis calibration 2048²: target 15.32 m → k 3.162e2 (5 trials, 201 s)
+      R4+π·P-bruit + P-dis 2048² (28.4 s) · k 3.162e2 · peak 3182 · drift -0.15 % · trunk p90 1.80 · octave 0 15.85 m (Corse 15.32)
+
+   the readings (1024² against Corsica 391 m, 2048² against Corsica 195 m):
+   ── N1 1024²: slope p50/p90 0.088/0.295 (0.194/0.403) · facets 14.08 % (4.61) · walls 28° 0.017 % (0.703) · λ 4.24 km (2.74) · peak 3080 · k 1.000e3
+      spectrum (m), cascade / Corse: [0.78–1.56 km] 20.4 / 30.4 · [1.56–3.12 km] 31.8 / 60.7 · [3.12–6.25 km] 45.8 / 100.1 · [6.25–12.50 km] 127.6 / 159.7 · [12.50–25.00 km] 187.6 / 162.5 · [25.00–50.00 km] 239.7 / 207.4
+      predictability: CV_λ 0.900 (0.609) · CV_L 0.867 (0.869) · σ_θ 23.491 (29.896) · R2_g 0.767 (0.477)
+      N1 1024²                       A_dir 53.2 % (1498 pieces; trunks ≥ 100 km² 50.4 %, 221) · S_2 1.058 (6916) · S_5 1.097 (5627) · S_10 1.134 (4145) · F 10.68 %
+      Corse 391 m                    A_dir 20.8 % (406 pieces; trunks ≥ 100 km² 0.0 %, 2) · S_2 1.112 (1082) · S_5 1.161 (433) · S_10 1.194 (75) · F 2.70 %
+   ── N1 2048²: slope p50/p90 0.118/0.404 (0.247/0.501) · facets 8.83 % (6.24) · walls 28° 0.628 % (1.547) · λ 1.64 km (1.60) · peak 3118 · k 1.778e2
+      spectrum (m), cascade / Corse: [0.39–0.78 km] 14.2 / 15.3 · [0.78–1.56 km] 25.5 / 34.4 · [1.56–3.12 km] 33.7 / 62.9 · [3.12–6.25 km] 46.3 / 100.9 · [6.25–12.50 km] 127.9 / 159.8 · [12.50–25.00 km] 187.8 / 162.3
+      predictability: CV_λ 0.963 (0.683) · CV_L 0.887 (0.915) · σ_θ 22.742 (27.449) · R2_g 0.626 (0.473)
+      N1 2048²                       A_dir 48.0 % (3637 pieces; trunks ≥ 100 km² 53.3 %, 500) · S_2 1.088 (15077) · S_5 1.125 (12388) · S_10 1.166 (9152) · F 14.95 %
+      Corse 195 m                    A_dir 20.6 % (1222 pieces; trunks ≥ 100 km² 18.3 %, 201) · S_2 1.172 (6062) · S_5 1.239 (5155) · S_10 1.282 (4122) · F 4.25 %
+   ── R4+π·P0 1024²: slope p50/p90 0.097/0.338 (0.194/0.403) · facets 10.57 % (4.61) · walls 28° 0.045 % (0.703) · λ 3.77 km (2.74) · peak 3125 · k 1.000e3
+      spectrum (m), cascade / Corse: [0.78–1.56 km] 19.5 / 30.4 · [1.56–3.12 km] 45.6 / 60.7 · [3.12–6.25 km] 49.0 / 100.1 · [6.25–12.50 km] 127.7 / 159.7 · [12.50–25.00 km] 188.0 / 162.5 · [25.00–50.00 km] 239.8 / 207.4
+      predictability: CV_λ 0.738 (0.609) · CV_L 0.855 (0.869) · σ_θ 23.582 (29.896) · R2_g 0.690 (0.477)
+      R4+π·P0 1024²                  A_dir 48.7 % (1476 pieces; trunks ≥ 100 km² 43.7 %, 203) · S_2 1.064 (7207) · S_5 1.101 (5729) · S_10 1.133 (4118) · F 8.78 %
+      Corse 391 m                    A_dir 20.8 % (406 pieces; trunks ≥ 100 km² 0.0 %, 2) · S_2 1.112 (1082) · S_5 1.161 (433) · S_10 1.194 (75) · F 2.70 %
+   ── R4+π·P0 2048²: slope p50/p90 0.188/0.473 (0.247/0.501) · facets 8.54 % (6.24) · walls 28° 1.875 % (1.547) · λ 1.32 km (1.60) · peak 3121 · k 3.162e2
+      spectrum (m), cascade / Corse: [0.39–0.78 km] 16.5 / 15.3 · [0.78–1.56 km] 39.5 / 34.4 · [1.56–3.12 km] 39.7 / 62.9 · [3.12–6.25 km] 58.4 / 100.9 · [6.25–12.50 km] 127.6 / 159.8 · [12.50–25.00 km] 184.0 / 162.3
+      predictability: CV_λ 0.675 (0.683) · CV_L 0.855 (0.915) · σ_θ 22.230 (27.449) · R2_g 0.518 (0.473)
+      R4+π·P0 2048²                  A_dir 40.3 % (3847 pieces; trunks ≥ 100 km² 47.8 %, 485) · S_2 1.129 (15856) · S_5 1.171 (12809) · S_10 1.201 (9289) · F 9.01 %
+      Corse 195 m                    A_dir 20.6 % (1222 pieces; trunks ≥ 100 km² 18.3 %, 201) · S_2 1.172 (6062) · S_5 1.239 (5155) · S_10 1.282 (4122) · F 4.25 %
+   ── R4+π·P-bruit + P-dis 1024²: slope p50/p90 0.103/0.346 (0.194/0.403) · facets 12.94 % (4.61) · walls 28° 0.042 % (0.703) · λ 3.99 km (2.74) · peak 3120 · k 1.000e3
+      spectrum (m), cascade / Corse: [0.78–1.56 km] 19.3 / 30.4 · [1.56–3.12 km] 45.3 / 60.7 · [3.12–6.25 km] 66.2 / 100.1 · [6.25–12.50 km] 120.9 / 159.7 · [12.50–25.00 km] 178.8 / 162.5 · [25.00–50.00 km] 243.9 / 207.4
+      predictability: CV_λ 0.727 (0.609) · CV_L 0.859 (0.869) · σ_θ 23.424 (29.896) · R2_g 0.712 (0.477)
+      R4+π·P-bruit + P-dis 1024²     A_dir 59.2 % (1407 pieces; trunks ≥ 100 km² 54.3 %, 206) · S_2 1.058 (7323) · S_5 1.096 (5910) · S_10 1.136 (4213) · F 8.82 %
+      Corse 391 m                    A_dir 20.8 % (406 pieces; trunks ≥ 100 km² 0.0 %, 2) · S_2 1.112 (1082) · S_5 1.161 (433) · S_10 1.194 (75) · F 2.70 %
+   ── R4+π·P-bruit + P-dis 2048²: slope p50/p90 0.196/0.478 (0.247/0.501) · facets 9.35 % (6.24) · walls 28° 2.071 % (1.547) · λ 1.37 km (1.60) · peak 3182 · k 3.162e2
+      spectrum (m), cascade / Corse: [0.39–0.78 km] 15.9 / 15.3 · [0.78–1.56 km] 39.3 / 34.4 · [1.56–3.12 km] 42.7 / 62.9 · [3.12–6.25 km] 75.6 / 100.9 · [6.25–12.50 km] 119.2 / 159.8 · [12.50–25.00 km] 174.7 / 162.3
+      predictability: CV_λ 0.670 (0.683) · CV_L 0.851 (0.915) · σ_θ 22.154 (27.449) · R2_g 0.489 (0.473)
+      R4+π·P-bruit + P-dis 2048²     A_dir 44.8 % (3679 pieces; trunks ≥ 100 km² 48.4 %, 487) · S_2 1.112 (15937) · S_5 1.150 (12903) · S_10 1.185 (9291) · F 8.81 %
+      Corse 195 m                    A_dir 20.6 % (1222 pieces; trunks ≥ 100 km² 18.3 %, 201) · S_2 1.172 (6062) · S_5 1.239 (5155) · S_10 1.282 (4122) · F 4.25 %
+
+   R at 2048² (facet control: pyramids 87.6 % · paraboloids 2.5 %):
+   N1                       (161 s) π share -0.00 % · REJECTED: slope p50 0.118 / 0.247; octave 1.56–3.12 km 33.7 / 62.9 m; octave 3.12–6.25 km 46.3 / 100.9 m; A_dir 48.0 / 20.6 %; S_2 − 1 0.088 / 0.172; S_5 − 1 0.125 / 0.239; S_10 − 1 0.166 / 0.282; F 14.95 / 4.25 %
+   R4+π·P0                  (477 s) π share 0.38 % · REJECTED: octave 1.56–3.12 km 39.7 / 62.9 m; octave 3.12–6.25 km 58.4 / 100.9 m; A_dir 40.3 / 20.6 %; F 9.01 / 4.25 %
+   R4+π·P-bruit + P-dis     (383 s) π share 0.37 % · REJECTED: A_dir 44.8 / 20.6 %; S_2 − 1 0.112 / 0.172; S_5 − 1 0.150 / 0.239; S_10 − 1 0.185 / 0.282; F 8.81 / 4.25 %
+   images f163_whole_2048.png and f163_<crop>.png (tight_25km, A_chaine, B_plateau, C_bassin_lac4): R4+π·P0, R4+π·P-bruit + P-dis then Corsica 195 m (its spine, or its western flank for the 25 km crop), rivers order ≥ 2, north up · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+   image f163_spectra.png: the 2048² octaves, N1 grey, R4+π·P0 red, R4+π·P-bruit + P-dis blue, Corsica (195 m) black · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+
+==========  end Finding 163 . 1637.2 s  ==========
+
+test f163_cascade ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1637.19s
+
