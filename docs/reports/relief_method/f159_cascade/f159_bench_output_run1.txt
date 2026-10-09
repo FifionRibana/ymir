@@ -1,0 +1,92 @@
+==========  Finding 159 . the multi-scale cascade 64² → 512² on the témoin  ==========
+test f159_cascade has been running for over 60 seconds
+   the témoin built and reduced (144 s)
+   S1 and the construction built and reduced (119 s)
+
+   D: K 2.0e-3 (code) · dt 1e5 yr · α 0.16 · D_phys 0.200 m²/yr · eq < 1 % for 5 steps · caps [400, 300, 200]
+      level 128² · cell 3.1250 km · D 3.125 m²/yr · L_c 0.400 cells · weight 0.0320
+      level 256² · cell 1.5625 km · D 0.781 m²/yr · L_c 0.400 cells · weight 0.0320
+      level 512² · cell 0.7812 km · D 0.200 m²/yr · L_c 0.405 cells · weight 0.0328
+      calibration 128² step 1 / 400 · ratio 9.8057
+      calibration 128² step 50 / 400 · ratio 0.0226
+      level 128² step 1 / 400 · ratio 0.4846
+      level 256² step 1 / 300 · ratio 0.3016
+      level 256² step 50 / 300 · ratio 0.0153
+      level 512² step 1 / 200 · ratio 0.2986
+      level 512² step 50 / 200 · ratio 0.0181
+      level 512² step 100 / 200 · ratio 0.0107
+
+   calibration (128²): U₀ trial 1.0e-4 → mean land 71 m against h_iso's 898 m → U₀ = 1.267e-3 m/yr per km · 63 steps (equilibrium) · 0.2 s · talus moved 0.00 % of the land at the last step
+
+   cost: 128² → 512² 7.8 s (calibration included) · t_step(512²) 0.055 s × 119 steps · ESTIMATE to 8192² 3164 s = 52.7 min (15 min target, 1 h stop)
+
+   ── level 128² (cell 3.125 km) · 36 steps (equilibrium, last ratio 0.0085) · 0.1 s [upscale 0.00 · uplift 0.00 · erosion 0.1 · diffusion 0.0] · retained 0.5 MB · talus moved 0.45 % of the land at the last step
+      land cells                         cascade           2670 · témoin           2927
+      planar walls 28° ± 0.5° (%)        cascade          0.150 · témoin          0.000
+      planar band 33° ± 0.5° (%)         cascade          0.000 · témoin          0.000
+      crest cells (% land)               cascade          42.10 · témoin          48.92
+      crest −∇²z p50 / p90 (m/km²)       cascade   38.7 / 160.1 · témoin   32.2 / 136.4
+      crest facets (% crests)            cascade           8.63 · témoin           4.33
+      facet control: pyramids 87.5 % (≥ 60) · paraboloids 2.3 % (≤ 20) → PASSES
+      coherent windows C > 0.7 (%)       cascade           0.00 · témoin           0.00
+      terrain R8 (windows; floor 1/√N)   cascade    0.1387 (13) · témoin    0.2009 (20)
+      R8 noise floors: cascade 0.2774 · témoin 0.2236
+      valley spacing λ (cells)           cascade          10.30 · témoin           5.89
+      Perron's band 6.4–12.7 L_c = 2.56–5.08 cells (L_c 0.400 cells); transects read high by ≈ π/2
+      relief p50, 12.5 km blocks (m)     cascade           1626 · témoin            927
+      mean land / p90 (m)                cascade     893 / 2300 · témoin     631 / 1406
+      trunk cells ≥ 100 km²              cascade            165 · témoin            344
+      cascade trunks → témoin trunks (same level): p50 0.00 / p90 1.00 / max 3.16 cells (0.00 / 3.12 / 9.88 km)
+
+   ── level 256² (cell 1.562 km) · 64 steps (equilibrium, last ratio 0.0091) · 0.8 s [upscale 0.00 · uplift 0.00 · erosion 0.5 · diffusion 0.3] · retained 2.2 MB · talus moved 10.00 % of the land at the last step
+      land cells                         cascade          10714 · témoin          11390
+      planar walls 28° ± 0.5° (%)        cascade          1.036 · témoin          0.255
+      planar band 33° ± 0.5° (%)         cascade          1.456 · témoin          0.193
+      crest cells (% land)               cascade          34.75 · témoin          42.66
+      crest −∇²z p50 / p90 (m/km²)       cascade   96.3 / 432.2 · témoin   73.8 / 344.9
+      crest facets (% crests)            cascade          16.20 · témoin           4.90
+      facet control: pyramids 87.3 % (≥ 60) · paraboloids 2.4 % (≤ 20) → PASSES
+      coherent windows C > 0.7 (%)       cascade          22.45 · témoin           4.76
+      terrain R8 (windows; floor 1/√N)   cascade    0.0411 (98) · témoin   0.0277 (126)
+      R8 noise floors: cascade 0.1010 · témoin 0.0891
+      valley spacing λ (cells)           cascade          12.14 · témoin           7.49
+      Perron's band 6.4–12.7 L_c = 2.56–5.08 cells (L_c 0.400 cells); transects read high by ≈ π/2
+      relief p50, 12.5 km blocks (m)     cascade           2830 · témoin           1178
+      mean land / p90 (m)                cascade    1114 / 2930 · témoin     649 / 1450
+      trunk cells ≥ 100 km²              cascade            406 · témoin            666
+      cascade trunks → témoin trunks (same level): p50 1.00 / p90 2.83 / max 5.83 cells (1.56 / 4.42 / 9.11 km)
+      trunks 256² → 128² (cells of 128²): p50 0.50 / p90 1.41 / max 6.73 (1.56 / 4.42 / 21.02 km) · reverse (cells of 256²) 0.00 / 1.00 / 6.40
+      the témoin's own trunks 256² → 128²: p50 0.50 / p90 1.12 / max 5.32 cells
+      D6 the coarse level: 256² restricted − 128² on land: bias +227.2 m · mean |Δ| 248.7 m (2571 cells)
+      relief p50 change 128² → 256²: +74.0 %
+
+   ── level 512² (cell 0.781 km) · 119 steps (equilibrium, last ratio 0.0092) · 6.6 s [upscale 0.00 · uplift 0.03 · erosion 4.3 · diffusion 2.3] · retained 8.7 MB · talus moved 37.84 % of the land at the last step
+      land cells                         cascade          42835 · témoin          44874
+      planar walls 28° ± 0.5° (%)        cascade          1.541 · témoin          0.796
+      planar band 33° ± 0.5° (%)         cascade          4.354 · témoin          0.292
+      crest cells (% land)               cascade          30.29 · témoin          33.87
+      crest −∇²z p50 / p90 (m/km²)       cascade 292.6 / 1185.8 · témoin  122.0 / 697.2
+      crest facets (% crests)            cascade          23.88 · témoin           9.26
+      facet control: pyramids 87.5 % (≥ 60) · paraboloids 2.4 % (≤ 20) → PASSES
+      coherent windows C > 0.7 (%)       cascade          27.19 · témoin          22.67
+      terrain R8 (windows; floor 1/√N)   cascade   0.0842 (526) · témoin   0.0702 (591)
+      R8 noise floors: cascade 0.0436 · témoin 0.0411
+      valley spacing λ (cells)           cascade          12.63 · témoin          10.69
+      Perron's band 6.4–12.7 L_c = 2.59–5.14 cells (L_c 0.405 cells); transects read high by ≈ π/2
+      relief p50, 12.5 km blocks (m)     cascade           4163 · témoin           1280
+      mean land / p90 (m)                cascade    1488 / 3938 · témoin     659 / 1469
+      trunk cells ≥ 100 km²              cascade            773 · témoin           1206
+      cascade trunks → témoin trunks (same level): p50 2.00 / p90 5.66 / max 12.73 cells (1.56 / 4.42 / 9.94 km)
+      trunks 512² → 256² (cells of 256²): p50 0.50 / p90 0.71 / max 6.40 (0.78 / 1.10 / 10.00 km) · reverse (cells of 512²) 0.00 / 1.00 / 25.00
+      the témoin's own trunks 512² → 256²: p50 0.50 / p90 1.00 / max 5.22 cells
+      D6 the coarse level: 512² restricted − 256² on land: bias +379.1 m · mean |Δ| 384.4 m (10500 cells)
+      relief p50 change 256² → 512²: +47.1 %
+
+   D8.3 for information at 512² (block means): crest facets S1 19.25 % · construction 17.62 % · témoin 9.26 % · cascade 23.88 %; walls 28° S1 0.160 · construction 2.266 %
+
+   R — THE STOP RULE FIRES at 128²: walls 28° 0.150 > 0.000; facets 8.63 > 4.33
+   image A_chaine · window 512² origin (128, 320) = 8192² (2048, 5120), 100 km, north up
+   image B_plateau · window 512² origin (0, 0) = 8192² (0, 0), 100 km, north up
+   image C_bassin_lac4 · window 512² origin (74, 160) = 8192² (1184, 2560), 100 km, north up
+
+==========  end Finding 159 . 270.8 s  ==========

@@ -21097,3 +21097,121 @@ after: lib 621, viz 32, **the guard 6 / 6 = banc** (C2 /10 col `a8d2d538d692c2f0
 - **Mine**:
   - held: all of A except P-A7 (diffusion is on, refuted) and P-A6's detail;
   - P-B2's fix refuted (a length scale and sub-grid routing, not K scaling).
+
+## Finding 159 — the multi-scale cascade prototype (64² → 512² on the témoin: uplift, the implicit stream power, the talus and a cell-scaled diffusion at each level, run to equilibrium): the trunks hold (p90 1.41 / 0.71 cells) and it costs 7.8 s, but the stop rule fires at 128² — each level raises the land (+227 / +379 m), the crest facets double per level (8.6 → 23.9 % against the témoin's 4.3–9.3 %) and the talus makes its own 33° band; production unchanged
+
+**Status: built, measured, gated; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f159_cascade/finding_159.md`.
+- Declared before any run: `f159_declared.md` (D1–D9, R, I). Predictions: `f159_predictions.md`.
+- F158 committed (`38a353e`). Its Schott 2024 resolution was checked and corrected in place: Table 1 at 4 096², 8 192²
+  in Fig. 1, per-iteration times only. Its linear-diffusion claim was corrected too: that weight is not cell-scaled.
+
+**The author's criterion, recorded as given**:
+- « Peut-on avoir une approche incrémentale ? … raffinant une carte d'abord à 64², puis 128², puis 256², jusqu'au
+  8192². Chaque niveau produirait la forme ou le relief répondant à la résolution … Typiquement le principe du LOD. »
+- « Un temps plus long peut être acceptable si le résultat est meilleur. … Pas 10 h de calcul. » The reviewer declared
+  at most 15 min per world.
+- « on aurait clairement les différentes résolutions qui seront balayées, soit d'un seul trait, soit résolution par
+  résolution, par action utilisateur » ; « visualiser les résultats intermédiaires. Ainsi, si quelque chose ne va pas,
+  on ne va pas plus loin. »
+- « La tectonique actuelle, je pense que c'est la base du soulèvement. »
+
+**D — the declared design**:
+- **The levels**: 128² / 256² / 512² on the témoin's framing (400 km, roll (6, 37)).
+- **The uplift**: U = U₀ · max(0, h_iso) / 1 km, constant in time, so each level has a steady state, which is the stop.
+  U₀ is calibrated once at 128² on h_iso's mean land altitude.
+- **K is physical and constant** (2e-3, code units). Kwang & Parker: with m/n = 0.5 the law is scale-free, so K cannot
+  carry a length.
+- **The length is D's** (Perron 2009, L_c = (D/K)^(1/(2m+1)), 6.4 L_c ≤ λ ≤ 12.7 L_c):
+  D_L = max(D_phys, 0.16 · K_SI · cell²), so L_c = 0.4 cell, with D_phys = K_SI · A_c = 0.2 m²/yr (Perron's
+  L_c² ≈ A_c, PROXY). The existing linear weight becomes D·dt/cell² = 0.032 at every level.
+- **Per step, production's order**: uplift → `incise_with_floor` (1 iteration, relief-v3 at the level's cell, talus and
+  diffusion off inside) → talus → linear diffusion.
+- **The sea is the base level** (held at 0 m during a level). Bicubic ×2 passes z and U.
+- **Equilibrium**: mean |Δz| < 1 % of the mean U·dt for 5 steps. Caps 400 / 300 / 200.
+- **No deposition, no basin graph, no FBM, no K field, no coast warp.**
+
+**B — the build**:
+- `ymir_core::cascade`, gated: only the viz window and the benches call it. The record per level is an additive
+  decomposition (upscaled + Σ uplift + Σ erosion + Σ diffusion) with the time of each sub-step.
+- **One production-file change**: the talus (4c) and the linear diffusion (5) were extracted from `incise_with_floor`
+  unchanged, into `talus_sweep` / `linear_diffusion`. Pinned by `the_f159_extraction_changes_no_output`:
+  - a relief-v3 run's hash measured at 38a353e before the extraction;
+  - negative controls: talus off and diffusion off each change it.
+- **The viz « Cascade » window** (top-bar button), on the workspace's world, with its own thread:
+  - « Niveau suivant » / « Tout » / « Annuler »;
+  - the frieze 64² → 512², each level's sub-steps and their times;
+  - Ombrage / Hypsométrie / Différence and « Contour des dépressions ».
+  - Its worker is tested.
+- **The guard 6 / 6** before and after.
+
+**M — measured** (cascade · témoin block mean; `f159_bench_output.txt`; two runs identical):
+- **Calibration**: U₀ = 1.27e-3 m/yr per km of h_iso. Equilibrium at every level in 36 / 64 / 119 steps.
+- **Trunks ≥ 100 km², n+1 → n**: p90 **1.41** (128 → 256) and **0.71** cells (256 → 512). The témoin's own: 1.12 /
+  1.00. **The rivers stay in place.**
+- **The relief grows with the level**:
+  - restricted bias **+227 m, then +379 m**;
+  - mean land 893 → 1 114 → 1 488 m;
+  - relief p50 1 626 → 2 830 → **4 163 m** (témoin 927 → 1 280);
+  - **+74 %, then +47 %**.
+- **The talus**: active on 0.45 → 10 → **38 %** of the land; the 33° band 0 → 1.46 → **4.35 %** (témoin 0.29).
+- **Walls at 28°**: 0.150 / 1.04 / 1.54 % against 0.000 / 0.26 / 0.80.
+- **Crest facets**: **8.6 / 16.2 / 23.9 %** against 4.3 / 4.9 / 9.3. The control (pyramids 87.5 %, paraboloids
+  2.4 %) passes at every level.
+- **Crest −∇²z p90 at 512²**: 1 186 against 697 m/km².
+- **The comb stand-in** (windows with coherence > 0.7): 22.5 % against 4.8 % (256²), 27.2 % against 22.7 % (512²).
+- **R8 at 512²**: 0.084 against 0.070 (floor 0.044).
+- **λ**: 10–12.6 cells against Perron's 2.6–5.1 (4.0–8.0 with the transect factor).
+- **Cost**:
+  - **7.8 s** for 128² → 512²;
+  - 0.056 s per step at 512²;
+  - the ESTIMATE to 8192² **53–54 min** (119 steps assumed per finer level).
+
+**R — the stop rule** (written before measuring):
+- **It fires at 128²**: walls 28° 0.150 > 0.000 (4 cells); facets 8.63 > 4.33.
+- It would fire at every level on walls and facets. Never on the trunks; not on the cost (< 1 h).
+
+**The reading** (the causes are hypotheses to check):
+- **The LOD transmission works for the trunks.** The per-level LEM as declared does not give a resolution-independent
+  relief.
+- **Hypothesis to check**: every land cell is a channel cell at these levels (A_c 0.1 km² < one cell).
+  - The ridge cells' steady slope U / (K √A_cell) doubles per halving of the cell.
+  - L_c = 0.4 cell is too weak a diffusion to hold them.
+  - So each level adds a ridge order: Kwang & Parker's dependence is not removed by tying D to the cell.
+- **The talus then caps the slopes at 33°** and makes planar facets, the « crêtes en facettes » by another route.
+
+**Amendments after run 1** (NOT blind; images and viz only):
+- crop B's declared rule found no window and fell back to (0, 0) in silence; amended (≥ 75 % land, mean > p50), and
+  the bench now fails rather than fall back;
+- a 4th image row and the viz's Différence view show each process's own Σ (the cumulated sub-step fields are
+  unreadable: the uplift alone stacks about 30 km over a level).
+
+**Predictions**:
+- **The reviewer's**:
+  - « fewer than half the walls at 512² » refuted (2×); « no facets beyond the témoin » refuted;
+  - « trunks < 1 cell between 256² and 512² » held (0.71);
+  - « without scaling, > 20 % relief change »: not tested as stated; WITH the scaling +74 / +47 %;
+  - « < 60 s » held; « extrapolation < 15 min » refuted (53–54 min); meta held.
+- **Mine**:
+  - refuted: P-M1, P-M2 (facets; the construction above S1), P-M3 (128 → 256), P-M4, P-M6, P-M7, P-M8's ESTIMATE
+    range, P-R1;
+  - held: the facet control, P-M3 (256 → 512, max), P-M5, P-M8 (< 60 s), meta.
+
+**Open, for the author** (nothing chosen):
+- (a) a resolved hillslope per level: A_c of a few cells, or L_c of 1–2 cells; or the coarse level as a constraint
+  (Schott's retargeting);
+- (b) the talus's planar band (Schott's noisy critical slope);
+- (c) the coarse below-sea interior cells held as open sea;
+- (d) a measured 1 024² level for the cost.
+
+**The author's verdict at commit (2026-10-09)**, recorded as given:
+- « C'est pas mal. À tester à des résolutions plus hautes. »
+- « Le soulèvement est bien trop fort. À 512², on arrive à des montagnes à +7 000 m sur un continent […] à une
+  géométrie type Corse, [qui] ne devrait pas dépasser +3 000 m. »
+- « Les structures sont intéressantes. Si on compare à la référence, on a quelque chose d'un peu moins organique. »
+- « Pourquoi est-ce qu'on attend l'équilibre, vu que les articles, eux, n'attendent pas ? Pourquoi est-ce qu'on
+  reconstruit tout le relief au lieu de l'affiner ? »
+- « Les grands fleuves ne bougent que très peu. C'est bien. Par contre, je n'ai rien pour les visualiser sur le viz, ni
+  leurs formes et affluents. Pareil pour les lacs. »
+- F160 follows: one physics level, then Schott 2024's amplification transposed (no uplift), the final retargeting,
+  rivers and lakes in the Cascade window, and a 1024² level.

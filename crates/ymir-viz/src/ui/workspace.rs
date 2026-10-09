@@ -782,6 +782,7 @@ fn draw_workspace(
     mut contexts: EguiContexts,
     bridge: Res<C1SolverBridge>,
     mut ws: ResMut<WorkspaceState>,
+    mut cascade: ResMut<crate::ui::cascade::CascadeUi>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
 
@@ -848,7 +849,7 @@ fn draw_workspace(
         ctx.request_repaint();
     }
 
-    top_bar(ctx, &bridge, &mut ws);
+    top_bar(ctx, &bridge, &mut ws, &mut cascade);
     left_panel(ctx, &bridge, &mut ws, hd_running);
     microscope_drawer(ctx, &mut ws);
     right_panel(ctx, &mut ws);
@@ -887,7 +888,12 @@ fn microscope_drawer(ctx: &egui::Context, ws: &mut WorkspaceState) {
 }
 
 // ── Top bar ──────────────────────────────────────────────────────────────
-fn top_bar(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceState) {
+fn top_bar(
+    ctx: &egui::Context,
+    bridge: &C1SolverBridge,
+    ws: &mut WorkspaceState,
+    cascade: &mut crate::ui::cascade::CascadeUi,
+) {
     egui::TopBottomPanel::top("topbar")
         .exact_height(34.0)
         .frame(egui::Frame::default().fill(PANEL2).inner_margin(egui::Margin::symmetric(12, 0)))
@@ -917,6 +923,17 @@ fn top_bar(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceState
                         ws.mode = Mode::Standard;
                     }
                     ui.label(egui::RichText::new("MODE").color(DIM2).size(10.0));
+                    ui.add_space(12.0);
+                    // ADR Finding 159 -- the « Cascade » window, on the world this workspace frames (its seed and roll)
+                    if seg_label(ui, "Cascade", cascade.open)
+                        .on_hover_text("Prototype F159 : la cascade multi-échelle 64² → 512², niveau par niveau")
+                        .clicked()
+                    {
+                        cascade.open = !cascade.open;
+                    }
+                    cascade.seed = ws.seed;
+                    let grid = ws.preview.as_ref().map(|p| p.coarse.width as i64).unwrap_or(64);
+                    cascade.offset_cells = [ws.offset_cells[0].rem_euclid(grid), ws.offset_cells[1].rem_euclid(grid)];
                     ui.add_space(12.0);
                     // Stats.
                     let cells = ws.current.as_ref().map(|c| c.width * c.height).unwrap_or(0);

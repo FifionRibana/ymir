@@ -54,6 +54,8 @@ fn main() {
         // the tree but NOT registered — superseded by the workspace; a possible
         // live-coarse layer is a step-d2 decision.
         ui::workspace::HdWorkspacePlugin,
+        // ADR Finding 159 -- the « Cascade » window (opened from the top bar; never touches the HD world).
+        ui::cascade::CascadePlugin,
     ));
 
     app.run();

@@ -8,7 +8,7 @@ The PDFs marked **committed** carry an open licence (CC BY 4.0) and are in the r
 
 | file | reference | in the repo |
 |---|---|---|
-| `2024-MultiScaleHydro-Author.pdf` | Schott, H., Galin, E., Guérin, E., Peytavie, A., Paris, A. (2024). Terrain Amplification using Multi-scale Erosion. ACM Transactions on Graphics (SIGGRAPH 2024). Author version. | no (author version, no licence stated) |
+| `2024-MultiScaleHydro-Author.pdf` | Schott, H., Galin, E., Guérin, E., Peytavie, A., Paris, A. (2024). Terrain Amplification using Multi-scale Erosion. ACM Transactions on Graphics (SIGGRAPH 2024). Author version (the copy the author provided, 2026-10-09; read for F160). | no (author version, no licence stated) |
 | `schott2023.pdf` | Schott, H., Paris, A., Fournier, L., Guérin, E., Galin, E. (2023). Large-scale terrain authoring through interactive erosion simulation. ACM Transactions on Graphics. HAL hal-04049125. Code (MIT): github.com/H-Schott/StreamPowerErosion | no (HAL, no licence stated) |
 | `cordonnier2016.pdf` | Cordonnier, G., Braun, J., Cani, M.-P., Benes, B., Galin, É., Peytavie, A., Guérin, É. (2016). Large Scale Terrain Generation from Tectonic Uplift and Fluvial Erosion. Computer Graphics Forum 35(2) (Eurographics 2016). | no (publisher's copyright) |
 | — | Braun, J., Willett, S. D. (2013). A very efficient O(n), implicit and parallel method to solve the stream power equation governing fluvial incision and landscape evolution. Geomorphology 180–181, 170–179. doi:10.1016/j.geomorph.2012.10.008 | no (no open copy found) |

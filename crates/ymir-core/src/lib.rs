@@ -10,6 +10,8 @@
 //! deterministic [`seed::WorldSeed`] to ensure reproducibility.
 
 pub mod cache;
+/// ADR Finding 159 -- the multi-scale cascade prototype (gated: only the viz's Cascade window and the benches call it).
+pub mod cascade;
 pub mod config;
 pub mod grid;
 /// ADR method rule 10 — the guard that makes a metric block prove it measured something.

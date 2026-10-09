@@ -839,60 +839,7 @@ pub fn incise_with_floor(
         // no convergence loop — the C1-consistent alternative to the nonlinear-diffusion
         // solver. `talus_passes` clears the residual re-steepening a single sweep leaves.
         // Applied EVERYWHERE (no channel exclusion; Finding 8). See ADR 0001 Finding 10.
-        if cfg.talus_slope > 0.0 && cfg.talus_passes > 0 {
-            let base_drop = cfg.talus_slope * cell_m / norm_to_m; // cardinal repose drop (norm)
-            for _ in 0..cfg.talus_passes {
-                // Sort land cells by height desc (deterministic tiebreak on index).
-                let mut idx: Vec<usize> =
-                    (0..n).filter(|&k| field.data[k] > cfg.sea_level).collect();
-                idx.sort_unstable_by(|&a, &b| {
-                    field.data[b]
-                        .partial_cmp(&field.data[a])
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                        .then(a.cmp(&b))
-                });
-                for &k in &idx {
-                    let (x, y) = ((k % w) as i32, (k / w) as i32);
-                    let zk = field.data[k];
-                    let (mut total, mut maxe) = (0.0f32, 0.0f32);
-                    let mut exc = [0.0f32; 8];
-                    for d in 0..8 {
-                        let (nx, ny) = (x + D8_DX[d], y + D8_DY[d]);
-                        if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
-                            continue;
-                        }
-                        let j = ny as usize * w + nx as usize;
-                        let zj = field.data[j];
-                        if zj >= zk {
-                            continue; // downhill only
-                        }
-                        // max allowed drop to this neighbour = S_c · dist (norm units).
-                        let e = (zk - zj) - base_drop * D8_DIST[d];
-                        if e > 0.0 {
-                            exc[d] = e;
-                            total += e;
-                            if e > maxe {
-                                maxe = e;
-                            }
-                        }
-                    }
-                    if total <= 0.0 {
-                        continue;
-                    }
-                    // Move a fraction of the WORST excess off k, split among the over-steep
-                    // neighbours in proportion to their deficit (mass conserving).
-                    let mv = cfg.talus_factor * maxe;
-                    field.data[k] = zk - mv;
-                    for d in 0..8 {
-                        if exc[d] > 0.0 {
-                            let (nx, ny) = (x + D8_DX[d], y + D8_DY[d]);
-                            let j = ny as usize * w + nx as usize;
-                            field.data[j] += mv * exc[d] / total;
-                        }
-                    }
-                }
-            }
-        }
+        talus_sweep(&mut field, cfg, cell_m, norm_to_m);
 
         // 5. Hillslope diffusion (explicit, a few sub-steps), interleaved with the
         // incision each iteration so it holds interfluves WHILE channels incise (the
@@ -948,51 +895,124 @@ pub fn incise_with_floor(
                     }
                 }
             }
-        } else if cfg.diffusion > 0.0 && cfg.diffusion_substeps > 0 {
-            // ⚠️ DO NOT "FIX" THIS BY APPLYING `dscale` HERE. It looks like an obvious omission
-            // — the nonlinear branch above carries Finding 7's `(HILLSLOPE_REF_CELL_M/cell_m)²`
-            // and this one does not, so a bare dimensionless weight implies a physical
-            // diffusivity `κΔt = dsub·dx²` that shrinks as dx². It WAS tried, measured, and
-            // REVERTED (ADR Finding 45):
-            //
-            //   hypsometry moved +17 m on the 8192² mean (2.5 %) — which is what made it look
-            //   harmless — while the BELOW-SEA BASIN COUNT went 43 → 1994 (×46).
-            //
-            // A linear Laplacian is MASS-CONSERVING: it lowers crests and FILLS hollows. With
-            // `diffuse_channels = true` it runs on every cell, so at 16× strength it backfills
-            // the channels the incision just cut, and a backfilled channel IS a closed
-            // depression. A correctly normalised diffusion destroys drainage integrity.
-            //
-            // The dimensional debt is REAL and stays open, but it will NOT close by
-            // reinstating this line. The hillslope term has to change NATURE — transport-
-            // limited with an explicit sediment flux, the only kind of agent that REMOVES mass
-            // from hillslopes and delivers it to the network (ADR Finding 43, mechanism 1).
-            // When that term replaces this one, the units question disappears with it.
-            let dsub = cfg.diffusion / cfg.diffusion_substeps as f32;
-            for _ in 0..cfg.diffusion_substeps {
-                let src = field.data.clone();
-                for y in 1..h - 1 {
-                    for x in 1..w - 1 {
-                        let k = y * w + x;
-                        if src[k] <= cfg.sea_level {
-                            continue;
-                        }
-                        if !cfg.diffuse_channels
-                            && cfg.min_area_cells > 0.0
-                            && acc.data[k] >= cfg.min_area_cells
-                        {
-                            continue; // regime split: channel = stream power only
-                        }
-                        let lap = src[k - 1] + src[k + 1] + src[k - w] + src[k + w] - 4.0 * src[k];
-                        field.data[k] = src[k] + dsub * lap;
-                    }
-                }
-            }
+        } else {
+            linear_diffusion(&mut field, cfg, Some(acc));
         }
 
         progress(iter, &field);
     }
     field
+}
+
+/// ADR Finding 159 -- step 4c of [`incise_with_floor`], the TALUS sweep, extracted UNCHANGED so the cascade
+/// (`crate::cascade`) can run it as its own sub-step. `incise_with_floor` calls it at the same place; the extraction
+/// is pinned by `the_f159_extraction_changes_no_output`. `cell_m` and `norm_to_m` as in the caller.
+pub fn talus_sweep(field: &mut GridF32, cfg: &StreamPowerConfig, cell_m: f32, norm_to_m: f32) {
+    let (w, h) = (field.width, field.height);
+    let n = w * h;
+    if cfg.talus_slope > 0.0 && cfg.talus_passes > 0 {
+        let base_drop = cfg.talus_slope * cell_m / norm_to_m; // cardinal repose drop (norm)
+        for _ in 0..cfg.talus_passes {
+            // Sort land cells by height desc (deterministic tiebreak on index).
+            let mut idx: Vec<usize> =
+                (0..n).filter(|&k| field.data[k] > cfg.sea_level).collect();
+            idx.sort_unstable_by(|&a, &b| {
+                field.data[b]
+                    .partial_cmp(&field.data[a])
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(a.cmp(&b))
+            });
+            for &k in &idx {
+                let (x, y) = ((k % w) as i32, (k / w) as i32);
+                let zk = field.data[k];
+                let (mut total, mut maxe) = (0.0f32, 0.0f32);
+                let mut exc = [0.0f32; 8];
+                for d in 0..8 {
+                    let (nx, ny) = (x + D8_DX[d], y + D8_DY[d]);
+                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                        continue;
+                    }
+                    let j = ny as usize * w + nx as usize;
+                    let zj = field.data[j];
+                    if zj >= zk {
+                        continue; // downhill only
+                    }
+                    // max allowed drop to this neighbour = S_c · dist (norm units).
+                    let e = (zk - zj) - base_drop * D8_DIST[d];
+                    if e > 0.0 {
+                        exc[d] = e;
+                        total += e;
+                        if e > maxe {
+                            maxe = e;
+                        }
+                    }
+                }
+                if total <= 0.0 {
+                    continue;
+                }
+                // Move a fraction of the WORST excess off k, split among the over-steep
+                // neighbours in proportion to their deficit (mass conserving).
+                let mv = cfg.talus_factor * maxe;
+                field.data[k] = zk - mv;
+                for d in 0..8 {
+                    if exc[d] > 0.0 {
+                        let (nx, ny) = (x + D8_DX[d], y + D8_DY[d]);
+                        let j = ny as usize * w + nx as usize;
+                        field.data[j] += mv * exc[d] / total;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// ADR Finding 159 -- step 5's LINEAR branch of [`incise_with_floor`], extracted UNCHANGED (same pin as
+/// [`talus_sweep`]). `acc` is read only by the regime split (`diffuse_channels == false` with `min_area_cells > 0`);
+/// `None` treats every cell as a hillslope cell, which is what `diffuse_channels = true` does anyway.
+pub fn linear_diffusion(field: &mut GridF32, cfg: &StreamPowerConfig, acc: Option<&GridF32>) {
+    if !(cfg.diffusion > 0.0 && cfg.diffusion_substeps > 0) {
+        return;
+    }
+    let (w, h) = (field.width, field.height);
+    // ⚠️ DO NOT "FIX" THIS BY APPLYING `dscale` HERE. It looks like an obvious omission
+    // — the nonlinear branch above carries Finding 7's `(HILLSLOPE_REF_CELL_M/cell_m)²`
+    // and this one does not, so a bare dimensionless weight implies a physical
+    // diffusivity `κΔt = dsub·dx²` that shrinks as dx². It WAS tried, measured, and
+    // REVERTED (ADR Finding 45):
+    //
+    //   hypsometry moved +17 m on the 8192² mean (2.5 %) — which is what made it look
+    //   harmless — while the BELOW-SEA BASIN COUNT went 43 → 1994 (×46).
+    //
+    // A linear Laplacian is MASS-CONSERVING: it lowers crests and FILLS hollows. With
+    // `diffuse_channels = true` it runs on every cell, so at 16× strength it backfills
+    // the channels the incision just cut, and a backfilled channel IS a closed
+    // depression. A correctly normalised diffusion destroys drainage integrity.
+    //
+    // The dimensional debt is REAL and stays open, but it will NOT close by
+    // reinstating this line. The hillslope term has to change NATURE — transport-
+    // limited with an explicit sediment flux, the only kind of agent that REMOVES mass
+    // from hillslopes and delivers it to the network (ADR Finding 43, mechanism 1).
+    // When that term replaces this one, the units question disappears with it.
+    let dsub = cfg.diffusion / cfg.diffusion_substeps as f32;
+    for _ in 0..cfg.diffusion_substeps {
+        let src = field.data.clone();
+        for y in 1..h - 1 {
+            for x in 1..w - 1 {
+                let k = y * w + x;
+                if src[k] <= cfg.sea_level {
+                    continue;
+                }
+                if !cfg.diffuse_channels
+                    && cfg.min_area_cells > 0.0
+                    && acc.is_some_and(|a| a.data[k] >= cfg.min_area_cells)
+                {
+                    continue; // regime split: channel = stream power only
+                }
+                let lap = src[k - 1] + src[k + 1] + src[k - w] + src[k + w] - 4.0 * src[k];
+                field.data[k] = src[k] + dsub * lap;
+            }
+        }
+    }
 }
 
 // ═══ ADR Finding 44 — THE EXPLICIT TIMESCALE ═══════════════════════════════════════════
@@ -1533,5 +1553,48 @@ mod tests {
             cut_held < cut_mid && cut_mid < cut_ref,
             "raising the floor must cut strictly LESS, at every height: surface {cut_held} <              half-way {cut_mid} < unbounded {cut_ref}"
         );
+    }
+
+    /// ADR Finding 159 -- the talus (4c) and the linear diffusion (5) were extracted into [`talus_sweep`] and
+    /// [`linear_diffusion`] so the cascade can run them as its own sub-step. The extraction must change NOTHING: this
+    /// pins the bits of a relief-v3 run (talus active on a steep field, diffusion on, lateral erosion on) to the hash
+    /// measured on the code BEFORE the extraction (commit 38a353e).
+    #[test]
+    fn the_f159_extraction_changes_no_output() {
+        let (w, h) = (96usize, 96usize);
+        let mut f = GridF32::new(w, h, 0.0);
+        for y in 0..h {
+            for x in 0..w {
+                // a steep cone + ridges + a deterministic hash noise; sea in a corner band
+                let (dx, dy) = (x as f32 - 48.0, y as f32 - 52.0);
+                let r = (dx * dx + dy * dy).sqrt();
+                let mut s = (x as u32).wrapping_mul(0x9E37_79B1) ^ (y as u32).wrapping_mul(0x85EB_CA77);
+                s ^= s >> 15;
+                s = s.wrapping_mul(0x2C1B_3C6D);
+                s ^= s >> 12;
+                let noise = (s % 1000) as f32 / 1000.0 - 0.5;
+                f.data[y * w + x] = (0.47 + 0.30 * (1.0 - r / 60.0).max(0.0)
+                    + 0.02 * (x as f32 * 0.4).sin() * (y as f32 * 0.3).cos()
+                    + 0.004 * noise)
+                    .clamp(0.0, 1.0);
+            }
+        }
+        let mut cfg = StreamPowerConfig::relief_v3(0.0625, 5000.0);
+        cfg.iterations = 3;
+        let g = incise_with_floor(&f, &cfg, None, None, &mut |_, _| {});
+        let mut hsh: u64 = 0xcbf2_9ce4_8422_2325;
+        for v in &g.data {
+            for b in v.to_bits().to_le_bytes() {
+                hsh ^= b as u64;
+                hsh = hsh.wrapping_mul(0x0100_0000_01b3);
+            }
+        }
+        assert_ne!(g.data, f.data, "the run must change the field");
+        assert_eq!(hsh, 12_184_360_552_995_495_344, "pinned hash (38a353e)");
+        // the pin covers the two extracted blocks only if both act on this field
+        let no_talus = incise_with_floor(&f, &StreamPowerConfig { talus_slope: 0.0, ..cfg.clone() }, None, None, &mut |_, _| {});
+        let no_diff = incise_with_floor(&f, &StreamPowerConfig { diffusion: 0.0, ..cfg.clone() }, None, None, &mut |_, _| {});
+        assert_ne!(no_talus.data, g.data, "the talus must act on the pinned field");
+        assert_ne!(no_diff.data, g.data, "the diffusion must act on the pinned field");
     }
 }

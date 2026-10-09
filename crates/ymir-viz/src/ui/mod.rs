@@ -10,6 +10,8 @@
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
+/// ADR Finding 159 -- the « Cascade » window (the multi-scale cascade prototype).
+pub mod cascade;
 pub mod workspace;
 
 pub struct UiPlugin;
