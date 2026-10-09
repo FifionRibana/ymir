@@ -1,0 +1,22 @@
+# F160 checks AFTER (cascade physics level, amplification, hydrology, Cascade window)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.67s
+test result: ok. 627 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 2.15s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 33 passed; 0 failed; 17 ignored; 0 measured; 0 filtered out; finished in 1.68s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+# the 6/6 guard through run_hd (ymir-viz f123_viz_guard)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+[HD timing] geology (2.06s: history 0.24 · rocks 0.76 · context 0.85 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.14s: history 0.24 · rocks 0.80 · context 0.89 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.09s: history 0.25 · rocks 0.73 · context 0.90 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.07s: history 0.24 · rocks 0.74 · context 0.89 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.17s: history 0.25 · rocks 0.81 · context 0.92 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.22s: history 0.27 · rocks 0.80 · context 0.92 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes = banc
+   C1 nue                 field = banc · lakes = banc
+   C2 /10 col (défaut)    field = banc · lakes = banc
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes = banc
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 49 filtered out; finished in 117.19s
+# done

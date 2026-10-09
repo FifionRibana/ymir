@@ -21215,3 +21215,150 @@ after: lib 621, viz 32, **the guard 6 / 6 = banc** (C2 /10 col `a8d2d538d692c2f0
   leurs formes et affluents. Pareil pour les lacs. »
 - F160 follows: one physics level, then Schott 2024's amplification transposed (no uplift), the final retargeting,
   rivers and lakes in the Cascade window, and a 1024² level.
+
+## Finding 160 — the cascade, round 2: one physics level calibrated on a Corsica-like peak, then Schott 2024's amplification transposed (bicubic, bounded explicit erosion, noisy talus, deposition, no uplift) and the final retargeting, with rivers and lakes in the Cascade window, to 2048²: the large forms hold (drift < 1.5 %, trunks p90 ≤ 1.5, the peak 2 864–2 907 m), but R fires at the first amplification level of every chain on facets the physics level already carries, and the transposed erosion carves 0.02–0.16 % of its bound and adds 2.5–9× less fine detail than the témoin; production unchanged
+
+**Status: built, measured, gated; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f160_amplification/finding_160.md`.
+- Declared before any run: `f160_declared.md` (D1–D8, R with the author's cost addendum, V, I). Predictions:
+  `f160_predictions.md`.
+- F159 committed (`a7707fb`) with the author's verdict.
+
+**The author's criterion, recorded as given**:
+- « C'est pas mal. À tester à des résolutions plus hautes. » « Le soulèvement est bien trop fort. À 512², on arrive à
+  des montagnes à +7 000 m … type Corse, [qui] ne devrait pas dépasser +3 000 m. » « Les structures sont intéressantes
+  … un peu moins organique. »
+- « Pourquoi est-ce qu'on attend l'équilibre, vu que les articles, eux, n'attendent pas ? Pourquoi est-ce qu'on
+  reconstruit tout le relief au lieu de l'affiner ? »
+- « Si on tombe sur ce risque [pas assez de détail], on peut ajouter des itérations ou du soulèvement supplémentaire à
+  des étapes suivantes, mais sur la base de l'existant. »
+- « Les grands fleuves ne bougent que très peu. C'est bien. Par contre, je n'ai rien pour les visualiser sur le viz,
+  ni leurs formes et affluents. Pareil pour les lacs. »
+- The cost addendum: « Si c'est acceptable à 1024² puis 2048², on voit déjà très bien le résultat … Il ne faut pas que
+  ce soit ingérable. » So the cost is an alert, not a stop, up to 2 048².
+
+**0 — the article and its code, checked**:
+- **The article**: every reviewer claim held, the section given.
+  - §3 A_k = D∘T∘E∘U;
+  - §4.2 no uplift, ẽ = min(sⁿ, s_maxⁿ)·min(aᵐ, a_maxᵐ), n = 2, m = 0.8, s_max = 1, a_max = 250, k = 5e-4, the bound
+    N·k·s_maxⁿ·a_maxᵐ;
+  - §4.1 p = 1.3, one routing iteration per erosion iteration;
+  - §4.2 k(1 − ρ) against the « axis-aligned artifacts »;
+  - §4.3 a noisy talus [0.8, 1.4];
+  - §4.4 the deposition;
+  - §5.1 the retargeting, a₀ = 2, 500 iterations;
+  - §5.2 the breach, radius halving;
+  - Tables 1 and 2; Fig. 18D.
+  - **Added**: the retargeting's diffusion is printed « E − ΔE » (read as a sign slip), and §6.6 swaps the section
+    numbers. The code's domain is 20 km with 3–4 km of relief, so **the values were set for 10–80 m cells**.
+- **The code** (MIT): the reviewer's points held: the receiver bound; no retargeting or breach; talus [0.9, 1.4].
+  - **Found besides**: the hardness buffer is never read; the clamp is on the PRODUCT (10 000), not on the area; the
+    drainage counts metres of cell diagonal (a^0.8 about 40× the paper's); the deposition differs.
+  - F158 corrected in place.
+- **F159's diagnosis** (hypotheses): replayed orogenies; uncapped big rivers.
+  - Consistent with F160: drift −0.3 to −1.4 % per level against F159's +227 / +379 m; the trunks hold.
+  - The √2 is not tested.
+
+**D — the declared design**:
+- **D1, the physics level** (F159's, P128 or P256), U₀ calibrated once on the peak, 2 850 m.
+- **D2, the amplification per level**:
+  - bicubic ×2;
+  - E: explicit, Jacobi, a counted in cells, a_max = 250 cells, s_max = 1, n = 2, m = 0.8, the receiver bound (the
+    code's), k_L from d_L = 200 m at 256² halving per level at the land's p90 slope;
+  - T: s₀ = tan 33° × [0.8, 1.4] noisy, m_L = 0.002 cell;
+  - D: the paper's form in metres;
+  - the ocean held at 0 m; the land floor 0.5 m.
+- **D3, the budgets**: the code's presets × 0.5 / 1 / 2.
+- **D4, the retargeting** once, on the physics level.
+- **D5**: the coarse field's interior below-sea cells are land, lifted.
+- **D6, the variants**: S, S+ρ (fractal hardness, mean erodibility kept), S+U (a small uplift + a 2×2 retargeting).
+- **D7**: F159's instruments plus band-pass RMS per scale band, drift, peak / mean / p90, carved volume against the
+  bound, depressions followed, cost per process.
+
+**B — built (gated)**:
+- `cascade::physics_level` (+ `PeakCalibration`).
+- `cascade::amplify`: `AmpConfig`, `Budget`, `AmpLevel::{upscale, erode, talus, deposit, recalage_2x2}`, `retarget`,
+  `Chain`.
+- `cascade::hydro`: D8 rivers with the Strahler order, lakes filled to their spill, `draw`.
+- **The viz Cascade window rebuilt**:
+  - « Calculer la physique » at 128² / 256²; S / S+ρ / S+U; faible / moyen / fort; « intensité k × »;
+  - the next level's budget per process; « Niveau suivant », « Tout », « Jusqu'à 2048² », « Recalage final »;
+  - « + érosion / + talus / + dépôt » on top of a level's state;
+  - Ombrage / Hypsométrie / Différence; the layers Rivières (ordre ≥ k) and Lacs;
+  - the hover: altitude, drainage area, Strahler, lake.
+- **Tests**:
+  - the amplification bounded and additive, with the retargeting and a k = 0 negative control;
+  - the hardness's mean;
+  - Strahler and lakes on a synthetic field (a no-depression negative control);
+  - the window's worker.
+- The guard 6 / 6 before and after.
+
+**M — measured** (`f160_bench_output.txt`; the 11 chains to 1 024² identical over two runs):
+- **The physics level**:
+  - P128: U₀ 6.47e-4, 62 steps; P256: 4.42e-4, 125 steps;
+  - peak 2 864 / 2 873 m; mean 447 / 392 m (témoin 618 / 632);
+  - **facets 8.5 / 13.1 % against the témoin's 4.3 / 5.2 %**.
+- **The amplification, S moyen**:
+  - carved 0.02 / 0.04 / 0.07 / 0.13 % of its bound at 256² / 512² / 1 024² / 2 048²; deepest 32–67 m; s ≥ s_max
+    never;
+  - drift −0.94 / −0.68 / −0.43 / −0.25 %; trunks p90 1.12 / 0.71 / 0.71 / 1.00 cells;
+  - the finest band 68 / 35 / 18 / 11 m against the témoin's 175 / 111 / 64 / 35, the second 36 / 12 / 4 / 1.9 against
+    126 / 72 / 35 / 16.5;
+  - **λ constant in km** (15 → 29 → 58 → 74 cells);
+  - the hypsometry identical at every level;
+  - the physics level's depressions keep their area and spill;
+  - lakes 3 392 km² at 2 048² against the témoin's 992.
+- **The budgets ×0.5 / ×2 and the variants barely move anything**: the finest band is identical; S+ρ gives ΔR8 ±1 %.
+  - S+U holds the coarse level (drift 0.00 %), but its facets reach 22.7 % at 512².
+- **Cost**:
+  - 2 048² per iteration: E 22 ms, T 7.6 ms, D 25 ms; 80 s from 512² to 2 048²;
+  - **ESTIMATE 8 192² 18.9 min, the talus 907 s of it** (its 6 000 iterations per fine level).
+
+**R — the stop rule** (written before measuring):
+- **It fires at the first amplification level of every chain**, on the crest facets: 256² from P128 (15.4–16.5 %
+  > 5.23 %), 512² from P256 (16.2–17.0 % > 9.44 %).
+- The other criteria never fire.
+- **The best variant** (the highest level reached, the physics level counting): P256 S moyen.
+  - Run 1's ranking ignored the physics level and fell back to P128, corrected and stated. Its 2 048² runs are kept.
+
+**Diagnostic A1** (NOT blind, after the declared runs; it does not change R): k ×10 / ×100, P128 S moyen.
+- ×10 carves more but still adds little detail (drift −5 %).
+- **×100 reaches the témoin's texture statistics** (λ 16.8 against 16.6 cells, R8 0.028 against 0.040, facets 18.5
+  against 20.0 %) **by lowering the whole land** (peak 907 m before retargeting, drift −35 %), with straight parallel
+  gullies on the crop.
+- **The reading** (hypothesis to check): with n = 2 and our gentle cell slopes, the form does not separate « carve the
+  valleys » from « lower the land ».
+
+**Predictions**:
+- **The reviewer's**:
+  - « the peak never above the physics level's » refuted by +7 / +32 m;
+  - « drift negative and < 10 % » held;
+  - « carved under the bound, decreasing » held;
+  - « S+ρ at least −¼ on R8 / comb » refuted (±1 %);
+  - « facets under the témoin » refuted at the first level;
+  - « trunks < 1.5 » held;
+  - « the talus dominates; > 15 min » held; meta held.
+- **Mine**:
+  - held: P-P1 (steps), P-P2, P-A1 (retargeted ±5 %), P-A2 (sign), P-A5 (walls), P-A6 (finest band), P-C1, meta;
+  - refuted: P-P1 (U₀ ratio), P-A1 (peak), P-A2 (magnitude), P-A3, P-A4, P-A5 (facets), P-A6 (second band), P-A7,
+    P-A8, P-R1.
+
+**Open, for the author** (nothing chosen):
+- (a) the physics level's facets and comb: a resolved hillslope regime there, or a 64²-only physics with a stronger
+  amplification;
+- (b) the erosion form at our scales: n = 1, the code's area units, or a per-level slope normalisation;
+- (c) the D5 lakes: lift them only where the témoin has a basin, or breach them (the multi-scale breach, not built);
+- (d) the talus's iteration count at the fine levels.
+
+**At commit (2026-10-09), the author and the reviewer**:
+- **The author**: « Avec la physique à 256², on a des formes plus ramifiées dans les reliefs. » The author ran the
+  window to 4 096² in 203 s (S, physics 128²) and in 417.8 s (S+U, physics 256²).
+- **The stop rule's reference was badly chosen (the reviewer, recorded as given).**
+  - The témoin is the production world the author rejected at F157.
+  - It grows more faceted with the resolution itself: 5 % at 256², 28 % at 2 048².
+  - So the rule fired on the physics level's facets before the amplification could act.
+  - **It is replaced by a real reference, the relief of Corsica (F161).**
+- **The track left untested**: the block retargeting was only tried with uplift (S+U), never alone.
+- **F161 follows**: Corsica's DEM as the texture reference; an amplification that carves (n = 1, k calibrated per
+  level on Corsica, the area capped) and a smooth retargeting that separates « creuser les vallées » from « abaisser
+  le continent »; the physics level at 256² by default.

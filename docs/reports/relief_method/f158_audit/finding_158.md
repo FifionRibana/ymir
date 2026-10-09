@@ -94,6 +94,16 @@ SIGGRAPH (`2024-MultiScaleHydro-Author.pdf`).
   - **E**: an iterative stream power, **without uplift**, with clamps s_max and a_max on the slope and the area (« more
     uniformly distributed erosion features »), and K(p) = k(1 − ρ(p)) with a hardness map ρ, often a fractal noise
     to break self-similarity and the « axis-aligned artifacts »;
+    - **[PRECISION in F160]**: the clamped form is explicit, h ← h − k·ẽ, with
+      ẽ = min(sⁿ, s_maxⁿ) · min(aᵐ, a_maxᵐ), n = 2, m = 0.8, s_max = 1, a_max = 250, k = 5e-4 (§4.2, Table 4).
+      - The bounds guarantee that N iterations remove less than N·k·s_maxⁿ·a_maxᵐ.
+      - The published code (`github.com/H-Schott/MultiScaleErosion`, MIT) differs:
+        - it clamps s² at 1, then the PRODUCT at 10 000, not the area at 250;
+        - it bounds each cell at its steepest receiver's height;
+        - its hardness buffer is declared but never read;
+        - its talus noise is [0.9, 1.4], not [0.8, 1.4];
+        - it has no re-targeting and no multi-scale breach.
+      - « Re-targeting » above is right as written.
   - **T**: thermal stabilisation to a talus angle, whose critical slope is **perturbed by noise** (a constant one
     « yields uniform slopes »);
   - **D**: a separate sediment creation, transport and deposition step, not mass-conserving by design.

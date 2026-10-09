@@ -18,6 +18,9 @@
 //!
 //! Read-only on its input: [`Cascade::new`] takes the coarse field by value and nothing here touches a tectonic state.
 
+pub mod amplify;
+pub mod hydro;
+
 use crate::erosion::stream_power::{
     RELIEF_V1_A_C_KM2, StreamPowerConfig, incise_with_floor, linear_diffusion, talus_sweep,
 };
@@ -505,6 +508,81 @@ fn run_level(
         secs,
         talus_last_share: talus_last,
     })
+}
+
+/// ADR Finding 160-D1 -- the calibration of a physics level on its PEAK (the author's « type Corse » target).
+#[derive(Clone, Debug)]
+pub struct PeakCalibration {
+    pub u0_trial: f32,
+    pub trial_peak_m: f32,
+    pub target_peak_m: f32,
+    pub u0: f32,
+    pub steps_trial: usize,
+    pub equilibrium_trial: bool,
+    /// Wall seconds of the trial and the calibrated run together.
+    pub secs: f64,
+    /// D5: interior cells ≤ sea lifted to sea + 1 m, and their mean original depth (m).
+    pub lifted: usize,
+    pub lifted_mean_depth_m: f32,
+}
+
+/// ADR Finding 160-D1 -- **the physics level**: F159's level (uplift, the implicit stream power, the talus and the
+/// linear diffusion, to equilibrium) at `n` cells, straight from the 64² field (bicubic), with U₀ calibrated so the
+/// steady state's highest land cell is `peak_target_m` (one trial at the configured U₀, then a linear rescale; n = 1
+/// makes the steady state linear in U). D5: an interior cell ≤ sea not 4-connected to the map border is land, lifted to
+/// sea + 1 m so the solver's scalar sea test routes it as a closed depression. `None` if cancelled.
+#[allow(clippy::too_many_arguments)]
+pub fn physics_level(
+    coarse: &GridF32,
+    n: usize,
+    cfg: &CascadeConfig,
+    peak_target_m: f32,
+    max_steps: usize,
+    progress: &mut dyn FnMut(CascadeProgress),
+    cancel: &dyn Fn() -> bool,
+) -> Option<(LevelRecord, PeakCalibration)> {
+    let t = Instant::now();
+    let n2m = cfg.norm_to_m();
+    let mut z0 = upsample_to(coarse, n);
+    let zm = GridF32 { width: n, height: n, data: z0.data.iter().map(|v| (v - cfg.sea_level) * n2m).collect() };
+    let ocean = amplify::ocean_mask(&zm);
+    let (mut lifted, mut depth) = (0usize, 0f64);
+    for k in 0..n * n {
+        if !ocean[k] && z0.data[k] <= cfg.sea_level {
+            lifted += 1;
+            depth += ((cfg.sea_level - z0.data[k]) * n2m) as f64;
+            z0.data[k] = cfg.sea_level + 1.0 / n2m;
+        }
+    }
+    let u_of = |u0: f32| upsample_to(&uplift_field(coarse, u0, cfg), n).map_nonneg();
+    let trial = run_level(z0.clone(), u_of(cfg.u0_m_yr), cfg, n, max_steps, None, progress, cancel)?;
+    let peak = |r: &LevelRecord| -> f32 {
+        r.z.data.iter().zip(&r.land).filter(|(_, l)| **l).map(|(v, _)| (v - cfg.sea_level) * n2m).fold(f32::MIN, f32::max)
+    };
+    let trial_peak = peak(&trial);
+    let u0 = cfg.u0_m_yr * peak_target_m / trial_peak.max(1.0);
+    let rec = run_level(z0, u_of(u0), cfg, n, max_steps, Some(0), progress, cancel)?;
+    Some((
+        rec,
+        PeakCalibration {
+            u0_trial: cfg.u0_m_yr,
+            trial_peak_m: trial_peak,
+            target_peak_m: peak_target_m,
+            u0,
+            steps_trial: trial.steps,
+            equilibrium_trial: trial.equilibrium,
+            secs: t.elapsed().as_secs_f64(),
+            lifted,
+            lifted_mean_depth_m: if lifted > 0 { (depth / lifted as f64) as f32 } else { 0.0 },
+        },
+    ))
+}
+
+/// [`shade_rgba`] for a field in METRES (sea at 0 m), the amplification's unit.
+pub fn shade_m_rgba(z_m: &GridF32, cell_m: f32, depth_scale_m: f32) -> Vec<u8> {
+    let n2m = 2.0 * 1.13 * depth_scale_m;
+    let g = GridF32 { width: z_m.width, height: z_m.height, data: z_m.data.iter().map(|v| v / n2m + 0.5).collect() };
+    shade_rgba(&g, cell_m, depth_scale_m)
 }
 
 /// The viz's « Ombrage » for a normalised field, as RGBA rows **north up** (the field is stored south-first): the

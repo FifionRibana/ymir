@@ -1,0 +1,952 @@
+==========  Finding 160 . the cascade, round 2: a physics level, then Schott 2024 transposed  ==========
+   the témoin read at [128, 256, 512, 1024, 2048] (2 s)
+
+   physics P128: U₀ trial 1.0e-4 → peak 441 m → U₀ = 6.469e-4 m/yr per km of h_iso · trial 71 steps (eq) · run 62 steps (equilibrium, last ratio 0.0086) · 0.5 s · talus 0.00 % of land at the last step · D5 lifted 331 cells (mean depth 31 m)
+      peak / mean / p90 2864 / 447 / 1175 m (témoin 3099 / 618 / 1399) · relief p50 608 (témoin 876) · walls 28° 0.000 % · facets 8.49 % (témoin 4.32) · R8 0.1606 (témoin 0.1517) · lakes 7 / 1270 km² · the 5 largest (km² / spill m): 381 / 16 · 361 / 18 · 225 / 36 · 195 / 413 · 68 / 27
+      detail per band (RMS m), physics / témoin: 128.8 / 230.2 · 97.1 / 158.0 · 154.2 / 171.6 · 182.6 / 182.2
+
+   physics P256: U₀ trial 1.0e-4 → peak 645 m → U₀ = 4.420e-4 m/yr per km of h_iso · trial 144 steps (eq) · run 125 steps (equilibrium, last ratio 0.0100) · 3.9 s · talus 0.00 % of land at the last step · D5 lifted 748 cells (mean depth 39 m)
+      peak / mean / p90 2873 / 392 / 1026 m (témoin 3318 / 632 / 1436) · relief p50 756 (témoin 1090) · walls 28° 0.000 % · facets 13.11 % (témoin 5.23) · R8 0.0182 (témoin 0.0151) · lakes 14 / 2581 km² · the 5 largest (km² / spill m): 476 / 10 · 474 / 31 · 413 / 10 · 283 / 320 · 195 / 33
+      detail per band (RMS m), physics / témoin: 86.2 / 174.7 · 59.7 / 126.4 · 105.6 / 158.2 · 131.5 / 172.7 · 151.3 / 183.8
+      P128 S faible 256² done (2.2 s: E 1.3 · T 0.1 · D 0.9) · peak 2863 → retargeted 2864 m · drift -0.7 %
+      P128 S faible 512² done (3.9 s: E 2.3 · T 0.5 · D 1.1) · peak 2862 → retargeted 2864 m · drift -0.5 %
+      P128 S faible 1024² done (6.7 s: E 2.8 · T 3.0 · D 0.8) · peak 2871 → retargeted 2872 m · drift -0.3 %
+   chain P128 S faible to 1024² in 15.2 s
+      P128 S moyen 256² done (4.4 s: E 2.6 · T 0.1 · D 1.7) · peak 2861 → retargeted 2864 m · drift -0.9 %
+      P128 S moyen 512² done (7.9 s: E 4.7 · T 1.0 · D 2.2) · peak 2860 → retargeted 2864 m · drift -0.7 %
+      P128 S moyen 1024² done (13.3 s: E 5.5 · T 6.1 · D 1.7) · peak 2869 → retargeted 2872 m · drift -0.4 %
+   chain P128 S moyen to 1024² in 28.0 s
+      P128 S fort 256² done (8.7 s: E 5.0 · T 0.3 · D 3.4) · peak 2857 → retargeted 2864 m · drift -1.4 %
+test f160_cascade has been running for over 60 seconds
+      P128 S fort 512² done (15.8 s: E 9.4 · T 2.1 · D 4.2) · peak 2858 → retargeted 2864 m · drift -1.1 %
+      P128 S fort 1024² done (26.4 s: E 11.0 · T 12.1 · D 3.2) · peak 2865 → retargeted 2872 m · drift -0.8 %
+   chain P128 S fort to 1024² in 53.4 s
+      P128 S+ρ faible 256² done (2.2 s: E 1.2 · T 0.1 · D 0.8) · peak 2862 → retargeted 2864 m · drift -0.7 %
+      P128 S+ρ faible 512² done (4.0 s: E 2.4 · T 0.5 · D 1.1) · peak 2862 → retargeted 2864 m · drift -0.5 %
+      P128 S+ρ faible 1024² done (6.7 s: E 2.8 · T 3.0 · D 0.8) · peak 2870 → retargeted 2872 m · drift -0.3 %
+   chain P128 S+ρ faible to 1024² in 15.3 s
+      P128 S+ρ moyen 256² done (4.4 s: E 2.5 · T 0.1 · D 1.7) · peak 2860 → retargeted 2864 m · drift -0.9 %
+      P128 S+ρ moyen 512² done (8.1 s: E 4.8 · T 1.1 · D 2.2) · peak 2859 → retargeted 2864 m · drift -0.7 %
+      P128 S+ρ moyen 1024² done (13.4 s: E 5.6 · T 6.1 · D 1.6) · peak 2867 → retargeted 2872 m · drift -0.4 %
+   chain P128 S+ρ moyen to 1024² in 28.4 s
+      P128 S+ρ fort 256² done (8.7 s: E 5.0 · T 0.3 · D 3.4) · peak 2855 → retargeted 2864 m · drift -1.4 %
+      P128 S+ρ fort 512² done (15.9 s: E 9.5 · T 2.1 · D 4.2) · peak 2855 → retargeted 2864 m · drift -1.1 %
+      P128 S+ρ fort 1024² done (26.6 s: E 11.2 · T 12.2 · D 3.2) · peak 2862 → retargeted 2872 m · drift -0.8 %
+   chain P128 S+ρ fort to 1024² in 53.8 s
+      P128 S+U faible 256² done (2.4 s: E 1.5 · T 0.1 · D 0.8) · peak 2964 → retargeted 2864 m · drift -0.0 %
+      P128 S+U faible 512² done (4.5 s: E 2.9 · T 0.6 · D 1.1) · peak 3002 → retargeted 2864 m · drift -0.1 %
+      P128 S+U faible 1024² done (7.1 s: E 3.1 · T 3.1 · D 0.8) · peak 3024 → retargeted 2872 m · drift -0.0 %
+   chain P128 S+U faible to 1024² in 16.5 s
+      P128 S+U moyen 256² done (4.6 s: E 2.8 · T 0.2 · D 1.7) · peak 2966 → retargeted 2864 m · drift -0.0 %
+      P128 S+U moyen 512² done (8.8 s: E 5.6 · T 1.1 · D 2.1) · peak 3004 → retargeted 2864 m · drift -0.1 %
+      P128 S+U moyen 1024² done (14.0 s: E 6.2 · T 6.1 · D 1.7) · peak 3026 → retargeted 2872 m · drift -0.0 %
+   chain P128 S+U moyen to 1024² in 29.9 s
+      P128 S+U fort 256² done (9.3 s: E 5.6 · T 0.3 · D 3.4) · peak 2969 → retargeted 2864 m · drift -0.0 %
+      P128 S+U fort 512² done (17.7 s: E 11.1 · T 2.3 · D 4.3) · peak 3007 → retargeted 2864 m · drift -0.1 %
+      P128 S+U fort 1024² done (27.6 s: E 12.1 · T 12.1 · D 3.2) · peak 3030 → retargeted 2872 m · drift -0.0 %
+   chain P128 S+U fort to 1024² in 57.0 s
+      P256 S moyen 512² done (8.1 s: E 4.8 · T 1.1 · D 2.2) · peak 2876 → retargeted 2877 m · drift -0.5 %
+      P256 S moyen 1024² done (13.3 s: E 5.6 · T 6.1 · D 1.6) · peak 2905 → retargeted 2907 m · drift -0.3 %
+   chain P256 S moyen to 1024² in 23.6 s
+      P256 S+ρ moyen 512² done (8.1 s: E 4.8 · T 1.0 · D 2.3) · peak 2875 → retargeted 2877 m · drift -0.5 %
+      P256 S+ρ moyen 1024² done (13.2 s: E 5.5 · T 6.1 · D 1.6) · peak 2904 → retargeted 2907 m · drift -0.3 %
+   chain P256 S+ρ moyen to 1024² in 23.6 s
+
+   ═══ chain P128 S faible ═══
+   ── 256² · E 1500 · T 300 · D 1000 iterations · 2.2 s [upscale 0.01 · E 1.3 (0.85 ms/it) · T 0.1 (0.24 ms/it) · D 0.9 (0.85 ms/it)] · retained 3 MB
+      k 3.815e-2 · s_ref (p90) 0.1452 · d_L 200 m · carved 33.56 km³ of a bound 138287 km³ (0.02 %) · deepest 19.9 m of a per-cell bound 4742 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 5 cells (mean depth 1 m)
+      peak / mean / p90 land (m)           cascade  2863 / 450 / 1173 · témoin  3318 / 632 / 1436
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -3.1 m (-0.69 % of its mean land) · mean |Δ| 18.5 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 1.12 / max 6.96
+      trunks → témoin's at the same level (cells): p50 1.41 / p90 9.49 / max 24.52
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin         0.248 / 29
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.197
+      crest cells (% land)                 cascade              28.80 · témoin              41.65
+      crest −∇²z p50 / p90 (m/km²)         cascade        22.6 / 89.8 · témoin       73.4 / 343.6
+      crest facets (% / crests)            cascade        15.44 / 531 · témoin         5.23 / 255
+      facet control: pyramids 87.3 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              38.71 · témoin               8.39
+      terrain R8 (windows)                 cascade       0.1545 (155) · témoin       0.0151 (143)
+      valley spacing λ (cells)             cascade              15.10 · témoin               7.51
+      relief p50, 12.5 km blocks (m)       cascade                681 · témoin               1090
+      lakes (count / km²)                  cascade          28 / 3772 · témoin          85 / 2312
+      detail per band (RMS m), cascade / témoin: [1.56–3.12 km] 67.7 / 174.7 · [3.12–6.25 km] 36.1 / 126.4 · [6.25–12.50 km] 90.6 / 158.2 · [12.50–25.00 km] 150.5 / 172.7 · [25.00–50.00 km] 181.4 / 183.8
+      the physics level's 5 largest depressions here (area km² / spill m): 400 / 16 · 586 / 32 · 320 / 40 · 200 / 416 · 93 / 28
+   ── 512² · E 750 · T 500 · D 350 iterations · 3.9 s [upscale 0.02 · E 2.3 (3.08 ms/it) · T 0.5 (1.06 ms/it) · D 1.1 (3.08 ms/it)] · retained 14 MB
+      k 3.634e-2 · s_ref (p90) 0.1488 · d_L 100 m · carved 28.54 km³ of a bound 65733 km³ (0.04 %) · deepest 34.2 m of a per-cell bound 2258 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 146 cells (mean depth 2 m)
+      peak / mean / p90 land (m)           cascade  2862 / 451 / 1170 · témoin  3420 / 640 / 1457
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -2.1 m (-0.47 % of its mean land) · mean |Δ| 5.0 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 3.20
+      trunks → témoin's at the same level (cells): p50 2.83 / p90 18.87 / max 40.61
+      walls 28° ± 0.5° (% / cells)         cascade          0.010 / 5 · témoin        0.770 / 356
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.283
+      crest cells (% land)                 cascade              17.77 · témoin              32.89
+      crest −∇²z p50 / p90 (m/km²)         cascade       28.5 / 117.1 · témoin      121.8 / 697.0
+      crest facets (% / crests)            cascade        11.43 / 968 · témoin        9.44 / 1436
+      facet control: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              74.96 · témoin              25.12
+      terrain R8 (windows)                 cascade       0.1245 (703) · témoin       0.0752 (641)
+      valley spacing λ (cells)             cascade              29.38 · témoin              10.74
+      relief p50, 12.5 km blocks (m)       cascade                697 · témoin               1203
+      lakes (count / km²)                  cascade          39 / 3835 · témoin         231 / 1840
+      detail per band (RMS m), cascade / témoin: [0.78–1.56 km] 34.9 / 110.7 · [1.56–3.12 km] 12.2 / 72.2 · [3.12–6.25 km] 35.1 / 126.6 · [6.25–12.50 km] 89.6 / 158.7 · [12.50–25.00 km] 149.7 / 173.2 · [25.00–50.00 km] 180.9 / 184.6
+      the physics level's 5 largest depressions here (area km² / spill m): 481 / 18 · 581 / 32 · 324 / 41 · 199 / 416 · 82 / 28
+   ── 1024² · E 350 · T 1000 · D 100 iterations · 6.7 s [upscale 0.06 · E 2.8 (7.94 ms/it) · T 3.0 (3.01 ms/it) · D 0.8 (8.08 ms/it)] · retained 56 MB
+      k 3.782e-2 · s_ref (p90) 0.1510 · d_L 50 m · carved 24.26 km³ of a bound 31932 km³ (0.08 %) · deepest 40.1 m of a per-cell bound 1097 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 302 cells (mean depth 2 m)
+      peak / mean / p90 land (m)           cascade  2871 / 450 / 1169 · témoin  3492 / 644 / 1463
+      peak after retargeting (evaluation): 2872 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -1.1 m (-0.25 % of its mean land) · mean |Δ| 1.6 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 6.02
+      trunks → témoin's at the same level (cells): p50 6.00 / p90 39.40 / max 81.39
+      walls 28° ± 0.5° (% / cells)         cascade         0.010 / 19 · témoin       2.512 / 4618
+      band 33° ± 0.5° (%)                  cascade              0.007 · témoin              0.433
+      crest cells (% land)                 cascade              10.22 · témoin              23.03
+      crest −∇²z p50 / p90 (m/km²)         cascade       33.1 / 134.8 · témoin     214.0 / 1432.0
+      crest facets (% / crests)            cascade         3.89 / 759 · témoin       19.95 / 8446
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              90.16 · témoin              51.51
+      terrain R8 (windows)                 cascade      0.1016 (2877) · témoin      0.0402 (2656)
+      valley spacing λ (cells)             cascade              58.27 · témoin              16.55
+      relief p50, 12.5 km blocks (m)       cascade                721 · témoin               1268
+      lakes (count / km²)                  cascade          44 / 3839 · témoin         365 / 1548
+      detail per band (RMS m), cascade / témoin: [0.39–0.78 km] 17.8 / 64.1 · [0.78–1.56 km] 4.0 / 34.8 · [1.56–3.12 km] 11.9 / 72.2 · [3.12–6.25 km] 35.0 / 126.7 · [6.25–12.50 km] 89.5 / 159.0 · [12.50–25.00 km] 149.5 / 173.4 · [25.00–50.00 km] 180.5 / 185.1
+      the physics level's 5 largest depressions here (area km² / spill m): 483 / 18 · 583 / 32 · 327 / 41 · 201 / 417 · 82 / 28
+   final retargeting (9816 constraint cells): peak 2872 · mean 450 · p90 1170 m · walls 28° 0.010 % · facets 3.79 % · R8 0.1011
+   R — P128 S faible FIRES at 256²: facets 15.44 > 5.23 (531 crests)
+
+   ═══ chain P128 S moyen ═══
+   ── 256² · E 3000 · T 600 · D 2000 iterations · 4.4 s [upscale 0.01 · E 2.6 (0.85 ms/it) · T 0.1 (0.24 ms/it) · D 1.7 (0.84 ms/it)] · retained 3 MB
+      k 3.815e-2 · s_ref (p90) 0.1452 · d_L 200 m · carved 66.95 km³ of a bound 276574 km³ (0.02 %) · deepest 39.6 m of a per-cell bound 9485 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 5 cells (mean depth 1 m)
+      peak / mean / p90 land (m)           cascade  2861 / 449 / 1170 · témoin  3318 / 632 / 1436
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -4.2 m (-0.94 % of its mean land) · mean |Δ| 18.4 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 1.12 / max 6.96
+      trunks → témoin's at the same level (cells): p50 1.41 / p90 9.49 / max 24.52
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin         0.248 / 29
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.197
+      crest cells (% land)                 cascade              28.63 · témoin              41.65
+      crest −∇²z p50 / p90 (m/km²)         cascade        23.0 / 90.9 · témoin       73.4 / 343.6
+      crest facets (% / crests)            cascade        16.26 / 556 · témoin         5.23 / 255
+      facet control: pyramids 87.3 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              38.71 · témoin               8.39
+      terrain R8 (windows)                 cascade       0.1536 (155) · témoin       0.0151 (143)
+      valley spacing λ (cells)             cascade              15.12 · témoin               7.51
+      relief p50, 12.5 km blocks (m)       cascade                680 · témoin               1090
+      lakes (count / km²)                  cascade          28 / 3755 · témoin          85 / 2312
+      detail per band (RMS m), cascade / témoin: [1.56–3.12 km] 67.7 / 174.7 · [3.12–6.25 km] 36.2 / 126.4 · [6.25–12.50 km] 90.6 / 158.2 · [12.50–25.00 km] 150.3 / 172.7 · [25.00–50.00 km] 180.9 / 183.8
+      the physics level's 5 largest depressions here (area km² / spill m): 400 / 16 · 586 / 32 · 320 / 40 · 200 / 416 · 78 / 28
+   ── 512² · E 1500 · T 1000 · D 700 iterations · 7.9 s [upscale 0.02 · E 4.7 (3.14 ms/it) · T 1.0 (1.05 ms/it) · D 2.2 (3.07 ms/it)] · retained 14 MB
+      k 3.626e-2 · s_ref (p90) 0.1490 · d_L 100 m · carved 56.46 km³ of a bound 131163 km³ (0.04 %) · deepest 61.9 m of a per-cell bound 4506 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 146 cells (mean depth 2 m)
+      peak / mean / p90 land (m)           cascade  2860 / 448 / 1165 · témoin  3420 / 640 / 1457
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -3.1 m (-0.68 % of its mean land) · mean |Δ| 5.4 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 3.20
+      trunks → témoin's at the same level (cells): p50 2.83 / p90 18.44 / max 40.61
+      walls 28° ± 0.5° (% / cells)         cascade          0.017 / 8 · témoin        0.770 / 356
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.283
+      crest cells (% land)                 cascade              17.73 · témoin              32.89
+      crest −∇²z p50 / p90 (m/km²)         cascade       29.1 / 118.7 · témoin      121.8 / 697.0
+      crest facets (% / crests)            cascade       11.88 / 1005 · témoin        9.44 / 1436
+      facet control: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              74.96 · témoin              25.12
+      terrain R8 (windows)                 cascade       0.1241 (703) · témoin       0.0752 (641)
+      valley spacing λ (cells)             cascade              29.48 · témoin              10.74
+      relief p50, 12.5 km blocks (m)       cascade                694 · témoin               1203
+      lakes (count / km²)                  cascade          38 / 3814 · témoin         231 / 1840
+      detail per band (RMS m), cascade / témoin: [0.78–1.56 km] 34.9 / 110.7 · [1.56–3.12 km] 12.2 / 72.2 · [3.12–6.25 km] 35.3 / 126.6 · [6.25–12.50 km] 89.8 / 158.7 · [12.50–25.00 km] 149.3 / 173.2 · [25.00–50.00 km] 180.0 / 184.6
+      the physics level's 5 largest depressions here (area km² / spill m): 479 / 18 · 580 / 32 · 321 / 41 · 201 / 416 · 71 / 28
+   ── 1024² · E 700 · T 2000 · D 200 iterations · 13.3 s [upscale 0.06 · E 5.5 (7.89 ms/it) · T 6.1 (3.03 ms/it) · D 1.7 (8.36 ms/it)] · retained 56 MB
+      k 3.771e-2 · s_ref (p90) 0.1512 · d_L 50 m · carved 47.72 km³ of a bound 63660 km³ (0.07 %) · deepest 67.2 m of a per-cell bound 2187 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 297 cells (mean depth 2 m)
+      peak / mean / p90 land (m)           cascade  2869 / 447 / 1162 · témoin  3492 / 644 / 1463
+      peak after retargeting (evaluation): 2872 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -1.9 m (-0.43 % of its mean land) · mean |Δ| 2.2 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 6.02
+      trunks → témoin's at the same level (cells): p50 5.83 / p90 38.91 / max 81.39
+      walls 28° ± 0.5° (% / cells)         cascade          0.004 / 8 · témoin       2.512 / 4618
+      band 33° ± 0.5° (%)                  cascade              0.008 · témoin              0.433
+      crest cells (% land)                 cascade              10.22 · témoin              23.03
+      crest −∇²z p50 / p90 (m/km²)         cascade       33.4 / 136.5 · témoin     214.0 / 1432.0
+      crest facets (% / crests)            cascade         3.88 / 757 · témoin       19.95 / 8446
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              90.09 · témoin              51.51
+      terrain R8 (windows)                 cascade      0.1008 (2876) · témoin      0.0402 (2656)
+      valley spacing λ (cells)             cascade              58.40 · témoin              16.55
+      relief p50, 12.5 km blocks (m)       cascade                720 · témoin               1268
+      lakes (count / km²)                  cascade          41 / 3817 · témoin         365 / 1548
+      detail per band (RMS m), cascade / témoin: [0.39–0.78 km] 17.8 / 64.1 · [0.78–1.56 km] 4.0 / 34.8 · [1.56–3.12 km] 12.1 / 72.2 · [3.12–6.25 km] 35.4 / 126.7 · [6.25–12.50 km] 89.8 / 159.0 · [12.50–25.00 km] 148.9 / 173.4 · [25.00–50.00 km] 179.2 / 185.1
+      the physics level's 5 largest depressions here (area km² / spill m): 481 / 18 · 582 / 32 · 325 / 41 · 203 / 417 · 70 / 28
+   final retargeting (9832 constraint cells): peak 2872 · mean 448 · p90 1164 m · walls 28° 0.004 % · facets 3.75 % · R8 0.1007
+   R — P128 S moyen FIRES at 256²: facets 16.26 > 5.23 (556 crests)
+
+   ═══ chain P128 S fort ═══
+   ── 256² · E 6000 · T 1200 · D 4000 iterations · 8.7 s [upscale 0.01 · E 5.0 (0.84 ms/it) · T 0.3 (0.24 ms/it) · D 3.4 (0.85 ms/it)] · retained 3 MB
+      k 3.815e-2 · s_ref (p90) 0.1452 · d_L 200 m · carved 133.20 km³ of a bound 553148 km³ (0.02 %) · deepest 78.9 m of a per-cell bound 18969 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 5 cells (mean depth 1 m)
+      peak / mean / p90 land (m)           cascade  2857 / 447 / 1165 · témoin  3318 / 632 / 1436
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -6.3 m (-1.41 % of its mean land) · mean |Δ| 18.5 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 1.12 / max 6.96
+      trunks → témoin's at the same level (cells): p50 1.41 / p90 9.22 / max 24.52
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin         0.248 / 29
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.197
+      crest cells (% land)                 cascade              28.50 · témoin              41.65
+      crest −∇²z p50 / p90 (m/km²)         cascade        23.3 / 91.8 · témoin       73.4 / 343.6
+      crest facets (% / crests)            cascade        16.51 / 562 · témoin         5.23 / 255
+      facet control: pyramids 87.3 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              38.71 · témoin               8.39
+      terrain R8 (windows)                 cascade       0.1654 (155) · témoin       0.0151 (143)
+      valley spacing λ (cells)             cascade              15.16 · témoin               7.51
+      relief p50, 12.5 km blocks (m)       cascade                676 · témoin               1090
+      lakes (count / km²)                  cascade          28 / 3738 · témoin          85 / 2312
+      detail per band (RMS m), cascade / témoin: [1.56–3.12 km] 67.7 / 174.7 · [3.12–6.25 km] 36.4 / 126.4 · [6.25–12.50 km] 90.8 / 158.2 · [12.50–25.00 km] 149.7 / 172.7 · [25.00–50.00 km] 179.9 / 183.8
+      the physics level's 5 largest depressions here (area km² / spill m): 400 / 16 · 583 / 32 · 317 / 40 · 203 / 416 · 71 / 28
+   ── 512² · E 3000 · T 2000 · D 1400 iterations · 15.8 s [upscale 0.01 · E 9.4 (3.14 ms/it) · T 2.1 (1.04 ms/it) · D 4.2 (3.03 ms/it)] · retained 14 MB
+      k 3.614e-2 · s_ref (p90) 0.1492 · d_L 100 m · carved 110.84 km³ of a bound 261508 km³ (0.04 %) · deepest 106.2 m of a per-cell bound 8985 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 146 cells (mean depth 2 m)
+      peak / mean / p90 land (m)           cascade  2858 / 444 / 1156 · témoin  3420 / 640 / 1457
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -4.9 m (-1.09 % of its mean land) · mean |Δ| 6.6 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 3.54
+      trunks → témoin's at the same level (cells): p50 2.83 / p90 18.11 / max 40.61
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin        0.770 / 356
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.283
+      crest cells (% land)                 cascade              17.73 · témoin              32.89
+      crest −∇²z p50 / p90 (m/km²)         cascade       29.2 / 122.1 · témoin      121.8 / 697.0
+      crest facets (% / crests)            cascade       12.45 / 1053 · témoin        9.44 / 1436
+      facet control: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              75.25 · témoin              25.12
+      terrain R8 (windows)                 cascade       0.1226 (703) · témoin       0.0752 (641)
+      valley spacing λ (cells)             cascade              29.58 · témoin              10.74
+      relief p50, 12.5 km blocks (m)       cascade                689 · témoin               1203
+      lakes (count / km²)                  cascade          36 / 3783 · témoin         231 / 1840
+      detail per band (RMS m), cascade / témoin: [0.78–1.56 km] 35.0 / 110.7 · [1.56–3.12 km] 12.3 / 72.2 · [3.12–6.25 km] 35.8 / 126.6 · [6.25–12.50 km] 90.2 / 158.7 · [12.50–25.00 km] 148.4 / 173.2 · [25.00–50.00 km] 178.1 / 184.6
+      the physics level's 5 largest depressions here (area km² / spill m): 475 / 18 · 579 / 32 · 318 / 41 · 203 / 416 · 59 / 28
+   ── 1024² · E 1400 · T 4000 · D 400 iterations · 26.4 s [upscale 0.06 · E 11.0 (7.87 ms/it) · T 12.1 (3.03 ms/it) · D 3.2 (8.12 ms/it)] · retained 56 MB
+      k 3.750e-2 · s_ref (p90) 0.1516 · d_L 50 m · carved 92.74 km³ of a bound 126604 km³ (0.07 %) · deepest 98.8 m of a per-cell bound 4350 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 294 cells (mean depth 2 m)
+      peak / mean / p90 land (m)           cascade  2865 / 441 / 1151 · témoin  3492 / 644 / 1463
+      peak after retargeting (evaluation): 2872 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -3.4 m (-0.77 % of its mean land) · mean |Δ| 3.7 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 6.02
+      trunks → témoin's at the same level (cells): p50 6.00 / p90 37.80 / max 81.39
+      walls 28° ± 0.5° (% / cells)         cascade         0.007 / 13 · témoin       2.512 / 4618
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.433
+      crest cells (% land)                 cascade              10.25 · témoin              23.03
+      crest −∇²z p50 / p90 (m/km²)         cascade       34.0 / 141.3 · témoin     214.0 / 1432.0
+      crest facets (% / crests)            cascade         3.94 / 769 · témoin       19.95 / 8446
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              89.88 · témoin              51.51
+      terrain R8 (windows)                 cascade      0.0972 (2876) · témoin      0.0402 (2656)
+      valley spacing λ (cells)             cascade              58.30 · témoin              16.55
+      relief p50, 12.5 km blocks (m)       cascade                718 · témoin               1268
+      lakes (count / km²)                  cascade          38 / 3786 · témoin         365 / 1548
+      detail per band (RMS m), cascade / témoin: [0.39–0.78 km] 17.8 / 64.1 · [0.78–1.56 km] 3.9 / 34.8 · [1.56–3.12 km] 12.3 / 72.2 · [3.12–6.25 km] 36.2 / 126.7 · [6.25–12.50 km] 90.4 / 159.0 · [12.50–25.00 km] 147.8 / 173.4 · [25.00–50.00 km] 176.8 / 185.1
+      the physics level's 5 largest depressions here (area km² / spill m): 476 / 18 · 582 / 32 · 321 / 41 · 206 / 417 · 56 / 28
+   final retargeting (9887 constraint cells): peak 2872 · mean 443 · p90 1153 m · walls 28° 0.005 % · facets 3.70 % · R8 0.0970
+   R — P128 S fort FIRES at 256²: facets 16.51 > 5.23 (562 crests)
+
+   ═══ chain P128 S+ρ faible ═══
+   ── 256² · E 1500 · T 300 · D 1000 iterations · 2.2 s [upscale 0.01 · E 1.2 (0.83 ms/it) · T 0.1 (0.24 ms/it) · D 0.8 (0.84 ms/it)] · retained 3 MB
+      k 3.815e-2 · s_ref (p90) 0.1452 · d_L 200 m · carved 33.40 km³ of a bound 138287 km³ (0.02 %) · deepest 26.4 m of a per-cell bound 4742 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 5 cells (mean depth 1 m)
+      peak / mean / p90 land (m)           cascade  2862 / 451 / 1173 · témoin  3318 / 632 / 1436
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -3.1 m (-0.69 % of its mean land) · mean |Δ| 18.5 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 1.12 / max 6.96
+      trunks → témoin's at the same level (cells): p50 1.41 / p90 9.49 / max 24.52
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin         0.248 / 29
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.197
+      crest cells (% land)                 cascade              28.71 · témoin              41.65
+      crest −∇²z p50 / p90 (m/km²)         cascade        22.7 / 90.3 · témoin       73.4 / 343.6
+      crest facets (% / crests)            cascade        15.40 / 528 · témoin         5.23 / 255
+      facet control: pyramids 87.3 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              38.71 · témoin               8.39
+      terrain R8 (windows)                 cascade       0.1533 (155) · témoin       0.0151 (143)
+      valley spacing λ (cells)             cascade              15.11 · témoin               7.51
+      relief p50, 12.5 km blocks (m)       cascade                681 · témoin               1090
+      lakes (count / km²)                  cascade          28 / 3774 · témoin          85 / 2312
+      detail per band (RMS m), cascade / témoin: [1.56–3.12 km] 67.7 / 174.7 · [3.12–6.25 km] 36.1 / 126.4 · [6.25–12.50 km] 90.6 / 158.2 · [12.50–25.00 km] 150.5 / 172.7 · [25.00–50.00 km] 181.4 / 183.8
+      the physics level's 5 largest depressions here (area km² / spill m): 400 / 16 · 586 / 32 · 320 / 40 · 200 / 416 · 93 / 28
+   ── 512² · E 750 · T 500 · D 350 iterations · 4.0 s [upscale 0.02 · E 2.4 (3.21 ms/it) · T 0.5 (1.06 ms/it) · D 1.1 (3.07 ms/it)] · retained 14 MB
+      k 3.632e-2 · s_ref (p90) 0.1488 · d_L 100 m · carved 28.61 km³ of a bound 65697 km³ (0.04 %) · deepest 34.6 m of a per-cell bound 2257 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 146 cells (mean depth 2 m)
+      peak / mean / p90 land (m)           cascade  2862 / 451 / 1170 · témoin  3420 / 640 / 1457
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -2.1 m (-0.48 % of its mean land) · mean |Δ| 5.1 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 3.20
+      trunks → témoin's at the same level (cells): p50 2.83 / p90 18.87 / max 40.61
+      walls 28° ± 0.5° (% / cells)         cascade          0.013 / 6 · témoin        0.770 / 356
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.283
+      crest cells (% land)                 cascade              17.78 · témoin              32.89
+      crest −∇²z p50 / p90 (m/km²)         cascade       28.5 / 117.1 · témoin      121.8 / 697.0
+      crest facets (% / crests)            cascade        11.40 / 967 · témoin        9.44 / 1436
+      facet control: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              74.96 · témoin              25.12
+      terrain R8 (windows)                 cascade       0.1244 (703) · témoin       0.0752 (641)
+      valley spacing λ (cells)             cascade              29.40 · témoin              10.74
+      relief p50, 12.5 km blocks (m)       cascade                696 · témoin               1203
+      lakes (count / km²)                  cascade          39 / 3835 · témoin         231 / 1840
+      detail per band (RMS m), cascade / témoin: [0.78–1.56 km] 34.9 / 110.7 · [1.56–3.12 km] 12.2 / 72.2 · [3.12–6.25 km] 35.1 / 126.6 · [6.25–12.50 km] 89.6 / 158.7 · [12.50–25.00 km] 149.7 / 173.2 · [25.00–50.00 km] 180.9 / 184.6
+      the physics level's 5 largest depressions here (area km² / spill m): 481 / 18 · 581 / 32 · 324 / 41 · 199 / 416 · 82 / 28
+   ── 1024² · E 350 · T 1000 · D 100 iterations · 6.7 s [upscale 0.06 · E 2.8 (7.90 ms/it) · T 3.0 (3.03 ms/it) · D 0.8 (7.97 ms/it)] · retained 56 MB
+      k 3.789e-2 · s_ref (p90) 0.1508 · d_L 50 m · carved 24.32 km³ of a bound 31987 km³ (0.08 %) · deepest 37.2 m of a per-cell bound 1099 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 302 cells (mean depth 2 m)
+      peak / mean / p90 land (m)           cascade  2870 / 450 / 1169 · témoin  3492 / 644 / 1463
+      peak after retargeting (evaluation): 2872 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -1.1 m (-0.25 % of its mean land) · mean |Δ| 1.6 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 6.02
+      trunks → témoin's at the same level (cells): p50 6.00 / p90 40.00 / max 81.39
+      walls 28° ± 0.5° (% / cells)         cascade         0.009 / 17 · témoin       2.512 / 4618
+      band 33° ± 0.5° (%)                  cascade              0.007 · témoin              0.433
+      crest cells (% land)                 cascade              10.23 · témoin              23.03
+      crest −∇²z p50 / p90 (m/km²)         cascade       32.9 / 134.5 · témoin     214.0 / 1432.0
+      crest facets (% / crests)            cascade         3.77 / 736 · témoin       19.95 / 8446
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              90.16 · témoin              51.51
+      terrain R8 (windows)                 cascade      0.1014 (2877) · témoin      0.0402 (2656)
+      valley spacing λ (cells)             cascade              58.27 · témoin              16.55
+      relief p50, 12.5 km blocks (m)       cascade                721 · témoin               1268
+      lakes (count / km²)                  cascade          44 / 3840 · témoin         365 / 1548
+      detail per band (RMS m), cascade / témoin: [0.39–0.78 km] 17.8 / 64.1 · [0.78–1.56 km] 4.0 / 34.8 · [1.56–3.12 km] 12.0 / 72.2 · [3.12–6.25 km] 35.0 / 126.7 · [6.25–12.50 km] 89.5 / 159.0 · [12.50–25.00 km] 149.5 / 173.4 · [25.00–50.00 km] 180.4 / 185.1
+      the physics level's 5 largest depressions here (area km² / spill m): 484 / 18 · 583 / 32 · 327 / 41 · 201 / 417 · 82 / 28
+   final retargeting (9834 constraint cells): peak 2872 · mean 450 · p90 1169 m · walls 28° 0.008 % · facets 3.76 % · R8 0.1012
+   R — P128 S+ρ faible FIRES at 256²: facets 15.40 > 5.23 (528 crests)
+
+   ═══ chain P128 S+ρ moyen ═══
+   ── 256² · E 3000 · T 600 · D 2000 iterations · 4.4 s [upscale 0.01 · E 2.5 (0.84 ms/it) · T 0.1 (0.24 ms/it) · D 1.7 (0.86 ms/it)] · retained 3 MB
+      k 3.815e-2 · s_ref (p90) 0.1452 · d_L 200 m · carved 66.59 km³ of a bound 276574 km³ (0.02 %) · deepest 52.6 m of a per-cell bound 9485 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 5 cells (mean depth 1 m)
+      peak / mean / p90 land (m)           cascade  2860 / 449 / 1171 · témoin  3318 / 632 / 1436
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -4.2 m (-0.94 % of its mean land) · mean |Δ| 18.4 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 1.12 / max 6.96
+      trunks → témoin's at the same level (cells): p50 1.41 / p90 9.49 / max 24.52
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin         0.248 / 29
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.197
+      crest cells (% land)                 cascade              28.63 · témoin              41.65
+      crest −∇²z p50 / p90 (m/km²)         cascade        22.9 / 91.2 · témoin       73.4 / 343.6
+      crest facets (% / crests)            cascade        15.91 / 544 · témoin         5.23 / 255
+      facet control: pyramids 87.3 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              38.71 · témoin               8.39
+      terrain R8 (windows)                 cascade       0.1519 (155) · témoin       0.0151 (143)
+      valley spacing λ (cells)             cascade              15.10 · témoin               7.51
+      relief p50, 12.5 km blocks (m)       cascade                680 · témoin               1090
+      lakes (count / km²)                  cascade          28 / 3762 · témoin          85 / 2312
+      detail per band (RMS m), cascade / témoin: [1.56–3.12 km] 67.7 / 174.7 · [3.12–6.25 km] 36.2 / 126.4 · [6.25–12.50 km] 90.7 / 158.2 · [12.50–25.00 km] 150.3 / 172.7 · [25.00–50.00 km] 180.9 / 183.8
+      the physics level's 5 largest depressions here (area km² / spill m): 400 / 16 · 586 / 32 · 320 / 40 · 200 / 416 · 85 / 28
+   ── 512² · E 1500 · T 1000 · D 700 iterations · 8.1 s [upscale 0.02 · E 4.8 (3.21 ms/it) · T 1.1 (1.09 ms/it) · D 2.2 (3.09 ms/it)] · retained 14 MB
+      k 3.626e-2 · s_ref (p90) 0.1490 · d_L 100 m · carved 56.58 km³ of a bound 131173 km³ (0.04 %) · deepest 61.1 m of a per-cell bound 4507 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 146 cells (mean depth 2 m)
+      peak / mean / p90 land (m)           cascade  2859 / 448 / 1165 · témoin  3420 / 640 / 1457
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -3.1 m (-0.68 % of its mean land) · mean |Δ| 5.4 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 3.20
+      trunks → témoin's at the same level (cells): p50 2.83 / p90 18.44 / max 40.61
+      walls 28° ± 0.5° (% / cells)         cascade          0.015 / 7 · témoin        0.770 / 356
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.283
+      crest cells (% land)                 cascade              17.76 · témoin              32.89
+      crest −∇²z p50 / p90 (m/km²)         cascade       29.0 / 119.0 · témoin      121.8 / 697.0
+      crest facets (% / crests)            cascade       11.80 / 1000 · témoin        9.44 / 1436
+      facet control: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              75.11 · témoin              25.12
+      terrain R8 (windows)                 cascade       0.1255 (703) · témoin       0.0752 (641)
+      valley spacing λ (cells)             cascade              29.46 · témoin              10.74
+      relief p50, 12.5 km blocks (m)       cascade                694 · témoin               1203
+      lakes (count / km²)                  cascade          39 / 3817 · témoin         231 / 1840
+      detail per band (RMS m), cascade / témoin: [0.78–1.56 km] 35.0 / 110.7 · [1.56–3.12 km] 12.2 / 72.2 · [3.12–6.25 km] 35.4 / 126.6 · [6.25–12.50 km] 89.9 / 158.7 · [12.50–25.00 km] 149.3 / 173.2 · [25.00–50.00 km] 179.9 / 184.6
+      the physics level's 5 largest depressions here (area km² / spill m): 479 / 18 · 580 / 32 · 322 / 41 · 200 / 416 · 73 / 28
+   ── 1024² · E 700 · T 2000 · D 200 iterations · 13.4 s [upscale 0.07 · E 5.6 (8.06 ms/it) · T 6.1 (3.03 ms/it) · D 1.6 (8.18 ms/it)] · retained 56 MB
+      k 3.773e-2 · s_ref (p90) 0.1512 · d_L 50 m · carved 47.72 km³ of a bound 63701 km³ (0.07 %) · deepest 64.0 m of a per-cell bound 2188 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 297 cells (mean depth 2 m)
+      peak / mean / p90 land (m)           cascade  2867 / 447 / 1162 · témoin  3492 / 644 / 1463
+      peak after retargeting (evaluation): 2872 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -1.9 m (-0.43 % of its mean land) · mean |Δ| 2.2 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 6.02
+      trunks → témoin's at the same level (cells): p50 6.00 / p90 38.95 / max 81.39
+      walls 28° ± 0.5° (% / cells)         cascade         0.006 / 11 · témoin       2.512 / 4618
+      band 33° ± 0.5° (%)                  cascade              0.012 · témoin              0.433
+      crest cells (% land)                 cascade              10.23 · témoin              23.03
+      crest −∇²z p50 / p90 (m/km²)         cascade       33.3 / 136.5 · témoin     214.0 / 1432.0
+      crest facets (% / crests)            cascade         3.82 / 746 · témoin       19.95 / 8446
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              90.06 · témoin              51.51
+      terrain R8 (windows)                 cascade      0.1018 (2876) · témoin      0.0402 (2656)
+      valley spacing λ (cells)             cascade              58.37 · témoin              16.55
+      relief p50, 12.5 km blocks (m)       cascade                720 · témoin               1268
+      lakes (count / km²)                  cascade          41 / 3818 · témoin         365 / 1548
+      detail per band (RMS m), cascade / témoin: [0.39–0.78 km] 17.8 / 64.1 · [0.78–1.56 km] 4.0 / 34.8 · [1.56–3.12 km] 12.1 / 72.2 · [3.12–6.25 km] 35.5 / 126.7 · [6.25–12.50 km] 89.9 / 159.0 · [12.50–25.00 km] 148.9 / 173.4 · [25.00–50.00 km] 179.1 / 185.1
+      the physics level's 5 largest depressions here (area km² / spill m): 481 / 18 · 582 / 32 · 325 / 41 · 203 / 417 · 71 / 28
+   final retargeting (9842 constraint cells): peak 2872 · mean 448 · p90 1163 m · walls 28° 0.006 % · facets 3.76 % · R8 0.1006
+   R — P128 S+ρ moyen FIRES at 256²: facets 15.91 > 5.23 (544 crests)
+
+   ═══ chain P128 S+ρ fort ═══
+   ── 256² · E 6000 · T 1200 · D 4000 iterations · 8.7 s [upscale 0.01 · E 5.0 (0.83 ms/it) · T 0.3 (0.25 ms/it) · D 3.4 (0.86 ms/it)] · retained 3 MB
+      k 3.815e-2 · s_ref (p90) 0.1452 · d_L 200 m · carved 132.41 km³ of a bound 553148 km³ (0.02 %) · deepest 104.7 m of a per-cell bound 18969 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 5 cells (mean depth 1 m)
+      peak / mean / p90 land (m)           cascade  2855 / 447 / 1163 · témoin  3318 / 632 / 1436
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -6.3 m (-1.40 % of its mean land) · mean |Δ| 18.6 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 1.12 / max 6.96
+      trunks → témoin's at the same level (cells): p50 1.41 / p90 9.22 / max 24.52
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin         0.248 / 29
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.197
+      crest cells (% land)                 cascade              28.43 · témoin              41.65
+      crest −∇²z p50 / p90 (m/km²)         cascade        23.4 / 91.8 · témoin       73.4 / 343.6
+      crest facets (% / crests)            cascade        16.61 / 564 · témoin         5.23 / 255
+      facet control: pyramids 87.3 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              38.71 · témoin               8.39
+      terrain R8 (windows)                 cascade       0.1621 (155) · témoin       0.0151 (143)
+      valley spacing λ (cells)             cascade              15.16 · témoin               7.51
+      relief p50, 12.5 km blocks (m)       cascade                677 · témoin               1090
+      lakes (count / km²)                  cascade          27 / 3726 · témoin          85 / 2312
+      detail per band (RMS m), cascade / témoin: [1.56–3.12 km] 67.7 / 174.7 · [3.12–6.25 km] 36.4 / 126.4 · [6.25–12.50 km] 90.9 / 158.2 · [12.50–25.00 km] 149.7 / 172.7 · [25.00–50.00 km] 179.8 / 183.8
+      the physics level's 5 largest depressions here (area km² / spill m): 400 / 16 · 583 / 32 · 317 / 40 · 200 / 416 · 71 / 28
+   ── 512² · E 3000 · T 2000 · D 1400 iterations · 15.9 s [upscale 0.02 · E 9.5 (3.17 ms/it) · T 2.1 (1.07 ms/it) · D 4.2 (3.03 ms/it)] · retained 14 MB
+      k 3.619e-2 · s_ref (p90) 0.1491 · d_L 100 m · carved 111.04 km³ of a bound 261799 km³ (0.04 %) · deepest 97.8 m of a per-cell bound 8995 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 146 cells (mean depth 2 m)
+      peak / mean / p90 land (m)           cascade  2855 / 445 / 1156 · témoin  3420 / 640 / 1457
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -4.9 m (-1.09 % of its mean land) · mean |Δ| 6.7 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 3.04
+      trunks → témoin's at the same level (cells): p50 2.83 / p90 18.11 / max 40.61
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin        0.770 / 356
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.283
+      crest cells (% land)                 cascade              17.70 · témoin              32.89
+      crest −∇²z p50 / p90 (m/km²)         cascade       29.4 / 122.6 · témoin      121.8 / 697.0
+      crest facets (% / crests)            cascade       12.36 / 1043 · témoin        9.44 / 1436
+      facet control: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              75.25 · témoin              25.12
+      terrain R8 (windows)                 cascade       0.1249 (703) · témoin       0.0752 (641)
+      valley spacing λ (cells)             cascade              29.57 · témoin              10.74
+      relief p50, 12.5 km blocks (m)       cascade                688 · témoin               1203
+      lakes (count / km²)                  cascade          36 / 3784 · témoin         231 / 1840
+      detail per band (RMS m), cascade / témoin: [0.78–1.56 km] 35.0 / 110.7 · [1.56–3.12 km] 12.3 / 72.2 · [3.12–6.25 km] 35.9 / 126.6 · [6.25–12.50 km] 90.3 / 158.7 · [12.50–25.00 km] 148.4 / 173.2 · [25.00–50.00 km] 178.0 / 184.6
+      the physics level's 5 largest depressions here (area km² / spill m): 476 / 18 · 579 / 32 · 319 / 41 · 202 / 416 · 60 / 28
+   ── 1024² · E 1400 · T 4000 · D 400 iterations · 26.6 s [upscale 0.06 · E 11.2 (8.01 ms/it) · T 12.2 (3.05 ms/it) · D 3.2 (7.92 ms/it)] · retained 56 MB
+      k 3.750e-2 · s_ref (p90) 0.1516 · d_L 50 m · carved 92.56 km³ of a bound 126619 km³ (0.07 %) · deepest 98.3 m of a per-cell bound 4350 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 294 cells (mean depth 2 m)
+      peak / mean / p90 land (m)           cascade  2862 / 441 / 1150 · témoin  3492 / 644 / 1463
+      peak after retargeting (evaluation): 2872 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -3.4 m (-0.77 % of its mean land) · mean |Δ| 3.7 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 6.02
+      trunks → témoin's at the same level (cells): p50 6.00 / p90 38.12 / max 81.39
+      walls 28° ± 0.5° (% / cells)         cascade         0.005 / 10 · témoin       2.512 / 4618
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.433
+      crest cells (% land)                 cascade              10.23 · témoin              23.03
+      crest −∇²z p50 / p90 (m/km²)         cascade       34.2 / 142.0 · témoin     214.0 / 1432.0
+      crest facets (% / crests)            cascade         3.78 / 738 · témoin       19.95 / 8446
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              90.06 · témoin              51.51
+      terrain R8 (windows)                 cascade      0.0997 (2876) · témoin      0.0402 (2656)
+      valley spacing λ (cells)             cascade              58.22 · témoin              16.55
+      relief p50, 12.5 km blocks (m)       cascade                718 · témoin               1268
+      lakes (count / km²)                  cascade          38 / 3791 · témoin         365 / 1548
+      detail per band (RMS m), cascade / témoin: [0.39–0.78 km] 17.9 / 64.1 · [0.78–1.56 km] 4.0 / 34.8 · [1.56–3.12 km] 12.3 / 72.2 · [3.12–6.25 km] 36.3 / 126.7 · [6.25–12.50 km] 90.6 / 159.0 · [12.50–25.00 km] 147.7 / 173.4 · [25.00–50.00 km] 176.5 / 185.1
+      the physics level's 5 largest depressions here (area km² / spill m): 477 / 18 · 581 / 32 · 322 / 41 · 206 / 417 · 58 / 28
+   final retargeting (9894 constraint cells): peak 2872 · mean 443 · p90 1153 m · walls 28° 0.005 % · facets 3.69 % · R8 0.0975
+   R — P128 S+ρ fort FIRES at 256²: facets 16.61 > 5.23 (564 crests)
+
+   ═══ chain P128 S+U faible ═══
+   ── 256² · E 1500 · T 300 · D 1000 iterations · 2.4 s [upscale 0.01 · E 1.5 (0.97 ms/it) · T 0.1 (0.24 ms/it) · D 0.8 (0.84 ms/it)] · retained 3 MB
+      k 3.815e-2 · s_ref (p90) 0.1452 · d_L 200 m · carved 33.68 km³ of a bound 138287 km³ (0.02 %) · deepest 20.0 m of a per-cell bound 4742 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 5 cells (mean depth 1 m)
+      peak / mean / p90 land (m)           cascade  2964 / 457 / 1195 · témoin  3318 / 632 / 1436
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -0.1 m (-0.01 % of its mean land) · mean |Δ| 7.2 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 1.50 / max 6.50
+      trunks → témoin's at the same level (cells): p50 1.41 / p90 9.22 / max 23.54
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin         0.248 / 29
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.197
+      crest cells (% land)                 cascade              29.96 · témoin              41.65
+      crest −∇²z p50 / p90 (m/km²)         cascade       27.1 / 124.6 · témoin       73.4 / 343.6
+      crest facets (% / crests)            cascade        15.56 / 557 · témoin         5.23 / 255
+      facet control: pyramids 87.3 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              36.77 · témoin               8.39
+      terrain R8 (windows)                 cascade       0.1528 (155) · témoin       0.0151 (143)
+      valley spacing λ (cells)             cascade              13.12 · témoin               7.51
+      relief p50, 12.5 km blocks (m)       cascade                728 · témoin               1090
+      lakes (count / km²)                  cascade          51 / 3774 · témoin          85 / 2312
+      detail per band (RMS m), cascade / témoin: [1.56–3.12 km] 76.0 / 174.7 · [3.12–6.25 km] 43.9 / 126.4 · [6.25–12.50 km] 99.5 / 158.2 · [12.50–25.00 km] 155.8 / 172.7 · [25.00–50.00 km] 183.8 / 183.8
+      the physics level's 5 largest depressions here (area km² / spill m): 142 / 12 · 466 / 24 · 222 / 32 · 208 / 412 · 5 / 24
+   ── 512² · E 750 · T 500 · D 350 iterations · 4.5 s [upscale 0.02 · E 2.9 (3.81 ms/it) · T 0.6 (1.15 ms/it) · D 1.1 (3.15 ms/it)] · retained 14 MB
+      k 2.885e-2 · s_ref (p90) 0.1670 · d_L 100 m · carved 26.21 km³ of a bound 52292 km³ (0.05 %) · deepest 48.6 m of a per-cell bound 1793 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 254 cells (mean depth 6 m)
+      peak / mean / p90 land (m)           cascade  3002 / 459 / 1198 · témoin  3420 / 640 / 1457
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -0.3 m (-0.06 % of its mean land) · mean |Δ| 1.9 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 10.06
+      trunks → témoin's at the same level (cells): p50 2.83 / p90 19.03 / max 41.76
+      walls 28° ± 0.5° (% / cells)         cascade          0.002 / 1 · témoin        0.770 / 356
+      band 33° ± 0.5° (%)                  cascade              0.004 · témoin              0.283
+      crest cells (% land)                 cascade              19.63 · témoin              32.89
+      crest −∇²z p50 / p90 (m/km²)         cascade       32.9 / 197.2 · témoin      121.8 / 697.0
+      crest facets (% / crests)            cascade       22.49 / 2110 · témoin        9.44 / 1436
+      facet control: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              71.83 · témoin              25.12
+      terrain R8 (windows)                 cascade       0.1332 (703) · témoin       0.0752 (641)
+      valley spacing λ (cells)             cascade              23.10 · témoin              10.74
+      relief p50, 12.5 km blocks (m)       cascade                797 · témoin               1203
+      lakes (count / km²)                  cascade          69 / 4262 · témoin         231 / 1840
+      detail per band (RMS m), cascade / témoin: [0.78–1.56 km] 42.6 / 110.7 · [1.56–3.12 km] 19.9 / 72.2 · [3.12–6.25 km] 45.1 / 126.6 · [6.25–12.50 km] 100.6 / 158.7 · [12.50–25.00 km] 156.3 / 173.2 · [25.00–50.00 km] 184.0 / 184.6
+      the physics level's 5 largest depressions here (area km² / spill m): 567 / 18 · 469 / 23 · 229 / 32 · 206 / 412 · 4 / 23
+   ── 1024² · E 350 · T 1000 · D 100 iterations · 7.1 s [upscale 0.06 · E 3.1 (8.85 ms/it) · T 3.1 (3.06 ms/it) · D 0.8 (8.35 ms/it)] · retained 56 MB
+      k 2.752e-2 · s_ref (p90) 0.1770 · d_L 50 m · carved 21.40 km³ of a bound 23349 km³ (0.09 %) · deepest 65.8 m of a per-cell bound 798 m · s ≥ s_max on 0.023 % of the erosion updates · D5 lifted 623 cells (mean depth 3 m)
+      peak / mean / p90 land (m)           cascade  3024 / 458 / 1197 · témoin  3492 / 644 / 1463
+      peak after retargeting (evaluation): 2872 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -0.0 m (-0.01 % of its mean land) · mean |Δ| 0.4 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 31.29
+      trunks → témoin's at the same level (cells): p50 6.32 / p90 39.32 / max 78.00
+      walls 28° ± 0.5° (% / cells)         cascade         0.044 / 85 · témoin       2.512 / 4618
+      band 33° ± 0.5° (%)                  cascade              0.018 · témoin              0.433
+      crest cells (% land)                 cascade              12.02 · témoin              23.03
+      crest −∇²z p50 / p90 (m/km²)         cascade       40.9 / 262.6 · témoin     214.0 / 1432.0
+      crest facets (% / crests)            cascade       13.04 / 3005 · témoin       19.95 / 8446
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              87.34 · témoin              51.51
+      terrain R8 (windows)                 cascade      0.1054 (2882) · témoin      0.0402 (2656)
+      valley spacing λ (cells)             cascade              41.35 · témoin              16.55
+      relief p50, 12.5 km blocks (m)       cascade                862 · témoin               1268
+      lakes (count / km²)                  cascade          81 / 4397 · témoin         365 / 1548
+      detail per band (RMS m), cascade / témoin: [0.39–0.78 km] 22.7 / 64.1 · [0.78–1.56 km] 8.1 / 34.8 · [1.56–3.12 km] 19.8 / 72.2 · [3.12–6.25 km] 45.5 / 126.7 · [6.25–12.50 km] 100.8 / 159.0 · [12.50–25.00 km] 156.4 / 173.4 · [25.00–50.00 km] 183.8 / 185.1
+      the physics level's 5 largest depressions here (area km² / spill m): 648 / 21 · 485 / 23 · 231 / 32 · 209 / 412 · 5 / 23
+   final retargeting (15784 constraint cells): peak 2872 · mean 420 · p90 1136 m · walls 28° 0.009 % · facets 12.63 % · R8 0.1022
+   R — P128 S+U faible FIRES at 256²: facets 15.56 > 5.23 (557 crests)
+
+   ═══ chain P128 S+U moyen ═══
+   ── 256² · E 3000 · T 600 · D 2000 iterations · 4.6 s [upscale 0.01 · E 2.8 (0.93 ms/it) · T 0.2 (0.26 ms/it) · D 1.7 (0.84 ms/it)] · retained 3 MB
+      k 3.815e-2 · s_ref (p90) 0.1452 · d_L 200 m · carved 67.42 km³ of a bound 276574 km³ (0.02 %) · deepest 39.9 m of a per-cell bound 9485 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 5 cells (mean depth 1 m)
+      peak / mean / p90 land (m)           cascade  2966 / 457 / 1195 · témoin  3318 / 632 / 1436
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -0.1 m (-0.02 % of its mean land) · mean |Δ| 7.2 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 1.50 / max 6.50
+      trunks → témoin's at the same level (cells): p50 1.41 / p90 9.22 / max 23.54
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin         0.248 / 29
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.197
+      crest cells (% land)                 cascade              29.95 · témoin              41.65
+      crest −∇²z p50 / p90 (m/km²)         cascade       27.1 / 124.4 · témoin       73.4 / 343.6
+      crest facets (% / crests)            cascade        15.40 / 551 · témoin         5.23 / 255
+      facet control: pyramids 87.3 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              36.77 · témoin               8.39
+      terrain R8 (windows)                 cascade       0.1523 (155) · témoin       0.0151 (143)
+      valley spacing λ (cells)             cascade              13.13 · témoin               7.51
+      relief p50, 12.5 km blocks (m)       cascade                729 · témoin               1090
+      lakes (count / km²)                  cascade          50 / 3772 · témoin          85 / 2312
+      detail per band (RMS m), cascade / témoin: [1.56–3.12 km] 76.0 / 174.7 · [3.12–6.25 km] 43.9 / 126.4 · [6.25–12.50 km] 99.6 / 158.2 · [12.50–25.00 km] 155.8 / 172.7 · [25.00–50.00 km] 183.8 / 183.8
+      the physics level's 5 largest depressions here (area km² / spill m): 142 / 12 · 466 / 24 · 225 / 32 · 208 / 412 · 5 / 24
+   ── 512² · E 1500 · T 1000 · D 700 iterations · 8.8 s [upscale 0.02 · E 5.6 (3.72 ms/it) · T 1.1 (1.13 ms/it) · D 2.1 (3.03 ms/it)] · retained 14 MB
+      k 2.882e-2 · s_ref (p90) 0.1671 · d_L 100 m · carved 52.25 km³ of a bound 104495 km³ (0.05 %) · deepest 91.7 m of a per-cell bound 3583 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 254 cells (mean depth 6 m)
+      peak / mean / p90 land (m)           cascade  3004 / 459 / 1197 · témoin  3420 / 640 / 1457
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -0.3 m (-0.07 % of its mean land) · mean |Δ| 2.0 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 10.06
+      trunks → témoin's at the same level (cells): p50 2.83 / p90 18.68 / max 41.76
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin        0.770 / 356
+      band 33° ± 0.5° (%)                  cascade              0.002 · témoin              0.283
+      crest cells (% land)                 cascade              19.63 · témoin              32.89
+      crest −∇²z p50 / p90 (m/km²)         cascade       32.9 / 198.2 · témoin      121.8 / 697.0
+      crest facets (% / crests)            cascade       22.70 / 2130 · témoin        9.44 / 1436
+      facet control: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              71.83 · témoin              25.12
+      terrain R8 (windows)                 cascade       0.1310 (703) · témoin       0.0752 (641)
+      valley spacing λ (cells)             cascade              23.06 · témoin              10.74
+      relief p50, 12.5 km blocks (m)       cascade                798 · témoin               1203
+      lakes (count / km²)                  cascade          68 / 4256 · témoin         231 / 1840
+      detail per band (RMS m), cascade / témoin: [0.78–1.56 km] 42.6 / 110.7 · [1.56–3.12 km] 19.9 / 72.2 · [3.12–6.25 km] 45.2 / 126.6 · [6.25–12.50 km] 100.7 / 158.7 · [12.50–25.00 km] 156.4 / 173.2 · [25.00–50.00 km] 184.0 / 184.6
+      the physics level's 5 largest depressions here (area km² / spill m): 568 / 18 · 468 / 23 · 231 / 32 · 207 / 412 · 4 / 23
+   ── 1024² · E 700 · T 2000 · D 200 iterations · 14.0 s [upscale 0.06 · E 6.2 (8.88 ms/it) · T 6.1 (3.05 ms/it) · D 1.7 (8.32 ms/it)] · retained 56 MB
+      k 2.738e-2 · s_ref (p90) 0.1774 · d_L 50 m · carved 42.42 km³ of a bound 46470 km³ (0.09 %) · deepest 100.2 m of a per-cell bound 1588 m · s ≥ s_max on 0.023 % of the erosion updates · D5 lifted 622 cells (mean depth 3 m)
+      peak / mean / p90 land (m)           cascade  3026 / 458 / 1197 · témoin  3492 / 644 / 1463
+      peak after retargeting (evaluation): 2872 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -0.0 m (-0.01 % of its mean land) · mean |Δ| 0.4 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 30.57
+      trunks → témoin's at the same level (cells): p50 6.32 / p90 39.56 / max 78.00
+      walls 28° ± 0.5° (% / cells)         cascade         0.047 / 90 · témoin       2.512 / 4618
+      band 33° ± 0.5° (%)                  cascade              0.015 · témoin              0.433
+      crest cells (% land)                 cascade              12.05 · témoin              23.03
+      crest −∇²z p50 / p90 (m/km²)         cascade       40.8 / 266.0 · témoin     214.0 / 1432.0
+      crest facets (% / crests)            cascade       13.00 / 3004 · témoin       19.95 / 8446
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              87.23 · témoin              51.51
+      terrain R8 (windows)                 cascade      0.1049 (2882) · témoin      0.0402 (2656)
+      valley spacing λ (cells)             cascade              41.38 · témoin              16.55
+      relief p50, 12.5 km blocks (m)       cascade                863 · témoin               1268
+      lakes (count / km²)                  cascade          79 / 4392 · témoin         365 / 1548
+      detail per band (RMS m), cascade / témoin: [0.39–0.78 km] 22.7 / 64.1 · [0.78–1.56 km] 8.1 / 34.8 · [1.56–3.12 km] 19.8 / 72.2 · [3.12–6.25 km] 45.5 / 126.7 · [6.25–12.50 km] 100.9 / 159.0 · [12.50–25.00 km] 156.4 / 173.4 · [25.00–50.00 km] 183.8 / 185.1
+      the physics level's 5 largest depressions here (area km² / spill m): 648 / 21 · 484 / 23 · 231 / 32 · 209 / 412 · 4 / 23
+   final retargeting (15794 constraint cells): peak 2872 · mean 420 · p90 1135 m · walls 28° 0.008 % · facets 12.58 % · R8 0.1037
+   R — P128 S+U moyen FIRES at 256²: facets 15.40 > 5.23 (551 crests)
+
+   ═══ chain P128 S+U fort ═══
+   ── 256² · E 6000 · T 1200 · D 4000 iterations · 9.3 s [upscale 0.01 · E 5.6 (0.93 ms/it) · T 0.3 (0.24 ms/it) · D 3.4 (0.84 ms/it)] · retained 3 MB
+      k 3.815e-2 · s_ref (p90) 0.1452 · d_L 200 m · carved 135.08 km³ of a bound 553148 km³ (0.02 %) · deepest 80.0 m of a per-cell bound 18969 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 5 cells (mean depth 1 m)
+      peak / mean / p90 land (m)           cascade  2969 / 457 / 1195 · témoin  3318 / 632 / 1436
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -0.1 m (-0.02 % of its mean land) · mean |Δ| 7.0 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 1.50 / max 6.50
+      trunks → témoin's at the same level (cells): p50 1.41 / p90 9.22 / max 23.54
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin         0.248 / 29
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.197
+      crest cells (% land)                 cascade              29.86 · témoin              41.65
+      crest −∇²z p50 / p90 (m/km²)         cascade       27.2 / 124.9 · témoin       73.4 / 343.6
+      crest facets (% / crests)            cascade        16.20 / 578 · témoin         5.23 / 255
+      facet control: pyramids 87.3 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              36.77 · témoin               8.39
+      terrain R8 (windows)                 cascade       0.1514 (155) · témoin       0.0151 (143)
+      valley spacing λ (cells)             cascade              13.14 · témoin               7.51
+      relief p50, 12.5 km blocks (m)       cascade                731 · témoin               1090
+      lakes (count / km²)                  cascade          47 / 3745 · témoin          85 / 2312
+      detail per band (RMS m), cascade / témoin: [1.56–3.12 km] 76.1 / 174.7 · [3.12–6.25 km] 44.0 / 126.4 · [6.25–12.50 km] 99.7 / 158.2 · [12.50–25.00 km] 155.8 / 172.7 · [25.00–50.00 km] 183.8 / 183.8
+      the physics level's 5 largest depressions here (area km² / spill m): 142 / 12 · 466 / 24 · 222 / 32 · 208 / 412 · gone
+   ── 512² · E 3000 · T 2000 · D 1400 iterations · 17.7 s [upscale 0.01 · E 11.1 (3.71 ms/it) · T 2.3 (1.13 ms/it) · D 4.3 (3.09 ms/it)] · retained 14 MB
+      k 2.875e-2 · s_ref (p90) 0.1673 · d_L 100 m · carved 103.84 km³ of a bound 208492 km³ (0.05 %) · deepest 164.5 m of a per-cell bound 7148 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 254 cells (mean depth 6 m)
+      peak / mean / p90 land (m)           cascade  3007 / 459 / 1197 · témoin  3420 / 640 / 1457
+      peak after retargeting (evaluation): 2864 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -0.3 m (-0.07 % of its mean land) · mean |Δ| 2.0 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 1.00 / max 10.06
+      trunks → témoin's at the same level (cells): p50 2.83 / p90 18.68 / max 41.76
+      walls 28° ± 0.5° (% / cells)         cascade          0.002 / 1 · témoin        0.770 / 356
+      band 33° ± 0.5° (%)                  cascade              0.002 · témoin              0.283
+      crest cells (% land)                 cascade              19.65 · témoin              32.89
+      crest −∇²z p50 / p90 (m/km²)         cascade       32.8 / 200.7 · témoin      121.8 / 697.0
+      crest facets (% / crests)            cascade       22.69 / 2131 · témoin        9.44 / 1436
+      facet control: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              71.98 · témoin              25.12
+      terrain R8 (windows)                 cascade       0.1302 (703) · témoin       0.0752 (641)
+      valley spacing λ (cells)             cascade              23.12 · témoin              10.74
+      relief p50, 12.5 km blocks (m)       cascade                799 · témoin               1203
+      lakes (count / km²)                  cascade          68 / 4243 · témoin         231 / 1840
+      detail per band (RMS m), cascade / témoin: [0.78–1.56 km] 42.6 / 110.7 · [1.56–3.12 km] 19.9 / 72.2 · [3.12–6.25 km] 45.3 / 126.6 · [6.25–12.50 km] 100.9 / 158.7 · [12.50–25.00 km] 156.4 / 173.2 · [25.00–50.00 km] 184.0 / 184.6
+      the physics level's 5 largest depressions here (area km² / spill m): 567 / 18 · 468 / 23 · 230 / 32 · 207 / 412 · 1 / 23
+   ── 1024² · E 1400 · T 4000 · D 400 iterations · 27.6 s [upscale 0.06 · E 12.1 (8.66 ms/it) · T 12.1 (3.04 ms/it) · D 3.2 (8.06 ms/it)] · retained 56 MB
+      k 2.719e-2 · s_ref (p90) 0.1781 · d_L 50 m · carved 83.78 km³ of a bound 92281 km³ (0.09 %) · deepest 166.5 m of a per-cell bound 3154 m · s ≥ s_max on 0.018 % of the erosion updates · D5 lifted 621 cells (mean depth 3 m)
+      peak / mean / p90 land (m)           cascade  3030 / 458 / 1197 · témoin  3492 / 644 / 1463
+      peak after retargeting (evaluation): 2872 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -0.1 m (-0.01 % of its mean land) · mean |Δ| 0.4 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 30.54
+      trunks → témoin's at the same level (cells): p50 6.32 / p90 40.00 / max 78.00
+      walls 28° ± 0.5° (% / cells)         cascade         0.039 / 74 · témoin       2.512 / 4618
+      band 33° ± 0.5° (%)                  cascade              0.007 · témoin              0.433
+      crest cells (% land)                 cascade              12.12 · témoin              23.03
+      crest −∇²z p50 / p90 (m/km²)         cascade       40.7 / 274.0 · témoin     214.0 / 1432.0
+      crest facets (% / crests)            cascade       13.15 / 3058 · témoin       19.95 / 8446
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              87.30 · témoin              51.51
+      terrain R8 (windows)                 cascade      0.1044 (2882) · témoin      0.0402 (2656)
+      valley spacing λ (cells)             cascade              41.38 · témoin              16.55
+      relief p50, 12.5 km blocks (m)       cascade                864 · témoin               1268
+      lakes (count / km²)                  cascade          78 / 4382 · témoin         365 / 1548
+      detail per band (RMS m), cascade / témoin: [0.39–0.78 km] 22.7 / 64.1 · [0.78–1.56 km] 8.0 / 34.8 · [1.56–3.12 km] 19.8 / 72.2 · [3.12–6.25 km] 45.7 / 126.7 · [6.25–12.50 km] 101.1 / 159.0 · [12.50–25.00 km] 156.5 / 173.4 · [25.00–50.00 km] 183.8 / 185.1
+      the physics level's 5 largest depressions here (area km² / spill m): 647 / 21 · 484 / 23 · 230 / 32 · 209 / 412 · 2 / 22
+   final retargeting (15836 constraint cells): peak 2872 · mean 419 · p90 1134 m · walls 28° 0.008 % · facets 12.68 % · R8 0.1019
+   R — P128 S+U fort FIRES at 256²: facets 16.20 > 5.23 (578 crests)
+
+   ═══ chain P256 S moyen ═══
+   ── 512² · E 1500 · T 1000 · D 700 iterations · 8.1 s [upscale 0.02 · E 4.8 (3.20 ms/it) · T 1.1 (1.06 ms/it) · D 2.2 (3.12 ms/it)] · retained 14 MB
+      k 2.369e-2 · s_ref (p90) 0.1843 · d_L 100 m · carved 37.12 km³ of a bound 82861 km³ (0.04 %) · deepest 25.3 m of a per-cell bound 2944 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 5 cells (mean depth 0 m)
+      peak / mean / p90 land (m)           cascade  2876 / 393 / 1023 · témoin  3420 / 640 / 1457
+      peak after retargeting (evaluation): 2877 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -1.8 m (-0.46 % of its mean land) · mean |Δ| 8.9 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 28.31
+      trunks → témoin's at the same level (cells): p50 2.83 / p90 10.30 / max 52.81
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin        0.770 / 356
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.283
+      crest cells (% land)                 cascade              23.29 · témoin              32.89
+      crest −∇²z p50 / p90 (m/km²)         cascade       45.0 / 201.6 · témoin      121.8 / 697.0
+      crest facets (% / crests)            cascade       16.24 / 1744 · témoin        9.44 / 1436
+      facet control: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              53.26 · témoin              25.12
+      terrain R8 (windows)                 cascade       0.1056 (644) · témoin       0.0752 (641)
+      valley spacing λ (cells)             cascade              19.78 · témoin              10.74
+      relief p50, 12.5 km blocks (m)       cascade                829 · témoin               1203
+      lakes (count / km²)                  cascade          57 / 3265 · témoin         231 / 1840
+      detail per band (RMS m), cascade / témoin: [0.78–1.56 km] 44.5 / 110.7 · [1.56–3.12 km] 20.8 / 72.2 · [3.12–6.25 km] 56.5 / 126.6 · [6.25–12.50 km] 103.5 / 158.7 · [12.50–25.00 km] 130.4 / 173.2 · [25.00–50.00 km] 150.8 / 184.6
+      the physics level's 5 largest depressions here (area km² / spill m): 467 / 9 · 496 / 33 · 590 / 15 · 280 / 322 · 192 / 32
+   ── 1024² · E 700 · T 2000 · D 200 iterations · 13.3 s [upscale 0.05 · E 5.6 (7.96 ms/it) · T 6.1 (3.03 ms/it) · D 1.6 (7.97 ms/it)] · retained 56 MB
+      k 2.459e-2 · s_ref (p90) 0.1873 · d_L 50 m · carved 31.19 km³ of a bound 40064 km³ (0.08 %) · deepest 37.0 m of a per-cell bound 1426 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 254 cells (mean depth 1 m)
+      peak / mean / p90 land (m)           cascade  2905 / 393 / 1022 · témoin  3492 / 644 / 1463
+      peak after retargeting (evaluation): 2907 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -1.3 m (-0.34 % of its mean land) · mean |Δ| 2.4 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 7.07
+      trunks → témoin's at the same level (cells): p50 5.39 / p90 23.02 / max 106.63
+      walls 28° ± 0.5° (% / cells)         cascade         0.008 / 15 · témoin       2.512 / 4618
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.433
+      crest cells (% land)                 cascade              13.95 · témoin              23.03
+      crest −∇²z p50 / p90 (m/km²)         cascade       55.6 / 246.4 · témoin     214.0 / 1432.0
+      crest facets (% / crests)            cascade        9.26 / 2380 · témoin       19.95 / 8446
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              79.90 · témoin              51.51
+      terrain R8 (windows)                 cascade      0.0299 (2692) · témoin      0.0402 (2656)
+      valley spacing λ (cells)             cascade              39.32 · témoin              16.55
+      relief p50, 12.5 km blocks (m)       cascade                849 · témoin               1268
+      lakes (count / km²)                  cascade          79 / 3368 · témoin         365 / 1548
+      detail per band (RMS m), cascade / témoin: [0.39–0.78 km] 22.7 / 64.1 · [0.78–1.56 km] 6.4 / 34.8 · [1.56–3.12 km] 20.5 / 72.2 · [3.12–6.25 km] 56.2 / 126.7 · [6.25–12.50 km] 103.1 / 159.0 · [12.50–25.00 km] 129.9 / 173.4 · [25.00–50.00 km] 150.4 / 185.1
+      the physics level's 5 largest depressions here (area km² / spill m): 562 / 11 · 491 / 33 · 587 / 15 · 278 / 322 · 194 / 33
+   final retargeting (15275 constraint cells): peak 2907 · mean 394 · p90 1023 m · walls 28° 0.007 % · facets 9.23 % · R8 0.0299
+   R — P256 S moyen FIRES at 512²: facets 16.24 > 9.44 (1744 crests)
+
+   ═══ chain P256 S+ρ moyen ═══
+   ── 512² · E 1500 · T 1000 · D 700 iterations · 8.1 s [upscale 0.02 · E 4.8 (3.20 ms/it) · T 1.0 (1.04 ms/it) · D 2.3 (3.22 ms/it)] · retained 14 MB
+      k 2.369e-2 · s_ref (p90) 0.1843 · d_L 100 m · carved 37.24 km³ of a bound 82861 km³ (0.04 %) · deepest 33.3 m of a per-cell bound 2944 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 5 cells (mean depth 0 m)
+      peak / mean / p90 land (m)           cascade  2875 / 393 / 1023 · témoin  3420 / 640 / 1457
+      peak after retargeting (evaluation): 2877 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -1.8 m (-0.46 % of its mean land) · mean |Δ| 8.9 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 28.31
+      trunks → témoin's at the same level (cells): p50 2.83 / p90 10.30 / max 52.81
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin        0.770 / 356
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.283
+      crest cells (% land)                 cascade              23.27 · témoin              32.89
+      crest −∇²z p50 / p90 (m/km²)         cascade       45.0 / 201.4 · témoin      121.8 / 697.0
+      crest facets (% / crests)            cascade       16.26 / 1745 · témoin        9.44 / 1436
+      facet control: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              53.26 · témoin              25.12
+      terrain R8 (windows)                 cascade       0.1059 (644) · témoin       0.0752 (641)
+      valley spacing λ (cells)             cascade              19.78 · témoin              10.74
+      relief p50, 12.5 km blocks (m)       cascade                829 · témoin               1203
+      lakes (count / km²)                  cascade          57 / 3266 · témoin         231 / 1840
+      detail per band (RMS m), cascade / témoin: [0.78–1.56 km] 44.5 / 110.7 · [1.56–3.12 km] 20.9 / 72.2 · [3.12–6.25 km] 56.5 / 126.6 · [6.25–12.50 km] 103.5 / 158.7 · [12.50–25.00 km] 130.4 / 173.2 · [25.00–50.00 km] 150.8 / 184.6
+      the physics level's 5 largest depressions here (area km² / spill m): 467 / 9 · 496 / 33 · 590 / 15 · 280 / 322 · 192 / 32
+   ── 1024² · E 700 · T 2000 · D 200 iterations · 13.2 s [upscale 0.07 · E 5.5 (7.79 ms/it) · T 6.1 (3.03 ms/it) · D 1.6 (8.03 ms/it)] · retained 56 MB
+      k 2.460e-2 · s_ref (p90) 0.1872 · d_L 50 m · carved 31.25 km³ of a bound 40093 km³ (0.08 %) · deepest 37.6 m of a per-cell bound 1427 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 254 cells (mean depth 1 m)
+      peak / mean / p90 land (m)           cascade  2904 / 393 / 1022 · témoin  3492 / 644 / 1463
+      peak after retargeting (evaluation): 2907 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -1.3 m (-0.34 % of its mean land) · mean |Δ| 2.4 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 7.07
+      trunks → témoin's at the same level (cells): p50 5.39 / p90 23.02 / max 106.28
+      walls 28° ± 0.5° (% / cells)         cascade         0.007 / 13 · témoin       2.512 / 4618
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.433
+      crest cells (% land)                 cascade              13.95 · témoin              23.03
+      crest −∇²z p50 / p90 (m/km²)         cascade       55.7 / 246.6 · témoin     214.0 / 1432.0
+      crest facets (% / crests)            cascade        9.25 / 2376 · témoin       19.95 / 8446
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              79.90 · témoin              51.51
+      terrain R8 (windows)                 cascade      0.0303 (2692) · témoin      0.0402 (2656)
+      valley spacing λ (cells)             cascade              39.34 · témoin              16.55
+      relief p50, 12.5 km blocks (m)       cascade                849 · témoin               1268
+      lakes (count / km²)                  cascade          79 / 3368 · témoin         365 / 1548
+      detail per band (RMS m), cascade / témoin: [0.39–0.78 km] 22.7 / 64.1 · [0.78–1.56 km] 6.4 / 34.8 · [1.56–3.12 km] 20.5 / 72.2 · [3.12–6.25 km] 56.2 / 126.7 · [6.25–12.50 km] 103.1 / 159.0 · [12.50–25.00 km] 129.9 / 173.4 · [25.00–50.00 km] 150.3 / 185.1
+      the physics level's 5 largest depressions here (area km² / spill m): 562 / 11 · 491 / 33 · 587 / 15 · 278 / 322 · 194 / 33
+   final retargeting (15272 constraint cells): peak 2907 · mean 394 · p90 1023 m · walls 28° 0.007 % · facets 9.19 % · R8 0.0302
+   R — P256 S+ρ moyen FIRES at 512²: facets 16.26 > 9.44 (1745 crests)
+
+   the ranking (highest level reached without R, then the lowest R8 there):
+      P256 S moyen           reaches 256² (R8 there 0.0182)
+      P256 S+ρ moyen         reaches 256² (R8 there 0.0182)
+      P128 S faible          reaches 128² (R8 there 0.1606)
+      P128 S moyen           reaches 128² (R8 there 0.1606)
+      P128 S fort            reaches 128² (R8 there 0.1606)
+      P128 S+ρ faible        reaches 128² (R8 there 0.1606)
+      P128 S+ρ moyen         reaches 128² (R8 there 0.1606)
+      P128 S+ρ fort          reaches 128² (R8 there 0.1606)
+      P128 S+U faible        reaches 128² (R8 there 0.1606)
+      P128 S+U moyen         reaches 128² (R8 there 0.1606)
+      P128 S+U fort          reaches 128² (R8 there 0.1606)
+   the best: P256 S moyen; 2048² runs from P256
+      P256 S moyen → 2048 512² done (8.1 s: E 4.9 · T 1.0 · D 2.1) · peak 2876 → retargeted 2877 m · drift -0.5 %
+      P256 S moyen → 2048 1024² done (13.3 s: E 5.5 · T 6.1 · D 1.6) · peak 2905 → retargeted 2907 m · drift -0.3 %
+      P256 S moyen → 2048 2048² done (58.2 s: E 8.8 · T 45.4 · D 3.8) · peak 2905 → retargeted 2907 m · drift -0.3 %
+   chain P256 S moyen → 2048 to 2048² in 87.7 s
+      P256 S+ρ moyen → 2048 512² done (8.3 s: E 5.0 · T 1.1 · D 2.2) · peak 2875 → retargeted 2877 m · drift -0.5 %
+      P256 S+ρ moyen → 2048 1024² done (13.3 s: E 5.6 · T 6.1 · D 1.6) · peak 2904 → retargeted 2907 m · drift -0.3 %
+      P256 S+ρ moyen → 2048 2048² done (57.9 s: E 8.8 · T 45.1 · D 3.7) · peak 2904 → retargeted 2907 m · drift -0.3 %
+   chain P256 S+ρ moyen → 2048 to 2048² in 87.6 s
+      P256 S+U moyen → 2048 512² done (9.0 s: E 5.7 · T 1.1 · D 2.2) · peak 2963 → retargeted 2877 m · drift -0.0 %
+      P256 S+U moyen → 2048 1024² done (13.9 s: E 6.1 · T 6.1 · D 1.7) · peak 3023 → retargeted 2907 m · drift -0.0 %
+      P256 S+U moyen → 2048 2048² done (60.5 s: E 10.6 · T 45.9 · D 3.8) · peak 3036 → retargeted 2907 m · drift -0.0 %
+   chain P256 S+U moyen → 2048 to 2048² in 91.6 s
+
+   ═══ chain P256 S moyen → 2048 ═══
+   ── 512² · E 1500 · T 1000 · D 700 iterations · 8.1 s [upscale 0.02 · E 4.9 (3.27 ms/it) · T 1.0 (1.02 ms/it) · D 2.1 (3.05 ms/it)] · retained 14 MB
+      k 2.369e-2 · s_ref (p90) 0.1843 · d_L 100 m · carved 37.12 km³ of a bound 82861 km³ (0.04 %) · deepest 25.3 m of a per-cell bound 2944 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 5 cells (mean depth 0 m)
+      peak / mean / p90 land (m)           cascade  2876 / 393 / 1023 · témoin  3420 / 640 / 1457
+      peak after retargeting (evaluation): 2877 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -1.8 m (-0.46 % of its mean land) · mean |Δ| 8.9 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 28.31
+      trunks → témoin's at the same level (cells): p50 2.83 / p90 10.30 / max 52.81
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin        0.770 / 356
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.283
+      crest cells (% land)                 cascade              23.29 · témoin              32.89
+      crest −∇²z p50 / p90 (m/km²)         cascade       45.0 / 201.6 · témoin      121.8 / 697.0
+      crest facets (% / crests)            cascade       16.24 / 1744 · témoin        9.44 / 1436
+      facet control: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              53.26 · témoin              25.12
+      terrain R8 (windows)                 cascade       0.1056 (644) · témoin       0.0752 (641)
+      valley spacing λ (cells)             cascade              19.78 · témoin              10.74
+      relief p50, 12.5 km blocks (m)       cascade                829 · témoin               1203
+      lakes (count / km²)                  cascade          57 / 3265 · témoin         231 / 1840
+      detail per band (RMS m), cascade / témoin: [0.78–1.56 km] 44.5 / 110.7 · [1.56–3.12 km] 20.8 / 72.2 · [3.12–6.25 km] 56.5 / 126.6 · [6.25–12.50 km] 103.5 / 158.7 · [12.50–25.00 km] 130.4 / 173.2 · [25.00–50.00 km] 150.8 / 184.6
+      the physics level's 5 largest depressions here (area km² / spill m): 467 / 9 · 496 / 33 · 590 / 15 · 280 / 322 · 192 / 32
+   ── 1024² · E 700 · T 2000 · D 200 iterations · 13.3 s [upscale 0.05 · E 5.5 (7.92 ms/it) · T 6.1 (3.04 ms/it) · D 1.6 (8.20 ms/it)] · retained 56 MB
+      k 2.459e-2 · s_ref (p90) 0.1873 · d_L 50 m · carved 31.19 km³ of a bound 40064 km³ (0.08 %) · deepest 37.0 m of a per-cell bound 1426 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 254 cells (mean depth 1 m)
+      peak / mean / p90 land (m)           cascade  2905 / 393 / 1022 · témoin  3492 / 644 / 1463
+      peak after retargeting (evaluation): 2907 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -1.3 m (-0.34 % of its mean land) · mean |Δ| 2.4 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 7.07
+      trunks → témoin's at the same level (cells): p50 5.39 / p90 23.02 / max 106.63
+      walls 28° ± 0.5° (% / cells)         cascade         0.008 / 15 · témoin       2.512 / 4618
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.433
+      crest cells (% land)                 cascade              13.95 · témoin              23.03
+      crest −∇²z p50 / p90 (m/km²)         cascade       55.6 / 246.4 · témoin     214.0 / 1432.0
+      crest facets (% / crests)            cascade        9.26 / 2380 · témoin       19.95 / 8446
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              79.90 · témoin              51.51
+      terrain R8 (windows)                 cascade      0.0299 (2692) · témoin      0.0402 (2656)
+      valley spacing λ (cells)             cascade              39.32 · témoin              16.55
+      relief p50, 12.5 km blocks (m)       cascade                849 · témoin               1268
+      lakes (count / km²)                  cascade          79 / 3368 · témoin         365 / 1548
+      detail per band (RMS m), cascade / témoin: [0.39–0.78 km] 22.7 / 64.1 · [0.78–1.56 km] 6.4 / 34.8 · [1.56–3.12 km] 20.5 / 72.2 · [3.12–6.25 km] 56.2 / 126.7 · [6.25–12.50 km] 103.1 / 159.0 · [12.50–25.00 km] 129.9 / 173.4 · [25.00–50.00 km] 150.4 / 185.1
+      the physics level's 5 largest depressions here (area km² / spill m): 562 / 11 · 491 / 33 · 587 / 15 · 278 / 322 · 194 / 33
+   ── 2048² · E 400 · T 6000 · D 150 iterations · 58.2 s [upscale 0.23 · E 8.8 (22.08 ms/it) · T 45.4 (7.56 ms/it) · D 3.8 (25.20 ms/it)] · retained 222 MB
+      k 2.130e-2 · s_ref (p90) 0.1882 · d_L 25 m · carved 26.46 km³ of a bound 19818 km³ (0.13 %) · deepest 31.8 m of a per-cell bound 706 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 780 cells (mean depth 0 m)
+      peak / mean / p90 land (m)           cascade  2905 / 392 / 1020 · témoin  3520 / 646 / 1465
+      peak after retargeting (evaluation): 2907 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -1.0 m (-0.25 % of its mean land) · mean |Δ| 1.1 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 1.00 / max 61.10
+      trunks → témoin's at the same level (cells): p50 11.40 / p90 62.59 / max 217.26
+      walls 28° ± 0.5° (% / cells)         cascade         0.009 / 69 · témoin      5.547 / 40662
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.459
+      crest cells (% land)                 cascade               7.80 · témoin              15.38
+      crest −∇²z p50 / p90 (m/km²)         cascade       63.8 / 285.5 · témoin     439.9 / 2996.6
+      crest facets (% / crests)            cascade        3.75 / 2151 · témoin      27.71 / 31257
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              93.06 · témoin              71.51
+      terrain R8 (windows)                 cascade     0.0059 (11160) · témoin     0.0415 (10847)
+      valley spacing λ (cells)             cascade              74.47 · témoin              26.18
+      relief p50, 12.5 km blocks (m)       cascade                874 · témoin               1286
+      lakes (count / km²)                  cascade          89 / 3392 · témoin          316 / 992
+      detail per band (RMS m), cascade / témoin: [0.20–0.39 km] 11.4 / 35.2 · [0.39–0.78 km] 1.9 / 16.5 · [0.78–1.56 km] 6.4 / 34.8 · [1.56–3.12 km] 20.5 / 72.2 · [3.12–6.25 km] 56.3 / 126.8 · [6.25–12.50 km] 103.0 / 159.1 · [12.50–25.00 km] 129.6 / 173.5 · [25.00–50.00 km] 150.0 / 185.4
+      the physics level's 5 largest depressions here (area km² / spill m): 573 / 12 · 492 / 33 · 586 / 15 · 278 / 322 · 192 / 33
+   final retargeting (23907 constraint cells): peak 2907 · mean 393 · p90 1020 m · walls 28° 0.011 % · facets 3.85 % · R8 0.0056
+   R — P256 S moyen → 2048 FIRES at 512²: facets 16.24 > 9.44 (1744 crests)
+
+   ═══ chain P256 S+ρ moyen → 2048 ═══
+   ── 512² · E 1500 · T 1000 · D 700 iterations · 8.3 s [upscale 0.02 · E 5.0 (3.32 ms/it) · T 1.1 (1.10 ms/it) · D 2.2 (3.11 ms/it)] · retained 14 MB
+      k 2.369e-2 · s_ref (p90) 0.1843 · d_L 100 m · carved 37.24 km³ of a bound 82861 km³ (0.04 %) · deepest 33.3 m of a per-cell bound 2944 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 5 cells (mean depth 0 m)
+      peak / mean / p90 land (m)           cascade  2875 / 393 / 1023 · témoin  3420 / 640 / 1457
+      peak after retargeting (evaluation): 2877 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -1.8 m (-0.46 % of its mean land) · mean |Δ| 8.9 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 28.31
+      trunks → témoin's at the same level (cells): p50 2.83 / p90 10.30 / max 52.81
+      walls 28° ± 0.5° (% / cells)         cascade          0.000 / 0 · témoin        0.770 / 356
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.283
+      crest cells (% land)                 cascade              23.27 · témoin              32.89
+      crest −∇²z p50 / p90 (m/km²)         cascade       45.0 / 201.4 · témoin      121.8 / 697.0
+      crest facets (% / crests)            cascade       16.26 / 1745 · témoin        9.44 / 1436
+      facet control: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              53.26 · témoin              25.12
+      terrain R8 (windows)                 cascade       0.1059 (644) · témoin       0.0752 (641)
+      valley spacing λ (cells)             cascade              19.78 · témoin              10.74
+      relief p50, 12.5 km blocks (m)       cascade                829 · témoin               1203
+      lakes (count / km²)                  cascade          57 / 3266 · témoin         231 / 1840
+      detail per band (RMS m), cascade / témoin: [0.78–1.56 km] 44.5 / 110.7 · [1.56–3.12 km] 20.9 / 72.2 · [3.12–6.25 km] 56.5 / 126.6 · [6.25–12.50 km] 103.5 / 158.7 · [12.50–25.00 km] 130.4 / 173.2 · [25.00–50.00 km] 150.8 / 184.6
+      the physics level's 5 largest depressions here (area km² / spill m): 467 / 9 · 496 / 33 · 590 / 15 · 280 / 322 · 192 / 32
+   ── 1024² · E 700 · T 2000 · D 200 iterations · 13.3 s [upscale 0.06 · E 5.6 (7.93 ms/it) · T 6.1 (3.04 ms/it) · D 1.6 (7.97 ms/it)] · retained 56 MB
+      k 2.460e-2 · s_ref (p90) 0.1872 · d_L 50 m · carved 31.25 km³ of a bound 40093 km³ (0.08 %) · deepest 37.6 m of a per-cell bound 1427 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 254 cells (mean depth 1 m)
+      peak / mean / p90 land (m)           cascade  2904 / 393 / 1022 · témoin  3492 / 644 / 1463
+      peak after retargeting (evaluation): 2907 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -1.3 m (-0.34 % of its mean land) · mean |Δ| 2.4 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 0.71 / max 7.07
+      trunks → témoin's at the same level (cells): p50 5.39 / p90 23.02 / max 106.28
+      walls 28° ± 0.5° (% / cells)         cascade         0.007 / 13 · témoin       2.512 / 4618
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.433
+      crest cells (% land)                 cascade              13.95 · témoin              23.03
+      crest −∇²z p50 / p90 (m/km²)         cascade       55.7 / 246.6 · témoin     214.0 / 1432.0
+      crest facets (% / crests)            cascade        9.25 / 2376 · témoin       19.95 / 8446
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              79.90 · témoin              51.51
+      terrain R8 (windows)                 cascade      0.0303 (2692) · témoin      0.0402 (2656)
+      valley spacing λ (cells)             cascade              39.34 · témoin              16.55
+      relief p50, 12.5 km blocks (m)       cascade                849 · témoin               1268
+      lakes (count / km²)                  cascade          79 / 3368 · témoin         365 / 1548
+      detail per band (RMS m), cascade / témoin: [0.39–0.78 km] 22.7 / 64.1 · [0.78–1.56 km] 6.4 / 34.8 · [1.56–3.12 km] 20.5 / 72.2 · [3.12–6.25 km] 56.2 / 126.7 · [6.25–12.50 km] 103.1 / 159.0 · [12.50–25.00 km] 129.9 / 173.4 · [25.00–50.00 km] 150.3 / 185.1
+      the physics level's 5 largest depressions here (area km² / spill m): 562 / 11 · 491 / 33 · 587 / 15 · 278 / 322 · 194 / 33
+   ── 2048² · E 400 · T 6000 · D 150 iterations · 57.9 s [upscale 0.27 · E 8.8 (22.03 ms/it) · T 45.1 (7.52 ms/it) · D 3.7 (24.81 ms/it)] · retained 222 MB
+      k 2.132e-2 · s_ref (p90) 0.1881 · d_L 25 m · carved 26.61 km³ of a bound 19835 km³ (0.13 %) · deepest 50.5 m of a per-cell bound 707 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 780 cells (mean depth 1 m)
+      peak / mean / p90 land (m)           cascade  2904 / 392 / 1020 · témoin  3520 / 646 / 1465
+      peak after retargeting (evaluation): 2907 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -1.0 m (-0.25 % of its mean land) · mean |Δ| 1.1 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 1.00 / max 61.13
+      trunks → témoin's at the same level (cells): p50 11.31 / p90 62.37 / max 217.26
+      walls 28° ± 0.5° (% / cells)         cascade         0.010 / 77 · témoin      5.547 / 40662
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.459
+      crest cells (% land)                 cascade               7.80 · témoin              15.38
+      crest −∇²z p50 / p90 (m/km²)         cascade       63.8 / 285.7 · témoin     439.9 / 2996.6
+      crest facets (% / crests)            cascade        3.80 / 2180 · témoin      27.71 / 31257
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              93.06 · témoin              71.51
+      terrain R8 (windows)                 cascade     0.0051 (11160) · témoin     0.0415 (10847)
+      valley spacing λ (cells)             cascade              74.51 · témoin              26.18
+      relief p50, 12.5 km blocks (m)       cascade                875 · témoin               1286
+      lakes (count / km²)                  cascade          89 / 3393 · témoin          316 / 992
+      detail per band (RMS m), cascade / témoin: [0.20–0.39 km] 11.5 / 35.2 · [0.39–0.78 km] 1.9 / 16.5 · [0.78–1.56 km] 6.4 / 34.8 · [1.56–3.12 km] 20.5 / 72.2 · [3.12–6.25 km] 56.4 / 126.8 · [6.25–12.50 km] 103.0 / 159.1 · [12.50–25.00 km] 129.6 / 173.5 · [25.00–50.00 km] 149.9 / 185.4
+      the physics level's 5 largest depressions here (area km² / spill m): 573 / 12 · 493 / 33 · 586 / 15 · 278 / 322 · 192 / 33
+   final retargeting (23894 constraint cells): peak 2907 · mean 393 · p90 1020 m · walls 28° 0.011 % · facets 3.88 % · R8 0.0040
+   R — P256 S+ρ moyen → 2048 FIRES at 512²: facets 16.26 > 9.44 (1745 crests)
+
+   ═══ chain P256 S+U moyen → 2048 ═══
+   ── 512² · E 1500 · T 1000 · D 700 iterations · 9.0 s [upscale 0.01 · E 5.7 (3.78 ms/it) · T 1.1 (1.14 ms/it) · D 2.2 (3.13 ms/it)] · retained 14 MB
+      k 2.369e-2 · s_ref (p90) 0.1843 · d_L 100 m · carved 37.25 km³ of a bound 82861 km³ (0.04 %) · deepest 25.4 m of a per-cell bound 2944 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 5 cells (mean depth 0 m)
+      peak / mean / p90 land (m)           cascade  2963 / 396 / 1034 · témoin  3420 / 640 / 1457
+      peak after retargeting (evaluation): 2877 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -0.0 m (-0.00 % of its mean land) · mean |Δ| 3.1 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 1.50 / max 28.31
+      trunks → témoin's at the same level (cells): p50 2.83 / p90 13.93 / max 52.81
+      walls 28° ± 0.5° (% / cells)         cascade          0.015 / 7 · témoin        0.770 / 356
+      band 33° ± 0.5° (%)                  cascade              0.000 · témoin              0.283
+      crest cells (% land)                 cascade              24.41 · témoin              32.89
+      crest −∇²z p50 / p90 (m/km²)         cascade       54.0 / 255.0 · témoin      121.8 / 697.0
+      crest facets (% / crests)            cascade       16.97 / 1910 · témoin        9.44 / 1436
+      facet control: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)         cascade              49.84 · témoin              25.12
+      terrain R8 (windows)                 cascade       0.1099 (644) · témoin       0.0752 (641)
+      valley spacing λ (cells)             cascade              17.81 · témoin              10.74
+      relief p50, 12.5 km blocks (m)       cascade                879 · témoin               1203
+      lakes (count / km²)                  cascade          74 / 3472 · témoin         231 / 1840
+      detail per band (RMS m), cascade / témoin: [0.78–1.56 km] 48.2 / 110.7 · [1.56–3.12 km] 24.4 / 72.2 · [3.12–6.25 km] 61.2 / 126.6 · [6.25–12.50 km] 107.3 / 158.7 · [12.50–25.00 km] 132.1 / 173.2 · [25.00–50.00 km] 151.8 / 184.6
+      the physics level's 5 largest depressions here (area km² / spill m): 662 / 14 · 493 / 31 · 439 / 11 · 280 / 323 · 184 / 31
+   ── 1024² · E 700 · T 2000 · D 200 iterations · 13.9 s [upscale 0.05 · E 6.1 (8.77 ms/it) · T 6.1 (3.03 ms/it) · D 1.7 (8.29 ms/it)] · retained 56 MB
+      k 2.100e-2 · s_ref (p90) 0.2026 · d_L 50 m · carved 29.38 km³ of a bound 34297 km³ (0.09 %) · deepest 57.1 m of a per-cell bound 1218 m · s ≥ s_max on 0.000 % of the erosion updates · D5 lifted 641 cells (mean depth 2 m)
+      peak / mean / p90 land (m)           cascade  3023 / 396 / 1035 · témoin  3492 / 644 / 1463
+      peak after retargeting (evaluation): 2907 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -0.1 m (-0.02 % of its mean land) · mean |Δ| 0.7 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 1.00 / max 24.08
+      trunks → témoin's at the same level (cells): p50 5.83 / p90 32.31 / max 106.28
+      walls 28° ± 0.5° (% / cells)         cascade        0.091 / 168 · témoin       2.512 / 4618
+      band 33° ± 0.5° (%)                  cascade              0.002 · témoin              0.433
+      crest cells (% land)                 cascade              15.50 · témoin              23.03
+      crest −∇²z p50 / p90 (m/km²)         cascade       63.0 / 367.4 · témoin     214.0 / 1432.0
+      crest facets (% / crests)            cascade       21.18 / 6059 · témoin       19.95 / 8446
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              76.88 · témoin              51.51
+      terrain R8 (windows)                 cascade      0.0302 (2708) · témoin      0.0402 (2656)
+      valley spacing λ (cells)             cascade              33.03 · témoin              16.55
+      relief p50, 12.5 km blocks (m)       cascade                897 · témoin               1268
+      lakes (count / km²)                  cascade         174 / 3738 · témoin         365 / 1548
+      detail per band (RMS m), cascade / témoin: [0.39–0.78 km] 25.5 / 64.1 · [0.78–1.56 km] 9.1 / 34.8 · [1.56–3.12 km] 24.9 / 72.2 · [3.12–6.25 km] 61.8 / 126.7 · [6.25–12.50 km] 107.8 / 159.0 · [12.50–25.00 km] 132.3 / 173.4 · [25.00–50.00 km] 151.8 / 185.1
+      the physics level's 5 largest depressions here (area km² / spill m): 714 / 16 · 481 / 30 · 440 / 11 · 279 / 324 · 184 / 30
+   ── 2048² · E 400 · T 6000 · D 150 iterations · 60.5 s [upscale 0.23 · E 10.6 (26.48 ms/it) · T 45.9 (7.65 ms/it) · D 3.8 (25.16 ms/it)] · retained 222 MB
+      k 1.715e-2 · s_ref (p90) 0.2097 · d_L 25 m · carved 24.28 km³ of a bound 16039 km³ (0.15 %) · deepest 45.2 m of a per-cell bound 568 m · s ≥ s_max on 0.003 % of the erosion updates · D5 lifted 1362 cells (mean depth 1 m)
+      peak / mean / p90 land (m)           cascade  3036 / 395 / 1034 · témoin  3520 / 646 / 1465
+      peak after retargeting (evaluation): 2907 m (target 2700 – 3000, R band 2295 – 3450)
+      drift (restricted − previous level): bias -0.0 m (-0.00 % of its mean land) · mean |Δ| 0.2 m
+      trunks ≥ 100 km² → previous level (cells of it): p50 0.50 / p90 1.00 / max 46.75
+      trunks → témoin's at the same level (cells): p50 12.04 / p90 66.76 / max 214.73
+      walls 28° ± 0.5° (% / cells)         cascade        0.133 / 987 · témoin      5.547 / 40662
+      band 33° ± 0.5° (%)                  cascade              0.011 · témoin              0.459
+      crest cells (% land)                 cascade               9.22 · témoin              15.38
+      crest −∇²z p50 / p90 (m/km²)         cascade       72.9 / 489.2 · témoin     439.9 / 2996.6
+      crest facets (% / crests)            cascade       12.19 / 8318 · témoin      27.71 / 31257
+      facet control: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)         cascade              91.05 · témoin              71.51
+      terrain R8 (windows)                 cascade     0.0147 (11231) · témoin     0.0415 (10847)
+      valley spacing λ (cells)             cascade              58.66 · témoin              26.18
+      relief p50, 12.5 km blocks (m)       cascade                927 · témoin               1286
+      lakes (count / km²)                  cascade         218 / 3780 · témoin          316 / 992
+      detail per band (RMS m), cascade / témoin: [0.20–0.39 km] 13.1 / 35.2 · [0.39–0.78 km] 3.2 / 16.5 · [0.78–1.56 km] 9.1 / 34.8 · [1.56–3.12 km] 25.0 / 72.2 · [3.12–6.25 km] 61.9 / 126.8 · [6.25–12.50 km] 107.8 / 159.1 · [12.50–25.00 km] 132.3 / 173.5 · [25.00–50.00 km] 151.7 / 185.4
+      the physics level's 5 largest depressions here (area km² / spill m): 766 / 19 · 479 / 30 · 443 / 11 · 281 / 324 · 185 / 30
+   final retargeting (38927 constraint cells): peak 2907 · mean 379 · p90 1000 m · walls 28° 0.076 % · facets 10.81 % · R8 0.0127
+   R — P256 S+U moyen → 2048 FIRES at 512²: facets 16.97 > 9.44 (1910 crests)
+
+   S against S+ρ (same physics level and budget): terrain R8 / coherent windows per level
+      256² · P128 S moyen R8 0.1536 / coherent 38.71 % · P128 S+ρ moyen R8 0.1519 / coherent 38.71 % · ΔR8 -1.1 % · Δcoherent +0.0 %
+      512² · P128 S moyen R8 0.1241 / coherent 74.96 % · P128 S+ρ moyen R8 0.1255 / coherent 75.11 % · ΔR8 +1.1 % · Δcoherent +0.2 %
+      1024² · P128 S moyen R8 0.1008 / coherent 90.09 % · P128 S+ρ moyen R8 0.1018 / coherent 90.06 % · ΔR8 +0.9 % · Δcoherent -0.0 %
+      512² · P256 S moyen → 2048 R8 0.1056 / coherent 53.26 % · P256 S+ρ moyen → 2048 R8 0.1059 / coherent 53.26 % · ΔR8 +0.3 % · Δcoherent +0.0 %
+      1024² · P256 S moyen → 2048 R8 0.0299 / coherent 79.90 % · P256 S+ρ moyen → 2048 R8 0.0303 / coherent 79.90 % · ΔR8 +1.1 % · Δcoherent +0.0 %
+      2048² · P256 S moyen → 2048 R8 0.0059 / coherent 93.06 % · P256 S+ρ moyen → 2048 R8 0.0051 / coherent 93.06 % · ΔR8 -13.8 % · Δcoherent +0.0 %
+
+   cost: measured P256 S moyen → 2048 128² → 2048² 80 s · per iteration at 2048²: E 22.1 · T 7.6 · D 25.2 ms · ESTIMATE 4096² + 8192²: E 97 s · T 907 s · D 50 s → total 1134 s = 18.9 min (alert above 1 h: no)
+   hypsometry (f160_hypsometry.png), colours: physics 256² rgb[200, 60, 40] · 512² rgb[220, 140, 30] · 1024² rgb[60, 150, 60] · 2048² rgb[40, 110, 200] · retargeted rgb[0, 0, 0]
+   image f160_A_chaine.png · 512² origin (128, 320) · row 1 the best (physics, 256², 512², 1024², 2048², retargeted) · row 2 the témoin (128²–2048²)
+   image f160_B_plateau.png · 512² origin (176, 192) · row 1 the best (physics, 256², 512², 1024², 2048², retargeted) · row 2 the témoin (128²–2048²)
+   image f160_C_bassin_lac4.png · 512² origin (74, 160) · row 1 the best (physics, 256², 512², 1024², 2048², retargeted) · row 2 the témoin (128²–2048²)
+   image f160_S_vs_Srho_A.png · row 1 S, row 2 S+ρ, per level
+
+==========  end Finding 160 . 641.2 s  ==========
