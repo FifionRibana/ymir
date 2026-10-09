@@ -20,6 +20,7 @@
 
 pub mod amplify;
 pub mod hydro;
+pub mod measure;
 
 use crate::erosion::stream_power::{
     RELIEF_V1_A_C_KM2, StreamPowerConfig, incise_with_floor, linear_diffusion, talus_sweep,
@@ -524,6 +525,8 @@ pub struct PeakCalibration {
     /// D5: interior cells ≤ sea lifted to sea + 1 m, and their mean original depth (m).
     pub lifted: usize,
     pub lifted_mean_depth_m: f32,
+    /// ADR Finding 161 -- the lifted cells themselves (the D5 mask, carried to every level).
+    pub lifted_mask: Vec<bool>,
 }
 
 /// ADR Finding 160-D1 -- **the physics level**: F159's level (uplift, the implicit stream power, the talus and the
@@ -547,9 +550,11 @@ pub fn physics_level(
     let zm = GridF32 { width: n, height: n, data: z0.data.iter().map(|v| (v - cfg.sea_level) * n2m).collect() };
     let ocean = amplify::ocean_mask(&zm);
     let (mut lifted, mut depth) = (0usize, 0f64);
+    let mut lifted_mask = vec![false; n * n];
     for k in 0..n * n {
         if !ocean[k] && z0.data[k] <= cfg.sea_level {
             lifted += 1;
+            lifted_mask[k] = true;
             depth += ((cfg.sea_level - z0.data[k]) * n2m) as f64;
             z0.data[k] = cfg.sea_level + 1.0 / n2m;
         }
@@ -574,6 +579,7 @@ pub fn physics_level(
             secs: t.elapsed().as_secs_f64(),
             lifted,
             lifted_mean_depth_m: if lifted > 0 { (depth / lifted as f64) as f32 } else { 0.0 },
+            lifted_mask,
         },
     ))
 }

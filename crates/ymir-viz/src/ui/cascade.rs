@@ -1,4 +1,9 @@
-//! ADR Findings 159–160 -- the « Cascade » window: the multi-scale cascade (`ymir_core::cascade`), level by level.
+//! ADR Findings 159–161 -- the « Cascade » window: the multi-scale cascade (`ymir_core::cascade`), level by level.
+//!
+//! F161: N1 by default (the implicit solver at n = 1, the area capped, the smooth retargeting), physics at 256²,
+//! « k du niveau » with « Caler sur la Corse », and the « Référence Corse » view (Copernicus DEM GLO-30, produced using
+//! Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS
+//! by the European Union and ESA; all rights reserved).
 //!
 //! The author (2026-10-09): « on aurait clairement les différentes résolutions qui seront balayées, soit d'un seul
 //! trait, soit résolution par résolution, par action utilisateur … visualiser les résultats intermédiaires » ; and at F160:
@@ -46,6 +51,9 @@ const DOMAIN_KM: f32 = 400.0;
 /// F160-D1: the author's « type Corse » peak (the middle of 2 700–3 000 m).
 const PEAK_TARGET_M: f32 = 2850.0;
 const LAST_LEVEL: usize = 8192;
+/// F161: N1's k calibrated on Corsica by `f161_cascade` for the témoin's world (the closest trial at 512² and 1 024²,
+/// where the target was out of reach; within ±20 % at 2 048²).
+const F161_K: [(usize, f32); 3] = [(512, 1.0e3), (1024, 1.0e3), (2048, 177.8)];
 
 pub struct CascadePlugin;
 
@@ -78,8 +86,10 @@ enum Cmd {
     Physics(usize),
     /// The amplification's settings: variant, budget scale, k multiplier (resets the amplification, keeps the physics).
     Config(Variant, f32, f32),
-    /// The next level at this budget.
-    Next(Budget),
+    /// The next level at this budget (and, for N1, this k).
+    Next(Budget, Option<f32>),
+    /// F161-V: calibrate N1's k for the next level on Corsica's 2–4 cell octave (the target in m).
+    Calibrate(f32),
     /// Levels up to n cells at the declared budgets.
     All(usize),
     /// Add iterations of one process to amplification level i (the levels after it are discarded).
@@ -101,6 +111,8 @@ enum Evt {
     Level(usize, Shown, Arc<AmpLevel>),
     Truncate(usize),
     Retargeted(Shown, usize),
+    /// F161-V: the calibrated k for a level, and its trials (k, octave 0).
+    Calibrated(usize, f32, Vec<(f32, f32)>),
     Progress(String, f32),
     Idle,
 }
@@ -147,6 +159,13 @@ pub struct CascadeUi {
     budget_scale: f32,
     /// F160 diagnostic A1: the k multiplier (1 = the declaration).
     k_boost: f32,
+    /// F161-V: « k du niveau » (N1) for the next level, and the level it was set for.
+    n1_k: f32,
+    n1_k_for: usize,
+    /// F161-V: the « Référence Corse » view, and its loaded grid (cell count, shown, octave 0).
+    corse: bool,
+    corse_cache: Option<(usize, egui::TextureHandle)>,
+    calib_note: Option<String>,
     next_budget: Budget,
     /// The resolution `next_budget` was last filled for (it follows the declared budget until edited).
     budget_for: usize,
@@ -177,10 +196,15 @@ impl Default for CascadeUi {
             busy: false,
             progress: None,
             note: None,
-            phys_n: 128,
-            variant: Variant::S,
+            phys_n: 256,
+            variant: Variant::N1,
             budget_scale: 1.0,
             k_boost: 1.0,
+            n1_k: 100.0,
+            n1_k_for: 0,
+            corse: true,
+            corse_cache: None,
+            calib_note: None,
             next_budget: Budget::moyen(256),
             budget_for: 0,
             add_iters: [100, 200, 50],
@@ -242,7 +266,8 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
             let t = Instant::now();
             let coarse = cascade_coarse(seed, offset_cells);
             let _ = etx.send(Evt::Coarse(shown(to_m(&coarse)), t.elapsed().as_secs_f64()));
-            let (mut variant, mut scale, mut boost) = (Variant::S, 1.0f32, 1.0f32);
+            // F161: N1 by default, as the window
+            let (mut variant, mut scale, mut boost) = (Variant::N1, 1.0f32, 1.0f32);
             let amp_cfg = |v: Variant, f: f32, b: f32| AmpConfig { k_boost: b, ..AmpConfig::declared(seed, v, f) };
             let mut chain: Option<Chain> = None;
             let send_level = |etx: &Sender<Evt>, ch: &Chain, i: usize| {
@@ -276,8 +301,20 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                             let _ = etx.send(Evt::Truncate(0));
                         }
                     }
-                    Cmd::Next(b) => {
+                    Cmd::Calibrate(target) => {
                         if let Some(ch) = chain.as_mut() {
+                            let n = ch.last_result().width * 2;
+                            let _ = etx.send(Evt::Progress(format!("{n}² : calage de k sur la Corse (≤ 8 essais)"), 0.0));
+                            let (k, trials) = ch.calibrate_next(target, 0.2, 8, &cancel);
+                            let _ = etx.send(Evt::Calibrated(n, k, trials));
+                        }
+                    }
+                    Cmd::Next(b, k) => {
+                        if let Some(ch) = chain.as_mut() {
+                            if let Some(k) = k {
+                                let n = ch.last_result().width * 2;
+                                ch.cfg.set_n1_k(n, k);
+                            }
                             if run_level(ch, b, &etx, &cancel) {
                                 send_level(&etx, ch, ch.levels.len() - 1);
                             }
@@ -418,6 +455,15 @@ impl CascadeUi {
                     self.retargeted = Some((s, nc));
                     self.sel = Sel::Retargeted;
                 }
+                Evt::Calibrated(n, k, trials) => {
+                    self.n1_k = k;
+                    self.n1_k_for = n;
+                    self.calib_note = Some(format!(
+                        "{n}² : k calé = {k:.3e} en {} essais ({})",
+                        trials.len(),
+                        trials.iter().map(|(k, v)| format!("{k:.2e} → {v:.1} m")).collect::<Vec<_>>().join(", ")
+                    ));
+                }
                 Evt::Progress(t, f) => self.progress = Some((t, f)),
                 Evt::Idle => {
                     self.busy = false;
@@ -461,7 +507,7 @@ fn draw_cascade(mut contexts: EguiContexts, mut cu: ResMut<CascadeUi>) {
         ctx.request_repaint();
     }
     let mut open = true;
-    egui::Window::new("Cascade multi-échelle (F159–F160)")
+    egui::Window::new("Cascade multi-échelle (F159–F161)")
         .open(&mut open)
         .default_size([860.0, 820.0])
         .resizable(true)
@@ -511,7 +557,7 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
     ui.horizontal(|ui| {
         ui.label(small("Amplification :".into()));
         let (mut v, mut f) = (cu.variant, cu.budget_scale);
-        for x in [Variant::S, Variant::SRho, Variant::SU] {
+        for x in [Variant::N1, Variant::N1NoCap, Variant::N1NoRecal, Variant::S, Variant::SRho, Variant::SU] {
             ui.selectable_value(&mut v, x, x.label());
         }
         ui.separator();
@@ -534,6 +580,12 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
         cu.next_budget = Budget::moyen(next_n).scaled(cu.budget_scale);
         cu.budget_for = next_n;
     }
+    if cu.n1_k_for != next_n {
+        // F161: the k the bench calibrated on Corsica for the témoin's world (PSEED, 256² physics); another world
+        // recalibrates with « Caler sur la Corse »
+        cu.n1_k = F161_K.iter().find(|(n, _)| *n == next_n).map_or(100.0, |p| p.1);
+        cu.n1_k_for = next_n;
+    }
     ui.horizontal(|ui| {
         ui.label(small(format!("Budget du prochain niveau ({next_n}²) :")));
         ui.add(egui::DragValue::new(&mut cu.next_budget.erosion).prefix("érosion ").range(0..=20000));
@@ -543,11 +595,33 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
             cu.next_budget = Budget::moyen(next_n).scaled(cu.budget_scale);
         }
     });
+    if cu.variant.is_n1() {
+        ui.horizontal(|ui| {
+            ui.label(small(format!("k du niveau ({next_n}², N1) :")));
+            let speed = cu.n1_k * 0.02;
+            ui.add(egui::DragValue::new(&mut cu.n1_k).range(1e-3..=1e8).speed(speed).custom_formatter(|v, _| format!("{v:.3e}")));
+            let target = corse_target(next_n);
+            let can = ready && have_phys && target.is_some();
+            let hint = match target {
+                Some(t) => format!("Cale k pour que l'octave 2–4 cellules atteigne celle de la Corse ({t:.1} m) à ±20 % (≤ 8 essais, F161-D3)"),
+                None => "Données Corse absentes (data/corsica, prep_corse.py)".to_string(),
+            };
+            if ui.add_enabled(can, egui::Button::new("Caler sur la Corse")).on_hover_text(hint).clicked() {
+                if let Some(t) = target {
+                    cu.send(Cmd::Calibrate(t));
+                }
+            }
+        });
+        if let Some(n) = &cu.calib_note {
+            ui.label(small(n.clone()));
+        }
+    }
     ui.horizontal(|ui| {
         let can = ready && have_phys && next_n <= LAST_LEVEL;
         if button(ui, "Niveau suivant", can) {
             let b = cu.next_budget;
-            cu.send(Cmd::Next(b));
+            let k = cu.variant.is_n1().then_some(cu.n1_k);
+            cu.send(Cmd::Next(b, k));
         }
         if button(ui, "Tout (→ 1024²)", can && next_n <= 1024) {
             cu.send(Cmd::All(1024));
@@ -702,6 +776,9 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
         ui.checkbox(&mut cu.rivers, "Rivières");
         ui.add(egui::DragValue::new(&mut cu.min_order).range(1..=8).prefix("ordre ≥ "));
         ui.checkbox(&mut cu.lakes, "Lacs");
+        ui.separator();
+        ui.checkbox(&mut cu.corse, "Référence Corse")
+            .on_hover_text("Le relief de la Corse (Copernicus DEM GLO-30) à la taille de cellule du niveau affiché, même ombrage");
     });
     let key = format!(
         "{:?}/{}/{:?}/{}/{}/{}/{}/{}",
@@ -720,9 +797,24 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
             cu.tex_key = Some(key);
         }
     }
+    let shown_n = cu.shown(cu.sel).map(|s| s.n);
+    let corse_tex = match (cu.corse, shown_n) {
+        (true, Some(n)) => corse_texture(ui.ctx(), &mut cu.corse_cache, n),
+        _ => None,
+    };
     if let (Some(tex), Some(s)) = (&cu.texture, cu.shown(cu.sel)) {
-        let side = ui.available_width().min(ui.available_height() - 36.0).max(160.0);
-        let resp = ui.add(egui::Image::new((tex.id(), egui::vec2(side, side))).sense(egui::Sense::hover()));
+        let room = if corse_tex.is_some() { ui.available_width() / 1.5 } else { ui.available_width() };
+        let side = room.min(ui.available_height() - 36.0).max(160.0);
+        let resp = ui
+            .horizontal(|ui| {
+                let resp = ui.add(egui::Image::new((tex.id(), egui::vec2(side, side))).sense(egui::Sense::hover()));
+                if let Some(ct) = &corse_tex {
+                    // 200 km against our 400 km: half the side, the same km per pixel
+                    ui.add(egui::Image::new((ct.id(), egui::vec2(side / 2.0, side / 2.0))));
+                }
+                resp
+            })
+            .inner;
         let n = s.n;
         if let Some(pos) = resp.hover_pos() {
             let r = resp.rect;
@@ -825,6 +917,42 @@ fn build_image(cu: &mut CascadeUi) -> Option<egui::ColorImage> {
     Some(egui::ColorImage::from_rgba_unmultiplied([n, n], &rgba))
 }
 
+/// F161-V: the Corsica grid at a cascade level of `n` cells (its 200 km grid of n / 2 cells, the same cell), from
+/// `YMIR_CORSICA_DIR` or `data/corsica` (`prep_corse.py`; Copernicus DEM GLO-30, licence in `docs/refs`).
+fn corse_grid(n: usize) -> Option<GridF32> {
+    let dir = std::env::var("YMIR_CORSICA_DIR").unwrap_or_else(|_| "data/corsica".into());
+    let b = std::fs::read(format!("{dir}/corse_{}.bin", n / 2)).ok()?;
+    let w = u32::from_le_bytes(b.get(0..4)?.try_into().ok()?) as usize;
+    let h = u32::from_le_bytes(b.get(4..8)?.try_into().ok()?) as usize;
+    let data: Vec<f32> = b[8..].chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
+    (data.len() == w * h).then_some(GridF32 { width: w, height: h, data })
+}
+
+/// F161-D3: Corsica's 2–4 cell octave at a cascade level of `n` cells (the calibration's target), `None` without data.
+fn corse_target(n: usize) -> Option<f32> {
+    let g = corse_grid(n)?;
+    let ocean = ymir_core::cascade::amplify::ocean_mask(&g);
+    let zm: Vec<f32> = g.data.iter().zip(&ocean).map(|(v, o)| if *o { 0.0 } else { *v }).collect();
+    let land = ocean.iter().filter(|o| !**o).count();
+    ymir_core::cascade::measure::octave_rms(&zm, g.width, land).first().copied()
+}
+
+/// F161-V: the « Référence Corse » texture for a cascade level of `n` cells (built once per level), the same shading,
+/// rivers (order ≥ 2) and lakes.
+fn corse_texture(ctx: &egui::Context, cache: &mut Option<(usize, egui::TextureHandle)>, n: usize) -> Option<egui::TextureHandle> {
+    if cache.as_ref().map(|c| c.0) != Some(n) {
+        let g = corse_grid(n)?;
+        let m = g.width;
+        let hy = hydrology(&g, 200.0 / m as f32);
+        let depth = SteinSteinParams::default().depth_scale_m as f32;
+        let mut rgba = shade_m_rgba(&g, 200_000.0 / m as f32, depth);
+        draw(&mut rgba, &hy, 2, true, true);
+        let tex = ctx.load_texture(format!("corse{n}"), egui::ColorImage::from_rgba_unmultiplied([m, m], &rgba), egui::TextureOptions::NEAREST);
+        *cache = Some((n, tex));
+    }
+    cache.as_ref().map(|c| c.1.clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -859,7 +987,7 @@ mod tests {
         assert_eq!(phys.n, 128);
         let peak = phys.result.data.iter().fold(f32::MIN, |a, &v| a.max(v));
         assert!((peak - PEAK_TARGET_M).abs() < 0.2 * PEAK_TARGET_M, "the calibrated peak {peak}");
-        w.tx.send(Cmd::Next(Budget { erosion: 3, talus: 3, deposit: 3 })).unwrap();
+        w.tx.send(Cmd::Next(Budget { erosion: 3, talus: 3, deposit: 3 }, None)).unwrap();
         let e = wait(|e| matches!(e, Evt::Idle));
         let l = e.iter().find_map(|e| if let Evt::Level(0, _, l) = e { Some(l.clone()) } else { None }).expect("one level");
         assert_eq!((l.n, l.done.erosion, l.done.talus, l.done.deposit), (256, 3, 3, 3));

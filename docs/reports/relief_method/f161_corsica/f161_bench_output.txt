@@ -1,0 +1,264 @@
+==========  Finding 161 . the cascade, round 3: Corsica as the reference, N1 calibrated on it  ==========
+   Corsica read at 1563 / 781 / 391 / 195 / 98 m (1 s)
+   Corse 1562 m: land 3527 · slope p50/p90 0.099/0.211 · > 28° 0.00 % · > 33° 0.00 % · walls 28° 0.000 % (0) · facets 3.45 % (57) · R8 0.2884 (36) · coherent 8.33 % · λ 9.08 km · density 0.151 km/km² · relief p50 1238 m · peak/mean/p90 2367/573/1280 · lakes 10 / 87.9 km²
+      spectrum (RMS m): [3.12–6.25 km] 84.9 · [6.25–12.50 km] 152.4 · [12.50–25.00 km] 160.5 · [25.00–50.00 km] 206.7 · [50.00–100.00 km] 302.6 · [100.00–200.00 km] 366.2
+   Corse 781 m: land 14069 · slope p50/p90 0.144/0.304 · > 28° 0.15 % · > 33° 0.01 % · walls 28° 0.071 % (10) · facets 3.77 % (229) · R8 0.0726 (174) · coherent 9.20 % · λ 4.86 km · density 0.339 km/km² · relief p50 1431 m · peak/mean/p90 2442/575/1295 · lakes 34 / 75.1 km²
+      spectrum (RMS m): [1.56–3.12 km] 53.6 · [3.12–6.25 km] 96.5 · [6.25–12.50 km] 158.3 · [12.50–25.00 km] 162.2 · [25.00–50.00 km] 207.4 · [50.00–100.00 km] 302.9 · [100.00–200.00 km] 366.7
+   Corse 391 m: land 56348 · slope p50/p90 0.194/0.403 · > 28° 2.36 % · > 33° 0.42 % · walls 28° 0.703 % (396) · facets 4.61 % (1048) · R8 0.0254 (771) · coherent 9.47 % · λ 2.74 km · density 0.488 km/km² · relief p50 1570 m · peak/mean/p90 2514/574/1296 · lakes 112 / 65.5 km²
+      spectrum (RMS m): [0.78–1.56 km] 30.4 · [1.56–3.12 km] 60.7 · [3.12–6.25 km] 100.1 · [6.25–12.50 km] 159.7 · [12.50–25.00 km] 162.5 · [25.00–50.00 km] 207.4 · [50.00–100.00 km] 302.6 · [100.00–200.00 km] 366.5
+   Corse 195 m: land 226051 · slope p50/p90 0.247/0.501 · > 28° 7.67 % · > 33° 2.37 % · walls 28° 1.547 % (3496) · facets 6.24 % (5264) · R8 0.0241 (3275) · coherent 13.04 % · λ 1.60 km · density 0.516 km/km² · relief p50 1621 m · peak/mean/p90 2618/573/1296 · lakes 354 / 53.3 km²
+      spectrum (RMS m): [0.39–0.78 km] 15.3 · [0.78–1.56 km] 34.4 · [1.56–3.12 km] 62.9 · [3.12–6.25 km] 100.9 · [6.25–12.50 km] 159.8 · [12.50–25.00 km] 162.3 · [25.00–50.00 km] 207.1 · [50.00–100.00 km] 302.1 · [100.00–200.00 km] 366.0
+   Corse 98 m: land 909827 · slope p50/p90 0.292/0.578 · > 28° 14.00 % · > 33° 5.66 % · walls 28° 2.167 % (19713) · facets 8.20 % (25288) · R8 0.0070 (13653) · coherent 19.93 % · λ 0.98 km · density 0.548 km/km² · relief p50 1633 m · peak/mean/p90 2657/569/1293 · lakes 1056 / 44.4 km²
+      spectrum (RMS m): [0.20–0.39 km] 7.1 · [0.39–0.78 km] 17.3 · [0.78–1.56 km] 35.6 · [1.56–3.12 km] 63.3 · [3.12–6.25 km] 100.8 · [6.25–12.50 km] 159.4 · [12.50–25.00 km] 161.9 · [25.00–50.00 km] 206.5 · [50.00–100.00 km] 301.2 · [100.00–200.00 km] 364.8
+test f161_cascade has been running for over 60 seconds
+   the témoin built and reduced (233 s)
+
+   physics P256: U₀ 4.420e-4 (trial peak 645 m) · 125 steps (equilibrium) · D5 lifted 748 cells (mean depth 39 m)
+   ── physics 256² (256², cell 1562 m) · land 11594 (textured 10846) · Corse land 3527
+      slope p50 / p90 (m/m)              cascade    0.063 / 0.174 · Corse    0.099 / 0.211 · témoin    0.099 / 0.307
+      slopes > 28° / > 33° (%)           cascade      0.00 / 0.00 · Corse      0.00 / 0.00 · témoin      1.96 / 0.72
+      walls 28° ± 0.5° (% / cells)       cascade        0.000 / 0 · Corse        0.000 / 0 · témoin       0.248 / 29
+      crest facets (% / crests)          cascade      13.00 / 510 · Corse        3.45 / 57 · témoin       5.23 / 255
+      facet control at this grid: pyramids 87.3 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)       cascade            18.18 · Corse             8.33 · témoin             8.39
+      terrain R8 (windows)               cascade      0.0251 (99) · Corse      0.2884 (36) · témoin     0.0151 (143)
+      valley spacing λ (km)              cascade            17.64 · Corse             9.08 · témoin            11.74
+      drainage density (km/km²)          cascade            0.170 · Corse            0.151 · témoin            0.167
+      relief p50, 12.5 km blocks (m)     cascade             1019 · Corse             1238 · témoin             1090
+      peak / mean / p90 land (m)         cascade 2873 / 392 / 1026 · Corse 2367 / 573 / 1280 · témoin 3318 / 632 / 1436
+      hypsometry deciles (m) cascade 9/35/84/147/224/328/470/683/1026 · Corse 57/126/224/339/456/594/762/963/1280
+      lakes: D5 13 / 2576 km² (apart) · other 1 / 5 km² · Corse 10 / 88 km²
+      spectrum by octave (RMS m), cascade / Corse / témoin: [3.12–6.25 km] 32.6 / 84.9 / 115.0 · [6.25–12.50 km] 121.4 / 152.4 / 215.5 · [12.50–25.00 km] 186.2 / 160.5 / 254.4 · [25.00–50.00 km] 238.8 / 206.7 / 289.9 · [50.00–100.00 km] 269.2 / 302.6 / 302.5 · [100.00–200.00 km] 294.1 / 366.2 / 348.4
+      calibration 512²: target 53.58 m (Corse octave 0) → k 1.000e3 after 7 trials (27 s): 1.00e2→13.97, 1.00e3→21.52, 1.00e4→8.08, 1.00e5→7.30, 1.00e6→7.29, 1.00e7→7.29, 1.00e8→7.29
+      N1 512² (3.8 s: E 0.3 · T 1.2 · D 2.3) · k 1.000e3 · peak 3034 · drift -0.28 % · trunk p90 0.71 · R: facets 26.44 > 1.5 × 3.77; slope p50 0.075 vs 0.144; λ 12.55 vs 4.86 km
+      calibration 1024²: target 30.43 m (Corse octave 0) → k 1.000e3 after 7 trials (68 s): 1.00e2→11.59, 1.00e3→20.41, 1.00e4→6.26, 1.00e5→5.06, 1.00e6→5.05, 1.00e7→5.05, 1.00e8→5.05
+      N1 1024² (9.6 s: E 1.1 · T 6.7 · D 1.7) · k 1.000e3 · peak 3080 · drift -0.07 % · trunk p90 1.00 · R: facets 14.08 > 1.5 × 4.61; slope p50 0.088 vs 0.194; λ 4.24 vs 2.74 km
+      calibration 2048²: target 15.32 m (Corse octave 0) → k 1.778e2 after 4 trials (230 s): 1.00e2→11.25, 1.00e3→25.53, 3.16e2→18.43, 1.78e2→14.15
+      N1 2048² (57.0 s: E 4.9 · T 47.7 · D 4.1) · k 1.778e2 · peak 3118 · drift -0.01 % · trunk p90 1.58 · R: slope p50 0.118 vs 0.247; trunk p90 1.58
+   N1 calibrated k: 512² 1.000e3 · 1024² 1.000e3 · 2048² 1.778e2 (396 s including the calibration)
+      N1 sans plafond 512² (3.7 s: E 0.3 · T 1.1 · D 2.2) · k 1.000e3 · peak 3034 · drift -0.28 % · trunk p90 0.71 · R: facets 25.86 > 1.5 × 3.77; slope p50 0.076 vs 0.144; λ 12.07 vs 4.86 km
+      N1 sans plafond 1024² (9.4 s: E 1.3 · T 6.2 · D 1.8) · k 1.000e3 · peak 3069 · drift -0.07 % · trunk p90 1.00 · R: facets 13.58 > 1.5 × 4.61; slope p50 0.090 vs 0.194
+      N1 sans plafond 2048² (58.2 s: E 5.2 · T 48.6 · D 4.1) · k 1.778e2 · peak 3096 · drift -0.01 % · trunk p90 1.58 · R: slope p50 0.124 vs 0.247; trunk p90 1.58
+      N1 sans recalage 512² (3.7 s: E 0.3 · T 1.1 · D 2.3) · k 1.000e3 · peak 853 · drift -92.45 % · trunk p90 1.12 · R: facets 13.09 > 1.5 × 3.77; slope p50 0.009 vs 0.144; slope p90 0.068 vs 0.304; λ 9.61 vs 4.86 km; drift -92.45 %; peak 853 m
+      N1 sans recalage 1024² (9.4 s: E 1.2 · T 6.4 · D 1.8) · k 1.000e3 · peak 200 · drift -87.60 % · trunk p90 1.12 · R: facets 15.84 > 1.5 × 4.61; slope p50 0.001 vs 0.194; slope p90 0.015 vs 0.403; λ 8.02 vs 2.74 km; drift -87.60 %; peak 200 m
+      N1 sans recalage 2048² (58.2 s: E 5.3 · T 48.4 · D 4.2) · k 1.778e2 · peak 202 · drift -11.64 % · trunk p90 0.71 · R: slope p50 0.001 vs 0.247; slope p90 0.019 vs 0.501; λ 5.65 vs 1.60 km; drift -11.64 %; peak 202 m
+      N1 talus au quart 512² (3.6 s: E 0.3 · T 1.1 · D 2.2) · k 1.000e3 · peak 3034 · drift -0.28 % · trunk p90 0.71 · R: facets 26.44 > 1.5 × 3.77; slope p50 0.075 vs 0.144; λ 12.55 vs 4.86 km
+      N1 talus au quart 1024² (4.9 s: E 1.5 · T 1.5 · D 1.8) · k 1.000e3 · peak 3080 · drift -0.07 % · trunk p90 1.00 · R: facets 14.08 > 1.5 × 4.61; slope p50 0.088 vs 0.194; λ 4.24 vs 2.74 km
+      N1 talus au quart 2048² (22.2 s: E 5.3 · T 12.5 · D 4.2) · k 1.778e2 · peak 3118 · drift -0.01 % · trunk p90 1.58 · R: slope p50 0.118 vs 0.247; trunk p90 1.58
+
+   ═══ chain N1 ═══
+   512²: E 6 · T 1000 · D 700 iterations · 3.8 s [upscale 0.02 · E 0.3 (51 ms/it) · T 1.2 (1.18 ms/it) · D 2.3 (3.27 ms/it)] · k 1.000e3 · drift -1.1 m (-0.28 %) |Δ| 5.8 m · trunk p50/p90/max 0.50/0.71/3.54 · smooth retargeting RMS 348.1 m
+   ── N1 (512², cell 781 m) · land 46112 (textured 43117) · Corse land 14069
+      slope p50 / p90 (m/m)              cascade    0.075 / 0.215 · Corse    0.144 / 0.304 · témoin    0.117 / 0.424
+      slopes > 28° / > 33° (%)           cascade      0.00 / 0.00 · Corse      0.15 / 0.01 · témoin      5.57 / 2.87
+      walls 28° ± 0.5° (% / cells)       cascade        0.000 / 0 · Corse       0.071 / 10 · témoin      0.770 / 356
+      crest facets (% / crests)          cascade     26.44 / 2764 · Corse       3.77 / 229 · témoin      9.44 / 1436
+      facet control at this grid: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)       cascade            40.67 · Corse             9.20 · témoin            25.12
+      terrain R8 (windows)               cascade     0.1060 (536) · Corse     0.0726 (174) · témoin     0.0752 (641)
+      valley spacing λ (km)              cascade            12.55 · Corse             4.86 · témoin             8.39
+      drainage density (km/km²)          cascade            0.522 · Corse            0.339 · témoin            0.421
+      relief p50, 12.5 km blocks (m)     cascade             1159 · Corse             1431 · témoin             1203
+      peak / mean / p90 land (m)         cascade 3034 / 394 / 1034 · Corse 2442 / 575 / 1295 · témoin 3420 / 640 / 1457
+      hypsometry deciles (m) cascade 9/35/85/146/225/328/471/682/1034 · Corse 55/122/220/337/460/596/764/973/1295
+      lakes: D5 14 / 2601 km² (apart) · other 12 / 23 km² · Corse 34 / 75 km²
+      spectrum by octave (RMS m), cascade / Corse / témoin: [1.56–3.12 km] 21.5 / 53.6 / 49.9 · [3.12–6.25 km] 42.5 / 96.5 / 131.5 · [6.25–12.50 km] 126.3 / 158.3 / 225.7 · [12.50–25.00 km] 187.2 / 162.2 / 258.5 · [25.00–50.00 km] 239.3 / 207.4 / 292.3 · [50.00–100.00 km] 270.0 / 302.9 / 304.5
+   1024²: E 6 · T 2000 · D 200 iterations · 9.6 s [upscale 0.08 · E 1.1 (191 ms/it) · T 6.7 (3.34 ms/it) · D 1.7 (8.57 ms/it)] · k 1.000e3 · drift -0.3 m (-0.07 %) |Δ| 4.5 m · trunk p50/p90/max 0.50/1.00/57.85 · smooth retargeting RMS 294.2 m
+   ── N1 (1024², cell 391 m) · land 184052 (textured 172072) · Corse land 56348
+      slope p50 / p90 (m/m)              cascade    0.088 / 0.295 · Corse    0.194 / 0.403 · témoin    0.127 / 0.517
+      slopes > 28° / > 33° (%)           cascade      0.01 / 0.00 · Corse      2.36 / 0.42 · témoin      8.40 / 4.19
+      walls 28° ± 0.5° (% / cells)       cascade       0.017 / 29 · Corse      0.703 / 396 · témoin     2.512 / 4618
+      crest facets (% / crests)          cascade     14.08 / 7203 · Corse      4.61 / 1048 · témoin     19.95 / 8446
+      facet control at this grid: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)       cascade            33.64 · Corse             9.47 · témoin            51.51
+      terrain R8 (windows)               cascade    0.0175 (2420) · Corse     0.0254 (771) · témoin    0.0402 (2656)
+      valley spacing λ (km)              cascade             4.24 · Corse             2.74 · témoin             6.47
+      drainage density (km/km²)          cascade            0.718 · Corse            0.488 · témoin            0.707
+      relief p50, 12.5 km blocks (m)     cascade             1277 · Corse             1570 · témoin             1268
+      peak / mean / p90 land (m)         cascade 3080 / 394 / 1036 · Corse 2514 / 574 / 1296 · témoin 3492 / 644 / 1463
+      hypsometry deciles (m) cascade 9/35/84/146/225/327/470/681/1036 · Corse 53/120/218/335/457/594/765/974/1296
+      lakes: D5 19 / 2411 km² (apart) · other 45 / 34 km² · Corse 112 / 65 km²
+      spectrum by octave (RMS m), cascade / Corse / témoin: [0.78–1.56 km] 20.4 / 30.4 / 24.4 · [1.56–3.12 km] 31.8 / 60.7 / 56.6 · [3.12–6.25 km] 45.8 / 100.1 / 136.6 · [6.25–12.50 km] 127.6 / 159.7 / 228.7 · [12.50–25.00 km] 187.6 / 162.5 / 260.0 · [25.00–50.00 km] 239.7 / 207.4 / 293.4
+   2048²: E 6 · T 6000 · D 150 iterations · 57.0 s [upscale 0.32 · E 4.9 (823 ms/it) · T 47.7 (7.94 ms/it) · D 4.1 (27.28 ms/it)] · k 1.778e2 · drift -0.0 m (-0.01 %) |Δ| 2.9 m · trunk p50/p90/max 0.50/1.58/15.01 · smooth retargeting RMS 34.7 m
+   ── N1 (2048², cell 195 m) · land 735633 (textured 687713) · Corse land 226051
+      slope p50 / p90 (m/m)              cascade    0.118 / 0.404 · Corse    0.247 / 0.501 · témoin    0.131 / 0.532
+      slopes > 28° / > 33° (%)           cascade      0.76 / 0.00 · Corse      7.67 / 2.37 · témoin     10.47 / 5.02
+      walls 28° ± 0.5° (% / cells)       cascade     0.628 / 4318 · Corse     1.547 / 3496 · témoin    5.547 / 40662
+      crest facets (% / crests)          cascade     8.83 / 23052 · Corse      6.24 / 5264 · témoin    27.71 / 31257
+      facet control at this grid: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)       cascade            14.96 · Corse            13.04 · témoin            71.51
+      terrain R8 (windows)               cascade   0.0469 (10388) · Corse    0.0241 (3275) · témoin   0.0415 (10847)
+      valley spacing λ (km)              cascade             1.64 · Corse             1.60 · témoin             5.11
+      drainage density (km/km²)          cascade            0.648 · Corse            0.516 · témoin            0.545
+      relief p50, 12.5 km blocks (m)     cascade             1337 · Corse             1621 · témoin             1286
+      peak / mean / p90 land (m)         cascade 3118 / 395 / 1039 · Corse 2618 / 573 / 1296 · témoin 3520 / 646 / 1465
+      hypsometry deciles (m) cascade 9/35/84/146/224/327/470/684/1039 · Corse 51/117/215/331/455/594/763/973/1296
+      lakes: D5 23 / 2225 km² (apart) · other 203 / 31 km² · Corse 354 / 53 km²
+      spectrum by octave (RMS m), cascade / Corse / témoin: [0.39–0.78 km] 14.2 / 15.3 / 10.5 · [0.78–1.56 km] 25.5 / 34.4 / 27.7 · [1.56–3.12 km] 33.7 / 62.9 / 58.7 · [3.12–6.25 km] 46.3 / 100.9 / 138.0 · [6.25–12.50 km] 127.9 / 159.8 / 229.6 · [12.50–25.00 km] 187.8 / 162.3 / 260.6
+   R — N1 FIRES at 512²: facets 26.44 > 1.5 × 3.77; slope p50 0.075 vs 0.144; λ 12.55 vs 4.86 km
+
+   ═══ chain N1 sans plafond ═══
+   512²: E 6 · T 1000 · D 700 iterations · 3.7 s [upscale 0.02 · E 0.3 (55 ms/it) · T 1.1 (1.14 ms/it) · D 2.2 (3.21 ms/it)] · k 1.000e3 · drift -1.1 m (-0.28 %) |Δ| 5.8 m · trunk p50/p90/max 0.50/0.71/3.54 · smooth retargeting RMS 351.2 m
+   ── N1 sans plafond (512², cell 781 m) · land 46112 (textured 43117) · Corse land 14069
+      slope p50 / p90 (m/m)              cascade    0.076 / 0.216 · Corse    0.144 / 0.304 · témoin    0.117 / 0.424
+      slopes > 28° / > 33° (%)           cascade      0.00 / 0.00 · Corse      0.15 / 0.01 · témoin      5.57 / 2.87
+      walls 28° ± 0.5° (% / cells)       cascade        0.000 / 0 · Corse       0.071 / 10 · témoin      0.770 / 356
+      crest facets (% / crests)          cascade     25.86 / 2744 · Corse       3.77 / 229 · témoin      9.44 / 1436
+      facet control at this grid: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)       cascade            40.11 · Corse             9.20 · témoin            25.12
+      terrain R8 (windows)               cascade     0.1061 (536) · Corse     0.0726 (174) · témoin     0.0752 (641)
+      valley spacing λ (km)              cascade            12.07 · Corse             4.86 · témoin             8.39
+      drainage density (km/km²)          cascade            0.519 · Corse            0.339 · témoin            0.421
+      relief p50, 12.5 km blocks (m)     cascade             1158 · Corse             1431 · témoin             1203
+      peak / mean / p90 land (m)         cascade 3034 / 394 / 1034 · Corse 2442 / 575 / 1295 · témoin 3420 / 640 / 1457
+      hypsometry deciles (m) cascade 9/35/85/146/225/328/471/682/1034 · Corse 55/122/220/337/460/596/764/973/1295
+      lakes: D5 14 / 2596 km² (apart) · other 11 / 27 km² · Corse 34 / 75 km²
+      spectrum by octave (RMS m), cascade / Corse / témoin: [1.56–3.12 km] 21.9 / 53.6 / 49.9 · [3.12–6.25 km] 42.7 / 96.5 / 131.5 · [6.25–12.50 km] 126.3 / 158.3 / 225.7 · [12.50–25.00 km] 187.2 / 162.2 / 258.5 · [25.00–50.00 km] 239.3 / 207.4 / 292.3 · [50.00–100.00 km] 270.0 / 302.9 / 304.5
+   1024²: E 6 · T 2000 · D 200 iterations · 9.4 s [upscale 0.10 · E 1.3 (209 ms/it) · T 6.2 (3.11 ms/it) · D 1.8 (9.08 ms/it)] · k 1.000e3 · drift -0.3 m (-0.07 %) |Δ| 4.7 m · trunk p50/p90/max 0.50/1.00/57.85 · smooth retargeting RMS 300.9 m
+   ── N1 sans plafond (1024², cell 391 m) · land 184052 (textured 172072) · Corse land 56348
+      slope p50 / p90 (m/m)              cascade    0.090 / 0.299 · Corse    0.194 / 0.403 · témoin    0.127 / 0.517
+      slopes > 28° / > 33° (%)           cascade      0.01 / 0.00 · Corse      2.36 / 0.42 · témoin      8.40 / 4.19
+      walls 28° ± 0.5° (% / cells)       cascade       0.018 / 31 · Corse      0.703 / 396 · témoin     2.512 / 4618
+      crest facets (% / crests)          cascade     13.58 / 7121 · Corse      4.61 / 1048 · témoin     19.95 / 8446
+      facet control at this grid: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)       cascade            32.23 · Corse             9.47 · témoin            51.51
+      terrain R8 (windows)               cascade    0.0179 (2420) · Corse     0.0254 (771) · témoin    0.0402 (2656)
+      valley spacing λ (km)              cascade             4.06 · Corse             2.74 · témoin             6.47
+      drainage density (km/km²)          cascade            0.709 · Corse            0.488 · témoin            0.707
+      relief p50, 12.5 km blocks (m)     cascade             1288 · Corse             1570 · témoin             1268
+      peak / mean / p90 land (m)         cascade 3069 / 394 / 1037 · Corse 2514 / 574 / 1296 · témoin 3492 / 644 / 1463
+      hypsometry deciles (m) cascade 9/35/84/146/225/327/470/681/1037 · Corse 53/120/218/335/457/594/765/974/1296
+      lakes: D5 16 / 2383 km² (apart) · other 61 / 43 km² · Corse 112 / 65 km²
+      spectrum by octave (RMS m), cascade / Corse / témoin: [0.78–1.56 km] 21.2 / 30.4 / 24.4 · [1.56–3.12 km] 32.7 / 60.7 / 56.6 · [3.12–6.25 km] 46.0 / 100.1 / 136.6 · [6.25–12.50 km] 127.7 / 159.7 / 228.7 · [12.50–25.00 km] 187.6 / 162.5 / 260.0 · [25.00–50.00 km] 239.6 / 207.4 / 293.4
+   2048²: E 6 · T 6000 · D 150 iterations · 58.2 s [upscale 0.34 · E 5.2 (869 ms/it) · T 48.6 (8.10 ms/it) · D 4.1 (27.13 ms/it)] · k 1.778e2 · drift -0.0 m (-0.01 %) |Δ| 3.1 m · trunk p50/p90/max 0.50/1.58/15.01 · smooth retargeting RMS 36.1 m
+   ── N1 sans plafond (2048², cell 195 m) · land 735632 (textured 687712) · Corse land 226051
+      slope p50 / p90 (m/m)              cascade    0.124 / 0.410 · Corse    0.247 / 0.501 · témoin    0.131 / 0.532
+      slopes > 28° / > 33° (%)           cascade      0.82 / 0.00 · Corse      7.67 / 2.37 · témoin     10.47 / 5.02
+      walls 28° ± 0.5° (% / cells)       cascade     0.684 / 4706 · Corse     1.547 / 3496 · témoin    5.547 / 40662
+      crest facets (% / crests)          cascade     8.65 / 23014 · Corse      6.24 / 5264 · témoin    27.71 / 31257
+      facet control at this grid: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)       cascade            14.00 · Corse            13.04 · témoin            71.51
+      terrain R8 (windows)               cascade   0.0574 (10388) · Corse    0.0241 (3275) · témoin   0.0415 (10847)
+      valley spacing λ (km)              cascade             1.57 · Corse             1.60 · témoin             5.11
+      drainage density (km/km²)          cascade            0.634 · Corse            0.516 · témoin            0.545
+      relief p50, 12.5 km blocks (m)     cascade             1345 · Corse             1621 · témoin             1286
+      peak / mean / p90 land (m)         cascade 3096 / 395 / 1039 · Corse 2618 / 573 / 1296 · témoin 3520 / 646 / 1465
+      hypsometry deciles (m) cascade 9/35/84/146/224/327/470/684/1039 · Corse 51/117/215/331/455/594/763/973/1296
+      lakes: D5 34 / 1990 km² (apart) · other 452 / 74 km² · Corse 354 / 53 km²
+      spectrum by octave (RMS m), cascade / Corse / témoin: [0.39–0.78 km] 14.7 / 15.3 / 10.5 · [0.78–1.56 km] 26.3 / 34.4 / 27.7 · [1.56–3.12 km] 34.5 / 62.9 / 58.7 · [3.12–6.25 km] 46.6 / 100.9 / 138.0 · [6.25–12.50 km] 127.9 / 159.8 / 229.6 · [12.50–25.00 km] 187.7 / 162.3 / 260.6
+   R — N1 sans plafond FIRES at 512²: facets 25.86 > 1.5 × 3.77; slope p50 0.076 vs 0.144; λ 12.07 vs 4.86 km
+
+   ═══ chain N1 sans recalage ═══
+   512²: E 6 · T 1000 · D 700 iterations · 3.7 s [upscale 0.02 · E 0.3 (48 ms/it) · T 1.1 (1.11 ms/it) · D 2.3 (3.23 ms/it)] · k 1.000e3 · drift -362.3 m (-92.45 %) |Δ| 362.3 m · trunk p50/p90/max 0.50/1.12/28.78 · smooth retargeting RMS 0.0 m
+   ── N1 sans recalage (512², cell 781 m) · land 46112 (textured 43117) · Corse land 14069
+      slope p50 / p90 (m/m)              cascade    0.009 / 0.068 · Corse    0.144 / 0.304 · témoin    0.117 / 0.424
+      slopes > 28° / > 33° (%)           cascade      0.00 / 0.00 · Corse      0.15 / 0.01 · témoin      5.57 / 2.87
+      walls 28° ± 0.5° (% / cells)       cascade        0.000 / 0 · Corse       0.071 / 10 · témoin      0.770 / 356
+      crest facets (% / crests)          cascade     13.09 / 1836 · Corse       3.77 / 229 · témoin      9.44 / 1436
+      facet control at this grid: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)       cascade            36.75 · Corse             9.20 · témoin            25.12
+      terrain R8 (windows)               cascade     0.1250 (536) · Corse     0.0726 (174) · témoin     0.0752 (641)
+      valley spacing λ (km)              cascade             9.61 · Corse             4.86 · témoin             8.39
+      drainage density (km/km²)          cascade            0.431 · Corse            0.339 · témoin            0.421
+      relief p50, 12.5 km blocks (m)     cascade              257 · Corse             1431 · témoin             1203
+      peak / mean / p90 land (m)         cascade   853 / 45 / 128 · Corse 2442 / 575 / 1295 · témoin 3420 / 640 / 1457
+      hypsometry deciles (m) cascade 1/1/3/7/12/22/42/74/128 · Corse 55/122/220/337/460/596/764/973/1295
+      lakes: D5 4 / 549 km² (apart) · other 0 / 0 km² · Corse 34 / 75 km²
+      spectrum by octave (RMS m), cascade / Corse / témoin: [1.56–3.12 km] 12.4 / 53.6 / 49.9 · [3.12–6.25 km] 25.5 / 96.5 / 131.5 · [6.25–12.50 km] 36.1 / 158.3 / 225.7 · [12.50–25.00 km] 29.9 / 162.2 / 258.5 · [25.00–50.00 km] 29.4 / 207.4 / 292.3 · [50.00–100.00 km] 36.8 / 302.9 / 304.5
+   1024²: E 6 · T 2000 · D 200 iterations · 9.4 s [upscale 0.08 · E 1.2 (199 ms/it) · T 6.4 (3.19 ms/it) · D 1.8 (8.88 ms/it)] · k 1.000e3 · drift -39.7 m (-87.60 %) |Δ| 39.7 m · trunk p50/p90/max 0.50/1.12/28.16 · smooth retargeting RMS 0.0 m
+   ── N1 sans recalage (1024², cell 391 m) · land 183351 (textured 171366) · Corse land 56348
+      slope p50 / p90 (m/m)              cascade    0.001 / 0.015 · Corse    0.194 / 0.403 · témoin    0.127 / 0.517
+      slopes > 28° / > 33° (%)           cascade      0.00 / 0.00 · Corse      2.36 / 0.42 · témoin      8.40 / 4.19
+      walls 28° ± 0.5° (% / cells)       cascade        0.000 / 0 · Corse      0.703 / 396 · témoin     2.512 / 4618
+      crest facets (% / crests)          cascade     15.84 / 8568 · Corse      4.61 / 1048 · témoin     19.95 / 8446
+      facet control at this grid: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)       cascade            41.66 · Corse             9.47 · témoin            51.51
+      terrain R8 (windows)               cascade    0.1407 (2417) · Corse     0.0254 (771) · témoin    0.0402 (2656)
+      valley spacing λ (km)              cascade             8.02 · Corse             2.74 · témoin             6.47
+      drainage density (km/km²)          cascade            0.496 · Corse            0.488 · témoin            0.707
+      relief p50, 12.5 km blocks (m)     cascade               44 · Corse             1570 · témoin             1268
+      peak / mean / p90 land (m)         cascade     200 / 7 / 19 · Corse 2514 / 574 / 1296 · témoin 3492 / 644 / 1463
+      hypsometry deciles (m) cascade 1/1/1/1/1/2/5/8/19 · Corse 53/120/218/335/457/594/765/974/1296
+      lakes: D5 1 / 19 km² (apart) · other 0 / 0 km² · Corse 112 / 65 km²
+      spectrum by octave (RMS m), cascade / Corse / témoin: [0.78–1.56 km] 1.7 / 30.4 / 24.4 · [1.56–3.12 km] 3.5 / 60.7 / 56.6 · [3.12–6.25 km] 4.5 / 100.1 / 136.6 · [6.25–12.50 km] 4.6 / 159.7 / 228.7 · [12.50–25.00 km] 4.7 / 162.5 / 260.0 · [25.00–50.00 km] 5.9 / 207.4 / 293.4
+   2048²: E 6 · T 6000 · D 150 iterations · 58.2 s [upscale 0.30 · E 5.3 (886 ms/it) · T 48.4 (8.07 ms/it) · D 4.2 (27.76 ms/it)] · k 1.778e2 · drift -0.8 m (-11.64 %) |Δ| 0.8 m · trunk p50/p90/max 0.50/0.71/38.73 · smooth retargeting RMS 0.0 m
+   ── N1 sans recalage (2048², cell 195 m) · land 731027 (textured 683087) · Corse land 226051
+      slope p50 / p90 (m/m)              cascade    0.001 / 0.019 · Corse    0.247 / 0.501 · témoin    0.131 / 0.532
+      slopes > 28° / > 33° (%)           cascade      0.00 / 0.00 · Corse      7.67 / 2.37 · témoin     10.47 / 5.02
+      walls 28° ± 0.5° (% / cells)       cascade        0.000 / 0 · Corse     1.547 / 3496 · témoin    5.547 / 40662
+      crest facets (% / crests)          cascade     7.67 / 15043 · Corse      6.24 / 5264 · témoin    27.71 / 31257
+      facet control at this grid: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)       cascade            45.86 · Corse            13.04 · témoin            71.51
+      terrain R8 (windows)               cascade   0.1100 (10375) · Corse    0.0241 (3275) · témoin   0.0415 (10847)
+      valley spacing λ (km)              cascade             5.65 · Corse             1.60 · témoin             5.11
+      drainage density (km/km²)          cascade            0.686 · Corse            0.516 · témoin            0.545
+      relief p50, 12.5 km blocks (m)     cascade               45 · Corse             1621 · témoin             1286
+      peak / mean / p90 land (m)         cascade     202 / 6 / 16 · Corse 2618 / 573 / 1296 · témoin 3520 / 646 / 1465
+      hypsometry deciles (m) cascade 1/1/1/1/1/2/4/7/16 · Corse 51/117/215/331/455/594/763/973/1296
+      lakes: D5 1 / 8 km² (apart) · other 0 / 0 km² · Corse 354 / 53 km²
+      spectrum by octave (RMS m), cascade / Corse / témoin: [0.39–0.78 km] 1.0 / 15.3 / 10.5 · [0.78–1.56 km] 2.6 / 34.4 / 27.7 · [1.56–3.12 km] 4.1 / 62.9 / 58.7 · [3.12–6.25 km] 4.3 / 100.9 / 138.0 · [6.25–12.50 km] 4.0 / 159.8 / 229.6 · [12.50–25.00 km] 4.2 / 162.3 / 260.6
+   R — N1 sans recalage FIRES at 512²: facets 13.09 > 1.5 × 3.77; slope p50 0.009 vs 0.144; slope p90 0.068 vs 0.304; λ 9.61 vs 4.86 km; drift -92.45 %; peak 853 m
+
+   ═══ chain N1 talus au quart ═══
+   512²: E 6 · T 1000 · D 700 iterations · 3.6 s [upscale 0.02 · E 0.3 (43 ms/it) · T 1.1 (1.13 ms/it) · D 2.2 (3.14 ms/it)] · k 1.000e3 · drift -1.1 m (-0.28 %) |Δ| 5.8 m · trunk p50/p90/max 0.50/0.71/3.54 · smooth retargeting RMS 348.1 m
+   ── N1 talus au quart (512², cell 781 m) · land 46112 (textured 43117) · Corse land 14069
+      slope p50 / p90 (m/m)              cascade    0.075 / 0.215 · Corse    0.144 / 0.304 · témoin    0.117 / 0.424
+      slopes > 28° / > 33° (%)           cascade      0.00 / 0.00 · Corse      0.15 / 0.01 · témoin      5.57 / 2.87
+      walls 28° ± 0.5° (% / cells)       cascade        0.000 / 0 · Corse       0.071 / 10 · témoin      0.770 / 356
+      crest facets (% / crests)          cascade     26.44 / 2764 · Corse       3.77 / 229 · témoin      9.44 / 1436
+      facet control at this grid: pyramids 87.5 % · paraboloids 2.4 %
+      coherent windows C > 0.7 (%)       cascade            40.67 · Corse             9.20 · témoin            25.12
+      terrain R8 (windows)               cascade     0.1060 (536) · Corse     0.0726 (174) · témoin     0.0752 (641)
+      valley spacing λ (km)              cascade            12.55 · Corse             4.86 · témoin             8.39
+      drainage density (km/km²)          cascade            0.522 · Corse            0.339 · témoin            0.421
+      relief p50, 12.5 km blocks (m)     cascade             1159 · Corse             1431 · témoin             1203
+      peak / mean / p90 land (m)         cascade 3034 / 394 / 1034 · Corse 2442 / 575 / 1295 · témoin 3420 / 640 / 1457
+      hypsometry deciles (m) cascade 9/35/85/146/225/328/471/682/1034 · Corse 55/122/220/337/460/596/764/973/1295
+      lakes: D5 14 / 2601 km² (apart) · other 12 / 23 km² · Corse 34 / 75 km²
+      spectrum by octave (RMS m), cascade / Corse / témoin: [1.56–3.12 km] 21.5 / 53.6 / 49.9 · [3.12–6.25 km] 42.5 / 96.5 / 131.5 · [6.25–12.50 km] 126.3 / 158.3 / 225.7 · [12.50–25.00 km] 187.2 / 162.2 / 258.5 · [25.00–50.00 km] 239.3 / 207.4 / 292.3 · [50.00–100.00 km] 270.0 / 302.9 / 304.5
+   1024²: E 6 · T 500 · D 200 iterations · 4.9 s [upscale 0.09 · E 1.5 (248 ms/it) · T 1.5 (3.05 ms/it) · D 1.8 (8.99 ms/it)] · k 1.000e3 · drift -0.3 m (-0.07 %) |Δ| 4.5 m · trunk p50/p90/max 0.50/1.00/57.85 · smooth retargeting RMS 294.2 m
+   ── N1 talus au quart (1024², cell 391 m) · land 184052 (textured 172072) · Corse land 56348
+      slope p50 / p90 (m/m)              cascade    0.088 / 0.295 · Corse    0.194 / 0.403 · témoin    0.127 / 0.517
+      slopes > 28° / > 33° (%)           cascade      0.01 / 0.00 · Corse      2.36 / 0.42 · témoin      8.40 / 4.19
+      walls 28° ± 0.5° (% / cells)       cascade       0.017 / 29 · Corse      0.703 / 396 · témoin     2.512 / 4618
+      crest facets (% / crests)          cascade     14.08 / 7203 · Corse      4.61 / 1048 · témoin     19.95 / 8446
+      facet control at this grid: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)       cascade            33.64 · Corse             9.47 · témoin            51.51
+      terrain R8 (windows)               cascade    0.0175 (2420) · Corse     0.0254 (771) · témoin    0.0402 (2656)
+      valley spacing λ (km)              cascade             4.24 · Corse             2.74 · témoin             6.47
+      drainage density (km/km²)          cascade            0.718 · Corse            0.488 · témoin            0.707
+      relief p50, 12.5 km blocks (m)     cascade             1277 · Corse             1570 · témoin             1268
+      peak / mean / p90 land (m)         cascade 3080 / 394 / 1036 · Corse 2514 / 574 / 1296 · témoin 3492 / 644 / 1463
+      hypsometry deciles (m) cascade 9/35/84/146/225/327/470/681/1036 · Corse 53/120/218/335/457/594/765/974/1296
+      lakes: D5 19 / 2411 km² (apart) · other 45 / 34 km² · Corse 112 / 65 km²
+      spectrum by octave (RMS m), cascade / Corse / témoin: [0.78–1.56 km] 20.4 / 30.4 / 24.4 · [1.56–3.12 km] 31.8 / 60.7 / 56.6 · [3.12–6.25 km] 45.8 / 100.1 / 136.6 · [6.25–12.50 km] 127.6 / 159.7 / 228.7 · [12.50–25.00 km] 187.6 / 162.5 / 260.0 · [25.00–50.00 km] 239.7 / 207.4 / 293.4
+   2048²: E 6 · T 1500 · D 150 iterations · 22.2 s [upscale 0.31 · E 5.3 (877 ms/it) · T 12.5 (8.32 ms/it) · D 4.2 (27.77 ms/it)] · k 1.778e2 · drift -0.0 m (-0.01 %) |Δ| 2.9 m · trunk p50/p90/max 0.50/1.58/15.01 · smooth retargeting RMS 34.7 m
+   ── N1 talus au quart (2048², cell 195 m) · land 735633 (textured 687713) · Corse land 226051
+      slope p50 / p90 (m/m)              cascade    0.118 / 0.404 · Corse    0.247 / 0.501 · témoin    0.131 / 0.532
+      slopes > 28° / > 33° (%)           cascade      0.76 / 0.00 · Corse      7.67 / 2.37 · témoin     10.47 / 5.02
+      walls 28° ± 0.5° (% / cells)       cascade     0.628 / 4318 · Corse     1.547 / 3496 · témoin    5.547 / 40662
+      crest facets (% / crests)          cascade     8.83 / 23052 · Corse      6.24 / 5264 · témoin    27.71 / 31257
+      facet control at this grid: pyramids 87.6 % · paraboloids 2.5 %
+      coherent windows C > 0.7 (%)       cascade            14.96 · Corse            13.04 · témoin            71.51
+      terrain R8 (windows)               cascade   0.0469 (10388) · Corse    0.0241 (3275) · témoin   0.0415 (10847)
+      valley spacing λ (km)              cascade             1.64 · Corse             1.60 · témoin             5.11
+      drainage density (km/km²)          cascade            0.648 · Corse            0.516 · témoin            0.545
+      relief p50, 12.5 km blocks (m)     cascade             1337 · Corse             1621 · témoin             1286
+      peak / mean / p90 land (m)         cascade 3118 / 395 / 1039 · Corse 2618 / 573 / 1296 · témoin 3520 / 646 / 1465
+      hypsometry deciles (m) cascade 9/35/84/146/224/327/470/684/1039 · Corse 51/117/215/331/455/594/763/973/1296
+      lakes: D5 23 / 2225 km² (apart) · other 203 / 31 km² · Corse 354 / 53 km²
+      spectrum by octave (RMS m), cascade / Corse / témoin: [0.39–0.78 km] 14.2 / 15.3 / 10.5 · [0.78–1.56 km] 25.5 / 34.4 / 27.7 · [1.56–3.12 km] 33.7 / 62.9 / 58.7 · [3.12–6.25 km] 46.3 / 100.9 / 138.0 · [6.25–12.50 km] 127.9 / 159.8 / 229.6 · [12.50–25.00 km] 187.8 / 162.3 / 260.6
+   R — N1 talus au quart FIRES at 512²: facets 26.44 > 1.5 × 3.77; slope p50 0.075 vs 0.144; λ 12.55 vs 4.86 km
+
+   the variants against N1, per level:
+      512² · peak N1 3034 / sans recalage 853 · drift N1 -0.28 % / sans recalage -92.45 % · trunk p90 N1 0.71 / sans plafond 0.71 · slope p50/p90 N1 0.075/0.215 / talus ¼ 0.075/0.215 (+0.0 % / +0.0 %) · talus time 1.2 s / 1.1 s
+      1024² · peak N1 3080 / sans recalage 200 · drift N1 -0.07 % / sans recalage -87.60 % · trunk p90 N1 1.00 / sans plafond 1.00 · slope p50/p90 N1 0.088/0.295 / talus ¼ 0.088/0.295 (+0.0 % / +0.0 %) · talus time 6.7 s / 1.5 s
+      2048² · peak N1 3118 / sans recalage 202 · drift N1 -0.01 % / sans recalage -11.64 % · trunk p90 N1 1.58 / sans plafond 1.58 · slope p50/p90 N1 0.118/0.404 / talus ¼ 0.118/0.404 (+0.0 % / +0.0 %) · talus time 47.7 s / 12.5 s
+
+   cost: N1 512² → 2048² 70 s without the calibration (396 s with it) · per iteration at 2048²: E 823 ms · T 7.9 ms · D 27.3 ms · ESTIMATE 4096² + 8192²: E 115 s · T 953 s · D 55 s → total 1193 s = 19.9 min (alert above 1 h: no)
+   images f161_N1_vs_Corse_<n>.png: N1 (400 km, 1024 px) beside Corsica (200 km, 512 px), same km per pixel · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+   images f161_<crop>.png: row 1 N1 (physics 256², 512², 1024², 2048²), row 2 Corsica's spine window (100 km) at the same cell, row 3 N1 sans recalage (512²–2048²)
+   image f161_spectra.png: RMS (m) against the octave's central wavelength (km), log-log; N1 in colour (red physics, orange 512², green 1024², blue 2048²), Corsica black, the témoin grey · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+   image f161_hypsometry.png: land altitude against the share of land above it; N1 per level in colour, Corsica (195 m) black · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+
+==========  end Finding 161 . 824.3 s  ==========

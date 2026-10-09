@@ -56,3 +56,6 @@ exports/
 
 # debug artefact swept in twice by a broad git add (Findings 79, 80)
 *.rs.dbg
+
+# F161 -- the Corsica reference grids derived from Copernicus DEM GLO-30 (licence: docs/refs/REFERENCES.md)
+/data/corsica/

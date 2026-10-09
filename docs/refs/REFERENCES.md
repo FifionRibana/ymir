@@ -21,3 +21,19 @@ The PDFs marked **committed** carry an open licence (CC BY 4.0) and are in the r
 | — | Baldwin, J. A., Whipple, K. X., Tucker, G. E. (2003). Implications of the shear stress river incision model for the timescale of postorogenic decay of topography. JGR 108(B3), 2158. doi:10.1029/2001JB000550 | no (no open copy found; abstract only) |
 | `kwang2017.pdf` | Kwang, J. S., Parker, G. (2017). Landscape evolution models using the stream power incision model show unrealistic behavior when m/n equals 0.5. Earth Surface Dynamics 5, 807–820. | committed earlier |
 | `pelletier2010.pdf` | Pelletier, J. D. (2010). Minimizing the grid-resolution dependence of flow-routing algorithms for geomorphic applications. Geomorphology 122, 91–98. | committed earlier |
+
+## Data (F161 onward)
+
+| data | source | in the repo |
+|---|---|---|
+| Copernicus DEM GLO-30, five 1-arcsecond tiles over Corsica (N41–N43, E008–E009), the texture reference of F161 | Copernicus Digital Elevation Model (DEM) was accessed on 2026-10-09 from https://registry.opendata.aws/copernicus-dem (`copernicus-dem-30m`, COG tiles). Licence: the Copernicus DEM GLO-30 public licence (free of charge; attribution and a no-liability sentence required) | **no**: the tiles stay outside the repository; the derived grids live in `data/corsica/` (git-ignored); the preparation script is `docs/reports/relief_method/f161_corsica/prep_corse.py` |
+
+**The notice every derived figure carries** (the licence's « modified data » form): « produced using Copernicus
+WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the
+European Union and ESA; all rights reserved ».
+
+**The licence's no-liability sentence**: « The organisations in charge of the Copernicus programme by law or by
+delegation do not incur any liability for any use of the Copernicus WorldDEM-30. »
+
+**What the data is**: a surface model (DSM) that includes the vegetation and buildings. At ≥ 98 m cells, the canopy
+(10–20 m) is small against the relief. Declared, not corrected.

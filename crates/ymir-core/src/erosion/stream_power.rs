@@ -315,6 +315,12 @@ pub struct StreamPowerConfig {
     /// cache digest, which is harmless only because no production path sets it.
     #[serde(skip)]
     pub a1_exempt: Option<std::sync::Arc<Vec<bool>>>,
+    /// ADR Finding 161 -- **the area cap** (cells): the incision term reads min(A, cap) instead of A, Schott 2024's
+    /// scale selector (a_max), used by the cascade's N1 amplification. The A_c gate, the base-level gate and the lateral
+    /// erosion keep the real area. `None` in every production path, skipped in serialisation, so the cache digests are
+    /// unchanged; `the_f159_extraction_changes_no_output` pins the `None` path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub area_cap_cells: Option<f32>,
 }
 
 /// Relief-v1 reference: physical critical drainage area (km²) for the channel head.
@@ -373,6 +379,7 @@ impl StreamPowerConfig {
             talus_factor: 0.5,
             mfd_exponent: None,
             a1_exempt: None,
+            area_cap_cells: None,
         }
     }
 
@@ -528,6 +535,7 @@ impl Default for StreamPowerConfig {
             talus_factor: 0.5,
             mfd_exponent: None,
             a1_exempt: None,
+            area_cap_cells: None,
         }
     }
 }
@@ -749,7 +757,9 @@ pub fn incise_with_floor(
             // C-3 lithology + C-3b fracture density: per-cell erodibility multiplier.
             // None → uniform (kf = 1, byte-identical).
             let kdt = k_base_dt * k_field.map_or(1.0, |kf| kf[k]);
-            let am = (area * cell_km2).powf(cfg.m); // A_km²^m
+            // ADR Finding 161 -- the area cap acts on the incision term only (`None` in production)
+            let area_e = cfg.area_cap_cells.map_or(area, |c| area.min(c));
+            let am = (area_e * cell_km2).powf(cfg.m); // A_km²^m
             // Threshold gate: physical stream power A_km²^m · S_phys^n vs θ.
             if am * s_now.powf(cfg.n) <= cfg.threshold {
                 continue;

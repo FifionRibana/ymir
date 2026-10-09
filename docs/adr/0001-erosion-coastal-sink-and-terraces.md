@@ -21362,3 +21362,121 @@ after: lib 621, viz 32, **the guard 6 / 6 = banc** (C2 /10 col `a8d2d538d692c2f0
 - **F161 follows**: Corsica's DEM as the texture reference; an amplification that carves (n = 1, k calibrated per
   level on Corsica, the area capped) and a smooth retargeting that separates « creuser les vallées » from « abaisser
   le continent »; the physics level at 256² by default.
+
+## Finding 161 — the cascade, round 3: Corsica's DEM as the texture reference, and N1 (the implicit solver at n = 1, the area capped, a smooth retargeting after each erosion block, k calibrated per level on Corsica's 2–4 cell octave): the retargeting holds the continent (drift ≤ 0.28 %; without it the land collapses to a 200 m peak) and the valleys reach Corsica's spacing at 2048², but the octave cannot reach Corsica's at 512² / 1024², the 1.5–6 km deficit born at the physics level survives, and the stop rule fires at 512²; production unchanged
+
+**Status: built, measured, gated; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f161_corsica/finding_161.md`.
+- Declared before any measurement: `f161_declared.md`, with two amendments also before any measurement (the FFT
+  spectrum; k₀ = 100).
+- Predictions: `f161_predictions.md`.
+- F160 committed (`80f210d`), with the reference's mis-choice and the untested track recorded.
+
+**The author's criterion, recorded as given**:
+- « Avec la physique à 256², on a des formes plus ramifiées dans les reliefs. » 4096² ran in 203 s (S, physics 128²)
+  and 417.8 s (S+U, physics 256²).
+- **Decisions of 2026-10-09**:
+  - a real reference: the DEM of Corsica;
+  - to make the amplification carve: n = 1, k calibrated on Corsica, a smooth retargeting;
+  - the physics level at 256² by default.
+- A Corsica-like target: peak 2 700–3 000 m; a terrain without artefacts; the cost judged up to 2 048².
+
+**C — the reference**:
+- Copernicus DEM GLO-30, five tiles, from the AWS open-data bucket (2026-10-09).
+  - Licence and attribution in `docs/refs/REFERENCES.md`; the data is git-ignored (`data/corsica/`); the script is
+    `prep_corse.py`.
+  - The grids are 200 km squares of 49 m to 1 563 m cells, Corsica alone: 8 700 km², peak 2 661 m at 49 m, mean 572 m.
+- **What Corsica measures**:
+  - its spectrum in km is one curve at every cell size;
+  - its slopes steepen by 15–45 % per halving: p50 / p90 0.144 / 0.304 at 781 m, 0.247 / 0.501 at 195 m;
+  - λ halves with the cell (4.86 → 2.74 → 1.60 km);
+  - facets 3.5–8.2 %, R8 at its noise floor, coherence 8–20 %.
+- **The scale reservation**: a texture reference up to about 20 km, not for the large forms.
+
+**D — the build** (gated):
+- `StreamPowerConfig::area_cap_cells`, inert in production (`None`, skipped in serialisation; the F159 pin holds).
+- `cascade::measure::octave_rms`: a 2D FFT spectrum by octave of wavelength. It replaced F160's overlapping box-blur
+  bands before any measurement.
+- `cascade::amplify`:
+  - N1 / N1 sans plafond / N1 sans recalage, `erode_n1`;
+  - `recalage_smooth`: the full-weighting restriction minus the previous level, its bicubic subtracted from the land;
+  - the talus angle carried to the cell;
+  - the D5 mask; `calibrate_next`.
+- **Tests**:
+  - the FFT octaves (sines, a flat control);
+  - N1 holds the coarse level, with negative controls: sans recalage drifts, sans plafond carves more.
+- **The viz**:
+  - N1 and physics 256² the defaults;
+  - « k du niveau » (the bench's calibrated value for the témoin's world) and « Caler sur la Corse »;
+  - « Référence Corse » beside the cascade, at the same cell and km per pixel.
+
+**M — measured** (`f161_bench_output.txt`):
+- **The calibration**: the 2–4 cell octave is **not monotonic in k**; it peaks near k = 1e3.
+  - 512²: 21.5 against 53.6 m. 1 024²: 20.4 against 30.4 m. Both out of reach; the closest trial is kept, as declared.
+  - 2 048²: 14.2 against 15.3 m, k = 178.
+- **N1 per level** (512² / 1 024² / 2 048², Corsica in brackets):
+  - slope p50 0.075 / 0.088 / 0.118 (0.144 / 0.194 / 0.247), p90 within ×1.5;
+  - facets 26.4 / 14.1 / 8.8 % (3.8 / 4.6 / 6.2);
+  - **λ 12.6 / 4.2 / 1.64 km (4.9 / 2.7 / 1.60)**;
+  - coherence 41 / 34 / 15 % (9 / 9 / 13);
+  - drift −0.28 / −0.07 / −0.01 %; peak 3 034–3 118 m;
+  - trunks p90 0.71 / 1.00 / **1.58**.
+- **The spectrum at 2 048²** (N1 / Corsica / témoin, m):
+  - 0.4–0.8 km 14 / 15 / 11;
+  - 1.6–3.1 km **34 / 63** / 59;
+  - 3.1–6.3 km **46 / 101** / 138.
+  - The physics level set the 3–6 km octave at 33 against 85 m, and the retargeting keeps it.
+- **The variants**:
+  - **sans recalage**: peak 853 → 200 m, drift −92 %;
+  - **sans plafond**: the trunks identical to N1's (the cap is not what holds them);
+  - **talus au quart**: slopes 0.0 % different, time ÷3.8–4.5.
+- **Cost**: N1 512² → 2 048² 70 s (396 s with the calibration); ESTIMATE to 8 192² 19.9 min, the talus 953 s of it.
+
+**R — against Corsica** (written before measuring):
+- **N1 fires at 512²**: facets 26.4 > 1.5 × 3.77; slope p50 0.075 against 0.144; λ 12.55 against 4.86 km.
+  - It would fire again at 1 024² (facets, p50, λ) and at 2 048² (p50, trunks 1.58).
+- **The physics level already fails the same three** (facets 13.0 against 3.45; p50 0.063 against 0.099; λ 17.6
+  against 9.1 km).
+
+**The reading** (hypotheses to check):
+- **The smooth retargeting is the right separation**: valleys carve, the continent holds.
+- **N1 makes a new valley generation per level** and reaches Corsica's spacing, facets and coherence by 2 048².
+- **But each level only adds its own octave.** The 2–4 cell octave peaks below Corsica's at 512² / 1 024², and the
+  physics level's 3–6 km octave is born at 0.4 × Corsica.
+  - So the 1.5–6 km ridges and the slope p50 stay at about half of Corsica's.
+- The talus does nothing measurable at these levels, and costs 80 % of 2 048².
+
+**Predictions**:
+- **The reviewer's**:
+  - « k calibrates ±20 % and rises » refuted;
+  - « λ falls » held, « within ×1.5 to 1 024² » refuted;
+  - « drift < 0.5 % » held; « sans recalage, peak −20 % » held;
+  - « sans plafond, trunks p90 > 1.5 » held, but N1 matches it;
+  - « facets < 1.5 × Corsica from 1 024² » refuted (from 2 048²);
+  - « talus ¼ < 10 %, ÷4 » held;
+  - « < 3 min to 2 048² » held without the calibration; meta held.
+- **Mine**:
+  - held: P-C1 (p50), P-C2, P-C4, P-N2 (λ falls), P-N3 (drift), P-N4, P-N6, P-V1, P-V3, P-T1, meta;
+  - refuted: P-C1 (steepening), P-C3, P-N1, P-N2 (×1.5), P-N3 (peak), P-N5, P-V2, P-T2.
+
+**Open, for the author** (nothing chosen):
+- (a) the 1.5–6 km deficit: a retargeting that lets a level also amplify the octave below, a stronger physics level,
+  or calibrating two octaves;
+- (b) the non-monotonic calibration: the k at the peak, or more iterations at a smaller k;
+- (c) the talus at the fine levels (a quarter, or off);
+- (d) the trunks at 2 048² and the D5 lakes (the lakes' work).
+
+**At commit (2026-10-09), the author's verdict**, recorded as given:
+- « Déjà beaucoup mieux. On voit apparaître les structures de plus petite échelle tout en conservant l'existant. »
+- « Si on peut critiquer, les structures produites sont trop "prévisibles". On sent une régularité importante. On voit
+  un schéma se répéter, alors qu'en observant la Corse, on peut voir moins ce détail répétitif. »
+- **For a later work, the tectonics (in the queue)**: « Je n'ai vu sur aucune seed pour l'instant […] des terres assez
+  larges élevées comme la chaîne de montagne de la Corse. J'ai que des filins montagneux. Mais c'est clairement un
+  chantier postérieur. »
+
+**Proposed by the reviewer, not contested by the author** (decisions for F162 on):
+- the talus at a quarter by default;
+- k calibrated on the octave's peak;
+- the trunks at 2 048² and the D5 lakes go to the lakes' work;
+- **the texture is judged at the last level**: the intermediate levels are reported, while the drift, the peak and the
+  trunks stay checked at every level.
