@@ -147,6 +147,36 @@ pub fn draw(rgba: &mut [u8], hy: &Hydro, min_order: u8, rivers: bool, lakes: boo
 mod tests {
     use super::*;
 
+    /// ADR Finding 162-0 -- the cascade reads no SIGNIFIED quantity (F147: 831 junctions announced, 465 real, from
+    /// mixing the ×7.5 scale's units): its sources never name the geographic scale ratio, and `hydrology`'s areas are
+    /// cells × the real cell² exactly.
+    #[test]
+    fn the_cascade_reads_no_signified_quantity() {
+        let forbidden = concat!("geo_scale", "_ratio");
+        for (name, src) in [
+            ("cascade.rs", include_str!("../cascade.rs")),
+            ("amplify.rs", include_str!("amplify.rs")),
+            ("hydro.rs", include_str!("hydro.rs")),
+            ("measure.rs", include_str!("measure.rs")),
+            ("predict.rs", include_str!("predict.rs")),
+        ] {
+            assert!(!src.contains(forbidden), "{name} names the signified scale");
+        }
+        let n = 32;
+        let mut g = GridF32::new(n, n, -10.0);
+        for y in 1..n {
+            for x in 0..n {
+                g.data[y * n + x] = 3.0 * y as f32 + 0.01 * x as f32;
+            }
+        }
+        let cell = 0.390625;
+        let hy = hydrology(&g, cell);
+        let flow = crate::terrain::flow::compute_flow(&g, &crate::terrain::flow::FlowConfig { sea_level: 0.0, ..Default::default() });
+        for k in 0..n * n {
+            assert_eq!(hy.acc_km2[k], flow.accumulation.data[k] * cell * cell, "areas are real (cells × cell²) at {k}");
+        }
+    }
+
     /// Two valleys meeting and a closed basin: the confluence raises the Strahler order, the basin is a lake whose spill
     /// is its rim, and a field with no depression has no lake (negative control).
     #[test]

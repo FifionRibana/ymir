@@ -21,6 +21,7 @@
 pub mod amplify;
 pub mod hydro;
 pub mod measure;
+pub mod predict;
 
 use crate::erosion::stream_power::{
     RELIEF_V1_A_C_KM2, StreamPowerConfig, incise_with_floor, linear_diffusion, talus_sweep,

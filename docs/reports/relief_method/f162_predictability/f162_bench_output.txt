@@ -1,0 +1,145 @@
+==========  Finding 162 . the cascade, round 4: predictability against Corsica; ρ, π, R4  ==========
+
+   P — the controls (512², 195 m):
+      regular (fishbone)         CV_λ 0.000 (35508 gaps) · CV_L 0.015 [o1 0.029 o2 0.000 o3 NaN] · R_b NaN CV NaN · R_l NaN CV NaN (0 basins) · θ 34.2° σ 4.2° (496 junctions) · P_s 0.060 dex · R2_g 0.988 (92 windows)
+      dispersed (fractal)        CV_λ 0.609 (92822 gaps) · CV_L 1.022 [o1 1.235 o2 0.956 o3 0.875] · R_b 3.69 CV 0.351 · R_l 1.85 CV 0.376 (22 basins) · θ 62.6° σ 30.6° (2498 junctions) · P_s 0.174 dex · R2_g 0.569 (160 windows)
+      CV_λ   regular 0.000 · dispersed 0.609 → PASSES (×1.5)
+      CV_L   regular 0.015 · dispersed 1.022 → PASSES (×1.5)
+      CV_Rb  regular NaN · dispersed 0.351 → FAILS: blind, out of R
+      CV_Rl  regular NaN · dispersed 0.376 → FAILS: blind, out of R
+      σ_θ    regular 4.244 · dispersed 30.584 → PASSES (×1.5)
+      P_s    regular 0.060 · dispersed 0.174 → FAILS: blind, out of R
+      R2_g   regular 0.988 · dispersed 0.569 → PASSES (×1.5)
+   Corse 781 m (0 s): slope p50/p90 0.144/0.304 · facets 3.77 % · λ 4.86 km · R8 0.0726 · coherent 9.20 %
+      Corse 781 m                CV_λ 0.557 (3997 gaps) · CV_L 0.813 [o1 0.753 o2 0.819 o3 0.866] · R_b 3.30 CV 0.203 · R_l 1.58 CV 0.409 (46 basins) · θ 59.7° σ 29.4° (654 junctions) · P_s 0.045 dex · R2_g NaN (0 windows)
+   Corse 391 m (0 s): slope p50/p90 0.194/0.403 · facets 4.61 % · λ 2.74 km · R8 0.0254 · coherent 9.47 %
+      Corse 391 m                CV_λ 0.609 (15023 gaps) · CV_L 0.869 [o1 0.793 o2 0.880 o3 0.935] · R_b 3.08 CV 0.215 · R_l 1.43 CV 0.477 (108 basins) · θ 62.0° σ 29.9° (1508 junctions) · P_s 0.073 dex · R2_g 0.477 (15 windows)
+   Corse 195 m (0 s): slope p50/p90 0.247/0.501 · facets 6.24 % · λ 1.60 km · R8 0.0241 · coherent 13.04 %
+      Corse 195 m                CV_λ 0.683 (52774 gaps) · CV_L 0.915 [o1 0.871 o2 0.925 o3 0.950] · R_b 3.41 CV 0.283 · R_l 2.09 CV 0.449 (56 basins) · θ 71.1° σ 27.4° (1801 junctions) · P_s 0.109 dex · R2_g 0.473 (124 windows)
+   Corse 49 m (8 s): slope p50/p90 0.330/0.634 · facets 9.65 % · λ 0.64 km · R8 0.0023 · coherent 31.39 %
+      Corse 49 m                 CV_λ 0.829 (544117 gaps) · CV_L 0.903 [o1 0.886 o2 0.861 o3 0.961] · R_b 3.42 CV 0.265 · R_l 2.13 CV 0.472 (57 basins) · θ 74.8° σ 27.6° (2011 junctions) · P_s 0.168 dex · R2_g 0.408 (278 windows)
+test f162_cascade has been running for over 60 seconds
+   the témoin built and reduced (185 s)
+      témoin 1024²               CV_λ 0.837 (20707 gaps) · CV_L 1.001 [o1 0.991 o2 1.105 o3 0.908] · R_b 3.73 CV 0.232 · R_l 1.82 CV 0.407 (136 basins) · θ 49.2° σ 28.9° (6674 junctions) · P_s 0.110 dex · R2_g 0.756 (315 windows)
+      témoin 2048²               CV_λ 0.962 (53056 gaps) · CV_L 1.019 [o1 1.059 o2 1.085 o3 0.913] · R_b 3.59 CV 0.255 · R_l 1.92 CV 0.452 (127 basins) · θ 49.8° σ 27.6° (5665 junctions) · P_s 0.135 dex · R2_g 0.636 (431 windows)
+
+   physics P256: U₀ 4.420e-4 · 125 steps · peak 2873 m
+   π amplitudes (0.15 × Corsica's octave 0): 512² 8.04 m · 1024² 4.57 m · 2048² 2.30 m
+
+   F161's N1 (as committed):
+      F161 N1 512² (3.2 s: E 0.2 · T 1.0 · D 2.0) · k 1.000e3 · peak 3034 · drift -0.28 % · trunk p90 0.71 · octave 0 21.52 m (Corse 53.58)
+      F161 N1 1024² (8.9 s: E 1.0 · T 6.0 · D 1.8) · k 1.000e3 · peak 3080 · drift -0.07 % · trunk p90 1.00 · octave 0 20.41 m (Corse 30.43)
+      F161 N1 2048² (59.0 s: E 4.8 · T 49.8 · D 4.1) · k 1.778e2 · peak 3118 · drift -0.01 % · trunk p90 1.58 · octave 0 14.15 m (Corse 15.32)
+
+   chain N1b:
+      N1b calibration 512²: target 53.58 m → k 1.000e3 (7 trials, 27 s): 3.16e1→12.43, 1.00e2→13.97, 3.16e2→18.54, 1.00e3→21.52, 3.16e3→13.63, 5.62e2→21.26, 1.78e3→18.31
+      N1b 512² (3.9 s: E 0.3 · T 1.3 · D 2.3) · k 1.000e3 · peak 3034 · drift -0.28 % · trunk p90 0.71 · octave 0 21.52 m (Corse 53.58)
+      N1b calibration 1024²: target 30.43 m → k 1.000e3 (7 trials, 34 s): 3.16e1→9.71, 1.00e2→11.59, 3.16e2→16.73, 1.00e3→20.41, 3.16e3→12.73, 5.62e2→19.66, 1.78e3→17.60
+      N1b 1024² (4.9 s: E 1.3 · T 1.8 · D 1.7) · k 1.000e3 · peak 3080 · drift -0.07 % · trunk p90 1.00 · octave 0 20.41 m (Corse 30.43)
+      N1b calibration 2048²: target 15.32 m → k 1.778e2 (6 trials, 136 s): 3.16e1→8.64, 1.00e2→11.25, 3.16e2→18.43, 1.00e3→25.53, 3.16e3→27.36, 1.78e2→14.15
+      N1b 2048² (22.5 s: E 6.0 · T 12.0 · D 4.1) · k 1.778e2 · peak 3118 · drift -0.01 % · trunk p90 1.58 · octave 0 14.15 m (Corse 15.32)
+
+   chain ρ:
+      ρ calibration 512²: target 53.58 m → k 1.000e3 (7 trials, 27 s): 3.16e1→12.45, 1.00e2→14.01, 3.16e2→18.57, 1.00e3→21.41, 3.16e3→14.27, 5.62e2→21.11, 1.78e3→18.63
+      ρ 512² (3.8 s: E 0.3 · T 1.2 · D 2.3) · k 1.000e3 · peak 3057 · drift -0.28 % · trunk p90 0.71 · octave 0 21.41 m (Corse 53.58)
+      ρ calibration 1024²: target 30.43 m → k 1.000e3 (7 trials, 34 s): 3.16e1→9.75, 1.00e2→11.73, 3.16e2→16.90, 1.00e3→20.28, 3.16e3→13.36, 5.62e2→19.62, 1.78e3→17.85
+      ρ 1024² (4.9 s: E 1.4 · T 1.6 · D 1.9) · k 1.000e3 · peak 3091 · drift -0.07 % · trunk p90 0.71 · octave 0 20.28 m (Corse 30.43)
+      ρ calibration 2048²: target 15.32 m → k 1.778e2 (6 trials, 135 s): 3.16e1→8.63, 1.00e2→11.42, 3.16e2→18.77, 1.00e3→25.41, 3.16e3→27.30, 1.78e2→14.47
+      ρ 2048² (23.0 s: E 5.7 · T 12.2 · D 4.7) · k 1.778e2 · peak 3114 · drift -0.01 % · trunk p90 1.58 · octave 0 14.47 m (Corse 15.32)
+
+   chain π:
+      π calibration 512²: target 53.58 m → k 1.000e3 (7 trials, 27 s): 3.16e1→12.60, 1.00e2→14.13, 3.16e2→18.77, 1.00e3→21.77, 3.16e3→13.62, 5.62e2→21.59, 1.78e3→18.38
+      π 512² (3.9 s: E 0.3 · T 1.2 · D 2.3) · k 1.000e3 · peak 3028 · drift -0.28 % · trunk p90 0.71 · octave 0 21.77 m (Corse 53.58)
+      π calibration 1024²: target 30.43 m → k 1.000e3 (7 trials, 34 s): 3.16e1→9.87, 1.00e2→11.85, 3.16e2→17.40, 1.00e3→20.96, 3.16e3→12.87, 5.62e2→20.46, 1.78e3→17.90
+      π 1024² (4.8 s: E 1.3 · T 1.6 · D 1.8) · k 1.000e3 · peak 3092 · drift -0.07 % · trunk p90 0.71 · octave 0 20.96 m (Corse 30.43)
+      π calibration 2048²: target 15.32 m → k 1.778e2 (6 trials, 136 s): 3.16e1→8.93, 1.00e2→11.77, 3.16e2→19.28, 1.00e3→25.88, 3.16e3→27.56, 1.78e2→14.86
+      π 2048² (21.9 s: E 5.2 · T 12.2 · D 4.2) · k 1.778e2 · peak 3130 · drift -0.01 % · trunk p90 1.58 · octave 0 14.86 m (Corse 15.32)
+
+   chain ρ+π:
+      ρ+π calibration 512²: target 53.58 m → k 1.000e3 (7 trials, 27 s): 3.16e1→12.64, 1.00e2→14.18, 3.16e2→18.81, 1.00e3→21.57, 3.16e3→14.24, 5.62e2→21.43, 1.78e3→18.63
+      ρ+π 512² (3.8 s: E 0.3 · T 1.2 · D 2.3) · k 1.000e3 · peak 3043 · drift -0.27 % · trunk p90 0.71 · octave 0 21.57 m (Corse 53.58)
+      ρ+π calibration 1024²: target 30.43 m → k 1.000e3 (7 trials, 35 s): 3.16e1→9.88, 1.00e2→11.91, 3.16e2→17.47, 1.00e3→20.82, 3.16e3→13.32, 5.62e2→20.34, 1.78e3→18.05
+      ρ+π 1024² (4.6 s: E 1.2 · T 1.5 · D 1.8) · k 1.000e3 · peak 3126 · drift -0.07 % · trunk p90 0.71 · octave 0 20.82 m (Corse 30.43)
+      ρ+π calibration 2048²: target 15.32 m → k 1.778e2 (6 trials, 140 s): 3.16e1→8.92, 1.00e2→11.90, 3.16e2→19.46, 1.00e3→25.78, 3.16e3→27.57, 1.78e2→15.12
+      ρ+π 2048² (24.5 s: E 6.1 · T 13.9 · D 4.2) · k 1.778e2 · peak 3139 · drift -0.01 % · trunk p90 1.41 · octave 0 15.12 m (Corse 15.32)
+
+   chain R4:
+      R4 calibration 512²: target 53.58 m → k 5.623e2 (7 trials, 26 s): 3.16e1→9.51, 1.00e2→12.49, 3.16e2→19.44, 1.00e3→22.30, 3.16e3→13.00, 5.62e2→22.62, 1.78e3→18.36
+      R4 512² (3.7 s: E 0.3 · T 1.2 · D 2.2) · k 5.623e2 · peak 3007 · drift -0.43 % · trunk p90 1.00 · octave 0 22.62 m (Corse 53.58)
+      R4 calibration 1024²: target 30.43 m → k 1.000e3 (7 trials, 34 s): 3.16e1→6.55, 1.00e2→9.83, 3.16e2→15.49, 1.00e3→18.72, 3.16e3→12.41, 5.62e2→18.06, 1.78e3→16.79
+      R4 1024² (4.8 s: E 1.4 · T 1.6 · D 1.8) · k 1.000e3 · peak 3143 · drift +0.09 % · trunk p90 1.12 · octave 0 18.72 m (Corse 30.43)
+      R4 calibration 2048²: target 15.32 m → k 3.162e2 (5 trials, 118 s): 3.16e1→5.99, 1.00e2→10.05, 3.16e2→15.80, 1.00e3→18.84, 3.16e3→20.18
+      R4 2048² (24.2 s: E 5.5 · T 13.9 · D 4.5) · k 3.162e2 · peak 3123 · drift -0.14 % · trunk p90 3.20 · octave 0 15.80 m (Corse 15.32)
+
+   the predictability ranking at 2048² (validated instruments outside ×1.5 of Corsica, Σ|ln ratio|): N1b 0 / 0.84 · π 0 / 0.64 · ρ+π 0 / 0.70 · ρ 0 / 0.84
+
+   chain R4+π:
+      R4+π calibration 512²: target 53.58 m → k 5.623e2 (7 trials, 24 s): 3.16e1→9.78, 1.00e2→12.72, 3.16e2→19.77, 1.00e3→22.59, 3.16e3→13.13, 5.62e2→22.92, 1.78e3→18.64
+      R4+π 512² (3.3 s: E 0.3 · T 1.0 · D 1.9) · k 5.623e2 · peak 3031 · drift -0.43 % · trunk p90 1.00 · octave 0 22.92 m (Corse 53.58)
+      R4+π calibration 1024²: target 30.43 m → k 1.000e3 (7 trials, 32 s): 3.16e1→6.82, 1.00e2→10.29, 3.16e2→16.59, 1.00e3→19.55, 3.16e3→12.59, 5.62e2→19.17, 1.78e3→17.25
+      R4+π 1024² (4.5 s: E 1.2 · T 1.5 · D 1.7) · k 1.000e3 · peak 3125 · drift +0.09 % · trunk p90 1.12 · octave 0 19.55 m (Corse 30.43)
+      R4+π calibration 2048²: target 15.32 m → k 3.162e2 (5 trials, 121 s): 3.16e1→6.25, 1.00e2→10.51, 3.16e2→16.48, 1.00e3→19.46, 3.16e3→20.69
+      R4+π 2048² (24.2 s: E 6.6 · T 13.2 · D 4.1) · k 3.162e2 · peak 3121 · drift -0.14 % · trunk p90 1.80 · octave 0 16.48 m (Corse 15.32)
+
+   the readings (at 1024² against Corsica 391 m, at 2048² against Corsica 195 m):
+   ── F161 N1 1024²: slope p50/p90 0.088/0.295 (0.194/0.403) · facets 14.08 % (4.61) · walls 28° 0.017 % /29 (0.703) · λ 4.24 km (2.74) · R8 0.0175 (0.0254) · coherent 33.64 % (9.47) · density 0.718 (0.488) · peak 3080 · k 1.000e3
+      spectrum (m), cascade / Corse: [0.78–1.56 km] 20.4 / 30.4 · [1.56–3.12 km] 31.8 / 60.7 · [3.12–6.25 km] 45.8 / 100.1 · [6.25–12.50 km] 127.6 / 159.7 · [12.50–25.00 km] 187.6 / 162.5 · [25.00–50.00 km] 239.7 / 207.4
+      F161 N1 1024²              CV_λ 0.900 (29224 gaps) · CV_L 0.867 [o1 0.895 o2 0.776 o3 0.929] · R_b 3.82 CV 0.276 · R_l 1.61 CV 0.441 (54 basins) · θ 49.3° σ 23.5° (4628 junctions) · P_s 0.151 dex · R2_g 0.767 (310 windows)
+   ── F161 N1 2048²: slope p50/p90 0.118/0.404 (0.247/0.501) · facets 8.83 % (6.24) · walls 28° 0.628 % /4322 (1.547) · λ 1.64 km (1.60) · R8 0.0465 (0.0241) · coherent 14.98 % (13.04) · density 0.647 (0.516) · peak 3118 · k 1.778e2
+      spectrum (m), cascade / Corse: [0.39–0.78 km] 14.2 / 15.3 · [0.78–1.56 km] 25.5 / 34.4 · [1.56–3.12 km] 33.7 / 62.9 · [3.12–6.25 km] 46.3 / 100.9 · [6.25–12.50 km] 127.9 / 159.8 · [12.50–25.00 km] 187.8 / 162.3
+      F161 N1 2048²              CV_λ 0.963 (158901 gaps) · CV_L 0.887 [o1 0.964 o2 0.751 o3 0.946] · R_b 3.51 CV 0.303 · R_l 1.60 CV 0.435 (52 basins) · θ 58.8° σ 22.7° (5001 junctions) · P_s 0.159 dex · R2_g 0.626 (508 windows)
+   ── N1b 1024²: slope p50/p90 0.088/0.295 (0.194/0.403) · facets 14.08 % (4.61) · walls 28° 0.017 % /29 (0.703) · λ 4.24 km (2.74) · R8 0.0175 (0.0254) · coherent 33.64 % (9.47) · density 0.718 (0.488) · peak 3080 · k 1.000e3
+      spectrum (m), cascade / Corse: [0.78–1.56 km] 20.4 / 30.4 · [1.56–3.12 km] 31.8 / 60.7 · [3.12–6.25 km] 45.8 / 100.1 · [6.25–12.50 km] 127.6 / 159.7 · [12.50–25.00 km] 187.6 / 162.5 · [25.00–50.00 km] 239.7 / 207.4
+      N1b 1024²                  CV_λ 0.900 (29224 gaps) · CV_L 0.867 [o1 0.895 o2 0.776 o3 0.929] · R_b 3.82 CV 0.276 · R_l 1.61 CV 0.441 (54 basins) · θ 49.3° σ 23.5° (4628 junctions) · P_s 0.151 dex · R2_g 0.767 (310 windows)
+   ── N1b 2048²: slope p50/p90 0.118/0.404 (0.247/0.501) · facets 8.83 % (6.24) · walls 28° 0.628 % /4318 (1.547) · λ 1.64 km (1.60) · R8 0.0469 (0.0241) · coherent 14.96 % (13.04) · density 0.648 (0.516) · peak 3118 · k 1.778e2
+      spectrum (m), cascade / Corse: [0.39–0.78 km] 14.2 / 15.3 · [0.78–1.56 km] 25.5 / 34.4 · [1.56–3.12 km] 33.7 / 62.9 · [3.12–6.25 km] 46.3 / 100.9 · [6.25–12.50 km] 127.9 / 159.8 · [12.50–25.00 km] 187.8 / 162.3
+      N1b 2048²                  CV_λ 0.964 (158903 gaps) · CV_L 0.893 [o1 0.971 o2 0.761 o3 0.949] · R_b 3.51 CV 0.272 · R_l 1.65 CV 0.434 (50 basins) · θ 58.8° σ 22.7° (5000 junctions) · P_s 0.159 dex · R2_g 0.626 (507 windows)
+   ── ρ 1024²: slope p50/p90 0.088/0.295 (0.194/0.403) · facets 13.52 % (4.61) · walls 28° 0.013 % /22 (0.703) · λ 4.16 km (2.74) · R8 0.0110 (0.0254) · coherent 32.31 % (9.47) · density 0.711 (0.488) · peak 3091 · k 1.000e3
+      spectrum (m), cascade / Corse: [0.78–1.56 km] 20.3 / 30.4 · [1.56–3.12 km] 31.9 / 60.7 · [3.12–6.25 km] 45.5 / 100.1 · [6.25–12.50 km] 127.4 / 159.7 · [12.50–25.00 km] 187.5 / 162.5 · [25.00–50.00 km] 239.7 / 207.4
+      ρ 1024²                    CV_λ 0.899 (29739 gaps) · CV_L 0.881 [o1 0.913 o2 0.773 o3 0.956] · R_b 3.57 CV 0.277 · R_l 1.56 CV 0.462 (57 basins) · θ 49.1° σ 23.6° (4611 junctions) · P_s 0.153 dex · R2_g 0.781 (293 windows)
+   ── ρ 2048²: slope p50/p90 0.120/0.403 (0.247/0.501) · facets 8.39 % (6.24) · walls 28° 0.616 % /4236 (1.547) · λ 1.60 km (1.60) · R8 0.0456 (0.0241) · coherent 13.53 % (13.04) · density 0.641 (0.516) · peak 3114 · k 1.778e2
+      spectrum (m), cascade / Corse: [0.39–0.78 km] 14.5 / 15.3 · [0.78–1.56 km] 25.5 / 34.4 · [1.56–3.12 km] 33.8 / 62.9 · [3.12–6.25 km] 46.0 / 100.9 · [6.25–12.50 km] 127.7 / 159.8 · [12.50–25.00 km] 187.7 / 162.3
+      ρ 2048²                    CV_λ 0.950 (163290 gaps) · CV_L 0.891 [o1 0.974 o2 0.734 o3 0.964] · R_b 3.39 CV 0.274 · R_l 1.59 CV 0.433 (57 basins) · θ 59.1° σ 22.2° (4989 junctions) · P_s 0.161 dex · R2_g 0.621 (522 windows)
+   ── π 1024²: slope p50/p90 0.090/0.298 (0.194/0.403) · facets 11.14 % (4.61) · walls 28° 0.017 % /30 (0.703) · λ 3.76 km (2.74) · R8 0.0128 (0.0254) · coherent 26.65 % (9.47) · density 0.657 (0.488) · peak 3092 · k 1.000e3
+      spectrum (m), cascade / Corse: [0.78–1.56 km] 21.0 / 30.4 · [1.56–3.12 km] 32.4 / 60.7 · [3.12–6.25 km] 45.7 / 100.1 · [6.25–12.50 km] 127.6 / 159.7 · [12.50–25.00 km] 187.6 / 162.5 · [25.00–50.00 km] 239.6 / 207.4
+      π 1024²                    CV_λ 0.876 (33041 gaps) · CV_L 0.856 [o1 0.907 o2 0.745 o3 0.917] · R_b 3.46 CV 0.321 · R_l 1.58 CV 0.410 (62 basins) · θ 49.9° σ 24.0° (4588 junctions) · P_s 0.156 dex · R2_g 0.709 (260 windows)
+   ── π 2048²: slope p50/p90 0.127/0.408 (0.247/0.501) · facets 6.91 % (6.24) · walls 28° 0.652 % /4483 (1.547) · λ 1.35 km (1.60) · R8 0.0460 (0.0241) · coherent 2.98 % (13.04) · density 0.614 (0.516) · peak 3130 · k 1.778e2
+      spectrum (m), cascade / Corse: [0.39–0.78 km] 14.9 / 15.3 · [0.78–1.56 km] 26.4 / 34.4 · [1.56–3.12 km] 34.4 / 62.9 · [3.12–6.25 km] 46.3 / 100.9 · [6.25–12.50 km] 127.9 / 159.8 · [12.50–25.00 km] 187.7 / 162.3
+      π 2048²                    CV_λ 0.818 (193772 gaps) · CV_L 0.861 [o1 0.961 o2 0.722 o3 0.899] · R_b 3.43 CV 0.269 · R_l 1.64 CV 0.401 (65 basins) · θ 60.3° σ 22.9° (5088 junctions) · P_s 0.164 dex · R2_g 0.590 (514 windows)
+   ── ρ+π 1024²: slope p50/p90 0.089/0.297 (0.194/0.403) · facets 11.29 % (4.61) · walls 28° 0.013 % /23 (0.703) · λ 3.79 km (2.74) · R8 0.0125 (0.0254) · coherent 26.98 % (9.47) · density 0.661 (0.488) · peak 3126 · k 1.000e3
+      spectrum (m), cascade / Corse: [0.78–1.56 km] 20.8 / 30.4 · [1.56–3.12 km] 32.4 / 60.7 · [3.12–6.25 km] 45.3 / 100.1 · [6.25–12.50 km] 127.5 / 159.7 · [12.50–25.00 km] 187.6 / 162.5 · [25.00–50.00 km] 239.7 / 207.4
+      ρ+π 1024²                  CV_λ 0.880 (32746 gaps) · CV_L 0.863 [o1 0.922 o2 0.766 o3 0.902] · R_b 3.60 CV 0.293 · R_l 1.57 CV 0.423 (59 basins) · θ 49.6° σ 23.7° (4658 junctions) · P_s 0.159 dex · R2_g 0.747 (246 windows)
+   ── ρ+π 2048²: slope p50/p90 0.128/0.407 (0.247/0.501) · facets 6.65 % (6.24) · walls 28° 0.646 % /4440 (1.547) · λ 1.33 km (1.60) · R8 0.0435 (0.0241) · coherent 2.96 % (13.04) · density 0.617 (0.516) · peak 3139 · k 1.778e2
+      spectrum (m), cascade / Corse: [0.39–0.78 km] 15.1 / 15.3 · [0.78–1.56 km] 26.2 / 34.4 · [1.56–3.12 km] 34.3 / 62.9 · [3.12–6.25 km] 45.8 / 100.9 · [6.25–12.50 km] 127.8 / 159.8 · [12.50–25.00 km] 187.8 / 162.3
+      ρ+π 2048²                  CV_λ 0.827 (196333 gaps) · CV_L 0.860 [o1 0.960 o2 0.715 o3 0.904] · R_b 3.36 CV 0.306 · R_l 1.58 CV 0.459 (70 basins) · θ 59.8° σ 22.1° (5148 junctions) · P_s 0.168 dex · R2_g 0.598 (522 windows)
+   ── R4 1024²: slope p50/p90 0.095/0.334 (0.194/0.403) · facets 12.74 % (4.61) · walls 28° 0.035 % /61 (0.703) · λ 4.15 km (2.74) · R8 0.0059 (0.0254) · coherent 17.70 % (9.47) · density 0.598 (0.488) · peak 3143 · k 1.000e3
+      spectrum (m), cascade / Corse: [0.78–1.56 km] 18.7 / 30.4 · [1.56–3.12 km] 44.6 / 60.7 · [3.12–6.25 km] 49.4 / 100.1 · [6.25–12.50 km] 127.8 / 159.7 · [12.50–25.00 km] 188.0 / 162.5 · [25.00–50.00 km] 239.8 / 207.4
+      R4 1024²                   CV_λ 0.768 (29760 gaps) · CV_L 0.845 [o1 0.978 o2 0.738 o3 0.818] · R_b 3.58 CV 0.234 · R_l 1.67 CV 0.330 (53 basins) · θ 47.9° σ 23.4° (4190 junctions) · P_s 0.174 dex · R2_g 0.775 (218 windows)
+   ── R4 2048²: slope p50/p90 0.177/0.471 (0.247/0.501) · facets 9.27 % (6.24) · walls 28° 1.851 % /12742 (1.547) · λ 1.45 km (1.60) · R8 0.0830 (0.0241) · coherent 5.60 % (13.04) · density 0.599 (0.516) · peak 3123 · k 3.162e2
+      spectrum (m), cascade / Corse: [0.39–0.78 km] 15.8 / 15.3 · [0.78–1.56 km] 38.9 / 34.4 · [1.56–3.12 km] 38.8 / 62.9 · [3.12–6.25 km] 58.3 / 100.9 · [6.25–12.50 km] 127.8 / 159.8 · [12.50–25.00 km] 184.0 / 162.3
+      R4 2048²                   CV_λ 0.787 (179877 gaps) · CV_L 0.890 [o1 0.983 o2 0.715 o3 0.973] · R_b 3.55 CV 0.243 · R_l 1.70 CV 0.398 (47 basins) · θ 63.6° σ 21.7° (5020 junctions) · P_s 0.186 dex · R2_g 0.536 (489 windows)
+   ── R4+π 1024²: slope p50/p90 0.097/0.338 (0.194/0.403) · facets 10.57 % (4.61) · walls 28° 0.045 % /77 (0.703) · λ 3.77 km (2.74) · R8 0.0341 (0.0254) · coherent 11.18 % (9.47) · density 0.563 (0.488) · peak 3125 · k 1.000e3
+      spectrum (m), cascade / Corse: [0.78–1.56 km] 19.5 / 30.4 · [1.56–3.12 km] 45.6 / 60.7 · [3.12–6.25 km] 49.0 / 100.1 · [6.25–12.50 km] 127.7 / 159.7 · [12.50–25.00 km] 188.0 / 162.5 · [25.00–50.00 km] 239.8 / 207.4
+      R4+π 1024²                 CV_λ 0.738 (32932 gaps) · CV_L 0.855 [o1 0.974 o2 0.741 o3 0.851] · R_b 3.76 CV 0.250 · R_l 1.91 CV 0.272 (51 basins) · θ 48.3° σ 23.6° (4242 junctions) · P_s 0.182 dex · R2_g 0.690 (151 windows)
+   ── R4+π 2048²: slope p50/p90 0.188/0.473 (0.247/0.501) · facets 8.54 % (6.24) · walls 28° 1.875 % /12905 (1.547) · λ 1.32 km (1.60) · R8 0.0417 (0.0241) · coherent 2.38 % (13.04) · density 0.590 (0.516) · peak 3121 · k 3.162e2
+      spectrum (m), cascade / Corse: [0.39–0.78 km] 16.5 / 15.3 · [0.78–1.56 km] 39.5 / 34.4 · [1.56–3.12 km] 39.7 / 62.9 · [3.12–6.25 km] 58.4 / 100.9 · [6.25–12.50 km] 127.6 / 159.8 · [12.50–25.00 km] 184.0 / 162.3
+      R4+π 2048²                 CV_λ 0.675 (197043 gaps) · CV_L 0.855 [o1 0.935 o2 0.726 o3 0.903] · R_b 3.30 CV 0.233 · R_l 1.56 CV 0.411 (57 basins) · θ 65.6° σ 22.2° (5334 junctions) · P_s 0.184 dex · R2_g 0.518 (491 windows)
+
+   R at 2048² (facet control: pyramids 87.6 % · paraboloids 2.5 %):
+   F161 N1    π share -0.00 % · REJECTED: slope p50 0.118 / 0.247; octave 1.56–3.12 km 33.7 / 62.9 m; octave 3.12–6.25 km 46.3 / 100.9 m
+   N1b        π share -0.00 % · REJECTED: slope p50 0.118 / 0.247; octave 1.56–3.12 km 33.7 / 62.9 m; octave 3.12–6.25 km 46.3 / 100.9 m
+   ρ          π share -0.00 % · REJECTED: slope p50 0.120 / 0.247; octave 1.56–3.12 km 33.8 / 62.9 m; octave 3.12–6.25 km 46.0 / 100.9 m
+   π          π share 0.42 % · REJECTED: slope p50 0.127 / 0.247; octave 1.56–3.12 km 34.4 / 62.9 m; octave 3.12–6.25 km 46.3 / 100.9 m
+   ρ+π        π share 0.43 % · REJECTED: slope p50 0.128 / 0.247; octave 1.56–3.12 km 34.3 / 62.9 m; octave 3.12–6.25 km 45.8 / 100.9 m
+   R4         π share -0.00 % · REJECTED: octave 1.56–3.12 km 38.8 / 62.9 m; octave 3.12–6.25 km 58.3 / 100.9 m
+   R4+π       π share 0.38 % · REJECTED: octave 1.56–3.12 km 39.7 / 62.9 m; octave 3.12–6.25 km 58.4 / 100.9 m
+   the 1.56–3.12 km octave at 2048²: N1b 33.7 · R4 38.8 · R4+π 39.7 · Corsica 62.9 m → R4 closes 17 % of N1b's deficit
+   the 3.12–6.25 km octave at 2048²: N1b 46.3 · R4 58.3 · R4+π 58.4 · Corsica 100.9 m → R4 closes 22 % of N1b's deficit
+
+   cost per chain (calibration included): N1b 231 s · ρ 230 s · π 231 s · ρ+π 238 s · R4 214 s · R4+π 212 s
+   N1b at 2048² without the calibration: 22.5 s (E 6.0 · T 12.0 · D 4.1; 6 / 1500 / 150 iterations)
+   images f162_whole_<n>.png: N1b, π, R4, R4+π then Corsica (same km per pixel) · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+   images f162_<crop>.png: rows 1024² and 2048², columns N1b, π, R4, R4+π then Corsica (spine, or its western flank for the 25 km crop) · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+   image f162_spectra.png: the 2048² octaves, N1b, π, R4, R4+π in red / orange / green / blue, Corsica (195 m) black · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+
+==========  end Finding 162 . 1656.7 s  ==========

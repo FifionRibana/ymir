@@ -85,7 +85,7 @@ enum Cmd {
     /// The physics level at n cells (resets the amplification).
     Physics(usize),
     /// The amplification's settings: variant, budget scale, k multiplier (resets the amplification, keeps the physics).
-    Config(Variant, f32, f32),
+    Config(Variant, f32, f32, Remedies),
     /// The next level at this budget (and, for N1, this k).
     Next(Budget, Option<f32>),
     /// F161-V: calibrate N1's k for the next level on Corsica's 2–4 cell octave (the target in m).
@@ -159,6 +159,12 @@ pub struct CascadeUi {
     budget_scale: f32,
     /// F160 diagnostic A1: the k multiplier (1 = the declaration).
     k_boost: f32,
+    /// F162-V: the remedies against the predictability (ρ, π) and the deficit (R4), with their amplitudes.
+    rho_on: bool,
+    rho_amp: f32,
+    pi_on: bool,
+    pi_factor: f32,
+    r4_on: bool,
     /// F161-V: « k du niveau » (N1) for the next level, and the level it was set for.
     n1_k: f32,
     n1_k_for: usize,
@@ -200,6 +206,11 @@ impl Default for CascadeUi {
             variant: Variant::N1,
             budget_scale: 1.0,
             k_boost: 1.0,
+            rho_on: false,
+            rho_amp: 0.4,
+            pi_on: false,
+            pi_factor: 0.15,
+            r4_on: false,
             n1_k: 100.0,
             n1_k_for: 0,
             corse: true,
@@ -268,7 +279,16 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
             let _ = etx.send(Evt::Coarse(shown(to_m(&coarse)), t.elapsed().as_secs_f64()));
             // F161: N1 by default, as the window
             let (mut variant, mut scale, mut boost) = (Variant::N1, 1.0f32, 1.0f32);
-            let amp_cfg = |v: Variant, f: f32, b: f32| AmpConfig { k_boost: b, ..AmpConfig::declared(seed, v, f) };
+            // F162: the talus at a quarter from 1 024² by default (decided at F161's commit); ρ, π, R4 as ticked
+            let amp_cfg = |v: Variant, f: f32, b: f32, r: &Remedies| AmpConfig {
+                k_boost: b,
+                talus_fine_scale: 0.25,
+                n1_rho: r.rho,
+                n1_pi_m: r.pi_m.clone(),
+                n1_recal_depth: if r.r4 { 2 } else { 1 },
+                ..AmpConfig::declared(seed, v, f)
+            };
+            let mut remedies = Remedies::default();
             let mut chain: Option<Chain> = None;
             let send_level = |etx: &Sender<Evt>, ch: &Chain, i: usize| {
                 let l = &ch.levels[i];
@@ -288,15 +308,16 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                         };
                         if let Some((rec, cal)) = physics_level(&coarse, n, &ccfg, PEAK_TARGET_M, cap, &mut prog, &cancel) {
                             let pm = to_m(&rec.z);
-                            chain = Some(Chain::new(pm.clone(), amp_cfg(variant, scale, boost)));
+                            chain = Some(Chain::new(pm.clone(), amp_cfg(variant, scale, boost, &remedies)));
                             let _ = etx.send(Evt::Truncate(0));
                             let _ = etx.send(Evt::Physics(shown(pm), Arc::new(rec), cal));
                         }
                     }
-                    Cmd::Config(v, f, b) => {
+                    Cmd::Config(v, f, b, r) => {
                         (variant, scale, boost) = (v, f, b);
+                        remedies = r;
                         if let Some(ch) = chain.as_mut() {
-                            ch.cfg = amp_cfg(v, f, b);
+                            ch.cfg = amp_cfg(v, f, b, &remedies);
                             ch.levels.clear();
                             let _ = etx.send(Evt::Truncate(0));
                         }
@@ -305,7 +326,8 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                         if let Some(ch) = chain.as_mut() {
                             let n = ch.last_result().width * 2;
                             let _ = etx.send(Evt::Progress(format!("{n}² : calage de k sur la Corse (≤ 8 essais)"), 0.0));
-                            let (k, trials) = ch.calibrate_next(target, 0.2, 8, &cancel);
+                            // F162-D1: the octave is not monotonic in k; calibrate on its peak
+                            let (k, trials) = ch.calibrate_peak(target, &cancel);
                             let _ = etx.send(Evt::Calibrated(n, k, trials));
                         }
                     }
@@ -571,7 +593,24 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
         if (v, f, b) != (cu.variant, cu.budget_scale, cu.k_boost) {
             (cu.variant, cu.budget_scale, cu.k_boost) = (v, f, b);
             cu.budget_for = 0;
-            cu.send(Cmd::Config(v, f, b));
+            let r = remedies(cu);
+            cu.send(Cmd::Config(v, f, b, r));
+        }
+    });
+    // F162-V: ρ, π and R4, ticked with their amplitudes (N1 only); a change re-sends the settings (the levels reset)
+    ui.horizontal(|ui| {
+        ui.label(small("Contre la prévisibilité :".into()));
+        let before = (cu.rho_on, cu.rho_amp, cu.pi_on, cu.pi_factor, cu.r4_on);
+        ui.checkbox(&mut cu.rho_on, "ρ dureté bruitée").on_hover_text("k(p) = k·(1 − ρ)/(1 − 0,5), ρ = 0,5 + a·bruit fractal (25 km → 2 cellules), F162-D2");
+        ui.add_enabled(cu.rho_on, egui::DragValue::new(&mut cu.rho_amp).range(0.0..=0.49).speed(0.01).prefix("a "));
+        ui.checkbox(&mut cu.pi_on, "π perturbation").on_hover_text("Un bruit à l'octave nouvelle (4 cellules) ajouté avant l'érosion, RMS = facteur × l'octave 0 de la Corse, F162-D2");
+        ui.add_enabled(cu.pi_on, egui::DragValue::new(&mut cu.pi_factor).range(0.0..=1.0).speed(0.01).prefix("× "));
+        ui.checkbox(&mut cu.r4_on, "R4 recalage 4×4").on_hover_text("Le recalage lisse contre le niveau n − 2 : chaque niveau amplifie aussi l'octave du dessus, F162-D3");
+        if before != (cu.rho_on, cu.rho_amp, cu.pi_on, cu.pi_factor, cu.r4_on) {
+            let r = remedies(cu);
+            let (v, f, b) = (cu.variant, cu.budget_scale, cu.k_boost);
+            cu.budget_for = 0;
+            cu.send(Cmd::Config(v, f, b, r));
         }
     });
     let have_phys = cu.physics.is_some();
@@ -915,6 +954,27 @@ fn build_image(cu: &mut CascadeUi) -> Option<egui::ColorImage> {
     };
     draw(&mut rgba, &s.hydro, cu.min_order, cu.rivers, cu.lakes);
     Some(egui::ColorImage::from_rgba_unmultiplied([n, n], &rgba))
+}
+
+/// F162-V: the remedies the worker builds its `AmpConfig` from.
+#[derive(Clone, Debug, Default)]
+struct Remedies {
+    rho: Option<f32>,
+    pi_m: Vec<(usize, f32)>,
+    r4: bool,
+}
+
+/// The remedies as ticked; π's amplitudes are the factor × Corsica's octave 0 at each level (512² … 8 192²).
+fn remedies(cu: &CascadeUi) -> Remedies {
+    Remedies {
+        rho: cu.rho_on.then_some(cu.rho_amp),
+        pi_m: if cu.pi_on {
+            [512usize, 1024, 2048, 4096, 8192].iter().filter_map(|&n| corse_target(n).map(|t| (n, cu.pi_factor * t))).collect()
+        } else {
+            Vec::new()
+        },
+        r4: cu.r4_on,
+    }
 }
 
 /// F161-V: the Corsica grid at a cascade level of `n` cells (its 200 km grid of n / 2 cells, the same cell), from

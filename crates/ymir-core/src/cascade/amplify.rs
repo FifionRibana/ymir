@@ -140,6 +140,15 @@ pub struct AmpConfig {
     pub talus_h: f32,
     /// Metres per norm unit (the solver works in the normalised field).
     pub norm_to_m: f32,
+    /// ADR Finding 162-D2 (ρ) -- N1's hardness amplitude: k(p) = k·(1 − ρ)/(1 − 0.5), ρ = 0.5 + amp·f, f a fractal
+    /// noise from 25 km down to 2 cells. `None` = off.
+    pub n1_rho: Option<f32>,
+    /// ADR Finding 162-D2 (π) -- the initial perturbation's RMS (m) per level, added to the upscaled land before the
+    /// erosion (a band noise at 4 cells). Empty = off.
+    pub n1_pi_m: Vec<(usize, f32)>,
+    /// ADR Finding 162-D3 -- the smooth retargeting's depth: 1 = against level n − 1 (2×2, F161), 2 = against level
+    /// n − 2 (4×4, R4).
+    pub n1_recal_depth: usize,
 }
 
 impl AmpConfig {
@@ -183,6 +192,9 @@ impl AmpConfig {
             talus_ref_m: 30.0,
             talus_h: 0.8,
             norm_to_m: 2.0 * 1.13 * 5000.0,
+            n1_rho: None,
+            n1_pi_m: Vec::new(),
+            n1_recal_depth: 1,
         }
     }
     /// N1's k at a level of `n` cells.
@@ -244,6 +256,10 @@ pub struct AmpLevel {
     pub prev_work: GridF32,
     /// F161-D7: the D5 cells (the physics level's lifted cells carried by nearest neighbour, plus this level's).
     pub d5: Vec<bool>,
+    /// F162-D3 (R4): the level n − 2's working field (m, the ocean at 0 m), `None` outside R4.
+    pub prev2_work: Option<GridF32>,
+    /// F162-D2 (π): the perturbation actually added (m), 0 elsewhere.
+    pub pi: Vec<f32>,
     /// S+U: the uplift per erosion iteration (m), `None` otherwise.
     pub uplift: Option<Vec<f32>>,
     /// Σ of each process's change (m), 0 on the ocean.
@@ -501,6 +517,18 @@ impl AmpLevel {
         peak_m: f32,
         prev_d5: Option<&[bool]>,
     ) -> Self {
+        Self::upscale_full(prev, cfg, phys_up, peak_m, prev_d5, None)
+    }
+
+    /// [`Self::upscale_d5`] with the level n − 2's working field for R4 (F162-D3).
+    pub fn upscale_full(
+        prev: &GridF32,
+        cfg: &AmpConfig,
+        phys_up: Option<&GridF32>,
+        peak_m: f32,
+        prev_d5: Option<&[bool]>,
+        prev2_work: Option<GridF32>,
+    ) -> Self {
         let t = Instant::now();
         let mut up = super::upsample2(prev);
         let n = up.width;
@@ -536,6 +564,13 @@ impl AmpLevel {
         let k_dep = depth_m / (n_e * s_ref.min(cfg.s_max).powf(cfg.n_exp) * cfg.a_max.powf(cfg.m_exp));
         let k = if cfg.variant.is_n1() { cfg.n1_k_at(n) } else { k_dep } * cfg.k_boost;
         let kf = match cfg.variant {
+            // F162-D2 (ρ): the hardness for N1, from 25 km down to 2 cells of the level
+            v if v.is_n1() && cfg.n1_rho.is_some() => {
+                let amp = cfg.n1_rho.unwrap_or(0.0);
+                let oct = (((25.0 / (2.0 * cell_km)).log2().floor() as i32) + 1).max(1) as usize;
+                let f = noise01(n, cell_km, 25.0, oct, cfg.seed, "cascade_hardness_n1");
+                f.iter().map(|&v| (1.0 - (0.5 + amp * (2.0 * v - 1.0))) / 0.5).collect()
+            }
             Variant::SRho => {
                 let f = noise01(n, cell_km, cfg.rho_wavelength_km, cfg.rho_octaves, cfg.seed, "cascade_hardness");
                 // ρ = mean + amp·(2f − 1) ∈ [0.1, 0.9]; k(1 − ρ) / (1 − mean) keeps S's mean erodibility
@@ -563,6 +598,20 @@ impl AmpLevel {
                 })
                 .collect()
         });
+        // F162-D2 (π): a band noise at the new octave (4 cells, 2 octaves), unit RMS over the land, × the level's amplitude
+        let mut z = z;
+        let mut pi = vec![0f32; n * n];
+        if let Some(&(_, amp)) = cfg.n1_pi_m.iter().find(|(m, _)| *m == n).filter(|_| cfg.variant.is_n1()) {
+            let g = noise01(n, cell_km, 4.0 * cell_km, 2, cfg.seed, "cascade_pi");
+            let land: Vec<usize> = (0..n * n).filter(|&k| !ocean[k]).collect();
+            let mean = land.iter().map(|&k| g[k] as f64).sum::<f64>() / land.len().max(1) as f64;
+            let rms = (land.iter().map(|&k| (g[k] as f64 - mean).powi(2)).sum::<f64>() / land.len().max(1) as f64).sqrt().max(1e-9);
+            for &k in &land {
+                let before = z.data[k];
+                z.data[k] = (before + amp * ((g[k] as f64 - mean) / rms) as f32).max(cfg.land_floor_m);
+                pi[k] = z.data[k] - before;
+            }
+        }
         let zeros = vec![0f32; n * n];
         Self {
             n,
@@ -581,6 +630,8 @@ impl AmpLevel {
             depth_m,
             prev_work,
             d5,
+            prev2_work,
+            pi,
             uplift,
             sum_uplift: zeros.clone(),
             sum_erosion: zeros.clone(),
@@ -680,7 +731,8 @@ impl AmpLevel {
                     .map(|(v, o)| if *o { 0.5 } else { v / n2m + 0.5 })
                     .collect(),
             };
-            let out = incise_with_floor(&zn, &sp, None, None, &mut |_, _| {});
+            let kfield = cfg.n1_rho.is_some().then_some(self.kf.as_slice());
+            let out = incise_with_floor(&zn, &sp, kfield, None, &mut |_, _| {});
             for k in 0..n * n {
                 if self.ocean[k] {
                     continue;
@@ -690,7 +742,11 @@ impl AmpLevel {
                 self.z.data[k] = h;
             }
             if cfg.variant != Variant::N1NoRecal {
-                self.recalage_smooth(cfg);
+                if cfg.n1_recal_depth >= 2 && self.prev2_work.is_some() {
+                    self.recalage_r4(cfg);
+                } else {
+                    self.recalage_smooth(cfg);
+                }
             }
             left -= c;
             self.done.erosion += c;
@@ -707,6 +763,25 @@ impl AmpLevel {
             *v -= p;
         }
         let eu = super::upsample2(&e);
+        for k in 0..self.n * self.n {
+            if self.ocean[k] {
+                continue;
+            }
+            let h = (self.z.data[k] - eu.data[k]).max(cfg.land_floor_m);
+            self.sum_recalage[k] += h - self.z.data[k];
+            self.z.data[k] = h;
+        }
+    }
+
+    /// F162-D3 (R4): the smooth retargeting against the level n − 2: e = R(R(z)) − z_(n−2), z ← z − U₂(U₂(e)) on the
+    /// land, so the level may amplify its own octave and the one above.
+    pub fn recalage_r4(&mut self, cfg: &AmpConfig) {
+        let Some(p2) = &self.prev2_work else { return self.recalage_smooth(cfg) };
+        let mut e = restrict(&restrict(&self.z));
+        for (v, p) in e.data.iter_mut().zip(&p2.data) {
+            *v -= p;
+        }
+        let eu = super::upsample2(&super::upsample2(&e));
         for k in 0..self.n * self.n {
             if self.ocean[k] {
                 continue;
@@ -926,7 +1001,21 @@ impl Chain {
         let n = prev.width * 2;
         let phys = (self.cfg.variant == Variant::SU).then(|| self.physics_at(n));
         let d5 = self.last_d5();
-        let lvl = AmpLevel::upscale_d5(&prev, &self.cfg, phys.as_ref(), self.peak_m, Some(&d5));
+        // F162-D3 (R4): the level n − 2's working field -- the previous level's own `prev_work`, or the physics level
+        // restricted for the first amplification level
+        let prev2 = (self.cfg.n1_recal_depth >= 2).then(|| match self.levels.last() {
+            Some(l) => l.prev_work.clone(),
+            None => {
+                let oc = ocean_mask(&self.physics_m);
+                let w = GridF32 {
+                    width: self.physics_m.width,
+                    height: self.physics_m.height,
+                    data: self.physics_m.data.iter().zip(&oc).map(|(v, o)| if *o { 0.0 } else { *v }).collect(),
+                };
+                restrict(&w)
+            }
+        });
+        let lvl = AmpLevel::upscale_full(&prev, &self.cfg, phys.as_ref(), self.peak_m, Some(&d5), prev2);
         self.levels.push(lvl);
         self.levels.last_mut().unwrap()
     }
@@ -1002,6 +1091,69 @@ impl Chain {
             .unwrap_or((k, v));
         self.cfg.set_n1_k(n, best.0);
         (best.0, trials)
+    }
+
+    /// F162-D1: calibrate N1's k for the next level on the octave's PEAK (the curve is not monotonic in k, F161):
+    /// trials at log₁₀ k = 1.5, 2, 2.5, 3, 3.5; if the best reaches 0.8 × `target`, bisection in log k on the rising
+    /// branch until within ±20 % (at most 4 more; the smallest k within is kept); otherwise two trials at the best
+    /// k × 10^(±0.25) and the highest octave is kept. Returns (k, the trials (k, octave 0)) and sets `cfg.n1_k`.
+    pub fn calibrate_peak(&mut self, target: f32, cancel: &dyn Fn() -> bool) -> (f32, Vec<(f32, f32)>) {
+        let n = self.last_result().width * 2;
+        let mut trials: Vec<(f32, f32)> = Vec::new();
+        let eval = |k: f32, trials: &mut Vec<(f32, f32)>| -> f32 {
+            let mut c = self.clone();
+            c.cfg.set_n1_k(n, k);
+            let v = c.next_level(cancel).map_or(f32::NAN, Chain::octave0);
+            trials.push((k, v));
+            v
+        };
+        let grid: Vec<f32> = [1.5f32, 2.0, 2.5, 3.0, 3.5].iter().map(|e| 10f32.powf(*e)).collect();
+        let vals: Vec<f32> = grid.iter().map(|&k| if cancel() { f32::NAN } else { eval(k, &mut trials) }).collect();
+        let best = (0..grid.len()).filter(|&i| vals[i].is_finite()).max_by(|&a, &b| vals[a].partial_cmp(&vals[b]).unwrap()).unwrap_or(0);
+        let within = |v: f32| (v / target - 1.0).abs() <= 0.2;
+        let chosen = if vals[best] >= 0.8 * target {
+            // the smallest grid k within ±20 % on the rising branch, else bisect the first crossing of 0.8 × target
+            if let Some(i) = (0..=best).find(|&i| within(vals[i])) {
+                grid[i]
+            } else {
+                let i = (0..best).rev().find(|&i| vals[i] < 0.8 * target).unwrap_or(0);
+                let (mut lo, mut hi) = (grid[i], grid[(i + 1).min(best)]);
+                let mut keep = hi;
+                for _ in 0..4 {
+                    if cancel() {
+                        break;
+                    }
+                    let k = (lo * hi).sqrt();
+                    let v = eval(k, &mut trials);
+                    if within(v) {
+                        keep = k;
+                        break;
+                    }
+                    if v < target {
+                        lo = k;
+                    } else {
+                        hi = k;
+                        keep = k;
+                    }
+                }
+                keep
+            }
+        } else {
+            let mut kb = grid[best];
+            let mut vb = vals[best];
+            for f in [10f32.powf(-0.25), 10f32.powf(0.25)] {
+                if cancel() {
+                    break;
+                }
+                let v = eval(grid[best] * f, &mut trials);
+                if v > vb {
+                    (kb, vb) = (grid[best] * f, v);
+                }
+            }
+            kb
+        };
+        self.cfg.set_n1_k(n, chosen);
+        (chosen, trials)
     }
 
     /// The final retargeting of the last level on the physics level (§5.1, D4).

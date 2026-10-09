@@ -10,6 +10,9 @@
 
 #![allow(dead_code)]
 
+/// ADR Findings 161–162 -- the cascade benches' shared instruments.
+pub mod cascade_bench;
+
 use ymir_core::grid::GridF32;
 use ymir_core::seed::WorldSeed;
 use ymir_core::tectonics::isostasy::IsostasyConfig;

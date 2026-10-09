@@ -1,0 +1,22 @@
+# F162 checks AFTER (predict, radial spectrum, rho / pi / R4, peak calibration, viz remedies; the author's seed edits present)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 11.23s
+test result: ok. 631 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 2.54s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 33 passed; 0 failed; 17 ignored; 0 measured; 0 filtered out; finished in 2.02s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+# the 6/6 guard through run_hd (ymir-viz f123_viz_guard)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+[HD timing] geology (2.57s: history 0.36 · rocks 0.90 · context 1.07 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.82s: history 0.35 · rocks 0.85 · context 1.35 · zoning 0.05) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.83s: history 0.36 · rocks 0.90 · context 1.32 · zoning 0.05) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.93s: history 0.59 · rocks 0.86 · context 1.19 · zoning 0.06) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.72s: history 0.34 · rocks 0.81 · context 1.31 · zoning 0.05) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.77s: history 0.31 · rocks 0.87 · context 1.36 · zoning 0.05) · rules v0 intégré (4d82bec83252)
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes = banc
+   C1 nue                 field = banc · lakes = banc
+   C2 /10 col (défaut)    field = banc · lakes = banc
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes = banc
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 49 filtered out; finished in 182.07s
+# done

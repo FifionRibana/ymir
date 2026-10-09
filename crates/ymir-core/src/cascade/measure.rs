@@ -100,6 +100,53 @@ pub fn octave_rms(zm: &[f32], n: usize, land_cells: usize) -> Vec<f32> {
     var.iter().map(|v| (v / share).sqrt() as f32).collect()
 }
 
+/// ADR Finding 162-P5 -- the radial periodogram in bins of 1 / `per_octave` octave: (the bin's central wavelength in
+/// cells, the power summed over its wavenumbers), from 2 cells to n cells. The sea at 0 m, as [`octave_rms`].
+pub fn radial_power(zm: &[f32], n: usize, per_octave: usize) -> Vec<(f64, f64)> {
+    assert!(n.is_power_of_two(), "the spectrum needs a power-of-two grid");
+    let rows: Vec<(Vec<f64>, Vec<f64>)> = (0..n)
+        .into_par_iter()
+        .map(|y| {
+            let mut re: Vec<f64> = zm[y * n..(y + 1) * n].iter().map(|&v| v as f64).collect();
+            let mut im = vec![0f64; n];
+            fft(&mut re, &mut im);
+            (re, im)
+        })
+        .collect();
+    let cols: Vec<(Vec<f64>, Vec<f64>)> = (0..n)
+        .into_par_iter()
+        .map(|x| {
+            let mut re: Vec<f64> = (0..n).map(|y| rows[y].0[x]).collect();
+            let mut im: Vec<f64> = (0..n).map(|y| rows[y].1[x]).collect();
+            fft(&mut re, &mut im);
+            (re, im)
+        })
+        .collect();
+    let octaves = (n.trailing_zeros() as usize).saturating_sub(1);
+    let nb = octaves * per_octave;
+    let mut pw = vec![0f64; nb];
+    let norm = (n as f64).powi(4);
+    for (kx, (re, im)) in cols.iter().enumerate() {
+        let fx = if kx < n / 2 { kx as f64 } else { kx as f64 - n as f64 };
+        for ky in 0..n {
+            let fy = if ky < n / 2 { ky as f64 } else { ky as f64 - n as f64 };
+            let kk = (fx * fx + fy * fy).sqrt();
+            if kk == 0.0 {
+                continue;
+            }
+            let lam = n as f64 / kk;
+            if lam < 2.0 {
+                continue;
+            }
+            let b = ((lam / 2.0).log2() * per_octave as f64).floor() as usize;
+            if b < nb {
+                pw[b] += (re[ky] * re[ky] + im[ky] * im[ky]) / norm;
+            }
+        }
+    }
+    (0..nb).map(|b| (2.0 * 2f64.powf((b as f64 + 0.5) / per_octave as f64), pw[b])).collect()
+}
+
 /// The wavelengths of octave j at a cell of `cell_km`: (shortest, longest) in km.
 pub fn octave_km(j: usize, cell_km: f32) -> (f32, f32) {
     (cell_km * (2u32 << j) as f32, cell_km * (4u32 << j) as f32)

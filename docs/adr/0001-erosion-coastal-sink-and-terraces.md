@@ -21480,3 +21480,92 @@ after: lib 621, viz 32, **the guard 6 / 6 = banc** (C2 /10 col `a8d2d538d692c2f0
 - the trunks at 2 048² and the D5 lakes go to the lakes' work;
 - **the texture is judged at the last level**: the intermediate levels are reported, while the drift, the peak and the
   trunks stay checked at every level.
+
+## Finding 162 — the cascade, round 4: the predictability measured against Corsica (six dispersion instruments, four validated on a fishbone and a fractal control), then remedied by a noisy hardness (ρ), an initial perturbation (π) and a 4×4 retargeting (R4): on the validated instruments N1 is within ×1.5 of Corsica (more regular only on the confluence angles and the gullies' parallelism, by 17–32 %), ρ does nothing, π decorrelates, R4 brings the slopes to Corsica's but closes only a fifth of the 1.5–6 km deficit, and every variant is rejected at 2048² (R4+π on the two 1.5–6 km octaves only); production unchanged
+
+**Status: built, measured, gated; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f162_predictability/finding_162.md`.
+- Declared before any measurement: `f162_declared.md`, with one amendment at its control (CV_λ by direction).
+- Predictions: `f162_predictions.md`.
+- F161 committed (`ab9c962`) with the author's verdict and the reviewer's uncontested proposals.
+
+**The author's criterion, recorded as given**:
+- « Déjà beaucoup mieux. On voit apparaître les structures de plus petite échelle tout en conservant l'existant. »
+- « Si on peut critiquer, les structures produites sont trop "prévisibles". On sent une régularité importante. On voit
+  un schéma se répéter, alors qu'en observant la Corse, on peut voir moins ce détail répétitif. »
+- **The tectonic note, queued**: « des filins montagneux », no Corsica-like wide high land on any seed.
+
+**0 — the scales, declared**:
+- the relief is at the real 400 km (F67); the ×7.5 is for the exported hydrology only;
+- every cascade area is real;
+- a permanent test (`the_cascade_reads_no_signified_quantity`): no cascade source names the scale ratio, and the
+  areas are cells × the real cell².
+- Corsica at 49 m measured for the final level: slope p50 / p90 0.330 / 0.634, λ 0.64 km, facets 9.7 %.
+
+**P — the instruments** (`cascade::predict`; the controls at 512², 195 m):
+- **Passed**:
+  - CV_λ (fishbone 0.000, fractal 0.609);
+  - CV_L (0.015 / 1.022);
+  - σ_θ (4.2° / 30.6°);
+  - R2_g (0.988 / 0.569).
+- **Blind**:
+  - CV_Rb and CV_Rl: the fishbone has no order-3 basin;
+  - P_s: it reads the fractal as peakier, and it grows with the resolution on Corsica itself.
+- **Corsica at 195 m**: CV_λ 0.683, CV_L 0.915, σ_θ 27.4°, R2_g 0.473.
+- **F161's N1 at 2 048²**: 0.963 / 0.887 / 22.7° / 0.626.
+  - It is more regular only on the angles and the parallelism (×1.21, ×1.32), and more dispersed on the spacing.
+- **At 1 024²** the gullies are far more parallel (0.77 against 0.48): the comb at its level.
+
+**D — measured** (P256, talus ¼, k on the peak; the other readings in the report):
+- **ρ**: no measurable change.
+- **π** (0.15 × Corsica's octave 0, share 0.4 %):
+  - CV_λ 0.82, coherence **3.0 %** against Corsica's 13 %;
+  - facets 6.9 %, λ −18 %.
+  - It is the best predictability variant.
+- **R4**:
+  - slope p50 / p90 **0.177 / 0.471** against 0.247 / 0.501, within ×1.5;
+  - the 1.6–3.1 / 3.1–6.3 km octaves 38.8 / 58.3 against N1b's 33.7 / 46.3 and Corsica's 62.9 / 100.9: **17 / 22 % of
+    the deficit closed**;
+  - walls 28° 1.85 % (Corsica 1.55).
+- **R4+π**: CV_λ 0.675, R2_g 0.518, slope p50 0.188.
+- The 6–12.5 km octave never moves (127.6–127.9 against 159.8): it is the physics level's.
+- Per level, everything holds: drift ≤ 0.43 %; peak 3 007–3 143 m.
+- **Cost**: 212–238 s per chain with its calibration; N1b at 2 048² 22.5 s.
+
+**R — at 2 048² against Corsica** (written before measuring):
+- **Every variant is rejected.**
+  - N1b, ρ, π, ρ+π: on the slope p50 and the two octaves.
+  - **R4 and R4+π: on the 1.6–3.1 and 3.1–6.3 km octaves only.**
+- Never fired: the facets, the walls, λ, the validated predictability instruments, the π share.
+
+**The reading** (hypotheses to check):
+- « Prévisible » is not in the four dispersion instruments at 2 048².
+- The tight 25 km crop shows straight D8 trunks over tens of km, a fishbone of parallel tributaries, and broad flat
+  interfluves. That is a sinuosity the instruments do not measure, plus the missing 1.5–6 km relief.
+
+**Predictions**:
+- **The reviewer's**:
+  - « N1 more regular on ≥ 3 instruments by ≥ ⅓ » refuted;
+  - « ρ reduces the gap on ≥ 2, within Corsica's facets » refuted;
+  - « π weaker than ρ » refuted;
+  - « R4 closes ≥ half, drift < 2 % » refuted (17–22 %; the drift held);
+  - « the best combination passes R » refuted; meta held.
+- **Mine**:
+  - held: P-D1, P-D2 (facets), P-D3 (share), P-D4 (drift), P-D5 (no pass), P-C1 (< 60 min), meta;
+  - refuted: P-P1, P-P2, P-D2 (effect), P-D3 (weaker), P-D4 (30–60 %), P-D5 (slope, one instrument), P-C1 (4–8 min).
+
+**Open, for the author** (nothing chosen):
+- (a) a sinuosity instrument, and the D8 straightness of the trunks (an MFD / D∞ receiver);
+- (b) the 1.5–6 km deficit from the physics level (its D at 256², or a recalage to n − 3);
+- (c) π or R4+π as the default;
+- (d) the tectonics' wide high lands, queued.
+
+**At commit (2026-10-09), decided (the reviewer's proposals, not contested by the author)**:
+- **R4+π becomes the default setting** of the cascade.
+- **Instruments set aside** (blind on their control): Horton's ratios (CV_Rb, CV_Rl) and the spectral peakiness (P_s).
+- **The reviewer's reading** (hypothesis to check):
+  - the straight trunks at 0° and 45° are D8 paths of the physics level (1.5 km cells), kept by the retargeting;
+  - the 6–12.5 km octave and the 1.5–6 km deficit come from that level too.
+- **The « recalage n − 3 » track is set aside**: the fine levels cannot create forms of several km.
+- F163 follows: redo the physics level (a network less aligned on the grid, more dissected), and name what the author
+  sees (directions, sinuosity, flat interfluves).
