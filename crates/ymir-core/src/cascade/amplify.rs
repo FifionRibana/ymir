@@ -149,6 +149,26 @@ pub struct AmpConfig {
     /// ADR Finding 162-D3 -- the smooth retargeting's depth: 1 = against level n − 1 (2×2, F161), 2 = against level
     /// n − 2 (4×4, R4).
     pub n1_recal_depth: usize,
+    /// ADR Finding 164-D1 -- the warp of the upscaled field (`None` = F159–F163).
+    pub warp: Option<Warp>,
+}
+
+/// ADR Finding 164-D1 -- where the warp acts: once, on the physics level's output (at the first amplification level),
+/// or at every amplification level.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WarpPlace {
+    Phys,
+    All,
+}
+
+/// ADR Finding 164-D1 -- **the warp**: the upscaled field is resampled at x + d(x), d a smooth displacement whose
+/// components are A·(2f − 1)/√2 (|d| ≤ A), f a one-octave gradient noise of wavelength L. A and L are counted in cells
+/// of the PREVIOUS level. A PROXY for the absent geological heterogeneity.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Warp {
+    pub amp: f32,
+    pub corr: f32,
+    pub place: WarpPlace,
 }
 
 impl AmpConfig {
@@ -195,6 +215,7 @@ impl AmpConfig {
             n1_rho: None,
             n1_pi_m: Vec::new(),
             n1_recal_depth: 1,
+            warp: None,
         }
     }
     /// N1's k at a level of `n` cells.
@@ -260,6 +281,12 @@ pub struct AmpLevel {
     pub prev2_work: Option<GridF32>,
     /// F162-D2 (π): the perturbation actually added (m), 0 elsewhere.
     pub pi: Vec<f32>,
+    /// ADR Finding 164-D2 -- the upscaled field before and after the warp (m, before the D5 lift), when it warped.
+    pub pre_warp: Option<GridF32>,
+    pub post_warp: Option<GridF32>,
+    /// ADR Finding 164-D1 -- the warp's min Jacobian and its share of cells with J < 0.5 (NaN when it did not warp).
+    pub warp_jmin: f32,
+    pub warp_jlow: f32,
     /// S+U: the uplift per erosion iteration (m), `None` otherwise.
     pub uplift: Option<Vec<f32>>,
     /// Σ of each process's change (m), 0 on the ocean.
@@ -389,6 +416,85 @@ pub(crate) fn noise01(n: usize, cell_km: f32, wavelength_km: f32, octaves: usize
         *x = (*x - lo) / span;
     }
     v
+}
+
+/// ADR Finding 164-D1 -- the warp's displacement at a level of `n` cells (in cells of THIS level): A and L are in cells
+/// of the previous level (n / 2), so ×2 here.
+pub fn warp_field(n: usize, cell_km: f32, w: &Warp, seed: u64) -> (Vec<f32>, Vec<f32>) {
+    let a = 2.0 * w.amp / std::f32::consts::SQRT_2;
+    let lam_km = 2.0 * w.corr * cell_km;
+    let fx = noise01(n, cell_km, lam_km, 1, seed, &format!("cascade_warp_x_{n}"));
+    let fy = noise01(n, cell_km, lam_km, 1, seed, &format!("cascade_warp_y_{n}"));
+    (fx.iter().map(|v| a * (2.0 * v - 1.0)).collect(), fy.iter().map(|v| a * (2.0 * v - 1.0)).collect())
+}
+
+/// ADR Finding 164-D1 -- the Jacobian of x ↦ x + d(x) (central differences, periodic): its minimum and the share of
+/// cells under 0.5.
+pub fn jacobian(dx: &[f32], dy: &[f32], n: usize) -> (f32, f32) {
+    let j: Vec<f32> = (0..n * n)
+        .into_par_iter()
+        .map(|k| {
+            let (x, y) = (k % n, k / n);
+            let (xm, xp, ym, yp) = (y * n + (x + n - 1) % n, y * n + (x + 1) % n, ((y + n - 1) % n) * n + x, ((y + 1) % n) * n + x);
+            let (dxx, dxy) = (0.5 * (dx[xp] - dx[xm]), 0.5 * (dx[yp] - dx[ym]));
+            let (dyx, dyy) = (0.5 * (dy[xp] - dy[xm]), 0.5 * (dy[yp] - dy[ym]));
+            (1.0 + dxx) * (1.0 + dyy) - dxy * dyx
+        })
+        .collect();
+    let min = j.iter().copied().fold(f32::INFINITY, f32::min);
+    (min, j.iter().filter(|&&v| v < 0.5).count() as f32 / (n * n) as f32)
+}
+
+/// The Catmull-Rom weights at a fraction t (the kernel `upsample2` uses at t = ½).
+#[inline]
+fn cr_weights(t: f32) -> [f32; 4] {
+    let (t2, t3) = (t * t, t * t * t);
+    [
+        0.5 * (-t3 + 2.0 * t2 - t),
+        0.5 * (3.0 * t3 - 5.0 * t2 + 2.0),
+        0.5 * (-3.0 * t3 + 4.0 * t2 + t),
+        0.5 * (t3 - t2),
+    ]
+}
+
+/// A periodic Catmull-Rom sample of `g` at (fx, fy) (cell coordinates).
+pub fn sample_cr(g: &GridF32, fx: f32, fy: f32) -> f32 {
+    let (w, h) = (g.width as i64, g.height as i64);
+    let (x0, y0) = (fx.floor(), fy.floor());
+    let (wx, wy) = (cr_weights(fx - x0), cr_weights(fy - y0));
+    let (x0, y0) = (x0 as i64, y0 as i64);
+    let mut s = 0f32;
+    for (j, wyj) in wy.iter().enumerate() {
+        let y = (y0 + j as i64 - 1).rem_euclid(h) as usize;
+        let mut r = 0f32;
+        for (i, wxi) in wx.iter().enumerate() {
+            let x = (x0 + i as i64 - 1).rem_euclid(w) as usize;
+            r += wxi * g.data[y * g.width + x];
+        }
+        s += wyj * r;
+    }
+    s
+}
+
+/// ADR Finding 164-D1 -- the warped field u(x + d(x)).
+pub fn warp_grid(g: &GridF32, dx: &[f32], dy: &[f32]) -> GridF32 {
+    let n = g.width;
+    let data = (0..n * n)
+        .into_par_iter()
+        .map(|k| sample_cr(g, (k % n) as f32 + dx[k], (k / n) as f32 + dy[k]))
+        .collect();
+    GridF32 { width: n, height: g.height, data }
+}
+
+/// A mask warped by nearest-cell sampling at x + d(x).
+fn warp_mask(m: &[bool], n: usize, dx: &[f32], dy: &[f32]) -> Vec<bool> {
+    (0..n * n)
+        .map(|k| {
+            let x = (((k % n) as f32 + dx[k]).round() as i64).rem_euclid(n as i64) as usize;
+            let y = (((k / n) as f32 + dy[k]).round() as i64).rem_euclid(n as i64) as usize;
+            m[y * n + x]
+        })
+        .collect()
 }
 
 #[inline]
@@ -529,11 +635,37 @@ impl AmpLevel {
         prev_d5: Option<&[bool]>,
         prev2_work: Option<GridF32>,
     ) -> Self {
+        Self::upscale_warped(prev, cfg, phys_up, peak_m, prev_d5, prev2_work, None)
+    }
+
+    /// [`Self::upscale_full`] with F164's warp at this level (`None` = no warp): the upscaled field and the carried
+    /// D5 mask are resampled at x + d(x) before the ocean, the D5 lift and the rest are computed, and the
+    /// retargeting's references become the warped field's restrictions.
+    #[allow(clippy::too_many_arguments)]
+    pub fn upscale_warped(
+        prev: &GridF32,
+        cfg: &AmpConfig,
+        phys_up: Option<&GridF32>,
+        peak_m: f32,
+        prev_d5: Option<&[bool]>,
+        prev2_work: Option<GridF32>,
+        warp: Option<&Warp>,
+    ) -> Self {
         let t = Instant::now();
         let mut up = super::upsample2(prev);
         let n = up.width;
+        let mut d5_up = prev_d5.map(|m| super::measure::upsample_mask2(m, n / 2));
+        let (mut pre_warp, mut post_warp, mut warp_jmin, mut warp_jlow) = (None, None, f32::NAN, f32::NAN);
+        if let Some(w) = warp {
+            let (dx, dy) = warp_field(n, cfg.cell_km(n), w, cfg.seed);
+            (warp_jmin, warp_jlow) = jacobian(&dx, &dy, n);
+            let warped = warp_grid(&up, &dx, &dy);
+            d5_up = d5_up.map(|m| warp_mask(&m, n, &dx, &dy));
+            pre_warp = Some(std::mem::replace(&mut up, warped));
+            post_warp = Some(up.clone());
+        }
         let ocean = ocean_mask(&up);
-        let mut d5 = prev_d5.map_or_else(|| vec![false; n * n], |m| super::measure::upsample_mask2(m, n / 2));
+        let mut d5 = d5_up.unwrap_or_else(|| vec![false; n * n]);
         for k in 0..n * n {
             if !ocean[k] && up.data[k] <= 0.0 {
                 d5[k] = true;
@@ -543,11 +675,23 @@ impl AmpLevel {
             }
         }
         let prev_ocean = ocean_mask(prev);
-        let prev_work = GridF32 {
+        let mut prev_work = GridF32 {
             width: prev.width,
             height: prev.height,
             data: prev.data.iter().zip(&prev_ocean).map(|(v, o)| if *o { 0.0 } else { *v }).collect(),
         };
+        // F164-D1: on a warped level the references are the warped field's restrictions (the ocean at 0 m), so the
+        // retargeting keeps the warp's geometry
+        let mut prev2_work = prev2_work;
+        if warp.is_some() {
+            let w0 = GridF32 {
+                width: n,
+                height: n,
+                data: up.data.iter().zip(&ocean).map(|(v, o)| if *o { 0.0 } else { *v }).collect(),
+            };
+            prev_work = restrict(&w0);
+            prev2_work = prev2_work.map(|_| restrict(&prev_work));
+        }
         let (lifted, lifted_mean_depth_m) = lift_interior(&mut up, &ocean, cfg.land_floor_m);
         let mut z = up.clone();
         for k in 0..n * n {
@@ -632,6 +776,10 @@ impl AmpLevel {
             d5,
             prev2_work,
             pi,
+            pre_warp,
+            post_warp,
+            warp_jmin,
+            warp_jlow,
             uplift,
             sum_uplift: zeros.clone(),
             sum_erosion: zeros.clone(),
@@ -1015,7 +1163,9 @@ impl Chain {
                 restrict(&w)
             }
         });
-        let lvl = AmpLevel::upscale_full(&prev, &self.cfg, phys.as_ref(), self.peak_m, Some(&d5), prev2);
+        // F164-D1: W-phys warps the first amplification level only (the physics level's output), W-tous every level
+        let warp = self.cfg.warp.filter(|w| w.place == WarpPlace::All || self.levels.is_empty());
+        let lvl = AmpLevel::upscale_warped(&prev, &self.cfg, phys.as_ref(), self.peak_m, Some(&d5), prev2, warp.as_ref());
         self.levels.push(lvl);
         self.levels.last_mut().unwrap()
     }
@@ -1167,6 +1317,32 @@ impl Chain {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ADR Finding 164-D1 -- the declared warps (A 0.5, L 4 and 2 previous cells) are invertible (J > 0 everywhere)
+    /// at 512², 1 024² and 2 048² on two seeds; the negative control (A 2, L 2) folds; a zero displacement is the
+    /// identity, and the sampler reproduces the nodes.
+    #[test]
+    fn the_declared_warps_are_invertible_and_the_strong_one_folds() {
+        for seed in [1u64, 10_481_999_410_520_546_993] {
+            for n in [512usize, 1024, 2048] {
+                for corr in [4.0f32, 2.0] {
+                    let w = Warp { amp: 0.5, corr, place: WarpPlace::All };
+                    let (dx, dy) = warp_field(n, 400.0 / n as f32, &w, seed);
+                    let amax = dx.iter().chain(&dy).fold(0f32, |a, v| a.max(v.abs()));
+                    assert!(amax <= 1.0 / std::f32::consts::SQRT_2 + 1e-5, "|d| {amax}");
+                    let (jmin, _) = jacobian(&dx, &dy, n);
+                    assert!(jmin > 0.0, "seed {seed} n {n} L {corr}: min J {jmin}");
+                }
+            }
+            let strong = Warp { amp: 2.0, corr: 2.0, place: WarpPlace::All };
+            let (dx, dy) = warp_field(512, 400.0 / 512.0, &strong, seed);
+            assert!(jacobian(&dx, &dy, 512).0 <= 0.0, "the negative control must fold");
+        }
+        let g = island(64);
+        let zero = vec![0f32; 64 * 64];
+        assert_eq!(warp_grid(&g, &zero, &zero).data, g.data);
+        assert!((sample_cr(&g, 10.0, 20.0) - g.data[20 * 64 + 10]).abs() < 1e-4);
+    }
 
     fn island(n: usize) -> GridF32 {
         // a 2 km dome on an ocean at −500 m, with a closed interior basin below 0 m

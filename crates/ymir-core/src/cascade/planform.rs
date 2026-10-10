@@ -67,7 +67,6 @@ pub fn planform(z: &GridF32, cell_km: f32, excl: Option<&[bool]>) -> Planform {
 /// [`planform`] with the hydrology already computed (`hy` from `hydrology(z, cell_km)`).
 pub fn planform_of(z: &GridF32, hy: &Hydro, excl: Option<&[bool]>) -> Planform {
     let n = z.width;
-    let cell_m = hy.cell_km * 1000.0;
     let read: Vec<bool> = (0..n * n)
         .map(|k| {
             let (x, y) = (k % n, k / n);
@@ -168,6 +167,30 @@ pub fn planform_of(z: &GridF32, hy: &Hydro, excl: Option<&[bool]>) -> Planform {
     }
 
     // ── I3: the flat interfluves ──
+    let flat = flat_cells(z, hy, &read);
+    let cells = read.iter().filter(|&&r| r).count();
+    out.flat = if cells > 0 { flat.iter().filter(|&&f| f).count() as f32 / cells as f32 } else { f32::NAN };
+    out
+}
+
+/// ADR Finding 164-F -- I3's cells: the read mask and the flat cells among it (slope < [`FLAT_Y`], farther than
+/// [`FLAT_X_CELLS`] from an order-≥ 2 river), on a field in metres.
+pub fn flat_map(z: &GridF32, cell_km: f32, excl: Option<&[bool]>) -> (Vec<bool>, Vec<bool>) {
+    let n = z.width;
+    let hy = hydrology(z, cell_km);
+    let read: Vec<bool> = (0..n * n)
+        .map(|k| {
+            let (x, y) = (k % n, k / n);
+            x >= 2 && y >= 2 && x + 2 < n && y + 2 < n && z.data[k] > 0.0 && !excl.is_some_and(|m| m[k])
+        })
+        .collect();
+    let flat = flat_cells(z, &hy, &read);
+    (read, flat)
+}
+
+fn flat_cells(z: &GridF32, hy: &Hydro, read: &[bool]) -> Vec<bool> {
+    let n = z.width;
+    let cell_m = hy.cell_km * 1000.0;
     let mut dist = vec![u32::MAX; n * n];
     let mut front: Vec<usize> = (0..n * n).filter(|&k| hy.strahler[k] >= 2 && z.data[k] > 0.0).collect();
     for &k in &front {
@@ -192,20 +215,16 @@ pub fn planform_of(z: &GridF32, hy: &Hydro, excl: Option<&[bool]>) -> Planform {
         front = next;
     }
     let zl = |k: usize| z.data[k].max(0.0);
-    let (mut cells, mut flat) = (0usize, 0usize);
-    for k in 0..n * n {
-        if !read[k] {
-            continue;
-        }
-        let gx = (zl(k + 1) - zl(k - 1)) / (2.0 * cell_m);
-        let gy = (zl(k + n) - zl(k - n)) / (2.0 * cell_m);
-        cells += 1;
-        if (gx * gx + gy * gy).sqrt() < FLAT_Y && dist[k] > FLAT_X_CELLS {
-            flat += 1;
-        }
-    }
-    out.flat = if cells > 0 { flat as f32 / cells as f32 } else { f32::NAN };
-    out
+    (0..n * n)
+        .map(|k| {
+            if !read[k] {
+                return false;
+            }
+            let gx = (zl(k + 1) - zl(k - 1)) / (2.0 * cell_m);
+            let gy = (zl(k + n) - zl(k - n)) / (2.0 * cell_m);
+            (gx * gx + gy * gy).sqrt() < FLAT_Y && dist[k] > FLAT_X_CELLS
+        })
+        .collect()
 }
 
 // ───────────────────────────── the controls (F163-I, metres, sea ≤ 0 m) ─────────────────────────────

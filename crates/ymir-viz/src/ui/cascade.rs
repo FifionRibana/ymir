@@ -27,7 +27,7 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use egui::Color32 as C;
-use ymir_core::cascade::amplify::{AmpConfig, AmpLevel, Budget, Chain, Variant};
+use ymir_core::cascade::amplify::{AmpConfig, AmpLevel, Budget, Chain, Variant, Warp, WarpPlace};
 use ymir_core::cascade::hydro::{Hydro, draw, hydrology};
 use ymir_core::cascade::{
     CascadeConfig, CascadeProgress, LevelRecord, PeakCalibration, SubStep, diff_rgba, physics_level, roll, shade_m_rgba,
@@ -165,6 +165,10 @@ pub struct CascadeUi {
     pi_on: bool,
     pi_factor: f32,
     r4_on: bool,
+    /// F164-V: the warp (none / W-phys / W-tous), A and L in previous-level cells.
+    warp_place: Option<WarpPlace>,
+    warp_amp: f32,
+    warp_corr: f32,
     /// F163-V: the physics level's variants, read when « Calculer la physique » is pressed.
     rr_on: bool,
     rr_tau: f32,
@@ -217,6 +221,9 @@ impl Default for CascadeUi {
             pi_on: false,
             pi_factor: 0.15,
             r4_on: false,
+            warp_place: None,
+            warp_amp: 0.5,
+            warp_corr: 4.0,
             rr_on: false,
             rr_tau: 0.5,
             rough_on: false,
@@ -297,6 +304,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                 n1_rho: r.rho,
                 n1_pi_m: r.pi_m.clone(),
                 n1_recal_depth: if r.r4 { 2 } else { 1 },
+                warp: r.warp,
                 ..AmpConfig::declared(seed, v, f)
             };
             let mut remedies = Remedies::default();
@@ -644,6 +652,25 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
         ui.add_enabled(cu.pi_on, egui::DragValue::new(&mut cu.pi_factor).range(0.0..=1.0).speed(0.01).prefix("× "));
         ui.checkbox(&mut cu.r4_on, "R4 recalage 4×4").on_hover_text("Le recalage lisse contre le niveau n − 2 : chaque niveau amplifie aussi l'octave du dessus, F162-D3");
         if before != (cu.rho_on, cu.rho_amp, cu.pi_on, cu.pi_factor, cu.r4_on) {
+            let r = remedies(cu);
+            let (v, f, b) = (cu.variant, cu.budget_scale, cu.k_boost);
+            cu.budget_for = 0;
+            cu.send(Cmd::Config(v, f, b, r));
+        }
+    });
+    // F164-V: the warp of the upscaled field; a change re-sends the settings (the levels reset)
+    ui.horizontal(|ui| {
+        ui.label(small("Déformation :".into())).on_hover_text(
+            "F164-D1 : le champ agrandi est rééchantillonné en x + d(x), d lisse (|d| ≤ A, longueur L, en cellules du niveau précédent) ; le recalage se fait sur le champ déformé. PROXY de l'hétérogénéité géologique absente",
+        );
+        let before = (cu.warp_place, cu.warp_amp, cu.warp_corr);
+        for (name, w) in [("aucune", None), ("W-phys", Some(WarpPlace::Phys)), ("W-tous", Some(WarpPlace::All))] {
+            ui.selectable_value(&mut cu.warp_place, w, name);
+        }
+        let on = cu.warp_place.is_some();
+        ui.add_enabled(on, egui::DragValue::new(&mut cu.warp_amp).range(0.0..=2.0).speed(0.01).prefix("A "));
+        ui.add_enabled(on, egui::DragValue::new(&mut cu.warp_corr).range(1.0..=16.0).speed(0.1).prefix("L "));
+        if before != (cu.warp_place, cu.warp_amp, cu.warp_corr) {
             let r = remedies(cu);
             let (v, f, b) = (cu.variant, cu.budget_scale, cu.k_boost);
             cu.budget_for = 0;
@@ -1021,6 +1048,8 @@ struct Remedies {
     rho: Option<f32>,
     pi_m: Vec<(usize, f32)>,
     r4: bool,
+    /// F164-V: the warp of the upscaled field.
+    warp: Option<Warp>,
 }
 
 /// The remedies as ticked; π's amplitudes are the factor × Corsica's octave 0 at each level (512² … 8 192²).
@@ -1033,6 +1062,7 @@ fn remedies(cu: &CascadeUi) -> Remedies {
             Vec::new()
         },
         r4: cu.r4_on,
+        warp: cu.warp_place.map(|place| Warp { amp: cu.warp_amp, corr: cu.warp_corr, place }),
     }
 }
 

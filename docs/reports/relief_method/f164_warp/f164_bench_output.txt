@@ -1,0 +1,187 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+    Finished `release` profile [optimized] target(s) in 19.02s
+     Running tests\f164_cascade.rs (target_f164\release\deps\f164_cascade-efe2d9d504c1e387.exe)
+
+running 1 test
+
+==========  Finding 164 . the cascade, round 6: the warp, the exponent p, the flat interfluves  ==========
+   Corse 195 m: A_dir 20.6 % (trunks 18.3 %) · S−1 0.172 / 0.239 / 0.282 · F 4.25 %
+   Corse 391 m: A_dir 20.8 % (trunks 0.0 %) · S−1 0.112 / 0.161 / 0.194 · F 2.70 %
+test f164_cascade has been running for over 60 seconds
+   the témoin's coarse field built (193 s)
+
+   D3 — the physics levels (roughness 42.5 m, U₀ on 2850 m):
+   p = 2: 3.2 s · 118 steps · peak 2881 m · λ 17.84 km · facets 12.61 % · octaves 32.6 / 121.8 m
+   p = 4: 3.2 s · 123 steps · peak 2889 m · λ 14.89 km · facets 7.39 % · octaves 43.9 / 119.1 m
+   p = 6: 3.5 s · 134 steps · peak 2863 m · λ 13.40 km · facets 4.83 % · octaves 48.8 / 114.8 m
+
+   chain p2 · none:
+      p2 · none 512² (3.2 s; k 5.623e2 after 7 trials) · peak 3062 · drift -0.45 % · trunk p90 0.71 · octave 0 22.53 m (Corse 53.58)
+      p2 · none 1024² (4.2 s; k 1.000e3 after 7 trials) · peak 3102 · drift +0.11 % · trunk p90 1.12 · octave 0 19.54 m (Corse 30.43)
+      p2 · none 2048² (20.4 s; k 3.162e2 after 5 trials) · peak 3131 · drift -0.16 % · trunk p90 1.80 · octave 0 16.42 m (Corse 15.32)
+      → REJECTED (4): octave 1.56–3.12 km 39.135 / 62.883; octave 3.12–6.25 km 58.513 / 100.862; A_dir 0.389 / 0.206; F 0.089 / 0.043 · Σ|ln| 4.70 · 183 s
+
+   chain p2 · W-phys W1:
+      p2 · W-phys W1 512² (3.1 s; k 5.623e2 after 7 trials) · peak 2909 · drift -0.56 % · trunk p90 1.00 · octave 0 22.58 m (Corse 53.58) · warp: lakes 62 → 61 · hypsometry Δ 0.340 % of q9 · land 46111 → 45957 (-0.334 %) · min J 0.348 · J < 0.5 0.008 %
+      p2 · W-phys W1 1024² (4.1 s; k 1.000e3 after 7 trials) · peak 3003 · drift +0.15 % · trunk p90 1.12 · octave 0 19.97 m (Corse 30.43)
+      p2 · W-phys W1 2048² (19.9 s; k 3.162e2 after 5 trials) · peak 3044 · drift -0.21 % · trunk p90 2.12 · octave 0 16.66 m (Corse 15.32)
+      → REJECTED (4): octave 1.56–3.12 km 39.701 / 62.883; octave 3.12–6.25 km 57.038 / 100.862; A_dir 0.388 / 0.206; F 0.088 / 0.043 · Σ|ln| 4.82 · 182 s
+
+   chain p2 · W-tous W1:
+      p2 · W-tous W1 512² (3.2 s; k 5.623e2 after 7 trials) · peak 2909 · drift -0.56 % · trunk p90 1.00 · octave 0 22.58 m (Corse 53.58) · warp: lakes 62 → 61 · hypsometry Δ 0.340 % of q9 · land 46111 → 45957 (-0.334 %) · min J 0.348 · J < 0.5 0.008 %
+      p2 · W-tous W1 1024² (4.2 s; k 1.000e3 after 7 trials) · peak 2969 · drift -0.19 % · trunk p90 1.00 · octave 0 18.72 m (Corse 30.43) · warp: lakes 132 → 129 · hypsometry Δ 0.186 % of q9 · land 183802 → 183830 (+0.015 %) · min J 0.425 · J < 0.5 0.003 %
+      p2 · W-tous W1 2048² (21.0 s; k 3.162e2 after 5 trials) · peak 2988 · drift -0.04 % · trunk p90 1.80 · octave 0 15.40 m (Corse 15.32) · warp: lakes 316 → 325 · hypsometry Δ 0.032 % of q9 · land 735794 → 735979 (+0.025 %) · min J 0.339 · J < 0.5 0.002 %
+      → REJECTED (4): octave 3.12–6.25 km 55.660 / 100.862; A_dir 0.356 / 0.206; F 0.094 / 0.043; warp 2048²: depressions 316 → 325 · Σ|ln| 4.36 · 189 s
+
+   chain p2 · W-phys W2:
+      p2 · W-phys W2 512² (3.4 s; k 5.623e2 after 7 trials) · peak 2959 · drift -0.49 % · trunk p90 1.00 · octave 0 24.15 m (Corse 53.58) · warp: lakes 62 → 74 · hypsometry Δ 0.456 % of q9 · land 46111 → 45967 (-0.312 %) · min J 0.328 · J < 0.5 0.197 %
+      p2 · W-phys W2 1024² (4.4 s; k 1.000e3 after 7 trials) · peak 2999 · drift +0.10 % · trunk p90 1.12 · octave 0 19.62 m (Corse 30.43)
+      p2 · W-phys W2 2048² (20.7 s; k 3.162e2 after 5 trials) · peak 3075 · drift -0.17 % · trunk p90 2.12 · octave 0 16.67 m (Corse 15.32)
+      → REJECTED (5): octave 1.56–3.12 km 41.040 / 62.883; octave 3.12–6.25 km 60.351 / 100.862; A_dir 0.384 / 0.206; F 0.088 / 0.043; warp 512²: depressions 62 → 74 · Σ|ln| 4.57 · 191 s
+
+   chain p2 · W-tous W2:
+      p2 · W-tous W2 512² (2.9 s; k 5.623e2 after 7 trials) · peak 2959 · drift -0.49 % · trunk p90 1.00 · octave 0 24.15 m (Corse 53.58) · warp: lakes 62 → 74 · hypsometry Δ 0.456 % of q9 · land 46111 → 45967 (-0.312 %) · min J 0.328 · J < 0.5 0.197 %
+      p2 · W-tous W2 1024² (4.4 s; k 1.000e3 after 7 trials) · peak 2927 · drift -0.20 % · trunk p90 1.00 · octave 0 19.02 m (Corse 30.43) · warp: lakes 131 → 137 · hypsometry Δ 0.085 % of q9 · land 183824 → 183736 (-0.048 %) · min J 0.306 · J < 0.5 0.177 %
+      p2 · W-tous W2 2048² (21.7 s; k 3.162e2 after 5 trials) · peak 2944 · drift -0.03 % · trunk p90 1.58 · octave 0 16.38 m (Corse 15.32) · warp: lakes 363 → 342 · hypsometry Δ 0.031 % of q9 · land 735379 → 735585 (+0.028 %) · min J 0.318 · J < 0.5 0.185 %
+      → REJECTED (5): octave 3.12–6.25 km 56.855 / 100.862; A_dir 0.327 / 0.206; F 0.091 / 0.043; warp 512²: depressions 62 → 74; warp 1024²: depressions 131 → 137 · Σ|ln| 4.14 · 196 s
+
+   the settings at p = 2: W1 8 reasons, mean A_dir 37.2 % · W2 10 reasons, mean A_dir 35.5 % → carried: W1
+
+   chain p4 · none:
+      p4 · none 512² (3.2 s; k 5.623e2 after 7 trials) · peak 3052 · drift -0.51 % · trunk p90 1.00 · octave 0 25.28 m (Corse 53.58)
+      p4 · none 1024² (4.4 s; k 1.000e3 after 7 trials) · peak 3122 · drift +0.13 % · trunk p90 1.12 · octave 0 19.37 m (Corse 30.43)
+      p4 · none 2048² (20.5 s; k 3.162e2 after 5 trials) · peak 3149 · drift -0.19 % · trunk p90 1.80 · octave 0 16.05 m (Corse 15.32)
+      → REJECTED (3): octave 1.56–3.12 km 41.086 / 62.883; A_dir 0.419 / 0.206; F 0.089 / 0.043 · Σ|ln| 4.60 · 194 s
+
+   chain p4 · W-phys W1:
+      p4 · W-phys W1 512² (3.2 s; k 5.623e2 after 7 trials) · peak 3035 · drift -0.61 % · trunk p90 1.12 · octave 0 24.77 m (Corse 53.58) · warp: lakes 61 → 60 · hypsometry Δ 0.404 % of q9 · land 46116 → 45967 (-0.323 %) · min J 0.348 · J < 0.5 0.008 %
+      p4 · W-phys W1 1024² (4.3 s; k 1.000e3 after 7 trials) · peak 3119 · drift +0.16 % · trunk p90 1.12 · octave 0 20.31 m (Corse 30.43)
+      p4 · W-phys W1 2048² (20.8 s; k 3.162e2 after 5 trials) · peak 3127 · drift -0.23 % · trunk p90 2.50 · octave 0 16.33 m (Corse 15.32)
+      → REJECTED (3): octave 1.56–3.12 km 41.412 / 62.883; A_dir 0.400 / 0.206; F 0.088 / 0.043 · Σ|ln| 4.56 · 189 s
+
+   chain p4 · W-tous W1:
+      p4 · W-tous W1 512² (3.1 s; k 5.623e2 after 7 trials) · peak 3035 · drift -0.61 % · trunk p90 1.12 · octave 0 24.77 m (Corse 53.58) · warp: lakes 61 → 60 · hypsometry Δ 0.404 % of q9 · land 46116 → 45967 (-0.323 %) · min J 0.348 · J < 0.5 0.008 %
+      p4 · W-tous W1 1024² (4.6 s; k 1.000e3 after 7 trials) · peak 3050 · drift -0.21 % · trunk p90 1.00 · octave 0 18.94 m (Corse 30.43) · warp: lakes 150 → 148 · hypsometry Δ 0.151 % of q9 · land 183850 → 183878 (+0.015 %) · min J 0.425 · J < 0.5 0.003 %
+      p4 · W-tous W1 2048² (20.8 s; k 3.162e2 after 5 trials) · peak 3042 · drift -0.04 % · trunk p90 1.58 · octave 0 15.51 m (Corse 15.32) · warp: lakes 346 → 344 · hypsometry Δ 0.056 % of q9 · land 735994 → 736190 (+0.027 %) · min J 0.339 · J < 0.5 0.002 %
+      → REJECTED (3): octave 3.12–6.25 km 64.132 / 100.862; A_dir 0.362 / 0.206; F 0.093 / 0.043 · Σ|ln| 4.21 · 194 s
+
+   chain p6 · none:
+      p6 · none 512² (3.2 s; k 5.623e2 after 7 trials) · peak 3003 · drift -0.44 % · trunk p90 1.00 · octave 0 26.67 m (Corse 53.58)
+      p6 · none 1024² (4.2 s; k 1.000e3 after 7 trials) · peak 3120 · drift +0.11 % · trunk p90 1.12 · octave 0 19.26 m (Corse 30.43)
+      p6 · none 2048² (21.4 s; k 3.162e2 after 5 trials) · peak 3182 · drift -0.15 % · trunk p90 1.80 · octave 0 15.85 m (Corse 15.32)
+      → REJECTED (5): A_dir 0.448 / 0.206; S_2 − 1 0.112 / 0.172; S_5 − 1 0.150 / 0.239; S_10 − 1 0.185 / 0.282; F 0.088 / 0.043 · Σ|ln| 4.73 · 194 s
+
+   chain p6 · W-phys W1:
+      p6 · W-phys W1 512² (3.2 s; k 5.623e2 after 7 trials) · peak 2960 · drift -0.57 % · trunk p90 1.12 · octave 0 26.33 m (Corse 53.58) · warp: lakes 71 → 62 · hypsometry Δ 0.351 % of q9 · land 46117 → 45969 (-0.321 %) · min J 0.348 · J < 0.5 0.008 %
+      p6 · W-phys W1 1024² (4.3 s; k 1.000e3 after 7 trials) · peak 3031 · drift +0.13 % · trunk p90 1.12 · octave 0 20.19 m (Corse 30.43)
+      p6 · W-phys W1 2048² (20.5 s; k 3.162e2 after 5 trials) · peak 3096 · drift -0.19 % · trunk p90 2.06 · octave 0 16.19 m (Corse 15.32)
+      → REJECTED (2): A_dir 0.402 / 0.206; F 0.087 / 0.043 · Σ|ln| 4.42 · 192 s
+
+   chain p6 · W-tous W1:
+      p6 · W-tous W1 512² (3.1 s; k 5.623e2 after 7 trials) · peak 2960 · drift -0.57 % · trunk p90 1.12 · octave 0 26.33 m (Corse 53.58) · warp: lakes 71 → 62 · hypsometry Δ 0.351 % of q9 · land 46117 → 45969 (-0.321 %) · min J 0.348 · J < 0.5 0.008 %
+      p6 · W-tous W1 1024² (4.2 s; k 1.000e3 after 7 trials) · peak 2999 · drift -0.18 % · trunk p90 1.00 · octave 0 18.71 m (Corse 30.43) · warp: lakes 153 → 152 · hypsometry Δ 0.115 % of q9 · land 183856 → 183887 (+0.017 %) · min J 0.425 · J < 0.5 0.003 %
+      p6 · W-tous W1 2048² (20.6 s; k 3.162e2 after 5 trials) · peak 2983 · drift +0.01 % · trunk p90 1.58 · octave 0 15.49 m (Corse 15.32) · warp: lakes 367 → 360 · hypsometry Δ 0.020 % of q9 · land 736025 → 736241 (+0.029 %) · min J 0.339 · J < 0.5 0.002 %
+      → REJECTED (2): A_dir 0.364 / 0.206; F 0.092 / 0.043 · Σ|ln| 4.25 · 190 s
+
+   at 2048² against Corsica 195 m (facet control pyramids 87.6 % · paraboloids 2.5 %):
+   Corse 195 m: slope p50/p90 0.247/0.501 · λ 1.60 · facets 6.24 · octaves 15.3/34.4/62.9/100.9/159.8/162.3 · A_dir 20.6 % (trunks 18.3 %) · S−1 0.172 / 0.239 / 0.282 · F 4.25 %
+   p2 · none          slope 0.187/0.471 · λ 1.32 · facets 8.40 · walls 1.863 · octaves 16.4/39.6/39.1/58.5/127.8/181.3 · A_dir 38.9 % (trunks 46.7 %) · S−1 0.131 / 0.175 / 0.204 · F 8.91 % · R2_g 0.523 · 183 s · 4 reasons
+      1024² (Corse 391 m: A_dir 20.8 % (trunks 0.0 %) · S−1 0.112 / 0.161 / 0.194 · F 2.70 %): A_dir 48.5 % (trunks 46.3 %) · S−1 0.066 / 0.104 / 0.140 · F 9.03 %
+   p2 · W-phys W1     slope 0.188/0.470 · λ 1.29 · facets 7.23 · walls 1.795 · octaves 16.7/39.8/39.7/57.0/121.3/177.5 · A_dir 38.8 % (trunks 39.0 %) · S−1 0.128 / 0.172 / 0.212 · F 8.84 % · R2_g 0.517 · 182 s · 4 reasons
+      1024² (Corse 391 m: A_dir 20.8 % (trunks 0.0 %) · S−1 0.112 / 0.161 / 0.194 · F 2.70 %): A_dir 44.9 % (trunks 39.3 %) · S−1 0.070 / 0.111 / 0.148 · F 8.57 %
+   p2 · W-tous W1     slope 0.187/0.477 · λ 1.37 · facets 8.95 · walls 2.038 · octaves 15.4/38.4/50.8/55.7/114.6/173.7 · A_dir 35.6 % (trunks 33.4 %) · S−1 0.126 / 0.172 / 0.214 · F 9.42 % · R2_g 0.495 · 189 s · 4 reasons
+      1024² (Corse 391 m: A_dir 20.8 % (trunks 0.0 %) · S−1 0.112 / 0.161 / 0.194 · F 2.70 %): A_dir 44.7 % (trunks 37.7 %) · S−1 0.065 / 0.106 / 0.143 · F 8.43 %
+   p2 · W-phys W2     slope 0.189/0.471 · λ 1.31 · facets 7.25 · walls 1.808 · octaves 16.7/39.2/41.0/60.4/120.1/177.2 · A_dir 38.4 % (trunks 36.6 %) · S−1 0.127 / 0.173 / 0.214 · F 8.78 % · R2_g 0.491 · 191 s · 5 reasons
+      1024² (Corse 391 m: A_dir 20.8 % (trunks 0.0 %) · S−1 0.112 / 0.161 / 0.194 · F 2.70 %): A_dir 43.3 % (trunks 39.3 %) · S−1 0.071 / 0.113 / 0.151 · F 8.07 %
+   p2 · W-tous W2     slope 0.196/0.477 · λ 1.34 · facets 7.68 · walls 2.041 · octaves 16.4/38.7/50.4/56.9/112.9/173.4 · A_dir 32.7 % (trunks 35.4 %) · S−1 0.131 / 0.183 / 0.228 · F 9.08 % · R2_g 0.484 · 196 s · 5 reasons
+      1024² (Corse 391 m: A_dir 20.8 % (trunks 0.0 %) · S−1 0.112 / 0.161 / 0.194 · F 2.70 %): A_dir 41.0 % (trunks 39.0 %) · S−1 0.071 / 0.116 / 0.157 · F 7.66 %
+   p4 · none          slope 0.195/0.477 · λ 1.36 · facets 9.04 · walls 2.018 · octaves 16.1/39.8/41.1/70.6/124.0/177.6 · A_dir 41.9 % (trunks 48.0 %) · S−1 0.122 / 0.162 / 0.195 · F 8.94 % · R2_g 0.496 · 194 s · 3 reasons
+      1024² (Corse 391 m: A_dir 20.8 % (trunks 0.0 %) · S−1 0.112 / 0.161 / 0.194 · F 2.70 %): A_dir 56.0 % (trunks 53.0 %) · S−1 0.060 / 0.096 / 0.135 · F 8.82 %
+   p4 · W-phys W1     slope 0.196/0.476 · λ 1.32 · facets 7.89 · walls 1.973 · octaves 16.3/40.1/41.4/68.4/117.5/174.2 · A_dir 40.0 % (trunks 42.7 %) · S−1 0.124 / 0.169 / 0.213 · F 8.76 % · R2_g 0.490 · 189 s · 3 reasons
+      1024² (Corse 391 m: A_dir 20.8 % (trunks 0.0 %) · S−1 0.112 / 0.161 / 0.194 · F 2.70 %): A_dir 50.3 % (trunks 43.3 %) · S−1 0.065 / 0.107 / 0.152 · F 8.34 %
+   p4 · W-tous W1     slope 0.194/0.479 · λ 1.38 · facets 9.09 · walls 2.074 · octaves 15.5/38.9/49.9/64.1/110.9/170.4 · A_dir 36.2 % (trunks 35.8 %) · S−1 0.126 / 0.174 / 0.219 · F 9.29 % · R2_g 0.481 · 194 s · 3 reasons
+      1024² (Corse 391 m: A_dir 20.8 % (trunks 0.0 %) · S−1 0.112 / 0.161 / 0.194 · F 2.70 %): A_dir 45.7 % (trunks 34.7 %) · S−1 0.066 / 0.108 / 0.152 · F 7.92 %
+   p6 · none          slope 0.196/0.478 · λ 1.37 · facets 9.35 · walls 2.071 · octaves 15.9/39.3/42.7/75.6/119.2/174.7 · A_dir 44.8 % (trunks 48.4 %) · S−1 0.112 / 0.150 / 0.185 · F 8.81 % · R2_g 0.489 · 194 s · 5 reasons
+      1024² (Corse 391 m: A_dir 20.8 % (trunks 0.0 %) · S−1 0.112 / 0.161 / 0.194 · F 2.70 %): A_dir 59.2 % (trunks 54.3 %) · S−1 0.058 / 0.096 / 0.136 · F 8.82 %
+   p6 · W-phys W1     slope 0.198/0.477 · λ 1.33 · facets 8.03 · walls 2.025 · octaves 16.2/39.8/43.0/73.5/112.9/171.3 · A_dir 40.2 % (trunks 42.3 %) · S−1 0.123 / 0.168 / 0.213 · F 8.71 % · R2_g 0.491 · 192 s · 2 reasons
+      1024² (Corse 391 m: A_dir 20.8 % (trunks 0.0 %) · S−1 0.112 / 0.161 / 0.194 · F 2.70 %): A_dir 49.5 % (trunks 41.1 %) · S−1 0.064 / 0.104 / 0.149 · F 8.41 %
+   p6 · W-tous W1     slope 0.194/0.478 · λ 1.38 · facets 8.83 · walls 2.052 · octaves 15.5/38.6/50.0/67.7/106.8/167.7 · A_dir 36.4 % (trunks 33.2 %) · S−1 0.123 / 0.170 / 0.215 · F 9.18 % · R2_g 0.487 · 190 s · 2 reasons
+      1024² (Corse 391 m: A_dir 20.8 % (trunks 0.0 %) · S−1 0.112 / 0.161 / 0.194 · F 2.70 %): A_dir 47.9 % (trunks 41.2 %) · S−1 0.064 / 0.107 / 0.149 · F 8.28 %
+
+   → the best chain: p6 · W-tous W1 (2 reasons, Σ|ln| 4.25)
+
+   F — the flat interfluves attributed (195 m):
+   ── p6 · W-tous W1 2048²: F 9.18 % of the 686828 cells read
+      altitude 0–50 m     land  18.0 % · flat cells  66.7 % · flat rate 34.03 %
+      altitude 50–100 m   land  10.5 % · flat cells  14.9 % · flat rate 12.94 %
+      altitude 100–300 m  land  25.4 % · flat cells  14.2 % · flat rate  5.13 %
+      altitude > 300 m    land  46.1 % · flat cells   4.3 % · flat rate  0.85 %
+      coast 0–2 km     land  11.2 % · flat cells  39.6 % · flat rate 32.53 %
+      coast 2–5 km     land  12.1 % · flat cells  12.5 % · flat rate  9.43 %
+      coast 5–10 km    land  16.2 % · flat cells  12.0 % · flat rate  6.81 %
+      coast 10–20 km   land  25.1 % · flat cells  17.9 % · flat rate  6.53 %
+      coast > 20 km    land  35.4 % · flat cells  18.1 % · flat rate  4.68 %
+      within 2 km of a D5 cell: land 10.0 % · flat cells 36.7 % · flat rate 33.78 % (the rest 6.45 %)
+      → 81.5 % of the flat cells below 100 m · the rate below 100 m 26.24 % against 0.85 % above 300 m → MOSTLY LOW (the declared rule)
+   ── Corse 195 m: F 4.25 % of the 225925 cells read
+      altitude 0–50 m     land   9.8 % · flat cells  54.6 % · flat rate 23.66 %
+      altitude 50–100 m   land   7.9 % · flat cells  24.1 % · flat rate 12.90 %
+      altitude 100–300 m  land  19.6 % · flat cells  12.2 % · flat rate  2.65 %
+      altitude > 300 m    land  62.7 % · flat cells   9.1 % · flat rate  0.62 %
+      coast 0–2 km     land  17.0 % · flat cells  53.9 % · flat rate 13.49 %
+      coast 2–5 km     land  19.0 % · flat cells  29.2 % · flat rate  6.53 %
+      coast 5–10 km    land  22.5 % · flat cells  11.9 % · flat rate  2.25 %
+      coast 10–20 km   land  30.1 % · flat cells   4.1 % · flat rate  0.58 %
+      coast > 20 km    land  11.4 % · flat cells   0.8 % · flat rate  0.31 %
+      → 78.6 % of the flat cells below 100 m · the rate below 100 m 18.84 % against 0.62 % above 300 m → MOSTLY LOW (the declared rule)
+   images f164_<crop>.png (tight_25km, A_chaine, B_plateau, C_bassin_lac4): row 1 p6 · none, p6 · W-phys W1, p6 · W-tous W1 then Corsica; row 2 p2 · W-tous W1, p4 · W-tous W1, p6 · W-tous W1 then Corsica; f164_whole_2048.png row 1 · rivers order ≥ 2, north up · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+   image f164_spectra.png: p6 · none, p6 · W-phys W1, p6 · W-tous W1 grey / red / blue, Corsica black · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+
+   cost: p2 · none 183 s · p2 · W-phys W1 182 s · p2 · W-tous W1 189 s · p2 · W-phys W2 191 s · p2 · W-tous W2 196 s · p4 · none 194 s · p4 · W-phys W1 189 s · p4 · W-tous W1 194 s · p6 · none 194 s · p6 · W-phys W1 192 s · p6 · W-tous W1 190 s · total 2303 s
+
+==========  end Finding 164 . 2303.1 s  ==========
+
+test f164_cascade ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2303.13s
+

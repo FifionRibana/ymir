@@ -21676,3 +21676,123 @@ diffusion are sub-cell, so they cannot densify):
   network.
 - F164 follows: bend the inherited trunks (a smooth, invertible warp of the upscaled field), arbitrate p, and
   attribute the flat interfluves.
+
+## Finding 164 — the cascade, round 6: a smooth invertible warp of the upscaled field (W-phys once, W-tous at every level), the physics exponent p arbitrated (2, 4, 6 with roughness), and the flat interfluves attributed: the warp is invertible and leaves the hypsometry and the coast unchanged, but its depression count is noisy (−13 to +19 %); W-tous cuts the trunks' grid alignment by a quarter to a third yet the network stays at 33–36 % against Corsica's 20.6 %; p = 6 · W-tous is the best chain so far (2 reasons: A_dir, F), and the flat interfluves are mostly low in the cascade and in Corsica, half of the excess being the hypsometry and a third the D5 lakes' margins; production unchanged
+
+**Status: built, measured, gated; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f164_warp/finding_164.md`.
+- Declared before any measurement: `f164_declared.md`. Predictions: `f164_predictions.md`.
+- F163 committed (`a4831cd`) with:
+  - S − 1 confirmed;
+  - p = 6 not adopted as is;
+  - the D8-step reading kept as a hypothesis;
+  - the fractal control's 43 % noted.
+
+**D — the warp** (`AmpConfig::warp`, None = F159–F163):
+- **u_W(x) = u(x + d(x))** (Catmull-Rom), right after the bicubic ×2.
+  - |d| ≤ A, a one-octave noise of wavelength L, both in previous-level cells.
+  - The D5 mask is warped, and the ocean is recomputed.
+  - **The retargeting's references are R(u_W) and R(R(u_W)).**
+  - It is a PROXY for the absent geological heterogeneity.
+- **The settings**: W1 (A 0.5, L 4) and W2 (A 0.5, L 2).
+- **A permanent test**: J > 0 everywhere at 512²–2 048² on two seeds; the negative control (A 2, L 2) folds.
+- **On the témoin**:
+  - min J 0.34–0.43 (W1) and 0.31–0.33 (W2);
+  - the hypsometry moves by ≤ 0.46 % of q9;
+  - the land by −0.33 % at the first warp, then +0.03 %;
+  - **the depression count moves both ways** (71 → 62, 316 → 325, 62 → 74). The 1 % clause fires on 3 of the 4 warped
+    chains at p = 2, never at p = 4 or 6.
+- W-phys and W-tous leave a speckle of small lakes on some coasts (crop A). Hypothesis: warped bathymetry turned into
+  D5 lakes.
+
+**The chains** (R4+π, k calibrated per level; 11 chains, the settings compared at p = 2, W1 carried):
+
+| | A_dir (trunks) | S − 1 at 5 km | F | octaves 1.56–3.12 / 3.12–6.25 km | R |
+|---|---|---|---|---|---|
+| Corsica 195 m | 20.6 % (18.3) | 0.239 | 4.25 % | 62.9 / 100.9 | |
+| p2 · none | 38.9 (46.7) | 0.175 | 8.91 | 39.1 / 58.5 | 4 |
+| p2 · W-tous W1 | 35.6 (33.4) | 0.172 | 9.42 | 50.8 / 55.7 | 4 |
+| p2 · W-tous W2 | 32.7 (35.4) | 0.183 | 9.08 | 50.4 / 56.9 | 5 |
+| p4 · W-tous W1 | 36.2 (35.8) | 0.174 | 9.29 | 49.9 / 64.1 | 3 |
+| p6 · none | 44.8 (48.4) | 0.150 | 8.81 | 42.7 / 75.6 | 5 |
+| p6 · W-phys W1 | 40.2 (42.3) | 0.168 | 8.71 | 43.0 / 73.5 | 2 |
+| **p6 · W-tous W1** | 36.4 (33.2) | 0.170 | 9.18 | 50.0 / 67.7 | **2** |
+
+- Every chain fails A_dir (×1.6–2.2) and F (×2.0–2.2).
+- **W-tous**:
+  - cuts the trunks' alignment from 47–48 % to 33–36 %;
+  - raises the 1.56–3.12 km octave by 17–30 %;
+  - lowers the 6.25–12.5 km one by ~10 %;
+  - at p = 6 it brings S − 1 back within ×1.5 (0.150 → 0.170).
+- **W-phys alone** does almost nothing at p = 2 (38.9 → 38.8 %).
+- Per level everything holds (drift ≤ 0.61 %, peak 2 909–3 182 m).
+
+**F — the flat interfluves** (I3 at 195 m):
+- **Mostly low by the declared rule**, in both the cascade and Corsica:
+  - 81.5 % of the cascade's flat cells are below 100 m, against 78.6 % of Corsica's;
+  - the flat rate below 100 m is ~30× the rate above 300 m in both.
+- **The excess, decomposed** (9.18 against 4.25 %):
+  - with Corsica's hypsometry the cascade would read 5.9 %;
+  - with Corsica's band rates, 6.6 %;
+  - so **~47 % is the hypsometry** (28.5 % of the land below 100 m against 17.7 %);
+  - **~33 % is flatter low bands**;
+  - the rest is the interaction.
+- **Two cascade traits Corsica has not**:
+  - 37 % of the flat cells lie within 2 km of a D5 lake (10 % of the land);
+  - 18 % lie > 20 km inland, against 0.8 %.
+
+**The reading** (hypotheses to check):
+- A ≤ 0.5-cell warp bends the inherited steps without erasing them. The fine levels' D8 erosion re-cuts straight
+  segments (A_dir at 1 024² 45–50 %).
+- The net depression count reads interpolation noise. A count of NEW depressions would separate creation from noise.
+
+**Predictions**:
+- **The reviewer's**:
+  - (1) A_dir under 31 % refuted (35.6 / 32.7 %); S − 1 within ×1.5 held; W-phys < half held;
+  - (2) hypsometry held; depressions refuted on 3 warps;
+  - (3) p = 4 · W-tous passing every octave refuted (3.12–6.25 km 64.1 against 67.3);
+  - (4) > 60 % below 100 m held;
+  - meta held.
+- **Mine**:
+  - held: W2's J, the negative control, the hypsometry, the coast, p = 2's directions and their ranking, R (none
+    passes, all fail F), « mostly low », near-D5 ≥ 2×, meta;
+  - refuted: W1's J range, the depressions within ±1 %, S − 1 rising under W1, « p = 4 fails 1.56–3.12 with or
+    without W », the octaves within ±10 %, the 55–75 % range, the cost (38 min, not 70–95).
+
+**Cost**: 182–196 s per chain with its calibration; the bench took 2 303 s.
+
+**Open, for the author** (nothing chosen):
+- (a) p = 6 · W-tous W1 (or W-phys) as the cascade's setting;
+- (b) the remaining alignment: a stronger bend, or a fine-level routing that does not re-cut D8 segments;
+- (c) the depression clause on new depressions rather than the net count;
+- (d) the flat interfluves: the hypsometry (the tectonics, queued) and the D5 margins (the lakes' work).
+
+**At commit (2026-10-10), decided (the reviewer's proposals, not contested by the author)**:
+- **(a) p = 6 · W-tous W1 becomes the cascade's default, provisionally** (with F163's roughness and F162's R4+π).
+  Production does not change.
+- **(b) The remaining alignment** (36.4 % against 30.9 %) is queued, untreated for now: the network will change with
+  the next work.
+- **(c) From F165, the depression clause counts NEW depressions**, matched by footprint before and after the step. The
+  net count stays in the reports, for information.
+- **(d) The flat interfluves (F) go to the tectonics** (F165) **and to the lakes' work.** For F, Corsica stays the
+  reference only within the mountain class.
+- **The cascade is frozen** at p6 · W-tous W1, with F164's budgets and k. Nothing downstream is recalibrated in F165.
+
+**The author's answers for F165, verbatim**:
+1. Type de continent : « Paramètre choisi, mais normalement on a déjà ça. C'est juste qu'on soulève tout au même
+   rythme. Souviens toi encore, on est closure-dépendant. Toute la tectonique est basée dessus. Donc il faut un
+   mécanisme compatible. Le relief est fait à 64² on devrait avoir toutes ces zones déjà formées. »
+2. Échelle : « Techniquement, je veux un équivalent 7.5x la taille. Par contre pour des raisons de dimension, on ne
+   peut pas tout scaler et on est obligé de rester à une proportion de type Corse afin d'éviter des pentes trop
+   importantes. Mais en soit, les rivières doivent être larges (les plus grosses avec +100-150m rive à rive à
+   l'embouchure) ce qui représente 3 à 4 cellule hex de Living Landz. Des chaines de montagnes, des plateaux, etc,
+   mais dont la répartition est celle d'un continent, pas de la Corse. C'est dans le but de la jouabilité. On veut
+   un continent varié, avec des zones de montagne, des plateaux et plaines permettant de placer les villes. Les
+   zones montagneuses pour la récupération de matériaux riches et de valeur. »
+3. « La cascade en l'état est bien. Allons donc sur la physio du continent. »
+4. « On veut quelque chose qui soit physique pas construit juste pour faire apparaitre tel ou tel phénomène. On s'est
+   rendu compte que ce genre de construction va toujours faire plein d'itération de calage et sans réellement
+   aboutir car on se retrouve à devoir faire des compromis (facettes, murs, peigne, etc). »
+5. Rectification : les hex de Living Landz font 40 à 50 m de **diamètre** en flat-top, pas de rayon. 100 à 150 m de
+   rive à rive font donc bien 3 à 4 hex, et une cellule de 8 192² (48,8 m) correspond à environ un hex.
+6. « La corse sert aussi pour la granularité du littoral (l'aspect naturel). »
