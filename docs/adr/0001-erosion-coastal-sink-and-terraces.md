@@ -21796,3 +21796,124 @@ diffusion are sub-cell, so they cannot densify):
 5. Rectification : les hex de Living Landz font 40 à 50 m de **diamètre** en flat-top, pas de rayon. 100 à 150 m de
    rive à rive font donc bien 3 à 4 hex, et une cellule de 8 192² (48,8 m) correspond à environ un hex.
 6. « La corse sert aussi pour la granularité du littoral (l'aspect naturel). »
+
+## Finding 165 — the continent's physiography: the physics level driven by C1's history (recorded read-only in the matter's frame, U = Δh_iso/Δt, the flexural rebound, T the one calibrated constant), judged against a European macro reference (ETOPO 2022, Kapos 2000 classes): the « régime » stop fires — P1 is refuted (h_iso is narrow but only 31–68 % boundary-bound), and the history makes no plateaus; C1's land history is mostly subsidence from a uniform initial plateau, so the historical level drowns 23–40 % of the land and turns 55–66 % of the rest into mountain; production unchanged
+
+**Status: built, measured, gated; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f165_continent/finding_165.md`.
+- Declared before any measurement of our worlds: `f165_declared.md`. Predictions: `f165_predictions.md`.
+- F164 committed (`2d96819`), with the reviewer's decisions and the author's six answers verbatim.
+
+**The author's criterion** (F164's commit, verbatim there): a continent whose layout is a continent's (« des chaines
+de montagnes, des plateaux, etc, mais dont la répartition est celle d'un continent »), built physically (« physique pas
+construit »), Corsica for the texture and the coast's grain.
+
+**A — the inventory and the diagnostic**:
+- **C1's transport is Eulerian with the continental crust at zero velocity**, so its record at a continental cell is
+  the material history. Following the matter is clean for the land; 0.1–2.8 % of the final land changed type.
+- **The four seeds** (the témoin, which is the author's seed, 42, 1 and 9):
+  - **every one ends with 2 plates** (8 at init) and **no continent–continent collision**;
+  - active margins are present (60–78 upper-plate cells);
+  - h_iso > 1 000 m is narrow (12.5 km, the 64² floor), but only **31–68 %** of it lies within 2 cells of a convergent
+    cell or a suture, so **P1 is refuted**;
+  - the physics level narrows those zones by ×2.8–4 (to its own floor), so Verdict A is « both ».
+
+**B — the references** (thresholds frozen on Europe before any world of ours, with one adjustment, « hills are low »):
+- **Europe**: plain 51.6 %, plateau 4.7 %, hill 18.9 %, mountain 24.8 % (Kapos's ~25 %); the mountain width /
+  √land is 0.0068.
+- **The qualitative control**: the Paris Basin plain, the Meseta plateau and Corsica mountain hold; the Massif Central
+  reads mountain (Kapos's definition), not adjusted.
+- Meybeck 2001's global figures could not be read.
+
+**C — the mechanism** (`cascade::history`):
+- **The record**: 31 snapshots through `run_with_closures_observed` (read-only; C1 bit-identical, a permanent test).
+- **The level**:
+  - U = Δh_iso/Δt per interval, the sea not held;
+  - F164's erosion, talus and diffusion (MFD p = 6);
+  - **the rebound** (ρc/ρm)·(G∗E), Ĝ = 1/(1 + (kα)⁴/4), α = 64.4 km (Te 25 km), by FFT;
+  - no equilibrium stop, no deposition.
+- **T = 1.155 Myr**, calibrated once on the témoin (peak 2 852 m).
+- **The steady negative control is the current level, bit for bit**: the loop is shared, and the physics level is
+  pinned by hash from before the refactor.
+
+**D — the measures** (256² macro; the frozen cascade to 2 048²):
+
+| | plain | plateau | hill | mountain | width / √land | land lost |
+|---|---|---|---|---|---|---|
+| Europe | 51.6 | 4.7 | 18.9 | 24.8 | 0.0068 | |
+| F164, 4 seeds | 8.7–38.9 | 0.0 | 44–58 | 11.6–42.8 | 0.022–0.042 | |
+| history, 4 seeds | 1.2–4.1 | 0.0–0.1 | 32.5–40.9 | 55–66 | 0.041–0.062 | 23–40 % |
+
+- **Snapshots and Σ**:
+  - h_iso(t₀) is a uniform high plateau, the initial crust;
+  - **Σ uplift is negative over almost all the interior**: C1's erosion and equilibrium sinks thin it;
+  - it is positive only on the active margin.
+- **4–11 % of the history's land is interior at or below 0 m** (subsided basins, no deposition).
+- **Texture at 2 048² (195 m)**:
+  - the history lifts the low seeds' slopes and octaves into ×1.5 of Corsica;
+  - but it fails the facets (×2–3.4) and the 28° walls (×2–2.9) in the mountain class: **P5 refuted**.
+- **The coast**: no B4 measure degraded; all move toward Corsica (the block index −17 to −56 %), a side effect of the
+  drowned margin.
+- **The new depressions at the warp steps**: 7–24 % of the count before, in F164's chains as well. The net count hid
+  them.
+
+**R**:
+- **Success 0 / 4.**
+- **The « régime » stop fires**: P1 refuted, and the plateau fraction under 50 % of Europe's on 4 / 4 seeds.
+- **Stopped and reported; no second mechanism.**
+
+**The reading** (hypotheses to check):
+- **Δh_iso already contains C1's own erosion**, so the historical level erodes the same ground twice and drowns the
+  margin. The tectonic sources alone (Davis-Suppe, subduction, rifting) would be the cleaner drive, but that is a
+  second mechanism, for the author.
+- **C1 has no collision and ends with 2 plates on every seed.** Its only wide high ground is the initial plateau.
+- **The width / √land test sits ×3–11 above Europe in every run**: real-metric ranges in a ×7.5-compressed layout.
+- **Artefact**: an uneroded rim where land touches the map border (seed 9).
+
+**Predictions**:
+- **The reviewer's**:
+  - P1 refuted;
+  - P2 refuted (the early belts gain or hold; three seeds have no young belt);
+  - P3 held, trivially;
+  - P4 refuted (1 / 4);
+  - P5 refuted;
+  - P6 refuted (the density rises ×1.3–1.7);
+  - P7: the alignment holds on 3 / 4, but « nearly unchanged » is refuted;
+  - meta held.
+- **Mine**:
+  - held: the < 5 % changed type, P1 refuted, the Massif Central, the « régime » stop, the subsided basins,
+    success not met;
+  - refuted: a collision on some seed, Europe's ranges, the width ratio, T 1–30 Myr, P4, « the coast < 10 % ».
+
+**Cost**:
+- the historical level adds +2 to +7 s per world (the reference is 249.8 s);
+- a frozen chain takes 27–35 s;
+- the bench's wall time is void (the machine suspended).
+
+**Open, for the author** (nothing chosen):
+- (a) a drive by C1's tectonic sources only (a second mechanism);
+- (b) C1's collisions and plate count (the accretion merges everything into 2 plates);
+- (c) the width test against the ×7.5 compression;
+- (d) the warp's new depressions (7–24 %) against the new clause.
+
+**At commit (2026-10-10), decided (the reviewer's proposals, not contested by the author)**:
+- **(a) The drive by C1's tectonic sources only is allowed.** It is not a second mechanism but the same one, shared
+  correctly: the tectonics supplies the forcing, and the erosion is done once, by the physics level. It is F166.
+- **(b) C1's collisions come after F166.**
+- **(c) The « mountain width / √(land area) » test is WITHDRAWN.** It was a design error of the reviewer's: at European
+  scale a range would be ~1 km wide on our map, so the test was incompatible with relief in real km in a ×7.5-compressed
+  layout.
+- **(d) The warp's new depressions**: only how many survive to 2 048² is measured, nothing more.
+
+**The reviewer's errors, recorded**:
+- the width test (above);
+- **P6**: a late uplift makes the relief younger and steeper, hence MORE drained, not less dissected.
+
+**The author on F165, verbatim**: « Le littoral est intéressant. Trop de terres submergées mais c'est aussi
+intéressant d'en avoir un peu. Je pense qu'il faut un équilibre entre les deux. […] Les deux de droite sont à mon avis
+mon terrain avec les même structures prévisibles. Mais on n'est pas très loin de la 1ère image. Je pense qu'on peut
+s'en rapprocher encore, mais on va gérer déjà ce qui est prioritaire. »
+
+**The author's answers, verbatim**:
+1. « Un sommet qui varie avec la tectonique. Un sommet plus haut peut aussi être intéressant. »
+2. The sea-level rise: « Oui » (it will be F167).

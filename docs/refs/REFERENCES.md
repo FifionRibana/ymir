@@ -26,6 +26,7 @@ The PDFs marked **committed** carry an open licence (CC BY 4.0) and are in the r
 
 | data | source | in the repo |
 |---|---|---|
+| ETOPO 2022, 15″ surface-elevation tiles (12 tiles, 30–75° N, 15° W–45° E), the macro reference of F165 (Europe, the Alps) | NOAA National Centers for Environmental Information (2022): ETOPO 2022 15 Arc-Second Global Relief Model. NOAA NCEI. doi:10.25921/fd45-gt74, accessed 2026-10-10 from https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/15s/15s_surface_elev_gtif/. US government work, public domain | **no**: the tiles stay outside the repository; the derived grids live in `data/europe/` (git-ignored); the preparation script is `docs/reports/relief_method/f165_continent/prep_europe.py` |
 | Copernicus DEM GLO-30, five 1-arcsecond tiles over Corsica (N41–N43, E008–E009), the texture reference of F161 | Copernicus Digital Elevation Model (DEM) was accessed on 2026-10-09 from https://registry.opendata.aws/copernicus-dem (`copernicus-dem-30m`, COG tiles). Licence: the Copernicus DEM GLO-30 public licence (free of charge; attribution and a no-liability sentence required) | **no**: the tiles stay outside the repository; the derived grids live in `data/corsica/` (git-ignored); the preparation script is `docs/reports/relief_method/f161_corsica/prep_corse.py` |
 
 **The notice every derived figure carries** (the licence's « modified data » form): « produced using Copernicus

@@ -1,0 +1,495 @@
+//! ADR Finding 165-A/B -- **the continent's physiography, measured** (real metric: z in m, km cells):
+//!
+//! - [`classify`]: plain / plateau / hill / mountain. Mountain is Kapos et al. 2000 (UNEP-WCMC; the GMBA definition):
+//!   z ≥ 2 500 m, or 1 500–2 500 m and slope ≥ 2°, or 1 000–1 500 m and (slope ≥ 5° or R7 ≥ 300 m), or 300–1 000 m and
+//!   R7 ≥ 300 m, R7 the elevation range within 7 km. Then plateau (z ≥ [`PLATEAU_Z_M`]), hill (R7 ≥ [`HILL_R7_M`],
+//!   below the plateau altitude), plain (F165-B2's one adjustment on Europe: hills are low). The sea is z ≤ 0; the relief and the slope read the sea surface as 0 m.
+//! - [`macro_stats`]: the classes' fractions, the land deciles, the mountain components and their width over the
+//!   continent's size (the author's « macro-filiform » test).
+//! - [`shape`]: components above a threshold, their width (2 × the median distance transform), elongation and the
+//!   share near a mask (A2).
+//! - [`coast`]: the coastline's box-counting dimension, its length ratio, its aligned share and the 64² block index
+//!   (B4).
+//!
+//! Declared in `docs/reports/relief_method/f165_continent/f165_declared.md` (A2, B2–B4).
+
+use rayon::prelude::*;
+
+/// B2: the hill threshold on R7 (m) and the plateau altitude (m), declared from Meybeck et al. 2001's class logic.
+pub const HILL_R7_M: f32 = 150.0;
+pub const PLATEAU_Z_M: f32 = 500.0;
+/// B2: R7's radius (km), Kapos et al. 2000.
+pub const RELIEF_RADIUS_KM: f32 = 7.0;
+
+pub const SEA: u8 = 0;
+pub const PLAIN: u8 = 1;
+pub const PLATEAU: u8 = 2;
+pub const HILL: u8 = 3;
+pub const MOUNTAIN: u8 = 4;
+pub const CLASS_NAMES: [&str; 5] = ["sea", "plain", "plateau", "hill", "mountain"];
+
+/// The elevation range within `radius_km` (the sea read as 0 m), per cell.
+pub fn local_relief(z: &[f32], w: usize, h: usize, cell_km: f32, radius_km: f32) -> Vec<f32> {
+    let r = radius_km / cell_km;
+    let ri = r.floor() as i64;
+    let offs: Vec<(i64, i64)> = (-ri..=ri)
+        .flat_map(|dy| (-ri..=ri).map(move |dx| (dx, dy)))
+        .filter(|&(dx, dy)| ((dx * dx + dy * dy) as f32).sqrt() <= r)
+        .collect();
+    (0..w * h)
+        .into_par_iter()
+        .map(|k| {
+            let (x, y) = ((k % w) as i64, (k / w) as i64);
+            let (mut lo, mut hi) = (f32::MAX, f32::MIN);
+            for &(dx, dy) in &offs {
+                let (nx, ny) = (x + dx, y + dy);
+                if nx < 0 || ny < 0 || nx >= w as i64 || ny >= h as i64 {
+                    continue;
+                }
+                let v = z[ny as usize * w + nx as usize].max(0.0);
+                lo = lo.min(v);
+                hi = hi.max(v);
+            }
+            hi - lo
+        })
+        .collect()
+}
+
+/// The slope (degrees, central differences, the sea read as 0 m).
+pub fn slope_deg(z: &[f32], w: usize, h: usize, cell_km: f32) -> Vec<f32> {
+    let c = cell_km * 1000.0;
+    (0..w * h)
+        .into_par_iter()
+        .map(|k| {
+            let (x, y) = (k % w, k / w);
+            let at = |x: usize, y: usize| z[y * w + x].max(0.0);
+            let gx = (at((x + 1).min(w - 1), y) - at(x.saturating_sub(1), y)) / (2.0 * c);
+            let gy = (at(x, (y + 1).min(h - 1)) - at(x, y.saturating_sub(1))) / (2.0 * c);
+            (gx * gx + gy * gy).sqrt().atan().to_degrees()
+        })
+        .collect()
+}
+
+/// The macro classes (B2).
+pub fn classify(z: &[f32], w: usize, h: usize, cell_km: f32) -> Vec<u8> {
+    let r7 = local_relief(z, w, h, cell_km, RELIEF_RADIUS_KM);
+    let s = slope_deg(z, w, h, cell_km);
+    (0..w * h)
+        .map(|k| {
+            let (v, r, sl) = (z[k], r7[k], s[k]);
+            if v <= 0.0 {
+                return SEA;
+            }
+            let mountain = v >= 2500.0
+                || (v >= 1500.0 && sl >= 2.0)
+                || (v >= 1000.0 && (sl >= 5.0 || r >= 300.0))
+                || (v >= 300.0 && r >= 300.0);
+            // F165-B2, the one adjustment on Europe (before any world of ours): hills are LOW (Meybeck et al. 2001's
+            // hills sit below its plateaus), so a non-mountain cell at or above the plateau altitude is a plateau
+            if mountain {
+                MOUNTAIN
+            } else if v >= PLATEAU_Z_M {
+                PLATEAU
+            } else if r >= HILL_R7_M {
+                HILL
+            } else {
+                PLAIN
+            }
+        })
+        .collect()
+}
+
+/// The exact squared Euclidean distance (cells) from each `true` cell to the nearest `false` cell (or the outside),
+/// Felzenszwalb & Huttenlocher 2012, separable.
+pub fn edt(mask: &[bool], w: usize, h: usize) -> Vec<f32> {
+    const INF: f64 = 1e18;
+    fn pass(f: &[f64]) -> Vec<f64> {
+        let n = f.len();
+        let mut d = vec![0f64; n];
+        let mut v = vec![0usize; n];
+        let mut zz = vec![0f64; n + 1];
+        let mut k = 0usize;
+        v[0] = 0;
+        zz[0] = f64::NEG_INFINITY;
+        zz[1] = f64::INFINITY;
+        let sep = |q: usize, p: usize| ((f[q] + (q * q) as f64) - (f[p] + (p * p) as f64)) / (2.0 * q as f64 - 2.0 * p as f64);
+        for q in 1..n {
+            let mut s = sep(q, v[k]);
+            while s <= zz[k] {
+                k -= 1;
+                s = sep(q, v[k]);
+            }
+            k += 1;
+            v[k] = q;
+            zz[k] = s;
+            zz[k + 1] = f64::INFINITY;
+        }
+        k = 0;
+        for q in 0..n {
+            while zz[k + 1] < q as f64 {
+                k += 1;
+            }
+            let p = v[k];
+            d[q] = (q as f64 - p as f64).powi(2) + f[p];
+        }
+        d
+    }
+    // pad by one cell of `false` so the outside counts as background
+    let (pw, ph) = (w + 2, h + 2);
+    let mut g = vec![0f64; pw * ph];
+    for y in 0..h {
+        for x in 0..w {
+            if mask[y * w + x] {
+                g[(y + 1) * pw + x + 1] = INF;
+            }
+        }
+    }
+    let cols: Vec<Vec<f64>> = (0..pw).into_par_iter().map(|x| pass(&(0..ph).map(|y| g[y * pw + x]).collect::<Vec<_>>())).collect();
+    for x in 0..pw {
+        for y in 0..ph {
+            g[y * pw + x] = cols[x][y];
+        }
+    }
+    let rows: Vec<Vec<f64>> = (0..ph).into_par_iter().map(|y| pass(&g[y * pw..(y + 1) * pw])).collect();
+    let mut out = vec![0f32; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            out[y * w + x] = rows[y + 1][x + 1].sqrt() as f32;
+        }
+    }
+    out
+}
+
+/// 8-connected components of `mask` (labels from 1; 0 = none) and their sizes (index = label − 1).
+pub fn components(mask: &[bool], w: usize, h: usize) -> (Vec<u32>, Vec<usize>) {
+    let mut lab = vec![0u32; w * h];
+    let mut sizes = Vec::new();
+    let mut stack = Vec::new();
+    for s in 0..w * h {
+        if !mask[s] || lab[s] != 0 {
+            continue;
+        }
+        let id = sizes.len() as u32 + 1;
+        lab[s] = id;
+        stack.push(s);
+        let mut c = 0usize;
+        while let Some(k) = stack.pop() {
+            c += 1;
+            let (x, y) = ((k % w) as i64, (k / w) as i64);
+            for dy in -1..=1i64 {
+                for dx in -1..=1i64 {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx < 0 || ny < 0 || nx >= w as i64 || ny >= h as i64 {
+                        continue;
+                    }
+                    let j = ny as usize * w + nx as usize;
+                    if mask[j] && lab[j] == 0 {
+                        lab[j] = id;
+                        stack.push(j);
+                    }
+                }
+            }
+        }
+        sizes.push(c);
+    }
+    (lab, sizes)
+}
+
+/// Chebyshev distance (cells) from the `src` cells, capped at `cap` (`u32::MAX` beyond).
+pub fn chebyshev(src: &[bool], w: usize, h: usize, cap: u32) -> Vec<u32> {
+    let mut d = vec![u32::MAX; w * h];
+    let mut front: Vec<usize> = (0..w * h).filter(|&k| src[k]).collect();
+    for &k in &front {
+        d[k] = 0;
+    }
+    let mut lvl = 0;
+    while !front.is_empty() && lvl < cap {
+        lvl += 1;
+        let mut next = Vec::new();
+        for &k in &front {
+            let (x, y) = ((k % w) as i64, (k / w) as i64);
+            for dy in -1..=1i64 {
+                for dx in -1..=1i64 {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx < 0 || ny < 0 || nx >= w as i64 || ny >= h as i64 {
+                        continue;
+                    }
+                    let j = ny as usize * w + nx as usize;
+                    if d[j] == u32::MAX {
+                        d[j] = lvl;
+                        next.push(j);
+                    }
+                }
+            }
+        }
+        front = next;
+    }
+    d
+}
+
+/// A2: the shape of a set of cells.
+#[derive(Clone, Debug, Default)]
+pub struct Shape {
+    pub cells: usize,
+    pub components: usize,
+    /// 2 × the median distance transform over the cells (cells).
+    pub width_cells: f32,
+    /// √(λ₁/λ₂) of each component's coordinate covariance, area-weighted (components of ≥ 4 cells).
+    pub elongation: f32,
+    /// The share of the cells within `near_cells` (Chebyshev) of the `near` mask.
+    pub near_share: f32,
+}
+
+/// A2's measures on `mask`.
+pub fn shape(mask: &[bool], w: usize, h: usize, near: Option<&[bool]>, near_cells: u32) -> Shape {
+    let cells = mask.iter().filter(|&&m| m).count();
+    if cells == 0 {
+        return Shape { width_cells: f32::NAN, elongation: f32::NAN, near_share: f32::NAN, ..Default::default() };
+    }
+    let d = edt(mask, w, h);
+    let mut v: Vec<f32> = (0..w * h).filter(|&k| mask[k]).map(|k| d[k]).collect();
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let width_cells = 2.0 * v[v.len() / 2];
+    let (lab, sizes) = components(mask, w, h);
+    let mut acc = vec![[0f64; 5]; sizes.len()];
+    for k in 0..w * h {
+        if lab[k] != 0 {
+            let (x, y) = ((k % w) as f64, (k / w) as f64);
+            let a = &mut acc[lab[k] as usize - 1];
+            a[0] += x;
+            a[1] += y;
+            a[2] += x * x;
+            a[3] += y * y;
+            a[4] += x * y;
+        }
+    }
+    let (mut ew, mut es) = (0f64, 0f64);
+    for (i, a) in acc.iter().enumerate() {
+        let n = sizes[i] as f64;
+        if sizes[i] < 4 {
+            continue;
+        }
+        let (mx, my) = (a[0] / n, a[1] / n);
+        let (sxx, syy, sxy) = (a[2] / n - mx * mx, a[3] / n - my * my, a[4] / n - mx * my);
+        let tr = sxx + syy;
+        let det = sxx * syy - sxy * sxy;
+        let disc = ((tr * tr / 4.0) - det).max(0.0).sqrt();
+        let (l1, l2) = (tr / 2.0 + disc, (tr / 2.0 - disc).max(1e-9));
+        es += n * (l1 / l2).sqrt();
+        ew += n;
+    }
+    let near_share = near.map_or(f32::NAN, |m| {
+        let dd = chebyshev(m, w, h, near_cells + 1);
+        (0..w * h).filter(|&k| mask[k] && dd[k] <= near_cells).count() as f32 / cells as f32
+    });
+    Shape {
+        cells,
+        components: sizes.len(),
+        width_cells,
+        elongation: if ew > 0.0 { (es / ew) as f32 } else { f32::NAN },
+        near_share,
+    }
+}
+
+/// B3: the macro quantities of a classified field.
+#[derive(Clone, Debug, Default)]
+pub struct MacroStats {
+    /// plain, plateau, hill, mountain (share of the land).
+    pub fractions: [f32; 4],
+    pub deciles: Vec<f32>,
+    pub land_km2: f64,
+    /// Mountain components of ≥ 4 cells.
+    pub mtn_components: usize,
+    /// 2 × the median distance transform over the mountain cells (km).
+    pub mtn_width_km: f32,
+    /// `mtn_width_km` / √(land km²).
+    pub mtn_ratio: f32,
+}
+
+/// B3 on a field (m) and its classes.
+pub fn macro_stats(z: &[f32], classes: &[u8], w: usize, h: usize, cell_km: f32) -> MacroStats {
+    let land = classes.iter().filter(|&&c| c != SEA).count();
+    let mut out = MacroStats { land_km2: land as f64 * (cell_km * cell_km) as f64, ..Default::default() };
+    for (i, c) in [PLAIN, PLATEAU, HILL, MOUNTAIN].iter().enumerate() {
+        out.fractions[i] = classes.iter().filter(|&&x| x == *c).count() as f32 / land.max(1) as f32;
+    }
+    let mut alts: Vec<f32> = (0..w * h).filter(|&k| classes[k] != SEA).map(|k| z[k]).collect();
+    alts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    out.deciles = (1..10).map(|d| if alts.is_empty() { f32::NAN } else { alts[(alts.len() - 1) * d / 10] }).collect();
+    let m: Vec<bool> = classes.iter().map(|&c| c == MOUNTAIN).collect();
+    let (_, sizes) = components(&m, w, h);
+    out.mtn_components = sizes.iter().filter(|&&s| s >= 4).count();
+    let s = shape(&m, w, h, None, 0);
+    out.mtn_width_km = s.width_cells * cell_km;
+    out.mtn_ratio = out.mtn_width_km / (out.land_km2.sqrt() as f32).max(1e-9);
+    out
+}
+
+/// B4: the coastline's grain.
+#[derive(Clone, Debug, Default)]
+pub struct Coast {
+    /// The box-counting dimension over 2–64 cells.
+    pub dimension: f32,
+    /// L(2 cells) / L(32 cells), L = N·ε.
+    pub length_ratio: f32,
+    /// The aligned share (±5° of 0/45/90/135°) of the coast's 8-step chords.
+    pub aligned: f32,
+    /// The share of land/sea edges on the `block` lattice over 1 / `block`.
+    pub block_index: f32,
+    pub edges: usize,
+}
+
+/// B4 on a land mask (`true` = land).
+pub fn coast(land: &[bool], w: usize, h: usize, block: usize) -> Coast {
+    let is_land = |x: i64, y: i64| x >= 0 && y >= 0 && x < w as i64 && y < h as i64 && land[y as usize * w + x as usize];
+    // the coastline cells: land with a 4-neighbour sea (the outside is sea)
+    let cl: Vec<bool> = (0..w * h)
+        .map(|k| {
+            let (x, y) = ((k % w) as i64, (k / w) as i64);
+            land[k] && (!is_land(x - 1, y) || !is_land(x + 1, y) || !is_land(x, y - 1) || !is_land(x, y + 1))
+        })
+        .collect();
+    let mut pts = Vec::new();
+    for s in [2usize, 4, 8, 16, 32, 64] {
+        let (bw, bh) = (w.div_ceil(s), h.div_ceil(s));
+        let mut hit = vec![false; bw * bh];
+        for k in 0..w * h {
+            if cl[k] {
+                hit[(k / w / s) * bw + (k % w) / s] = true;
+            }
+        }
+        pts.push((s as f64, hit.iter().filter(|&&b| b).count() as f64));
+    }
+    let lx: Vec<f64> = pts.iter().map(|p| (1.0 / p.0).ln()).collect();
+    let ly: Vec<f64> = pts.iter().map(|p| p.1.max(1.0).ln()).collect();
+    let (mx, my) = (lx.iter().sum::<f64>() / 6.0, ly.iter().sum::<f64>() / 6.0);
+    let num: f64 = lx.iter().zip(&ly).map(|(a, b)| (a - mx) * (b - my)).sum();
+    let den: f64 = lx.iter().map(|a| (a - mx).powi(2)).sum();
+    let length_ratio = (pts[0].1 * pts[0].0) / (pts[4].1 * pts[4].0).max(1.0);
+    // the crack contour: directed land/sea edges, land on the left (counter-clockwise), followed into loops
+    use std::collections::HashMap;
+    let mut out_edges: HashMap<(i64, i64), Vec<(i64, i64)>> = HashMap::new();
+    let (mut edges, mut on_lattice) = (0usize, 0usize);
+    let b = block as i64;
+    for y in 0..h as i64 {
+        for x in 0..w as i64 {
+            if !is_land(x, y) {
+                continue;
+            }
+            let mut add = |a: (i64, i64), c: (i64, i64), lattice: bool| {
+                out_edges.entry(a).or_default().push(c);
+                edges += 1;
+                if lattice {
+                    on_lattice += 1;
+                }
+            };
+            if !is_land(x, y - 1) {
+                add((x, y), (x + 1, y), y % b == 0);
+            }
+            if !is_land(x + 1, y) {
+                add((x + 1, y), (x + 1, y + 1), (x + 1) % b == 0);
+            }
+            if !is_land(x, y + 1) {
+                add((x + 1, y + 1), (x, y + 1), (y + 1) % b == 0);
+            }
+            if !is_land(x - 1, y) {
+                add((x, y + 1), (x, y), x % b == 0);
+            }
+        }
+    }
+    let (mut all, mut al) = (0f64, 0f64);
+    let mut starts: Vec<(i64, i64)> = out_edges.keys().copied().collect();
+    starts.sort();
+    for s in starts {
+        while let Some(first) = out_edges.get_mut(&s).and_then(|v| v.pop()) {
+            let mut path = vec![s, first];
+            let mut cur = first;
+            let mut prev_dir = (first.0 - s.0, first.1 - s.1);
+            while cur != s {
+                let Some(v) = out_edges.get_mut(&cur) else { break };
+                if v.is_empty() {
+                    break;
+                }
+                // at a saddle, turn left first (keeps a land cell on the left)
+                let left = (-prev_dir.1, prev_dir.0);
+                let pick = v.iter().position(|&n| (n.0 - cur.0, n.1 - cur.1) == left).unwrap_or(0);
+                let nxt = v.swap_remove(pick);
+                prev_dir = (nxt.0 - cur.0, nxt.1 - cur.1);
+                path.push(nxt);
+                cur = nxt;
+            }
+            if path.len() < 33 {
+                continue;
+            }
+            let mut i = 0;
+            while i + 8 < path.len() {
+                let (dx, dy) = ((path[i + 8].0 - path[i].0) as f32, (path[i + 8].1 - path[i].1) as f32);
+                let len = (dx * dx + dy * dy).sqrt() as f64;
+                if len > 0.0 {
+                    let phi = dy.abs().atan2(dx.abs()).to_degrees() % 45.0;
+                    all += len;
+                    if phi.min(45.0 - phi) <= 5.0 {
+                        al += len;
+                    }
+                }
+                i += 8;
+            }
+        }
+    }
+    Coast {
+        dimension: (num / den.max(1e-12)) as f32,
+        length_ratio: length_ratio as f32,
+        aligned: if all > 0.0 { (al / all) as f32 } else { f32::NAN },
+        block_index: if edges > 0 { (on_lattice as f32 / edges as f32) * block as f32 } else { f32::NAN },
+        edges,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The classifier on synthetic terrain: a flat lowland reads plain, a high flat table plateau, a 2 600 m block
+    /// mountain, a rough low terrain hill; the distance transform is exact on a rectangle; a lattice-aligned square
+    /// island reads a coastline dimension near 1, all chords aligned and a block index far above 1, a disc does not.
+    #[test]
+    fn the_classes_the_distance_and_the_coast_read_as_built() {
+        let (w, h, c) = (96usize, 96usize, 1.5625f32);
+        let mut z = vec![-100f32; w * h];
+        for y in 8..88 {
+            for x in 8..88 {
+                let k = y * w + x;
+                z[k] = if x < 30 {
+                    100.0
+                } else if x < 50 {
+                    800.0
+                } else if x < 70 {
+                    2600.0
+                } else {
+                    250.0 + 120.0 * ((x as f32 * 1.7).sin() * (y as f32 * 1.3).cos())
+                };
+            }
+        }
+        let cl = classify(&z, w, h, c);
+        assert_eq!(cl[48 * w + 18], PLAIN);
+        assert_eq!(cl[48 * w + 40], PLATEAU);
+        assert_eq!(cl[48 * w + 60], MOUNTAIN);
+        assert_eq!(cl[48 * w + 80], HILL);
+        let mut m = vec![false; 40 * 30];
+        for y in 5..25 {
+            for x in 5..35 {
+                m[y * 40 + x] = true;
+            }
+        }
+        let d = edt(&m, 40, 30);
+        assert!((d[15 * 40 + 20] - 10.0).abs() < 1e-4, "{}", d[15 * 40 + 20]);
+        assert!((d[5 * 40 + 20] - 1.0).abs() < 1e-4);
+        let n = 1024;
+        let sq: Vec<bool> = (0..n * n).map(|k| (k % n) >= 128 && (k % n) < 896 && (k / n) >= 128 && (k / n) < 896).collect();
+        let cs = coast(&sq, n, n, 32);
+        assert!(cs.aligned > 0.95 && cs.block_index > 10.0 && (cs.dimension - 1.0).abs() < 0.15, "{cs:?}");
+        let disc: Vec<bool> = (0..n * n).map(|k| (((k % n) as f32 - 511.3).powi(2) + ((k / n) as f32 - 512.6).powi(2)).sqrt() < 380.0).collect();
+        let cd = coast(&disc, n, n, 32);
+        assert!(cd.block_index < 3.0 && cd.aligned < 0.6, "{cd:?}");
+    }
+}

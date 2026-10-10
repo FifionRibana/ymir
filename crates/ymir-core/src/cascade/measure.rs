@@ -51,6 +51,58 @@ fn fft(re: &mut [f64], im: &mut [f64]) {
     }
 }
 
+/// ADR Finding 165-C2 -- an isotropic filter of a periodic field: f̂(k) · gain(|k|), k in rad / km (`cell_km` the cell).
+/// Used for the flexural rebound; DC passes with gain(0).
+pub fn filter_isotropic(f: &[f32], n: usize, cell_km: f32, gain: &dyn Fn(f64) -> f64) -> Vec<f32> {
+    assert!(n.is_power_of_two(), "the filter needs a power-of-two grid");
+    let (mut re, mut im) = fft2_complex(&f.iter().map(|&v| v as f64).collect::<Vec<_>>(), &vec![0f64; n * n], n);
+    let dk = 2.0 * std::f64::consts::PI / (n as f64 * cell_km as f64);
+    for y in 0..n {
+        let ky = if y <= n / 2 { y as f64 } else { y as f64 - n as f64 } * dk;
+        for x in 0..n {
+            let kx = if x <= n / 2 { x as f64 } else { x as f64 - n as f64 } * dk;
+            let g = gain((kx * kx + ky * ky).sqrt());
+            re[y * n + x] *= g;
+            im[y * n + x] *= g;
+        }
+    }
+    // the inverse by conjugation: ifft(X) = conj(fft(conj(X))) / N
+    let conj: Vec<f64> = im.iter().map(|v| -v).collect();
+    let (rr, _) = fft2_complex(&re, &conj, n);
+    let norm = (n * n) as f64;
+    rr.iter().map(|v| (v / norm) as f32).collect()
+}
+
+/// A complex 2D forward FFT (rows then columns).
+fn fft2_complex(re0: &[f64], im0: &[f64], n: usize) -> (Vec<f64>, Vec<f64>) {
+    let rows: Vec<(Vec<f64>, Vec<f64>)> = (0..n)
+        .into_par_iter()
+        .map(|y| {
+            let mut re = re0[y * n..(y + 1) * n].to_vec();
+            let mut im = im0[y * n..(y + 1) * n].to_vec();
+            fft(&mut re, &mut im);
+            (re, im)
+        })
+        .collect();
+    let cols: Vec<(Vec<f64>, Vec<f64>)> = (0..n)
+        .into_par_iter()
+        .map(|x| {
+            let mut re: Vec<f64> = (0..n).map(|y| rows[y].0[x]).collect();
+            let mut im: Vec<f64> = (0..n).map(|y| rows[y].1[x]).collect();
+            fft(&mut re, &mut im);
+            (re, im)
+        })
+        .collect();
+    let (mut re, mut im) = (vec![0f64; n * n], vec![0f64; n * n]);
+    for (x, (cr, ci)) in cols.iter().enumerate() {
+        for y in 0..n {
+            re[y * n + x] = cr[y];
+            im[y * n + x] = ci[y];
+        }
+    }
+    (re, im)
+}
+
 /// The spectrum by octave: element j is the RMS (m, per land cell) of the wavelengths [2^(j+1), 2^(j+2)) cells, for
 /// every octave up to n cells. `zm` is the field (m) with the sea at 0 m; `land_cells` the normalising land count.
 pub fn octave_rms(zm: &[f32], n: usize, land_cells: usize) -> Vec<f32> {

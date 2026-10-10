@@ -1,0 +1,231 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+    Finished `release` profile [optimized] target(s) in 16.54s
+     Running tests\f165_cascade.rs (target_f165\release\deps\f165_cascade-1eabb50e69480ab4.exe)
+
+running 1 test
+
+==========  Finding 165 . the continent's physiography: the physics level follows C1's history  ==========
+   the benches' target_land_fraction: None
+   Europe         plain  51.6 % · plateau   4.7 % · hill  18.9 % · mountain  24.8 % · land 5260525 km² · mountain components 894 · width 15.6 km · width / √land 0.0068 · deciles 40/81/117/153/195/262/383/580/889
+   Corse 195 m coast: Coast { dimension: 1.122932, length_ratio: 1.370949, aligned: 0.27188444, block_index: 0.78062284, edges: 5780 } · 49 m (lattice 128): Coast { dimension: 1.0673743, length_ratio: 1.1021235, aligned: 0.2788777, block_index: 0.9165965, edges: 23740 }
+   C1 seed 10481999410520546993 recorded (0.2 s)
+   C1 seed 42 recorded (0.2 s)
+   C1 seed 1 recorded (0.2 s)
+   C1 seed 9 recorded (0.2 s)
+
+   A2 — the diagnostic (64², 6.25 km per cell; final state):
+   ── seed 10481999410520546993: plates 2 (init 8) · collision 0 · subduction upper plate 78 · craton 57 · rift 28 · sutures (convergent at any step) 520 · land 640 cells, of which type changed 18 (2.8 %)
+      h_iso land deciles (m): 98/215/370/549/782/1007/1231/1504/1902
+      h_iso > 500 m: 401 cells · 12 components · width 2.00 cells (12.5 km) · elongation 2.14 · near convergent/suture 52 %
+      h_iso > 1000 m: 258 cells · 10 components · width 2.00 cells (12.5 km) · elongation 568.17 · near convergent/suture 50 %
+      h_iso > 2000 m: 55 cells · 9 components · width 2.00 cells (12.5 km) · elongation 4.27 · near convergent/suture 89 %
+   ── seed 42: plates 2 (init 8) · collision 0 · subduction upper plate 78 · craton 85 · rift 21 · sutures (convergent at any step) 448 · land 737 cells, of which type changed 1 (0.1 %)
+      h_iso land deciles (m): 76/161/287/420/605/774/985/1216/1745
+      h_iso > 500 m: 407 cells · 26 components · width 2.00 cells (12.5 km) · elongation 2.17 · near convergent/suture 52 %
+      h_iso > 1000 m: 216 cells · 31 components · width 2.00 cells (12.5 km) · elongation 2317.64 · near convergent/suture 68 %
+      h_iso > 2000 m: 51 cells · 7 components · width 2.00 cells (12.5 km) · elongation 4.10 · near convergent/suture 100 %
+   ── seed 1: plates 2 (init 8) · collision 0 · subduction upper plate 60 · craton 58 · rift 33 · sutures (convergent at any step) 394 · land 897 cells, of which type changed 1 (0.1 %)
+      h_iso land deciles (m): 85/212/372/561/782/1016/1385/1775/2246
+      h_iso > 500 m: 564 cells · 18 components · width 2.00 cells (12.5 km) · elongation 1.71 · near convergent/suture 31 %
+      h_iso > 1000 m: 366 cells · 30 components · width 2.00 cells (12.5 km) · elongation 1.83 · near convergent/suture 31 %
+      h_iso > 2000 m: 126 cells · 16 components · width 2.00 cells (12.5 km) · elongation 1.98 · near convergent/suture 31 %
+   ── seed 9: plates 2 (init 8) · collision 0 · subduction upper plate 73 · craton 115 · rift 25 · sutures (convergent at any step) 419 · land 1020 cells, of which type changed 23 (2.3 %)
+      h_iso land deciles (m): 63/201/376/582/781/1008/1303/1653/2194
+      h_iso > 500 m: 655 cells · 30 components · width 2.00 cells (12.5 km) · elongation 514.38 · near convergent/suture 38 %
+      h_iso > 1000 m: 413 cells · 27 components · width 2.00 cells (12.5 km) · elongation 370.15 · near convergent/suture 41 %
+      h_iso > 2000 m: 137 cells · 8 components · width 2.00 cells (12.5 km) · elongation 3.20 · near convergent/suture 82 %
+
+   C — the physics levels (256²); rebound α 64.4 km (Te 25 km), ρc/ρm 0.818
+      T trial 1.000e5 yr → peak 3890 m
+      T trial 1.000e6 yr → peak 3039 m
+      T trial 1.000e7 yr → peak 50 m
+      T trial 1.000e8 yr → peak 1 m
+      T trial 1.000e9 yr → peak 0 m
+      T trial 3.162e6 yr → peak 2290 m
+      T trial 1.778e6 yr → peak 2533 m
+      T trial 1.334e6 yr → peak 2674 m
+      T trial 1.155e6 yr → peak 2852 m
+   → T = 1.155e6 yr (peak 2852 m; 9 trials)
+test f165_main::f165_cascade has been running for over 60 seconds
+
+   ── seed 10481999410520546993 (256²):
+   F164 (steady)  plain   8.7 % · plateau   0.0 % · hill  48.5 % · mountain  42.8 % · land 28306 km² · mountain components 6 · width 7.0 km · width / √land 0.0415 · deciles 9/36/83/144/228/335/483/696/1040
+      F164 (steady)          peak 2863 m · mean land 398 m · λ 13.40 km · density 0.157 km/km² · relief p50 966 m · interior land ≤ 0 m 0 cells (0.00 % of land) · lakes 14 / 2458 km² · 3.3 s
+   history        plain   1.2 % · plateau   0.1 % · hill  39.9 % · mountain  58.8 % · land 20376 km² · mountain components 19 · width 8.8 km · width / √land 0.0619 · deciles 53/116/192/287/456/727/1064/1369/1650
+      history                peak 2852 m · mean land 618 m · λ 13.53 km · density 0.122 km/km² · relief p50 1485 m · interior land ≤ 0 m 895 cells (9.69 % of land) · lakes 13 / 352 km² · 4.9 s
+   control 2 (no rebound) plain   3.6 % · plateau   0.2 % · hill  31.3 % · mountain  64.9 % · land 13982 km² · mountain components 8 · width 7.0 km · width / √land 0.0591 · deciles 42/116/227/392/589/790/997/1184/1456
+      control 2 (no rebound) peak 2594 m · mean land 682 m · λ 14.96 km · density 0.116 km/km² · relief p50 1256 m · interior land ≤ 0 m 22 cells (0.38 % of land) · lakes 6 / 256 km² · 3.6 s
+   control 3 (late 10 %) plain   0.2 % · plateau   0.1 % · hill  26.2 % · mountain  73.5 % · land 22041 km² · mountain components 19 · width 11.3 km · width / √land 0.0759 · deciles 129/227/354/525/749/1009/1269/1512/1825
+      control 3 (late 10 %)  peak 3765 m · mean land 874 m · λ 20.19 km · density 0.189 km/km² · relief p50 1230 m · interior land ≤ 0 m 127 cells (1.39 % of land) · lakes 22 / 1152 km² · 5.3 s
+   α × 0.5        plain   1.7 % · plateau   0.1 % · hill  34.8 % · mountain  63.4 % · land 22012 km² · mountain components 16 · width 8.8 km · width / √land 0.0596 · deciles 61/137/227/342/502/764/1105/1462/1778
+      α × 0.5                peak 3065 m · mean land 701 m · λ 13.64 km · density 0.131 km/km² · relief p50 1481 m · interior land ≤ 0 m 612 cells (6.36 % of land) · lakes 12 / 459 km² · 4.8 s
+   α × 2          plain   4.8 % · plateau   0.2 % · hill  35.2 % · mountain  59.7 % · land 17007 km² · mountain components 11 · width 8.8 km · width / √land 0.0678 · deciles 43/91/168/300/504/757/1011/1257/1523
+      α × 2                  peak 2724 m · mean land 608 m · λ 14.46 km · density 0.111 km/km² · relief p50 1314 m · interior land ≤ 0 m 601 cells (7.94 % of land) · lakes 7 / 269 km² · 4.9 s
+
+   ── seed 42 (256²):
+   F164 (steady)  plain  30.6 % · plateau   0.0 % · hill  57.7 % · mountain  11.6 % · land 36101 km² · mountain components 14 · width 4.4 km · width / √land 0.0233 · deciles 2/7/18/34/56/88/132/203/332
+      F164 (steady)          peak 1815 m · mean land 125 m · λ 16.86 km · density 0.153 km/km² · relief p50 358 m · interior land ≤ 0 m 0 cells (0.00 % of land) · lakes 11 / 3835 km² · 4.7 s
+   history        plain   4.1 % · plateau   0.0 % · hill  40.9 % · mountain  55.0 % · land 21748 km² · mountain components 19 · width 6.2 km · width / √land 0.0424 · deciles 35/87/155/242/357/479/646/876/1214
+      history                peak 2455 m · mean land 475 m · λ 14.73 km · density 0.103 km/km² · relief p50 1219 m · interior land ≤ 0 m 414 cells (4.44 % of land) · lakes 11 / 591 km² · 11.5 s
+   control 2 (no rebound) plain   1.1 % · plateau   0.0 % · hill  45.6 % · mountain  53.3 % · land 13904 km² · mountain components 23 · width 4.4 km · width / √land 0.0375 · deciles 47/97/157/234/333/450/606/799/1118
+      control 2 (no rebound) peak 2184 m · mean land 446 m · λ 15.28 km · density 0.082 km/km² · relief p50 1099 m · interior land ≤ 0 m 200 cells (3.39 % of land) · lakes 6 / 129 km² · 5.8 s
+   control 3 (late 10 %) plain   0.7 % · plateau   0.0 % · hill  32.7 % · mountain  66.6 % · land 24937 km² · mountain components 23 · width 7.0 km · width / √land 0.0443 · deciles 110/185/264/377/513/666/848/1078/1379
+      control 3 (late 10 %)  peak 3153 m · mean land 617 m · λ 18.14 km · density 0.136 km/km² · relief p50 1154 m · interior land ≤ 0 m 404 cells (3.80 % of land) · lakes 17 / 496 km² · 7.4 s
+   α × 0.5        plain   4.2 % · plateau   0.0 % · hill  39.0 % · mountain  56.8 % · land 25867 km² · mountain components 21 · width 6.2 km · width / √land 0.0389 · deciles 41/98/170/264/382/534/704/935/1290
+      α × 0.5                peak 2629 m · mean land 489 m · λ 14.41 km · density 0.120 km/km² · relief p50 1096 m · interior land ≤ 0 m 848 cells (7.41 % of land) · lakes 23 / 786 km² · 6.3 s
+   α × 2          plain   3.1 % · plateau   0.0 % · hill  43.2 % · mountain  53.7 % · land 17930 km² · mountain components 27 · width 4.4 km · width / √land 0.0330 · deciles 36/88/161/243/341/466/625/839/1177
+      α × 2                  peak 2346 m · mean land 453 m · λ 15.19 km · density 0.091 km/km² · relief p50 1130 m · interior land ≤ 0 m 374 cells (4.85 % of land) · lakes 9 / 168 km² · 6.2 s
+
+   ── seed 1 (256²):
+   F164 (steady)  plain  36.3 % · plateau   0.0 % · hill  50.5 % · mountain  13.2 % · land 40833 km² · mountain components 11 · width 4.4 km · width / √land 0.0219 · deciles 3/11/23/39/62/93/140/218/359
+      F164 (steady)          peak 2498 m · mean land 133 m · λ 14.50 km · density 0.158 km/km² · relief p50 351 m · interior land ≤ 0 m 0 cells (0.00 % of land) · lakes 12 / 4124 km² · 5.9 s
+   history        plain   2.5 % · plateau   0.0 % · hill  36.8 % · mountain  60.6 % · land 28450 km² · mountain components 27 · width 7.0 km · width / √land 0.0414 · deciles 49/112/200/308/464/672/968/1442/2049
+      history                peak 3474 m · mean land 677 m · λ 14.12 km · density 0.118 km/km² · relief p50 1328 m · interior land ≤ 0 m 1385 cells (10.62 % of land) · lakes 10 / 225 km² · 7.3 s
+   control 2 (no rebound) plain   1.5 % · plateau   0.0 % · hill  35.9 % · mountain  62.6 % · land 20693 km² · mountain components 19 · width 7.0 km · width / √land 0.0486 · deciles 53/124/214/336/494/719/1048/1485/1948
+      control 2 (no rebound) peak 3202 m · mean land 743 m · λ 14.48 km · density 0.110 km/km² · relief p50 1256 m · interior land ≤ 0 m 304 cells (3.46 % of land) · lakes 4 / 112 km² · 5.6 s
+   control 3 (late 10 %) plain   1.8 % · plateau   0.0 % · hill  22.1 % · mountain  76.1 % · land 28425 km² · mountain components 28 · width 9.9 km · width / √land 0.0586 · deciles 146/246/397/569/762/1015/1334/1719/2215
+      control 3 (late 10 %)  peak 3464 m · mean land 944 m · λ 21.51 km · density 0.197 km/km² · relief p50 1087 m · interior land ≤ 0 m 405 cells (3.36 % of land) · lakes 14 / 1719 km² · 7.6 s
+   α × 0.5        plain   1.5 % · plateau   0.0 % · hill  34.8 % · mountain  63.7 % · land 31404 km² · mountain components 19 · width 8.8 km · width / √land 0.0499 · deciles 65/138/230/343/493/715/1022/1486/2099
+      α × 0.5                peak 3670 m · mean land 752 m · λ 13.77 km · density 0.134 km/km² · relief p50 1343 m · interior land ≤ 0 m 856 cells (6.24 % of land) · lakes 17 / 979 km² · 7.0 s
+   α × 2          plain   2.2 % · plateau   0.0 % · hill  36.9 % · mountain  60.9 % · land 25127 km² · mountain components 27 · width 7.0 km · width / √land 0.0441 · deciles 48/111/197/313/466/681/996/1455/1999
+      α × 2                  peak 3364 m · mean land 731 m · λ 14.39 km · density 0.110 km/km² · relief p50 1245 m · interior land ≤ 0 m 417 cells (3.89 % of land) · lakes 8 / 139 km² · 6.4 s
+
+   ── seed 9 (256²):
+   F164 (steady)  plain  38.9 % · plateau   0.0 % · hill  44.0 % · mountain  17.1 % · land 45879 km² · mountain components 15 · width 6.2 km · width / √land 0.0292 · deciles 3/10/23/41/65/103/163/271/444
+      F164 (steady)          peak 2545 m · mean land 158 m · λ 13.74 km · density 0.150 km/km² · relief p50 343 m · interior land ≤ 0 m 0 cells (0.00 % of land) · lakes 12 / 1755 km² · 12.1 s
+   history        plain   1.7 % · plateau   0.1 % · hill  32.5 % · mountain  65.7 % · land 35371 km² · mountain components 28 · width 9.4 km · width / √land 0.0498 · deciles 64/148/252/388/587/839/1116/1400/1832
+      history                peak 3964 m · mean land 749 m · λ 13.05 km · density 0.138 km/km² · relief p50 1378 m · interior land ≤ 0 m 961 cells (6.22 % of land) · lakes 38 / 2361 km² · 9.5 s
+   control 2 (no rebound) plain   1.1 % · plateau   0.2 % · hill  29.4 % · mountain  69.2 % · land 25227 km² · mountain components 27 · width 8.8 km · width / √land 0.0556 · deciles 69/167/292/450/632/816/1019/1288/1715
+      control 2 (no rebound) peak 3722 m · mean land 737 m · λ 13.41 km · density 0.129 km/km² · relief p50 1333 m · interior land ≤ 0 m 535 cells (4.92 % of land) · lakes 18 / 1428 km² · 244.2 s
+   control 3 (late 10 %) plain   0.7 % · plateau   0.3 % · hill  27.0 % · mountain  72.0 % · land 38103 km² · mountain components 28 · width 9.4 km · width / √land 0.0480 · deciles 111/205/336/507/720/969/1243/1568/2030
+      control 3 (late 10 %)  peak 3934 m · mean land 907 m · λ 19.61 km · density 0.202 km/km² · relief p50 1051 m · interior land ≤ 0 m 279 cells (1.76 % of land) · lakes 45 / 3474 km² · 33772.9 s
+   α × 0.5        plain   1.1 % · plateau   0.1 % · hill  32.2 % · mountain  66.6 % · land 37493 km² · mountain components 23 · width 9.4 km · width / √land 0.0484 · deciles 67/156/261/398/604/847/1130/1460/1942
+      α × 0.5                peak 4109 m · mean land 780 m · λ 12.99 km · density 0.142 km/km² · relief p50 1310 m · interior land ≤ 0 m 977 cells (5.98 % of land) · lakes 36 / 2451 km² · 7.1 s
+   α × 2          plain   1.8 % · plateau   0.2 % · hill  32.9 % · mountain  65.1 % · land 31477 km² · mountain components 22 · width 9.4 km · width / √land 0.0528 · deciles 54/127/234/391/586/816/1049/1322/1759
+      α × 2                  peak 3893 m · mean land 704 m · λ 13.37 km · density 0.130 km/km² · relief p50 1348 m · interior land ≤ 0 m 1091 cells (7.80 % of land) · lakes 29 / 1653 km² · 7.2 s
+
+   P2 / P4 / P6 (256²):
+   seed 10481999410520546993: P2 early belts 2156 cells (peak F164 2863 m → history 2852 m, -0 %) · young belts 0 cells · the history's peak cell is EARLY
+      P4 cratons' land p50: history 909 m · no rebound 647 m (-29 %) · P6 drainage density: history 0.122 · late 10 % 0.189 (1.56×)
+   seed 42: P2 early belts 1093 cells (peak F164 1063 m → history 2455 m, +131 %) · young belts 0 cells · the history's peak cell is EARLY
+      P4 cratons' land p50: history 526 m · no rebound 530 m (+1 %) · P6 drainage density: history 0.103 · late 10 % 0.136 (1.32×)
+   seed 1: P2 early belts 1616 cells (peak F164 2498 m → history 3474 m, +39 %) · young belts 0 cells · the history's peak cell is EARLY
+      P4 cratons' land p50: history 762 m · no rebound 636 m (-17 %) · P6 drainage density: history 0.118 · late 10 % 0.197 (1.67×)
+   seed 9: P2 early belts 1894 cells (peak F164 2545 m → history 3297 m, +30 %) · young belts 649 cells · the history's peak cell is YOUNG
+      P4 cratons' land p50: history 783 m · no rebound 675 m (-14 %) · P6 drainage density: history 0.138 · late 10 % 0.202 (1.46×)
+
+   D — the frozen cascade (p6 · W-tous W1, F164's k) to 2048²:
+   seed 10481999410520546993 F164 (28 s): 512²: peak 2960 m · drift -0.57 % · warp depressions 71 → 62, NEW 14 (19.7 % of before) | 1024²: peak 2997 m · drift -0.18 % · warp depressions 153 → 152, NEW 18 (11.8 % of before) | 2048²: peak 2983 m · drift +0.00 % · warp depressions 367 → 360, NEW 34 (9.3 % of before)
+   seed 10481999410520546993 history (27 s): 512²: peak 3036 m · drift +1.58 % · warp depressions 33 → 35, NEW 8 (24.2 % of before) | 1024²: peak 3076 m · drift -0.37 % · warp depressions 108 → 105, NEW 10 (9.3 % of before) | 2048²: peak 3088 m · drift -0.03 % · warp depressions 394 → 397, NEW 42 (10.7 % of before)
+   seed 42 F164 (30 s): 512²: peak 1580 m · drift -0.13 % · warp depressions 86 → 75, NEW 11 (12.8 % of before) | 1024²: peak 1702 m · drift -0.27 % · warp depressions 181 → 165, NEW 13 (7.2 % of before) | 2048²: peak 1716 m · drift -0.06 % · warp depressions 430 → 382, NEW 38 (8.8 % of before)
+   seed 42 history (27 s): 512²: peak 2794 m · drift -0.90 % · warp depressions 41 → 38, NEW 3 (7.3 % of before) | 1024²: peak 2797 m · drift -0.74 % · warp depressions 84 → 87, NEW 12 (14.3 % of before) | 2048²: peak 2785 m · drift -0.10 % · warp depressions 266 → 253, NEW 27 (10.2 % of before)
+   seed 1 F164 (31 s): 512²: peak 2251 m · drift +0.44 % · warp depressions 129 → 116, NEW 21 (16.3 % of before) | 1024²: peak 2351 m · drift -0.18 % · warp depressions 245 → 222, NEW 14 (5.7 % of before) | 2048²: peak 2421 m · drift -0.01 % · warp depressions 700 → 642, NEW 69 (9.9 % of before)
+   seed 1 history (31 s): 512²: peak 3883 m · drift +1.11 % · warp depressions 57 → 46, NEW 5 (8.8 % of before) | 1024²: peak 4164 m · drift -0.33 % · warp depressions 191 → 184, NEW 23 (12.0 % of before) | 2048²: peak 4196 m · drift -0.04 % · warp depressions 550 → 551, NEW 58 (10.5 % of before)
+   seed 9 F164 (35 s): 512²: peak 2335 m · drift -0.24 % · warp depressions 134 → 147, NEW 20 (14.9 % of before) | 1024²: peak 2650 m · drift -0.16 % · warp depressions 292 → 280, NEW 24 (8.2 % of before) | 2048²: peak 2731 m · drift -0.04 % · warp depressions 812 → 734, NEW 66 (8.1 % of before)
+   seed 9 history (34 s): 512²: peak 4332 m · drift -0.05 % · warp depressions 92 → 95, NEW 16 (17.4 % of before) | 1024²: peak 5582 m · drift -0.27 % · warp depressions 215 → 223, NEW 31 (14.4 % of before) | 2048²: peak 4792 m · drift -0.03 % · warp depressions 701 → 699, NEW 86 (12.3 % of before)
+
+   ── seed 10481999410520546993 at 2048² (195 m) against Corsica:
+      F164     whole           17 of 19 within ×1.5 · out: A_dir 0.369/0.206; F 0.091/0.043
+      F164     mountain class  15 of 19 within ×1.5 · out: facets 16.238/6.746; walls 28° 4.333/2.320; S_5 − 1 0.167/0.255; A_dir 0.401/0.200
+      F164     F by class: plain 58.10 % · plateau 0.00 % · hill 11.41 % · mountain 0.64 %
+      history  whole           16 of 19 within ×1.5 · out: facets 14.782/6.241; walls 28° 4.143/1.547; A_dir 0.408/0.206
+      history  mountain class  16 of 19 within ×1.5 · out: facets 23.012/6.746; walls 28° 6.707/2.320; A_dir 0.428/0.200
+      history  F by class: plain 49.94 % · plateau 1.04 % · hill 6.97 % · mountain 0.40 %
+      coast F164 Coast { dimension: 1.0079554, length_ratio: 0.9516129, aligned: 0.2891593, block_index: 2.8069508, edges: 8402 }
+      coast history Coast { dimension: 1.0562279, length_ratio: 1.0049858, aligned: 0.27081877, block_index: 1.2283465, edges: 13208 }
+      coast Corsica Coast { dimension: 1.122932, length_ratio: 1.370949, aligned: 0.27188444, block_index: 0.78062284, edges: 5780 }
+      coast degraded (> 10 %): none · displacement at 2048²: gained 2.76 % · lost 22.37 % of F164's land
+      displacement at 256²: gained 2.88 % · lost 23.18 %
+      SUCCESS test: mountain false · plateau false · plain false (×1.5 of Europe) · width ratio false (×2) · P5 false · coast true → no
+
+   ── seed 42 at 2048² (195 m) against Corsica:
+      F164     whole           12 of 19 within ×1.5 · out: slope p50 0.070/0.247; slope p90 0.311/0.501; octave 1.56–3.12 km 29.834/62.883; octave 3.12–6.25 km 38.260/100.862; octave 6.25–12.50 km 60.147/159.805; A_dir 0.346/0.206; F 0.198/0.043
+      F164     mountain class  13 of 19 within ×1.5 · out: octave 0.39–0.78 km 38.168/19.227; octave 0.78–1.56 km 73.639/43.222; S_2 − 1 0.100/0.175; S_10 − 1 NaN/0.289; A_dir 0.513/0.200; F 0.014/0.006
+      F164     F by class: plain 41.45 % · plateau 0.00 % · hill 15.39 % · mountain 1.39 %
+      history  whole           15 of 19 within ×1.5 · out: facets 12.074/6.241; walls 28° 3.193/1.547; S_2 − 1 0.113/0.172; A_dir 0.387/0.206
+      history  mountain class  16 of 19 within ×1.5 · out: facets 19.120/6.746; walls 28° 5.456/2.320; A_dir 0.404/0.200
+      history  F by class: plain 53.82 % · plateau 12.50 % · hill 7.27 % · mountain 0.50 %
+      coast F164 Coast { dimension: 1.0135347, length_ratio: 0.97836536, aligned: 0.40507516, block_index: 6.3201447, edges: 15468 }
+      coast history Coast { dimension: 1.0784882, length_ratio: 1.0648674, aligned: 0.3244426, block_index: 3.01772, edges: 26298 }
+      coast Corsica Coast { dimension: 1.122932, length_ratio: 1.370949, aligned: 0.27188444, block_index: 0.78062284, edges: 5780 }
+      coast degraded (> 10 %): none · displacement at 2048²: gained 1.07 % · lost 36.06 % of F164's land
+      displacement at 256²: gained 1.08 % · lost 38.04 %
+      SUCCESS test: mountain false · plateau false · plain false (×1.5 of Europe) · width ratio false (×2) · P5 false · coast true → no
+
+   ── seed 1 at 2048² (195 m) against Corsica:
+      F164     whole           12 of 19 within ×1.5 · out: slope p50 0.067/0.247; slope p90 0.296/0.501; octave 1.56–3.12 km 29.027/62.883; octave 3.12–6.25 km 37.982/100.862; octave 6.25–12.50 km 53.159/159.805; A_dir 0.338/0.206; F 0.203/0.043
+      F164     mountain class  12 of 19 within ×1.5 · out: octave 0.39–0.78 km 37.085/19.227; octave 0.78–1.56 km 68.426/43.222; S_2 − 1 0.114/0.175; S_5 − 1 0.151/0.255; S_10 − 1 0.174/0.289; A_dir 0.447/0.200; F 0.017/0.006
+      F164     F by class: plain 37.46 % · plateau 0.00 % · hill 15.09 % · mountain 1.70 %
+      history  whole           16 of 19 within ×1.5 · out: facets 14.660/6.241; walls 28° 4.045/1.547; A_dir 0.374/0.206
+      history  mountain class  14 of 19 within ×1.5 · out: facets 22.268/6.746; walls 28° 6.321/2.320; S_5 − 1 0.167/0.255; A_dir 0.371/0.200; F 0.003/0.006
+      history  F by class: plain 38.93 % · plateau 0.00 % · hill 7.05 % · mountain 0.35 %
+      coast F164 Coast { dimension: 1.0280129, length_ratio: 0.96443206, aligned: 0.385054, block_index: 6.020731, edges: 14664 }
+      coast history Coast { dimension: 1.0482624, length_ratio: 1.005814, aligned: 0.33836716, block_index: 3.574171, edges: 19482 }
+      coast Corsica Coast { dimension: 1.122932, length_ratio: 1.370949, aligned: 0.27188444, block_index: 0.78062284, edges: 5780 }
+      coast degraded (> 10 %): none · displacement at 2048²: gained 0.83 % · lost 21.89 % of F164's land
+      displacement at 256²: gained 0.59 % · lost 22.64 %
+      SUCCESS test: mountain false · plateau false · plain false (×1.5 of Europe) · width ratio false (×2) · P5 false · coast true → no
+
+   ── seed 9 at 2048² (195 m) against Corsica:
+      F164     whole           12 of 19 within ×1.5 · out: slope p50 0.068/0.247; slope p90 0.314/0.501; octave 1.56–3.12 km 34.404/62.883; octave 3.12–6.25 km 46.687/100.862; octave 6.25–12.50 km 69.921/159.805; A_dir 0.321/0.206; F 0.206/0.043
+      F164     mountain class  13 of 19 within ×1.5 · out: octave 0.39–0.78 km 37.523/19.227; octave 0.78–1.56 km 66.403/43.222; S_2 − 1 0.110/0.175; S_5 − 1 0.159/0.255; A_dir 0.427/0.200; F 0.023/0.006
+      F164     F by class: plain 38.02 % · plateau 3.12 % · hill 15.02 % · mountain 2.27 %
+      history  whole           16 of 19 within ×1.5 · out: facets 13.217/6.241; walls 28° 3.563/1.547; A_dir 0.412/0.206
+      history  mountain class  16 of 19 within ×1.5 · out: facets 18.415/6.746; walls 28° 5.140/2.320; A_dir 0.401/0.200
+      history  F by class: plain 46.40 % · plateau 1.30 % · hill 8.05 % · mountain 0.67 %
+      coast F164 Coast { dimension: 1.04647, length_ratio: 1.0308285, aligned: 0.4717302, block_index: 8.220655, edges: 19288 }
+      coast history Coast { dimension: 1.0634811, length_ratio: 1.0627166, aligned: 0.43331105, block_index: 6.802455, edges: 22486 }
+      coast Corsica Coast { dimension: 1.122932, length_ratio: 1.370949, aligned: 0.27188444, block_index: 0.78062284, edges: 5780 }
+      coast degraded (> 10 %): none · displacement at 2048²: gained 5.11 % · lost 19.26 % of F164's land
+      displacement at 256²: gained 3.47 % · lost 21.26 %
+      SUCCESS test: mountain false · plateau false · plain false (×1.5 of Europe) · width ratio false (×2) · P5 false · coast true → no
+
+   R: success on 0 / 4 seeds · P1 holds on 0 / 4 seeds · the history's plateau fraction under 50 % of Europe's (2.3 %) on 4 / 4 seeds
+   images: f165_seeds_256.png and f165_seeds_2048.png (rows = seeds [10481999410520546993, 42, 1, 9]; columns F164, history), f165_classes_seeds.png (same layout), f165_snapshots.png (témoin h_iso at t₀, mid, final), f165_sums.png (témoin Σ uplift, Σ erosion, Σ rebound; red +, blue −), f165_coast_25km.png (Corsica, F164, history; témoin window at (896, 384) of 2048², Corsica at (384, 64) of 1024²) · north up · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+
+==========  end Finding 165 . 34500.1 s  ==========
+
+test f165_main::f165_cascade ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 34500.13s
+

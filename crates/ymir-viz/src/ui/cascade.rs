@@ -28,9 +28,12 @@ use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use egui::Color32 as C;
 use ymir_core::cascade::amplify::{AmpConfig, AmpLevel, Budget, Chain, Variant, Warp, WarpPlace};
+use ymir_core::cascade::history::{HistoryRun, T_F165_YEARS, Timing, physics_history, run_c1_recorded};
 use ymir_core::cascade::hydro::{Hydro, draw, hydrology};
+use ymir_core::cascade::physio::{MOUNTAIN, classify};
 use ymir_core::cascade::{
-    CascadeConfig, CascadeProgress, LevelRecord, PeakCalibration, SubStep, diff_rgba, physics_level, roll, shade_m_rgba,
+    CascadeConfig, CascadeProgress, LevelRecord, PeakCalibration, Rebound, SubStep, diff_rgba, physics_level, roll,
+    shade_m_rgba,
 };
 use ymir_core::grid::GridF32;
 use ymir_core::tectonics::isostasy::IsostasyConfig;
@@ -114,6 +117,8 @@ enum Evt {
     /// F161-V: the calibrated k for a level, and its trials (k, octave 0).
     Calibrated(usize, f32, Vec<(f32, f32)>),
     Progress(String, f32),
+    /// F165-C4: the history's snapshots h_iso(t) at the physics level's grid.
+    Snapshots(Vec<Shown>),
     Idle,
 }
 
@@ -128,6 +133,8 @@ enum View {
     Shade,
     Hypso,
     Diff,
+    /// F165-C4: the macro classes (plain / plateau / hill / mountain).
+    Classes,
 }
 
 /// What the frieze selects: the 64² tectonics, the physics level, an amplification level, the retargeted field.
@@ -137,6 +144,8 @@ enum Sel {
     Physics,
     Amp(usize),
     Retargeted,
+    /// F165-C4: a snapshot h_iso(t) of C1's history (at the physics level's grid).
+    Snapshot(usize),
 }
 
 /// The window's state. `seed` / `offset_cells` are the workspace's world, set by its top-bar button.
@@ -172,6 +181,10 @@ pub struct CascadeUi {
     /// F163-V: the physics level's variants, read when « Calculer la physique » is pressed.
     rr_on: bool,
     rr_tau: f32,
+    /// F165-V: the physics level driven by C1's history, and its snapshots.
+    history_on: bool,
+    snapshots: Vec<Shown>,
+    snap_i: usize,
     rough_on: bool,
     rough_m: f32,
     mfd_p: Option<f32>,
@@ -226,6 +239,9 @@ impl Default for CascadeUi {
             warp_corr: 4.0,
             rr_on: false,
             rr_tau: 0.5,
+            history_on: false,
+            snapshots: Vec::new(),
+            snap_i: 0,
             rough_on: false,
             rough_m: 42.4,
             mfd_p: Some(2.0),
@@ -271,6 +287,27 @@ pub fn cascade_coarse(seed: u64, offset_cells: [i64; 2]) -> GridF32 {
     roll(&coarse, [offset_cells[0].rem_euclid(g) as usize, offset_cells[1].rem_euclid(g) as usize])
 }
 
+/// F165-C1: [`cascade_coarse`]'s C1 run with its history recorded (31 snapshots, normalised and rolled like it); the
+/// last snapshot is the coarse field.
+pub fn cascade_history(seed: u64, offset_cells: [i64; 2]) -> Vec<GridF32> {
+    let spec = C1RunSpec { seed, ..C1RunSpec::default() };
+    let run = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: spec.n_steps,
+        dx: 1.0 / spec.grid_size as f64,
+        dy: 1.0 / spec.grid_size as f64,
+        iso_config: IsostasyConfig::c1_default(),
+        drainage_max_distance: spec.drainage_max_distance,
+    };
+    let mut state = init_c1_state_phase_2_r7(spec.grid_size, seed, &spec.init_params);
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let ss = SteinSteinParams::default();
+    let h = run_c1_recorded(&mut state, &mut kin, &run, &spec.closures, 10, &run.iso_config, &ss);
+    let g = spec.grid_size as i64;
+    let off = [offset_cells[0].rem_euclid(g) as usize, offset_cells[1].rem_euclid(g) as usize];
+    h.normalized(None).iter().map(|s| roll(s, off)).collect()
+}
+
 fn n2m() -> f32 {
     2.0 * 1.13 * SteinSteinParams::default().depth_scale_m as f32
 }
@@ -309,6 +346,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
             };
             let mut remedies = Remedies::default();
             let mut chain: Option<Chain> = None;
+            let mut history: Option<Vec<GridF32>> = None;
             let send_level = |etx: &Sender<Evt>, ch: &Chain, i: usize| {
                 let l = &ch.levels[i];
                 let _ = etx.send(Evt::Level(i, shown(l.result()), Arc::new(l.clone())));
@@ -333,7 +371,31 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                             let text = format!("{what} {}² · pas {} / {} · |Δz| / U·dt = {:.4}", p.n, p.step, p.max_steps, p.ratio);
                             drop(ptx.send(Evt::Progress(text, p.step as f32 / p.max_steps as f32)));
                         };
-                        if let Some((rec, cal)) = physics_level(&coarse, n, &ccfg, PEAK_TARGET_M, cap, &mut prog, &cancel) {
+                        // F165-C4: driven by C1's history (recorded on demand, the same C1 run as the coarse field)
+                        let result = if o.history {
+                            let snaps = history.get_or_insert_with(|| cascade_history(seed, offset_cells)).clone();
+                            let run = HistoryRun { t_years: T_F165_YEARS, steps: 300, rebound: Some(Rebound::declared()), timing: Timing::History };
+                            physics_history(&snaps, n, &ccfg, &run, &mut prog, &cancel).map(|l| {
+                                let shown_snaps: Vec<Shown> = l.snapshots.iter().map(|g| shown(to_m(g))).collect();
+                                let _ = etx.send(Evt::Snapshots(shown_snaps));
+                                let cal = PeakCalibration {
+                                    u0_trial: f32::NAN,
+                                    trial_peak_m: f32::NAN,
+                                    target_peak_m: f32::NAN,
+                                    u0: f32::NAN,
+                                    steps_trial: 0,
+                                    equilibrium_trial: false,
+                                    secs: l.rec.total_secs(),
+                                    lifted: 0,
+                                    lifted_mean_depth_m: 0.0,
+                                    lifted_mask: vec![false; n * n],
+                                };
+                                (l.rec, cal)
+                            })
+                        } else {
+                            physics_level(&coarse, n, &ccfg, PEAK_TARGET_M, cap, &mut prog, &cancel)
+                        };
+                        if let Some((rec, cal)) = result {
                             let pm = to_m(&rec.z);
                             chain = Some(Chain::new(pm.clone(), amp_cfg(variant, scale, boost, &remedies)));
                             let _ = etx.send(Evt::Truncate(0));
@@ -514,6 +576,10 @@ impl CascadeUi {
                     ));
                 }
                 Evt::Progress(t, f) => self.progress = Some((t, f)),
+                Evt::Snapshots(s) => {
+                    self.snap_i = s.len().saturating_sub(1);
+                    self.snapshots = s;
+                }
                 Evt::Idle => {
                     self.busy = false;
                     self.progress = None;
@@ -542,6 +608,7 @@ impl CascadeUi {
             Sel::Physics => self.physics.as_ref().map(|p| &p.0),
             Sel::Amp(i) => self.levels.get(i).map(|l| &l.0),
             Sel::Retargeted => self.retargeted.as_ref().map(|r| &r.0),
+            Sel::Snapshot(i) => self.snapshots.get(i),
         }
     }
 }
@@ -614,12 +681,30 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
             "P-bruit, F163-D : un bruit de bande (8 et 4 cellules) ajouté aux terres avant la physique ; 42,4 m = 0,5 × l'octave 3–6 km de la Corse à 1 563 m",
         );
         ui.add_enabled(cu.rough_on, egui::DragValue::new(&mut cu.rough_m).range(0.0..=300.0).speed(0.5).suffix(" m"));
+        ui.checkbox(&mut cu.history_on, "Histoire C1").on_hover_text(
+            "F165-C2 : le niveau de physique piloté par l'histoire de C1 (U = Δh_iso/Δt entre 31 instantanés, rebond isostatique flexural α ≈ 64 km, durée T calée une fois sur le témoin) ; décochée = le régime actuel",
+        );
         ui.separator();
         ui.label(small("MFD p :".into())).on_hover_text("P-dissection, F163-D : l'exposant de l'aire MFD de l'incision (2 = F159–F162 ; D8 = sans MFD)");
         for (name, p) in [("1", Some(1.0f32)), ("1,5", Some(1.5)), ("2", Some(2.0)), ("3", Some(3.0)), ("4", Some(4.0)), ("6", Some(6.0)), ("D8", None)] {
             ui.selectable_value(&mut cu.mfd_p, p, name);
         }
     });
+    // F165-C4: the history's snapshots h_iso(t)
+    if !cu.snapshots.is_empty() {
+        ui.horizontal(|ui| {
+            ui.label(small("Instantané h_iso(t) :".into()));
+            let last = cu.snapshots.len() - 1;
+            let mut i = cu.snap_i;
+            let label = format!("/ {last} (pas C1 {})", i * 10);
+            ui.add(egui::Slider::new(&mut i, 0..=last).text(label));
+            if i != cu.snap_i || !matches!(cu.sel, Sel::Snapshot(_)) && ui.button("Afficher").clicked() {
+                cu.snap_i = i;
+                cu.sel = Sel::Snapshot(i);
+                cu.tex_key = None;
+            }
+        });
+    }
     // ── 2. the amplification's settings and the next level's budget ──
     ui.horizontal(|ui| {
         ui.label(small("Amplification :".into()));
@@ -795,6 +880,15 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
                             cu.sub = j;
                         }
                     }
+                    // F165-C4: the rebound's Σ (a historical level only)
+                    if !r.sum_rebound.is_empty() {
+                        let on = cu.sub == 4;
+                        let text = egui::RichText::new("Rebond").size(11.0).color(if on { INK } else { DIM });
+                        if ui.add(egui::Button::new(text).fill(if on { COPPER } else { C::TRANSPARENT })).clicked() {
+                            cu.sub = 4;
+                            cu.view = View::Diff;
+                        }
+                    }
                 });
                 ui.label(small(format!(
                     "calage sur le point culminant {:.0} m : essai U₀ {:.1e} → {:.0} m, U₀ = {:.3e} m/an par km de h_iso · {} pas ({}) · D {:.3} m²/an · \
@@ -867,10 +961,16 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
             }
         }
         Sel::Coarse => {}
+        Sel::Snapshot(i) => {
+            ui.label(small(format!(
+                "instantané {i} de l'histoire de C1 (après le pas {}) : h_iso agrandi à la grille du niveau de physique",
+                i * 10
+            )));
+        }
     }
     // ── 5. the view ──
     ui.horizontal(|ui| {
-        for (v, name) in [(View::Shade, "Ombrage"), (View::Hypso, "Hypsométrie"), (View::Diff, "Différence")] {
+        for (v, name) in [(View::Shade, "Ombrage"), (View::Hypso, "Hypsométrie"), (View::Diff, "Différence"), (View::Classes, "Classes")] {
             if ui.selectable_label(cu.view == v, name).clicked() {
                 cu.view = v;
             }
@@ -948,6 +1048,9 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
         }
         let mut legend =
             format!("{} lacs · rivières : aire ≥ {:.1} km², troncs ≥ 100 km² en bleu foncé", s.hydro.lakes.len(), s.hydro.river_min_km2);
+        if cu.view == View::Classes {
+            legend.push_str(" · classes (F165-B2) : plaine vert clair, plateau beige, colline olive, montagne brun, mer bleu");
+        }
         if let (View::Diff, Some(sat)) = (cu.view, cu.diff_sat) {
             let what = match (cu.sel, cu.sub) {
                 (Sel::Retargeted, _) => "recalé − dernier niveau",
@@ -955,6 +1058,7 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
                 (Sel::Physics, 1) => "Σ soulèvement",
                 (_, 1) => "Σ érosion",
                 (Sel::Physics, 2) => "Σ érosion",
+                (Sel::Physics, 4) => "Σ rebond isostatique",
                 (_, 2) => "Σ talus",
                 (Sel::Physics, _) => "Σ diffusion (talus + diffusion)",
                 _ => "Σ dépôt",
@@ -994,6 +1098,7 @@ fn build_image(cu: &mut CascadeUi) -> Option<egui::ColorImage> {
                 0 => r.z.data.iter().zip(&r.upscaled.data).map(|(a, b)| (a - b) * k).collect(),
                 1 => r.sum_uplift.iter().map(|v| v * k).collect(),
                 2 => r.sum_erosion.iter().map(|v| v * k).collect(),
+                4 if !r.sum_rebound.is_empty() => r.sum_rebound.iter().map(|v| v * k).collect(),
                 _ => r.sum_diffusion.iter().map(|v| v * k).collect(),
             };
             (to_m(&r.substep_field(SubStep::ALL[cu.sub.min(3)])), Some(d))
@@ -1003,9 +1108,38 @@ fn build_image(cu: &mut CascadeUi) -> Option<egui::ColorImage> {
             let d = s.result.data.iter().zip(&last.data).map(|(a, b)| a - b).collect();
             ((*s.result).clone(), Some(d))
         }
-        Sel::Coarse => ((*s.result).clone(), None),
+        Sel::Coarse | Sel::Snapshot(_) => ((*s.result).clone(), None),
     };
     let mut rgba = match (cu.view, &diff) {
+        // F165-C4: the macro classes, on the field up to 512² (the 7 km relief costs too much beyond), else the physics
+        // level's classes enlarged
+        (View::Classes, _) => {
+            let cls = if n <= 512 {
+                classify(&field.data, n, n, DOMAIN_KM / n as f32)
+            } else if let Some((ps, _, _)) = cu.physics.as_ref() {
+                let pc = classify(&ps.result.data, ps.n, ps.n, DOMAIN_KM / ps.n as f32);
+                let f = n / ps.n;
+                (0..n * n).map(|k| pc[(k / n / f) * ps.n + (k % n) / f]).collect()
+            } else {
+                vec![0u8; n * n]
+            };
+            let mut out = vec![0u8; n * n * 4];
+            for y in 0..n {
+                for x in 0..n {
+                    let c = match cls[y * n + x] {
+                        0 => [70u8, 110, 170],
+                        1 => [170, 210, 120],
+                        2 => [220, 190, 120],
+                        3 => [150, 160, 70],
+                        c if c == MOUNTAIN => [130, 80, 50],
+                        _ => [0, 0, 0],
+                    };
+                    let o = ((n - 1 - y) * n + x) * 4;
+                    out[o..o + 4].copy_from_slice(&[c[0], c[1], c[2], 255]);
+                }
+            }
+            out
+        }
         (View::Diff, Some(d)) => {
             let mut a: Vec<f32> = d.iter().map(|v| v.abs()).collect();
             a.sort_by(|x, y| x.partial_cmp(y).unwrap());
@@ -1029,17 +1163,24 @@ struct PhysOpts {
     rough_m: f32,
     /// The incision area's MFD exponent (`None` = D8 area).
     mfd: Option<f32>,
+    /// F165: driven by C1's history (T = `T_F165_YEARS`, the rebound as declared).
+    history: bool,
 }
 
 impl Default for PhysOpts {
     /// P0, F159–F162's level.
     fn default() -> Self {
-        Self { tau: None, rough_m: 0.0, mfd: Some(2.0) }
+        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: false }
     }
 }
 
 fn phys_opts(cu: &CascadeUi) -> PhysOpts {
-    PhysOpts { tau: cu.rr_on.then_some(cu.rr_tau), rough_m: if cu.rough_on { cu.rough_m } else { 0.0 }, mfd: cu.mfd_p }
+    PhysOpts {
+        tau: cu.rr_on.then_some(cu.rr_tau),
+        rough_m: if cu.rough_on { cu.rough_m } else { 0.0 },
+        mfd: cu.mfd_p,
+        history: cu.history_on,
+    }
 }
 
 /// F162-V: the remedies the worker builds its `AmpConfig` from.

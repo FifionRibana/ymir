@@ -1,0 +1,9 @@
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+   Europe         plain  51.6 % · plateau   4.7 % · hill  18.9 % · mountain  24.8 % · land 5260525 km² · mountain components 894 · width 15.6 km · width / √land 0.0068 · deciles 40/81/117/153/195/262/383/580/889
+   Paris Basin          12575 land cells: plain 96 % · plateau 0 % · hill 4 % · mountain 0 % → plain (plain wanted: HOLDS)
+   Massif Central       7868 land cells: plain 2 % · plateau 21 % · hill 3 % · mountain 74 % → mountain (plateau wanted: DOES NOT HOLD)
+   Meseta               28990 land cells: plain 3 % · plateau 61 % · hill 5 % · mountain 32 % → plateau (plateau wanted: HOLDS)
+   Corsica (in Europe)  3618 land cells: plain 2 % · plateau 0 % · hill 37 % · mountain 61 % → mountain (mountain wanted: HOLDS)
+   Alps (400 km)  plain  19.9 % · plateau   7.6 % · hill  10.4 % · mountain  62.2 % · land 159250 km² · mountain components 11 · width 31.2 km · width / √land 0.0783 · deciles 63/205/393/560/709/946/1319/1760/2243
+   Corsica        plain   1.0 % · plateau   0.0 % · hill  35.3 % · mountain  63.6 % · land 8606 km² · mountain components 2 · width 9.4 km · width / √land 0.1011 · deciles 58/127/224/340/457/594/762/963/1280
+   Corsica mostly mountain: 64 % → HOLDS

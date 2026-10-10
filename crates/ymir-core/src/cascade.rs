@@ -19,8 +19,10 @@
 //! Read-only on its input: [`Cascade::new`] takes the coarse field by value and nothing here touches a tectonic state.
 
 pub mod amplify;
+pub mod history;
 pub mod hydro;
 pub mod measure;
+pub mod physio;
 pub mod planform;
 pub mod predict;
 
@@ -200,6 +202,8 @@ pub struct LevelRecord {
     pub sum_diffusion: Vec<f32>,
     /// The talus's part of `sum_diffusion` (norm), for the talus activity report.
     pub sum_talus: Vec<f32>,
+    /// ADR Finding 165-C2 -- Σ of the isostatic rebound (norm); empty on a steady level.
+    pub sum_rebound: Vec<f32>,
     /// The level's result (norm), the bathymetry restored.
     pub z: GridF32,
     pub steps: usize,
@@ -426,8 +430,70 @@ fn run_level(
     progress: &mut dyn FnMut(CascadeProgress),
     cancel: &dyn Fn() -> bool,
 ) -> Option<LevelRecord> {
-    let cells = n * n;
     let land = land_mask(&upscaled, cfg.sea_level);
+    let n2m = cfg.norm_to_m();
+    let du: Vec<f32> = (0..n * n).map(|k| if land[k] { uplift.data[k] * cfg.dt_yr / n2m } else { 0.0 }).collect();
+    let drive = Drive::steady(&du);
+    run_loop(upscaled, uplift, cfg, n, max_steps, level, &drive, progress, cancel)
+}
+
+/// ADR Finding 165-C2 -- the isostatic rebound of a step's erosion: Δz = (ρc / ρm) · (G ∗ E), G the thin elastic
+/// plate's filter Ĝ(k) = 1 / (1 + (k α)⁴ / 4), α in real km.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rebound {
+    pub alpha_km: f32,
+    pub rho_c: f32,
+    pub rho_m: f32,
+}
+
+impl Rebound {
+    /// F165's declaration: Te = 25 km, E = 100 GPa, ν = 0.25, ρm = 3 300, ρc = 2 700 kg/m³ → α = 64.4 km.
+    pub fn declared() -> Self {
+        Self { alpha_km: flexural_alpha_km(25.0, 100.0e9, 0.25, 3300.0), rho_c: 2700.0, rho_m: 3300.0 }
+    }
+}
+
+/// The flexural parameter α = (4D / (ρm g))^¼ (km), D = E Te³ / (12 (1 − ν²)).
+pub fn flexural_alpha_km(te_km: f64, e_pa: f64, nu: f64, rho_m: f64) -> f32 {
+    let te = te_km * 1000.0;
+    let d = e_pa * te.powi(3) / (12.0 * (1.0 - nu * nu));
+    ((4.0 * d / (rho_m * 9.81)).powf(0.25) / 1000.0) as f32
+}
+
+/// ADR Finding 165-C2 -- what drives a level's loop. [`Drive::steady`] is F159–F164's level (a constant uplift, the
+/// land mask fixed, the sea held at sea level, the equilibrium stop, no rebound); [`Drive::history`] is C1's history.
+pub struct Drive<'a> {
+    /// The uplift (norm) of step `i`.
+    pub du: Box<dyn Fn(usize) -> std::borrow::Cow<'a, [f32]> + 'a>,
+    /// Hold the sea at sea level on a land mask fixed at the start (else the mask is the current z).
+    pub hold_sea: bool,
+    /// Stop at equilibrium (else run all the steps).
+    pub eq_stop: bool,
+    pub rebound: Option<Rebound>,
+}
+
+impl<'a> Drive<'a> {
+    pub fn steady(du: &'a [f32]) -> Self {
+        Self { du: Box::new(move |_| std::borrow::Cow::Borrowed(du)), hold_sea: true, eq_stop: true, rebound: None }
+    }
+}
+
+/// The level's loop (F159's, generalised by F165): uplift, the implicit stream power, the talus and the linear
+/// diffusion, and (F165) the isostatic rebound. `None` if cancelled.
+#[allow(clippy::too_many_arguments)]
+fn run_loop(
+    upscaled: GridF32,
+    uplift: GridF32,
+    cfg: &CascadeConfig,
+    n: usize,
+    max_steps: usize,
+    level: Option<usize>,
+    drive: &Drive,
+    progress: &mut dyn FnMut(CascadeProgress),
+    cancel: &dyn Fn() -> bool,
+) -> Option<LevelRecord> {
+    let cells = n * n;
+    let land0 = land_mask(&upscaled, cfg.sea_level);
     let n2m = cfg.norm_to_m();
     let mut solver = cfg.solver(n);
     let hill = cfg.hillslope(n);
@@ -436,22 +502,30 @@ fn run_level(
     let cell_m = cfg.cell_km(n) * 1000.0;
     // the sea is the base level: held at sea level during the level (D3)
     let mut z = upscaled.clone();
-    for k in 0..cells {
-        if !land[k] {
-            z.data[k] = cfg.sea_level;
+    if drive.hold_sea {
+        for k in 0..cells {
+            if !land0[k] {
+                z.data[k] = cfg.sea_level;
+            }
         }
     }
-    let du: Vec<f32> = (0..cells).map(|k| if land[k] { uplift.data[k] * cfg.dt_yr / n2m } else { 0.0 }).collect();
-    let n_land = land.iter().filter(|&&l| l).count().max(1);
-    let mean_du = du.iter().map(|&v| v as f64).sum::<f64>() / n_land as f64;
+    let mut land = land0.clone();
+    let n_land0 = land0.iter().filter(|&&l| l).count().max(1);
     let (mut s_up, mut s_ero, mut s_dif, mut s_tal) =
         (vec![0f32; cells], vec![0f32; cells], vec![0f32; cells], vec![0f32; cells]);
+    let mut s_reb = if drive.rebound.is_some() { vec![0f32; cells] } else { Vec::new() };
     let mut secs = [0f64; 4];
     let (mut ratios, mut calm, mut steps, mut equilibrium, mut talus_last) = (Vec::new(), 0usize, 0usize, false, 0f32);
     while steps < max_steps {
         if cancel() {
             return None;
         }
+        let du = (drive.du)(steps);
+        let mean_du = if drive.hold_sea {
+            du.iter().map(|&v| v as f64).sum::<f64>() / n_land0 as f64
+        } else {
+            du.iter().map(|&v| v.abs() as f64).sum::<f64>() / cells as f64
+        };
         let start = z.data.clone();
         // 1. uplift
         let t = Instant::now();
@@ -459,6 +533,12 @@ fn run_level(
             z.data[k] += du[k];
             s_up[k] += du[k];
         }
+        if !drive.hold_sea {
+            for k in 0..cells {
+                land[k] = z.data[k] > cfg.sea_level;
+            }
+        }
+        let n_land = land.iter().filter(|&&l| l).count().max(1);
         secs[1] += t.elapsed().as_secs_f64();
         // 2. erosion (the implicit stream power, one iteration, talus and diffusion off inside)
         let t = Instant::now();
@@ -470,6 +550,18 @@ fn run_level(
         z = incise_with_floor(&z, &solver, None, None, &mut |_, _| {});
         for k in 0..cells {
             s_ero[k] += z.data[k] - before[k];
+        }
+        // ADR Finding 165-C2: the isostatic rebound of the step's erosion (every cell, never in blocks)
+        if let Some(rb) = &drive.rebound {
+            let e: Vec<f32> = (0..cells).map(|k| (before[k] - z.data[k]).max(0.0)).collect();
+            let a = rb.alpha_km as f64;
+            let w = measure::filter_isotropic(&e, n, cfg.cell_km(n), &|k| 1.0 / (1.0 + (k * a).powi(4) / 4.0));
+            let f = rb.rho_c / rb.rho_m;
+            for k in 0..cells {
+                let d = f * w[k];
+                z.data[k] += d;
+                s_reb[k] += d;
+            }
         }
         secs[2] += t.elapsed().as_secs_f64();
         // 3. diffusion: the talus, then the linear diffusion (production's order)
@@ -491,7 +583,8 @@ fn run_level(
         // the sea stays the base level (the talus may have shed onto it)
         for k in 0..cells {
             if !land[k] {
-                z.data[k] = cfg.sea_level;
+                // F165: on a history the sea follows U and keeps its pre-hillslope value
+                z.data[k] = if drive.hold_sea { cfg.sea_level } else { before[k] };
             }
             s_dif[k] += z.data[k] - before[k];
         }
@@ -503,16 +596,18 @@ fn run_level(
         ratios.push(ratio);
         progress(CascadeProgress { level, n, step: steps, max_steps, ratio });
         calm = if ratio < cfg.eq_ratio { calm + 1 } else { 0 };
-        if calm >= cfg.eq_window {
+        if drive.eq_stop && calm >= cfg.eq_window {
             equilibrium = true;
             break;
         }
     }
-    for k in 0..cells {
-        if !land[k] {
-            z.data[k] = upscaled.data[k];
-            s_dif[k] = 0.0;
-            s_tal[k] = 0.0;
+    if drive.hold_sea {
+        for k in 0..cells {
+            if !land[k] {
+                z.data[k] = upscaled.data[k];
+                s_dif[k] = 0.0;
+                s_tal[k] = 0.0;
+            }
         }
     }
     Some(LevelRecord {
@@ -527,6 +622,7 @@ fn run_level(
         sum_erosion: s_ero,
         sum_diffusion: s_dif,
         sum_talus: s_tal,
+        sum_rebound: s_reb,
         z,
         steps,
         equilibrium,
@@ -719,6 +815,37 @@ mod tests {
         }
         g
     }
+
+    fn fnv(z: &GridF32) -> u64 {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for v in &z.data {
+            for b in v.to_bits().to_le_bytes() {
+                h ^= b as u64;
+                h = h.wrapping_mul(0x0100_0000_01b3);
+            }
+        }
+        h
+    }
+
+    /// ADR Finding 165-C3 (negative 1) -- the steady physics level (U ∝ the final h_iso, to equilibrium, no rebound) is
+    /// pinned by hash as it stood before the historical level was written (F159's declaration and F164's setting:
+    /// p = 6 with the roughness), so the refactor into one loop changes nothing.
+    #[test]
+    fn the_steady_physics_level_is_pinned() {
+        let coarse = bump(32);
+        let base = CascadeConfig::declared(5000.0);
+        let f164 = CascadeConfig { mfd_exponent: Some(6.0), roughness_m: 40.0, seed: 7, ..base.clone() };
+        let mut hs = Vec::new();
+        for c in [&base, &f164] {
+            let (rec, cal) = physics_level(&coarse, 64, c, 2850.0, 60, &mut |_| {}, &|| false).unwrap();
+            hs.push((fnv(&rec.z), rec.steps, cal.u0));
+        }
+        eprintln!("PINNED {hs:?}");
+        assert_eq!(hs[0].0, PIN_DECLARED, "declared");
+        assert_eq!(hs[1].0, PIN_F164, "F164");
+    }
+    const PIN_DECLARED: u64 = 24_136_383_200_914_448;
+    const PIN_F164: u64 = 13_558_304_175_709_348_739;
 
     /// The bicubic keeps the coarse values on the even pixels and reproduces a cubic exactly (Catmull-Rom is exact on
     /// polynomials up to degree 2 at the midpoint; checked on a periodic sine within its error bound).

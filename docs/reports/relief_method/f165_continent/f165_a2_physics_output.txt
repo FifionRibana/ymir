@@ -1,0 +1,18 @@
+    = note: `#[warn(deprecated)]` on by default
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+    Finished `release` profile [optimized] target(s) in 57.07s
+     Running tests\f165_cascade.rs (target_f165\release\deps\f165_cascade-1eabb50e69480ab4.exe)
+   A2 — the physics level's shapes (F164's regime, 256²), beside h_iso (64²):
+   seed 10481999410520546993 > 500 m: h_iso width 12.5 km (12 comp., near 52 %) · physics width 6.2 km (13 comp., 3360 cells, near 47 %) · ratio h_iso / physics 2.00
+   seed 10481999410520546993 > 1000 m: h_iso width 12.5 km (10 comp., near 50 %) · physics width 4.4 km (11 comp., 1275 cells, near 51 %) · ratio h_iso / physics 2.83
+   seed 10481999410520546993 > 2000 m: h_iso width 12.5 km (9 comp., near 89 %) · physics width 3.1 km (3 comp., 155 cells, near 91 %) · ratio h_iso / physics 4.00
+   seed 42 > 500 m: h_iso width 12.5 km (26 comp., near 52 %) · physics width 3.1 km (11 comp., 681 cells, near 79 %) · ratio h_iso / physics 4.00
+   seed 42 > 1000 m: h_iso width 12.5 km (31 comp., near 68 %) · physics width 3.1 km (9 comp., 85 cells, near 22 %) · ratio h_iso / physics 4.00
+   seed 42 > 2000 m: h_iso width 12.5 km (7 comp., near 100 %) · physics width NaN km (0 comp., 0 cells, near NaN %) · ratio h_iso / physics NaN
+   seed 1 > 500 m: h_iso width 12.5 km (18 comp., near 31 %) · physics width 3.1 km (12 comp., 815 cells, near 14 %) · ratio h_iso / physics 4.00
+   seed 1 > 1000 m: h_iso width 12.5 km (30 comp., near 31 %) · physics width 3.1 km (8 comp., 93 cells, near 8 %) · ratio h_iso / physics 4.00
+   seed 1 > 2000 m: h_iso width 12.5 km (16 comp., near 31 %) · physics width 3.1 km (4 comp., 20 cells, near 0 %) · ratio h_iso / physics 4.00
+   seed 9 > 500 m: h_iso width 12.5 km (30 comp., near 38 %) · physics width 3.1 km (26 comp., 1489 cells, near 59 %) · ratio h_iso / physics 4.00
+   seed 9 > 1000 m: h_iso width 12.5 km (27 comp., near 41 %) · physics width 3.1 km (17 comp., 180 cells, near 37 %) · ratio h_iso / physics 4.00
+   seed 9 > 2000 m: h_iso width 12.5 km (8 comp., near 82 %) · physics width 3.1 km (1 comp., 18 cells, near 100 %) · ratio h_iso / physics 4.00
