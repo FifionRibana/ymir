@@ -22152,3 +22152,122 @@ valeurs dépendant de la tectonique serait peut-être une solution? »
   du continent par la mer. Ainsi, globalement on obtient toujours une ile à la fin. Par contre le % de terre vs mer peut
   être variable. Ce n'est pas pareil que de dire qu'on a aucune terre qui touche le bord de la carte. Toutes les seeds
   témoins sont dans le cas: devient une ile lorsqu'un offset est appliqué car on peut en faire le tour. »
+
+## Finding 168 — C1 (b), part 1: a continent that fills the map and can be sailed around — the initial continental fraction (a design target, quantised in whole plates) gives L2 = 62.5 % land on the témoin (55–60 % unreachable with 8 plates), but two stops fire on 4 / 4: the mountains stay at 75–80 % (they do not fall as the land grows — the F167-commit « geometric » hypothesis is refuted) and the circumnavigation is lost, already at t₀ (an addition after the measure: the continental-plate mask decides it on 12 / 12 worlds; C1 neither makes nor breaks it); production unchanged
+
+**Status: built, measured, gated; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f168_continent_size/finding_168.md`.
+- Declared before any measurement: `f168_declared.md`. Predictions: `f168_predictions.md`.
+- F167 committed (`147f5f3`) with the author's F168 decisions, verbatim.
+
+**A — the inventory**:
+- **`continental_fraction` is a fraction of the PLATES**: round(8 f) of 8, BFS-contiguous, rigid. So the land comes in
+  whole Voronoi plates, and the continents' outline is fixed at init.
+- **Davis-Suppe's parameters**: a 64² « visual demonstration » calibration (`source_term.rs:53`). Read only.
+- **The viz's offset** (`hd.rs:451–455`) only centres the largest mass. The benches up to F167 used the témoin's roll
+  for every seed.
+- **The circumnavigation test** (`physio::circumnavigation`, declared): the largest periodic 8-connected mass must not
+  wrap (a BFS with unwrapped coordinates). r* = the largest dilation of all the land that keeps it from wrapping,
+  giving a sea loop ≥ 2r* + 1 cells.
+
+**B**:
+- **The trials (témoin)**: f 0.29 / 0.375 / 0.5 / 0.625 / 0.75 give 19.4 / 35.7 / 51.1 / 62.5 / 74.2 % land at 256².
+  - Monotone, one plate ≈ 11–16 %.
+  - **L1 = 0.375, L2 = 0.625** (the nearest to 55–60 %, inside 50–65 %), frozen in `cascade::profile`.
+  - Other seeds: L1 42–45 %, L2 68–70 %.
+- **The negative control** (permanent): f 0.29 = C1 bit for bit. L0 under the canonical roll = F167 exactly (2 670 m,
+  31 091 km², 74.4 %).
+- **The viz**: « Profil C1 : production / continent L1 / continent L2 ».
+
+**C** (Europe mountain 24.8 %):
+
+| seed | land L0 / L1 / L2 | mountain L0 → L1 → L2 | plain + plateau L2 | circumnavigable L0 / L1 / L2 | C-C cells L2 |
+|---|---|---|---|---|---|
+| témoin | 19.4 / 35.7 / 62.5 % | 74.5 → 59.7 → 75.0 % | 0.4 % | yes / yes / **no** | 32 |
+| 42 | 26.4 / 45.2 / 69.6 % | 52.3 → 74.7 → 79.5 % | 1.6 % | yes / **no** / **no** | 86 |
+| 1 | 28.5 / 42.3 / 68.4 % | 76.0 → 63.8 → 77.9 % | 0.7 % | yes / **no** / **no** | 58 |
+| 9 | 31.9 / 43.5 / 69.9 % | 75.7 → 73.9 → 78.8 % | 9.6 % | yes / **no** / **no** | 50 |
+
+- **The circumnavigation**:
+  - the loss is the same at 64² and at 2 048²;
+  - added after the measure: **the status is identical for the continental plates at t₀, the land at t₀ and the land at
+    the end, on 12 / 12 worlds**, and the final r* equals the plates' r*.
+  - Seed 1 L0 is circumnavigable (r* = 1) yet occupies every column: 229 border cells after the offset.
+- **The rim**: present wherever land touches the window border (1.15–2.1× the land's mean altitude).
+- **The interior**: land > 40 km from the coast, L0 9–34 %, L2 24–53 %.
+- **The L2 mountain class decomposed**:
+  - cratons 6.5–8.7 %;
+  - the Davis-Suppe zones ≤ 31 km from a convergent cell or suture 38–59 %, 37–94 km 6–15 %, beyond 0;
+  - arcs ≤ 0.3 %;
+  - **the rest 29–39 %**.
+  - The Davis-Suppe profile peaks lower in L2 but reaches further.
+- **2 048²**:
+  - the slope guard holds (p50 0.27–0.37 against 0.318);
+  - the facets fail in the mountain class on 3 / 4 in L2; A_dir everywhere.
+  - **The coast clause cannot be read in L2**: `physio::coast` counts the window border as coast (checked in the code),
+    so the block index reads 7–11 wherever land touches it. Where it does not, the coast is F167's.
+- **The regularity (L2)**: σ_θ 23–24° against Corsica's 27–30°; R2_g at 391 m 0.62–0.71 against 0.48; CV_L 0.88–1.11
+  against 0.87–0.92; Hovius 2.34–2.72.
+- **Cost**: C1 0.2–0.3 s; per world L0 180–252 s, L1 262–320 s, L2 370–448 s CPU (two runs).
+
+**R**:
+- macro success 0 / 4;
+- **the mountains above 37.2 % on 4 / 4**: decomposed, stopped;
+- **the circumnavigation lost on 4 / 4**: nothing implemented;
+- the land target reachable and monotone, but 55–60 % is not hit.
+
+**Proposals for the circumnavigation (none implemented)**:
+1. **The most neutral**: an initial condition on the continental plates' selection. Take the BFS cluster whose union is
+   circumnavigable with the largest r* (deterministic). The invariance above carries it to the end.
+2. **The geometric limit**: 57.5 % of a 400 km torus leaves ≤ 97 km of strait for a square, and 58 km for a disc, so it
+   needs a compact continent.
+3. Less neutral: more plates.
+4. « No land on the window border » is a separate criterion.
+
+**The reading** (hypotheses to check):
+- The mountain share is not set by the continent's size: half is the wedge near the boundaries, and a third is outside
+  every tectonic zone. That may be the physics level's dissection of any land above ~300 m (Kapos).
+- The témoin's L0 peak depends on the window (2 907 m under the viz's offset, 2 670 m under the canonical roll): the
+  noise fields may be tied to the window.
+
+**Predictions**:
+- **The reviewer's**:
+  - held: S1, S4, S5, S6, S7 (3 / 4), the meta;
+  - refuted: **S2** (the mountains rise on 4 / 4), **S3** (0.4–9.6 %).
+- **Mine**:
+  - held: L1, the monotone response, S6, S4, S5, S3 refuted, S7, the stops, the rim, the meta;
+  - refuted: S2 on both clauses, the interior's ranges, the chain's cost, L2 marginally (62.5 against 50–62 %).
+
+**Open, for the author** (nothing chosen):
+- (a) the selection condition, knowing the geometric limit;
+- (b) F169 = the wedge's reach, or first « the rest »;
+- (c) the coast measure on the window border.
+
+**At commit (2026-10-10), decided (the reviewer's proposals, not contested by the author)**:
+- **The reviewer's error, recorded**: F167's commit hypothesis (« one range is a quarter of a small island, so a
+  larger continent has a smaller mountain share ») is refuted on 4 / 4. The mountain share does not fall with the land
+  area.
+  - The reviewer's new hypotheses, to check in F169:
+    - the mountain share follows the internal sutures' length per unit area;
+    - **everything is young**: the physics level spreads all of C1's history linearly over 5.62 Myr, so an early
+      suture gets 5.6 Myr of erosion, whereas a range without uplift wears down in 1–10 Myr (×6 at most with isostasy,
+      Baldwin, Whipple & Tucker 2003);
+    - « the rest » (29–39 %) is the initial crust at +0.45 km, dissected in 5.6 Myr.
+- **The plate quanta**: `continental_fraction` counts plates, so the land comes in steps of one plate. The land target
+  is relaxed to 50–62 % according to the step.
+- **The invariance bug, recorded as a defect** (no longer only a hypothesis):
+  - the cascade is not translation-invariant: the témoin's L0 peak is 2 907 m under the viz's offset and 2 670 m under
+    the benches' roll;
+  - its noise fields are tied to the window;
+  - the rim comes from the solver's off-map receivers.
+- **The coast measure rule**: `physio::coast` counts the window border as coast. From F169 the coast is measured on the
+  torus.
+- **L1 / L2 stay profile constants** (`cascade::profile::CONTINENT_L1` = 0.375, `CONTINENT_L2` = 0.625).
+
+**The author's answers, verbatim**:
+1. On the plates' selection by an initial condition, with the land target relaxed to 50–62 % by step: « Oui. SI ça
+   marche pas on fera plus de plaques. »
+2. On the continent's age A as a world parameter: « OUi. Ca donnera un slider potentiellement. Et on part sur du vieux.
+   A évaluer la différenec entre jeune, intermédiaire et vieux. »
+3. On the order (F169 = the infrastructure, the chronology and the age; F170 = the sea-level rise; F171 = the
+   heterogeneous K): « Oui »

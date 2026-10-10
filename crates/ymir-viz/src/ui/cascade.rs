@@ -34,6 +34,7 @@ use ymir_core::cascade::history::{
 };
 use ymir_core::cascade::hydro::{Hydro, draw, hydrology};
 use ymir_core::cascade::physio::{MOUNTAIN, classify};
+use ymir_core::cascade::profile::C1Profile;
 use ymir_core::cascade::{
     CascadeConfig, CascadeProgress, LevelRecord, PeakCalibration, Rebound, SubStep, diff_rgba, physics_level, roll,
     shade_m_rgba,
@@ -43,6 +44,7 @@ use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::init_r7::init_c1_state_phase_2_r7;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
+use ymir_core::tectonics_c1::land_topology::land_topology;
 use ymir_core::tectonics_c1::production_upscale::c1_coarse_normalized_altitude;
 use ymir_core::tectonics_c1::time_loop::{C1TimeLoopConfig, run_with_closures};
 
@@ -192,6 +194,8 @@ pub struct CascadeUi {
     history_mode: u8,
     /// F167-B6: the mapping (C1 / Airy).
     airy: bool,
+    /// F168-B4: the C1 profile of the history (production / continent L1 / continent L2).
+    profile: C1Profile,
     snapshots: Vec<Shown>,
     /// F166-B5: the Σ Δh per C1 term (64², m), and the coarse field they are shown on.
     term_maps: Vec<(String, Vec<f32>)>,
@@ -252,6 +256,7 @@ impl Default for CascadeUi {
             rr_tau: 0.5,
             history_mode: 0,
             airy: false,
+            profile: C1Profile::Production,
             snapshots: Vec::new(),
             term_maps: Vec::new(),
             snap_i: 0,
@@ -303,8 +308,15 @@ pub fn cascade_coarse(seed: u64, offset_cells: [i64; 2]) -> GridF32 {
 /// F165-C1 / F166-B5: [`cascade_coarse`]'s C1 run with its history recorded (31 snapshots, normalised and rolled like it):
 /// h_iso (F165, `sources` false; the last snapshot is the coarse field) or h_src without C1's erosion term (F166). Also
 /// the témoin-style Σ Δh per C1 term (m, 64², the linear land ramp at the final datum), rolled.
-pub fn cascade_history(seed: u64, offset_cells: [i64; 2], sources: bool, airy: bool) -> (Vec<GridF32>, Vec<(String, Vec<f32>)>) {
-    let spec = C1RunSpec { seed, ..C1RunSpec::default() };
+pub fn cascade_history(
+    seed: u64,
+    offset_cells: [i64; 2],
+    sources: bool,
+    airy: bool,
+    profile: C1Profile,
+) -> (Vec<GridF32>, Vec<(String, Vec<f32>)>) {
+    // F168-B4: the C1 profile (production, or the continent L1 / L2 initial fraction)
+    let spec = C1RunSpec { seed, init_params: profile.init_params(), ..C1RunSpec::default() };
     let run = C1TimeLoopConfig {
         rigid_continental_crust: true,
         n_steps: spec.n_steps,
@@ -322,8 +334,15 @@ pub fn cascade_history(seed: u64, offset_cells: [i64; 2], sources: bool, airy: b
     let h = run_c1_sources_mapped(&mut state, &mut kin, &run, &spec.closures, 10, &run.iso_config, &ss, exclude, mapping);
     let g = spec.grid_size as i64;
     let n = spec.grid_size;
-    let off = [offset_cells[0].rem_euclid(g) as usize, offset_cells[1].rem_euclid(g) as usize];
-    let snaps = h.hist.normalized(None).iter().map(|s| roll(s, off)).collect();
+    let un = h.hist.normalized(None);
+    // F168-A3: a continent profile is framed by the viz's own rule (`hd.rs`) on its own final field, not production's
+    let off = if profile == C1Profile::Production {
+        [offset_cells[0].rem_euclid(g) as usize, offset_cells[1].rem_euclid(g) as usize]
+    } else {
+        let (cx, cy) = land_topology(un.last().unwrap(), 0.5).center_cell;
+        [((cx as i64) - g / 2).rem_euclid(g) as usize, ((cy as i64) - g / 2).rem_euclid(g) as usize]
+    };
+    let snaps = un.iter().map(|s| roll(s, off)).collect();
     let iso = &run.iso_config;
     let hs1 = isostatic_datum(&h.s_final, &h.craton, iso);
     let rolled = |v: &[f64]| -> Vec<f32> { (0..n * n).map(|k| v[((k / n + off[1]) % n) * n + (k % n + off[0]) % n] as f32).collect() };
@@ -378,7 +397,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
             };
             let mut remedies = Remedies::default();
             let mut chain: Option<Chain> = None;
-            let mut history: Option<((bool, bool), Vec<GridF32>)> = None;
+            let mut history: Option<((bool, bool, C1Profile), Vec<GridF32>)> = None;
             let send_level = |etx: &Sender<Evt>, ch: &Chain, i: usize| {
                 let l = &ch.levels[i];
                 let _ = etx.send(Evt::Level(i, shown(l.result()), Arc::new(l.clone())));
@@ -406,10 +425,10 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                         // F165-C4: driven by C1's history (recorded on demand, the same C1 run as the coarse field)
                         let result = if o.history > 0 {
                             let sources = o.history == 2;
-                            if history.as_ref().is_none_or(|h| h.0 != (sources, o.airy)) {
-                                let (s, terms) = cascade_history(seed, offset_cells, sources, o.airy);
+                            if history.as_ref().is_none_or(|h| h.0 != (sources, o.airy, o.profile)) {
+                                let (s, terms) = cascade_history(seed, offset_cells, sources, o.airy, o.profile);
                                 let _ = etx.send(Evt::Terms(terms));
-                                history = Some(((sources, o.airy), s));
+                                history = Some(((sources, o.airy, o.profile), s));
                             }
                             let snaps = history.as_ref().unwrap().1.clone();
                             let t_years = if sources { T_F166_YEARS } else { T_F165_YEARS };
@@ -733,6 +752,12 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
         );
         for (name, a) in [("C1", false), ("Airy", true)] {
             ui.selectable_value(&mut cu.airy, a, name);
+        }
+        ui.label(small("Profil C1 :".into())).on_hover_text(
+            "F168-B4 : le profil des paramètres de C1 de l'histoire. « production » = le défaut de C1 ; « continent L1 / L2 » = la fraction continentale initiale portée à 0,375 / 0,625 (3 / 5 plaques continentales sur 8 ; ~36 % / ~62 % de terres sur le témoin), réglée une fois sur le témoin puis figée. Un profil continent est cadré par la règle du viz (la plus grande masse centrée) sur son propre champ final",
+        );
+        for (name, p) in [("production", C1Profile::Production), ("continent L1", C1Profile::L1), ("continent L2", C1Profile::L2)] {
+            ui.selectable_value(&mut cu.profile, p, name);
         }
         ui.separator();
         ui.label(small("MFD p :".into())).on_hover_text("P-dissection, F163-D : l'exposant de l'aire MFD de l'incision (2 = F159–F162 ; D8 = sans MFD)");
@@ -1240,12 +1265,14 @@ struct PhysOpts {
     history: u8,
     /// F167: the history's mapping is Airy with an absolute sea level (else C1's).
     airy: bool,
+    /// F168: the history's C1 parameter profile.
+    profile: C1Profile,
 }
 
 impl Default for PhysOpts {
     /// P0, F159–F162's level.
     fn default() -> Self {
-        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false }
+        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production }
     }
 }
 
@@ -1256,6 +1283,7 @@ fn phys_opts(cu: &CascadeUi) -> PhysOpts {
         mfd: cu.mfd_p,
         history: cu.history_mode,
         airy: cu.airy,
+        profile: cu.profile,
     }
 }
 

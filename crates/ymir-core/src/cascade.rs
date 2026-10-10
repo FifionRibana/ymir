@@ -25,6 +25,7 @@ pub mod measure;
 pub mod physio;
 pub mod planform;
 pub mod predict;
+pub mod profile;
 
 use crate::erosion::stream_power::{
     RELIEF_V1_A_C_KM2, RELIEF_V3_MFD_P, RandomReceiver, StreamPowerConfig, incise_with_floor, linear_diffusion,

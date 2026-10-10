@@ -533,9 +533,144 @@ pub fn hovius(z: &crate::grid::GridF32, mountain: &[bool], cell_km: f32, a_min_k
     }
 }
 
+/// ADR Finding 168-A3 -- the periodic 8-connected components of `mask` on an n × n torus: per cell its component
+/// (`u32::MAX` off the mask), per component (cells, wraps). A component wraps when a BFS that carries the unwrapped
+/// coordinates reaches one of its cells at two different unwrapped positions: a cycle of non-zero winding number.
+pub fn periodic_components(mask: &[bool], n: usize) -> (Vec<u32>, Vec<(usize, bool)>) {
+    let mut id = vec![u32::MAX; n * n];
+    let (mut ux, mut uy) = (vec![0i32; n * n], vec![0i32; n * n]);
+    let mut comps = Vec::new();
+    let mut stack = Vec::new();
+    let ni = n as i32;
+    for s in 0..n * n {
+        if !mask[s] || id[s] != u32::MAX {
+            continue;
+        }
+        let c = comps.len() as u32;
+        let (mut cells, mut wraps) = (0usize, false);
+        id[s] = c;
+        ux[s] = (s % n) as i32;
+        uy[s] = (s / n) as i32;
+        stack.push(s);
+        while let Some(k) = stack.pop() {
+            cells += 1;
+            for dy in -1..=1i32 {
+                for dx in -1..=1i32 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let (x, y) = (ux[k] + dx, uy[k] + dy);
+                    let m = y.rem_euclid(ni) as usize * n + x.rem_euclid(ni) as usize;
+                    if !mask[m] {
+                        continue;
+                    }
+                    if id[m] == u32::MAX {
+                        id[m] = c;
+                        ux[m] = x;
+                        uy[m] = y;
+                        stack.push(m);
+                    } else if ux[m] != x || uy[m] != y {
+                        wraps = true;
+                    }
+                }
+            }
+        }
+        comps.push((cells, wraps));
+    }
+    (id, comps)
+}
+
+/// F168-A3: the periodic Chebyshev dilation of `mask` by `r` cells (separable circular windows of 2r + 1).
+pub fn dilate_periodic(mask: &[bool], n: usize, r: usize) -> Vec<bool> {
+    if 2 * r + 1 >= n {
+        return vec![mask.iter().any(|&b| b); n * n];
+    }
+    let pass = |src: &[bool], stride: usize, step: usize| -> Vec<bool> {
+        // stride: between lines; step: along a line
+        let mut out = vec![false; n * n];
+        for line in 0..n {
+            let at = |i: usize| src[line * stride + (i % n) * step];
+            let mut count = (0..=2 * r).filter(|&i| at(i + n - r)).count();
+            for i in 0..n {
+                out[line * stride + i * step] = count > 0;
+                count -= at(i + n - r) as usize;
+                count += at(i + r + 1) as usize;
+            }
+        }
+        out
+    };
+    let rows = pass(mask, n, 1);
+    pass(&rows, 1, n)
+}
+
+/// F168-A3: whether the largest land mass can be sailed around on the torus.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Circumnavigation {
+    /// The largest land mass (periodic 8-connected), in cells.
+    pub main_cells: usize,
+    /// It wraps the torus (a non-zero winding number on either axis): not circumnavigable.
+    pub wraps: bool,
+    /// r*: the largest Chebyshev dilation of ALL the land after which the main mass's component still does not wrap;
+    /// a sea loop at least 2r* + 1 cells wide surrounds it. `None` when it wraps or there is no land.
+    pub sea_r: Option<usize>,
+}
+
+/// F168-A3, the circumnavigation test (declared before the measure): (1) the largest land mass does not wrap; (2) r*,
+/// by bisection (the dilation is monotone, so the main component's wrapping is too).
+pub fn circumnavigation(land: &[bool], n: usize) -> Circumnavigation {
+    let (id, comps) = periodic_components(land, n);
+    let Some(main) = (0..comps.len()).max_by(|a, b| comps[*a].0.cmp(&comps[*b].0).then(b.cmp(a))) else {
+        return Circumnavigation { main_cells: 0, wraps: false, sea_r: None };
+    };
+    let (main_cells, wraps) = comps[main];
+    if wraps {
+        return Circumnavigation { main_cells, wraps, sea_r: None };
+    }
+    let rep = id.iter().position(|&c| c == main as u32).unwrap();
+    let wraps_at = |r: usize| {
+        let (id2, c2) = periodic_components(&dilate_periodic(land, n, r), n);
+        c2[id2[rep] as usize].1
+    };
+    let (mut lo, mut hi) = (0usize, n / 2);
+    if !wraps_at(hi) {
+        return Circumnavigation { main_cells, wraps, sea_r: Some(hi) };
+    }
+    while hi - lo > 1 {
+        let mid = (lo + hi) / 2;
+        if wraps_at(mid) {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    Circumnavigation { main_cells, wraps, sea_r: Some(lo) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// F168-A3: a centred square of side 20 on a 64² torus is circumnavigable with r* = 21 (side 62 still leaves a
+    /// 2-cell gap; side 64 closes it); a full band and a diagonal line wrap; a ring around the seam does not.
+    #[test]
+    fn circumnavigation_reads_islands_bands_and_diagonals() {
+        let n = 64;
+        let sq: Vec<bool> = (0..n * n).map(|k| (22..42).contains(&(k % n)) && (22..42).contains(&(k / n))).collect();
+        assert_eq!(circumnavigation(&sq, n), Circumnavigation { main_cells: 400, wraps: false, sea_r: Some(21) });
+        let band: Vec<bool> = (0..n * n).map(|k| (10..20).contains(&(k / n))).collect();
+        assert!(circumnavigation(&band, n).wraps);
+        let diag: Vec<bool> = (0..n * n).map(|k| k % n == k / n).collect();
+        assert!(circumnavigation(&diag, n).wraps);
+        // a square straddling both seams (the torus corner) is one island, not a wrap
+        let corner: Vec<bool> = (0..n * n).map(|k| ((k % n) + 5) % n < 10 && ((k / n) + 5) % n < 10).collect();
+        let c = circumnavigation(&corner, n);
+        assert!(!c.wraps && c.main_cells == 100 && c.sea_r == Some(26), "{c:?}");
+        // the dilation is the periodic Chebyshev ball
+        let one: Vec<bool> = (0..n * n).map(|k| k == 0).collect();
+        let d = dilate_periodic(&one, n, 2);
+        assert_eq!(d.iter().filter(|&&b| b).count(), 25);
+        assert!(d[2 * n + 2] && d[(n - 2) * n + n - 2] && !d[3 * n]);
+    }
 
     /// Hovius's ratio on a synthetic range: a ridge of half-width 24 cells with transverse V valleys every 12 cells,
     /// draining both flanks to the sea, reads R ≈ W/S = 2 (within ±35 %, the front's ends and the D8 staircase).

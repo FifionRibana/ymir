@@ -1,0 +1,253 @@
+...
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+    Finished `release` profile [optimized] target(s) in 18.54s
+     Running tests\f168_cascade.rs (target_f168b\release\deps\f168_cascade-9b349f247d6af439.exe)
+running 1 test
+==========  Finding 168 . C1 (b) part 1: the continent's size, the circumnavigation  ==========
+   the profiles: [("L0", Production), ("L1", Continent(0.375)), ("L2", Continent(0.625))]
+   Europe                   plain  51.6 % · plateau   4.7 % · hill  18.9 % · mountain  24.8 % · land 5260525 km² · deciles 40/81/117/153/195/262/383/580/889
+   Corse 195 m: mountain-class slope p50/p90 0.318/0.550 · coast Coast { dimension: 1.122932, length_ratio: 1.370949, aligned: 0.27188444, block_index: 0.78062284, edges: 5780 }
+   B3 control: L0 under the canonical roll [6, 37]: peak 2670 m (F167 2 670 m) · land 31091 km² (F167 31 091 km²) · mountain 74.4 % (F167 74.4 %)
+   seed 10481999410520546993 L0: offset [0, 37] · C1 0.5 s wall / 0.2 s CPU · physics 5.8 s wall / 10.2 s CPU · chain 28.1 s wall / 177.0 s CPU → 188 s CPU per world
+test f168_cascade has been running for over 60 seconds
+   seed 10481999410520546993 L1: offset [59, 28] · C1 0.4 s wall / 0.2 s CPU · physics 9.3 s wall / 10.7 s CPU · chain 35.9 s wall / 259.9 s CPU → 271 s CPU per world
+   seed 10481999410520546993 L2: offset [0, 0] · C1 0.5 s wall / 0.2 s CPU · physics 14.9 s wall / 17.6 s CPU · chain 48.3 s wall / 363.0 s CPU → 381 s CPU per world
+   seed 42 L0: offset [11, 57] · C1 0.5 s wall / 0.3 s CPU · physics 7.9 s wall / 11.6 s CPU · chain 31.6 s wall / 216.6 s CPU → 228 s CPU per world
+   seed 42 L1: offset [0, 55] · C1 0.5 s wall / 0.2 s CPU · physics 11.4 s wall / 15.7 s CPU · chain 39.4 s wall / 285.0 s CPU → 301 s CPU per world
+   seed 42 L2: offset [0, 58] · C1 0.5 s wall / 0.2 s CPU · physics 16.4 s wall / 20.1 s CPU · chain 49.4 s wall / 381.3 s CPU → 402 s CPU per world
+   seed 1 L0: offset [0, 19] · C1 0.5 s wall / 0.2 s CPU · physics 8.1 s wall / 12.2 s CPU · chain 33.8 s wall / 239.2 s CPU → 252 s CPU per world
+   seed 1 L1: offset [0, 0] · C1 0.5 s wall / 0.2 s CPU · physics 10.8 s wall / 15.3 s CPU · chain 38.5 s wall / 281.0 s CPU → 297 s CPU per world
+   seed 1 L2: offset [0, 0] · C1 0.5 s wall / 0.2 s CPU · physics 17.1 s wall / 20.4 s CPU · chain 54.6 s wall / 427.1 s CPU → 448 s CPU per world
+   seed 9 L0: offset [35, 10] · C1 0.6 s wall / 0.4 s CPU · physics 11.2 s wall / 14.2 s CPU · chain 35.5 s wall / 235.4 s CPU → 250 s CPU per world
+   seed 9 L1: offset [37, 0] · C1 0.5 s wall / 0.3 s CPU · physics 13.6 s wall / 17.6 s CPU · chain 41.1 s wall / 301.7 s CPU → 320 s CPU per world
+   seed 9 L2: offset [0, 0] · C1 0.5 s wall / 0.3 s CPU · physics 19.9 s wall / 25.6 s CPU · chain 54.5 s wall / 418.3 s CPU → 444 s CPU per world
+   ══ seed 10481999410520546993 ══
+   ── L0 (Production), offset [0, 37]:
+      land 19.4 % of the torus (31116 km²) · masses > 1 000 km²: 1 (31116 km²) · masses in all 1
+      C1 (64²): continental cells at t₀ 766 · land t₀ 606 → end 784 cells · lost 0 (rift thinning < −0.05: 0) · gained 178 (type flipped: 23)
+      circumnavigation 64² (end of C1): circumnavigable (main 781 cells) · r* 12 cells → a sea loop ≥ 25 cells = 156.2 km wide
+      circumnavigation 2048²: circumnavigable (main 816683 cells) · r* 399 cells → a sea loop ≥ 799 cells = 156.1 km wide
+      land_topology: band x false · band y false · largest 199936 km² · bbox 624 × 608 km
+      border land after the offset: 256² 0 cells (mean -0 m vs land 666 m) · 2048² 0 cells (mean -0 m vs land 665 m)
+      interior: land > 20 km from the coast 53.3 % · > 40 km 21.3 % (max 68 km)
+   L0 classes               plain   0.0 % · plateau   0.0 % · hill  25.5 % · mountain  74.5 % · land 31116 km² · deciles 150/249/341/441/551/687/848/1052/1346
+      C1 tectonics: plates at the end 2 · C-C collision cells 0 · upper-plate (active margin) cells 78 · Davis-Suppe Σ Δs > 0.05 on 84.2 % of the land · cratons 57 cells (64²), land p50 1097 m (256²), block index 4.00
+      Σ Δs_DS by distance to a convergent cell / suture (cells of 6.25 km; mean [land cells]): 0: 1.153 [117] · 1: 1.729 [178] · 2: 1.017 [142] · 3: 0.486 [120] · 4: 0.197 [95] · 5: 0.114 [65] · 6: 0.108 [44] · 7: 0.081 [23] · 8: NaN [0] · 9: NaN [0] · 10: NaN [0] · >11: NaN [0]
+      2048² whole     16 of 19 within ×1.5 · out: facets 9.546/6.241; A_dir 0.404/0.206; F 0.018/0.043
+      2048² mountain  16 of 19 within ×1.5 · out: facets 11.861/6.746; octave 6.25–12.50 km 124.131/200.536; A_dir 0.405/0.200
+      slope guard: peak 256² 2907 m · 2048² 3342 m · mountain-class slope p50/p90 0.329/0.500 (Corsica 0.318/0.550)
+      lakes (256²): 3 / 78 km²
+      F by class: plain 0.00 % · plateau 0.00 % · hill 4.52 % · mountain 0.78 %
+      coast Coast { dimension: 0.995198, length_ratio: 0.94879943, aligned: 0.30550084, block_index: 0.60602134, edges: 6178 }
+   ── L1 (Continent(0.375)), offset [59, 28]:
+      land 35.7 % of the torus (57200 km²) · masses > 1 000 km²: 1 (57200 km²) · masses in all 1
+      C1 (64²): continental cells at t₀ 1469 · land t₀ 1221 → end 1446 cells · lost 10 (rift thinning < −0.05: 4) · gained 235 (type flipped: 37)
+      circumnavigation 64² (end of C1): circumnavigable (main 1443 cells) · r* 3 cells → a sea loop ≥ 7 cells = 43.8 km wide
+      circumnavigation 2048²: circumnavigable (main 1501130 cells) · r* 128 cells → a sea loop ≥ 257 cells = 50.2 km wide
+      land_topology: band x false · band y false · largest 369408 km² · bbox 784 × 896 km
+      border land after the offset: 256² 0 cells (mean -0 m vs land 463 m) · 2048² 0 cells (mean -0 m vs land 463 m)
+      interior: land > 20 km from the coast 56.6 % · > 40 km 20.1 % (max 68 km)
+   L1 classes               plain   1.7 % · plateau   0.0 % · hill  38.6 % · mountain  59.7 % · land 57200 km² · deciles 76/143/216/298/390/493/610/752/957
+      C1 tectonics: plates at the end 1 · C-C collision cells 0 · upper-plate (active margin) cells 0 · Davis-Suppe Σ Δs > 0.05 on 56.9 % of the land · cratons 162 cells (64²), land p50 592 m (256²), block index 3.67
+      Σ Δs_DS by distance to a convergent cell / suture (cells of 6.25 km; mean [land cells]): 0: 1.146 [176] · 1: 1.002 [266] · 2: 0.517 [239] · 3: 0.233 [219] · 4: 0.098 [197] · 5: 0.061 [165] · 6: 0.067 [116] · 7: 0.050 [57] · 8: 0.000 [11] · 9: NaN [0] · 10: NaN [0] · >11: NaN [0]
+      2048² whole     14 of 19 within ×1.5 · out: octave 3.12–6.25 km 53.710/100.862; octave 6.25–12.50 km 74.607/159.805; S_2 − 1 0.107/0.172; S_5 − 1 0.152/0.239; A_dir 0.417/0.206
+      2048² mountain  13 of 19 within ×1.5 · out: octave 3.12–6.25 km 69.529/126.569; octave 6.25–12.50 km 96.580/200.536; S_2 − 1 0.112/0.175; S_5 − 1 0.157/0.255; A_dir 0.409/0.200; F 0.014/0.006
+      slope guard: peak 256² 2190 m · 2048² 2475 m · mountain-class slope p50/p90 0.276/0.472 (Corsica 0.318/0.550)
+      lakes (256²): 0 / 0 km²
+      F by class: plain 30.37 % · plateau 0.00 % · hill 9.87 % · mountain 1.44 %
+      coast Coast { dimension: 0.9979035, length_ratio: 0.94111013, aligned: 0.2643999, block_index: 0.95102555, edges: 9556 }
+   ── L2 (Continent(0.625)), offset [0, 0]:
+      land 62.5 % of the torus (99954 km²) · masses > 1 000 km²: 1 (99954 km²) · masses in all 1
+      C1 (64²): continental cells at t₀ 2640 · land t₀ 2327 → end 2520 cells · lost 47 (rift thinning < −0.05: 30) · gained 240 (type flipped: 8)
+      circumnavigation 64² (end of C1): WRAPS the torus (main 2520 cells) → not circumnavigable
+      circumnavigation 2048²: WRAPS the torus (main 2638861 cells) → not circumnavigable
+      land_topology: band x true · band y true · largest 645120 km² · bbox 1024 × 1024 km
+      border land after the offset: 256² 409 cells (mean 1920 m vs land 905 m) · 2048² 3248 cells (mean 1805 m vs land 896 m)
+      interior: land > 20 km from the coast 57.8 % · > 40 km 24.3 % (max 87 km)
+   L2 classes               plain   0.4 % · plateau   0.0 % · hill  24.6 % · mountain  75.0 % · land 99954 km² · deciles 150/253/356/465/588/746/991/1487/2239
+      C1 tectonics: plates at the end 2 · C-C collision cells 32 · upper-plate (active margin) cells 60 · Davis-Suppe Σ Δs > 0.05 on 61.9 % of the land · cratons 162 cells (64²), land p50 578 m (256²), block index 3.66
+      Σ Δs_DS by distance to a convergent cell / suture (cells of 6.25 km; mean [land cells]): 0: 0.580 [245] · 1: 0.793 [492] · 2: 0.484 [446] · 3: 0.296 [401] · 4: 0.165 [344] · 5: 0.135 [266] · 6: 0.131 [181] · 7: 0.102 [101] · 8: 0.026 [32] · 9: 0.046 [10] · 10: 0.071 [2] · >11: NaN [0]
+      2048² whole     15 of 19 within ×1.5 · out: facets 10.434/6.241; walls 28° 2.689/1.547; A_dir 0.407/0.206; F 0.028/0.043
+      2048² mountain  15 of 19 within ×1.5 · out: facets 12.862/6.746; walls 28° 3.566/2.320; A_dir 0.399/0.200; F 0.012/0.006
+      slope guard: peak 256² 6294 m · 2048² 6602 m · mountain-class slope p50/p90 0.332/0.509 (Corsica 0.318/0.550)
+      lakes (256²): 2 / 83 km²
+      F by class: plain 28.21 % · plateau 11.98 % · hill 7.34 % · mountain 1.16 %
+      coast Coast { dimension: 1.0025804, length_ratio: 0.96529377, aligned: 0.4539437, block_index: 7.425297, edges: 15006 }
+      SUCCESS test (L2): mountain 75.0 % false · plain + plateau 0.4 % false · circumnavigable (64² and 2048²) false · coast degraded vs L0 aligned, block index → no
+      the mountain class (256²) decomposed: cratons 6.5 % · Davis-Suppe zones ≤ 5 cells (31 km) from a convergent cell / suture 58.7 % · 6–15 cells 6.0 % · > 15 cells 0.0 % · arcs 0.0 % · the rest 28.8 %
+   seed 10481999410520546993: the mountain share against the land area: 31116 km² → 74.5 % · 57200 km² → 59.7 % · 99954 km² → 75.0 % · slope L0 → L2 +0.08 points per 10 000 km²
+   ══ seed 42 ══
+   ── L0 (Production), offset [11, 57]:
+      land 26.4 % of the torus (42170 km²) · masses > 1 000 km²: 1 (42170 km²) · masses in all 1
+      C1 (64²): continental cells at t₀ 1123 · land t₀ 878 → end 1072 cells · lost 0 (rift thinning < −0.05: 0) · gained 194 (type flipped: 8)
+      circumnavigation 64² (end of C1): circumnavigable (main 1072 cells) · r* 1 cells → a sea loop ≥ 3 cells = 18.8 km wide
+      circumnavigation 2048²: circumnavigable (main 1107920 cells) · r* 70 cells → a sea loop ≥ 141 cells = 27.5 km wide
+      land_topology: band x false · band y false · largest 274432 km² · bbox 992 × 768 km
+      border land after the offset: 256² 0 cells (mean -0 m vs land 416 m) · 2048² 0 cells (mean -0 m vs land 415 m)
+      interior: land > 20 km from the coast 45.7 % · > 40 km 9.4 % (max 64 km)
+   L0 classes               plain   0.7 % · plateau   0.0 % · hill  47.0 % · mountain  52.3 % · land 42170 km² · deciles 79/137/196/257/320/392/478/605/857
+      C1 tectonics: plates at the end 2 · C-C collision cells 0 · upper-plate (active margin) cells 78 · Davis-Suppe Σ Δs > 0.05 on 57.5 % of the land · cratons 85 cells (64²), land p50 388 m (256²), block index 3.48
+      Σ Δs_DS by distance to a convergent cell / suture (cells of 6.25 km; mean [land cells]): 0: 1.511 [102] · 1: 1.577 [215] · 2: 0.832 [188] · 3: 0.275 [150] · 4: 0.056 [138] · 5: 0.053 [117] · 6: 0.026 [83] · 7: 0.017 [59] · 8: 0.005 [18] · 9: 0.000 [2] · 10: NaN [0] · >11: NaN [0]
+      2048² whole     15 of 19 within ×1.5 · out: octave 3.12–6.25 km 55.173/100.862; octave 6.25–12.50 km 75.831/159.805; S_2 − 1 0.113/0.172; A_dir 0.395/0.206
+      2048² mountain  13 of 19 within ×1.5 · out: octave 3.12–6.25 km 76.374/126.569; octave 6.25–12.50 km 104.972/200.536; S_2 − 1 0.112/0.175; S_5 − 1 0.166/0.255; A_dir 0.427/0.200; F 0.019/0.006
+      slope guard: peak 256² 2855 m · 2048² 3120 m · mountain-class slope p50/p90 0.277/0.477 (Corsica 0.318/0.550)
+      lakes (256²): 2 / 32 km²
+      F by class: plain 30.93 % · plateau 18.75 % · hill 9.34 % · mountain 1.88 %
+      coast Coast { dimension: 0.99529177, length_ratio: 0.9495283, aligned: 0.25575098, block_index: 0.68512994, edges: 9388 }
+   ── L1 (Continent(0.375)), offset [0, 55]:
+      land 45.2 % of the torus (72371 km²) · masses > 1 000 km²: 1 (72371 km²) · masses in all 1
+      C1 (64²): continental cells at t₀ 1884 · land t₀ 1598 → end 1821 cells · lost 16 (rift thinning < −0.05: 14) · gained 239 (type flipped: 19)
+      circumnavigation 64² (end of C1): WRAPS the torus (main 1821 cells) → not circumnavigable
+      circumnavigation 2048²: WRAPS the torus (main 1900792 cells) → not circumnavigable
+      land_topology: band x true · band y false · largest 466176 km² · bbox 1024 × 832 km
+      border land after the offset: 256² 213 cells (mean 1170 m vs land 1008 m) · 2048² 1697 cells (mean 1234 m vs land 1003 m)
+      interior: land > 20 km from the coast 58.8 % · > 40 km 23.6 % (max 80 km)
+   L1 classes               plain   0.7 % · plateau   0.1 % · hill  24.5 % · mountain  74.7 % · land 72371 km² · deciles 131/244/357/482/625/808/1111/1614/2589
+      C1 tectonics: plates at the end 2 · C-C collision cells 44 · upper-plate (active margin) cells 80 · Davis-Suppe Σ Δs > 0.05 on 59.5 % of the land · cratons 199 cells (64²), land p50 904 m (256²), block index 3.52
+      Σ Δs_DS by distance to a convergent cell / suture (cells of 6.25 km; mean [land cells]): 0: 0.967 [161] · 1: 1.278 [327] · 2: 1.033 [293] · 3: 0.578 [248] · 4: 0.356 [229] · 5: 0.329 [190] · 6: 0.273 [141] · 7: 0.203 [112] · 8: 0.188 [63] · 9: 0.062 [36] · 10: 0.000 [19] · >11: 0.000 [2]
+      2048² whole     16 of 19 within ×1.5 · out: facets 11.620/6.241; walls 28° 3.269/1.547; A_dir 0.387/0.206
+      2048² mountain  15 of 19 within ×1.5 · out: facets 14.858/6.746; walls 28° 4.348/2.320; A_dir 0.380/0.200; F 0.009/0.006
+      slope guard: peak 256² 5561 m · 2048² 5777 m · mountain-class slope p50/p90 0.365/0.519 (Corsica 0.318/0.550)
+      lakes (256²): 3 / 154 km²
+      F by class: plain 32.39 % · plateau 9.00 % · hill 8.08 % · mountain 0.90 %
+      coast Coast { dimension: 0.994297, length_ratio: 0.9369863, aligned: 0.41373774, block_index: 5.1085734, edges: 12434 }
+   ── L2 (Continent(0.625)), offset [0, 58]:
+      land 69.6 % of the torus (111396 km²) · masses > 1 000 km²: 1 (111377 km²) · masses in all 2
+      C1 (64²): continental cells at t₀ 2931 · land t₀ 2716 → end 2752 cells · lost 100 (rift thinning < −0.05: 79) · gained 136 (type flipped: 0)
+      circumnavigation 64² (end of C1): WRAPS the torus (main 2751 cells) → not circumnavigable
+      circumnavigation 2048²: WRAPS the torus (main 2939596 cells) → not circumnavigable
+      land_topology: band x true · band y false · largest 704256 km² · bbox 1024 × 944 km
+      border land after the offset: 256² 470 cells (mean 1333 m vs land 1159 m) · 2048² 3722 cells (mean 1483 m vs land 1148 m)
+      interior: land > 20 km from the coast 68.9 % · > 40 km 43.3 % (max 112 km)
+   L2 classes               plain   0.5 % · plateau   1.1 % · hill  18.9 % · mountain  79.5 % · land 111396 km² · deciles 177/311/451/619/811/1039/1368/1778/2792
+      C1 tectonics: plates at the end 2 · C-C collision cells 86 · upper-plate (active margin) cells 77 · Davis-Suppe Σ Δs > 0.05 on 68.4 % of the land · cratons 199 cells (64²), land p50 1129 m (256²), block index 3.50
+      Σ Δs_DS by distance to a convergent cell / suture (cells of 6.25 km; mean [land cells]): 0: 0.253 [253] · 1: 0.592 [500] · 2: 0.477 [443] · 3: 0.415 [376] · 4: 0.357 [342] · 5: 0.349 [283] · 6: 0.335 [212] · 7: 0.309 [166] · 8: 0.383 [99] · 9: 0.445 [55] · 10: 0.526 [21] · >11: 0.547 [2]
+      2048² whole     15 of 19 within ×1.5 · out: facets 11.925/6.241; walls 28° 3.335/1.547; S_2 − 1 0.113/0.172; A_dir 0.427/0.206
+      2048² mountain  14 of 19 within ×1.5 · out: facets 14.121/6.746; walls 28° 4.161/2.320; S_5 − 1 0.166/0.255; A_dir 0.408/0.200; F 0.015/0.006
+      slope guard: peak 256² 6053 m · 2048² 6325 m · mountain-class slope p50/p90 0.344/0.516 (Corsica 0.318/0.550)
+      lakes (256²): 3 / 823 km²
+      F by class: plain 28.99 % · plateau 5.65 % · hill 9.60 % · mountain 1.51 %
+      coast Coast { dimension: 0.9915786, length_ratio: 0.946, aligned: 0.52834076, block_index: 10.467882, edges: 12610 }
+      SUCCESS test (L2): mountain 79.5 % false · plain + plateau 1.6 % false · circumnavigable (64² and 2048²) false · coast degraded vs L0 aligned, block index → no
+      the mountain class (256²) decomposed: cratons 6.6 % · Davis-Suppe zones ≤ 5 cells (31 km) from a convergent cell / suture 50.4 % · 6–15 cells 14.2 % · > 15 cells 0.0 % · arcs 0.3 % · the rest 28.6 %
+   seed 42: the mountain share against the land area: 42170 km² → 52.3 % · 72371 km² → 74.7 % · 111396 km² → 79.5 % · slope L0 → L2 +3.93 points per 10 000 km²
+   ══ seed 1 ══
+   ── L0 (Production), offset [0, 19]:
+      land 28.5 % of the torus (45610 km²) · masses > 1 000 km²: 1 (45513 km²) · masses in all 2
+      C1 (64²): continental cells at t₀ 1201 · land t₀ 934 → end 1153 cells · lost 0 (rift thinning < −0.05: 0) · gained 219 (type flipped: 0)
+      circumnavigation 64² (end of C1): circumnavigable (main 1151 cells) · r* 1 cells → a sea loop ≥ 3 cells = 18.8 km wide
+      circumnavigation 2048²: circumnavigable (main 1197671 cells) · r* 47 cells → a sea loop ≥ 95 cells = 18.6 km wide
+      land_topology: band x true · band y false · largest 294656 km² · bbox 1024 × 736 km
+      border land after the offset: 256² 229 cells (mean 1622 m vs land 862 m) · 2048² 1820 cells (mean 1284 m vs land 857 m)
+      interior: land > 20 km from the coast 48.0 % · > 40 km 18.1 % (max 77 km)
+   L0 classes               plain   0.1 % · plateau   3.5 % · hill  20.4 % · mountain  76.0 % · land 45610 km² · deciles 158/292/446/639/822/949/1078/1293/1620
+      C1 tectonics: plates at the end 2 · C-C collision cells 0 · upper-plate (active margin) cells 60 · Davis-Suppe Σ Δs > 0.05 on 87.2 % of the land · cratons 58 cells (64²), land p50 899 m (256²), block index 3.44
+      Σ Δs_DS by distance to a convergent cell / suture (cells of 6.25 km; mean [land cells]): 0: 1.657 [73] · 1: 1.887 [195] · 2: 1.112 [181] · 3: 0.552 [155] · 4: 0.331 [122] · 5: 0.272 [83] · 6: 0.294 [78] · 7: 0.304 [74] · 8: 0.258 [64] · 9: 0.236 [52] · 10: 0.253 [47] · >11: 0.306 [29]
+      2048² whole     15 of 19 within ×1.5 · out: facets 10.908/6.241; walls 28° 2.843/1.547; A_dir 0.397/0.206; F 0.024/0.043
+      2048² mountain  14 of 19 within ×1.5 · out: facets 13.504/6.746; walls 28° 3.702/2.320; S_5 − 1 0.170/0.255; A_dir 0.398/0.200; F 0.011/0.006
+      slope guard: peak 256² 3953 m · 2048² 4098 m · mountain-class slope p50/p90 0.338/0.510 (Corsica 0.318/0.550)
+      lakes (256²): 1 / 5 km²
+      F by class: plain 22.59 % · plateau 10.04 % · hill 5.75 % · mountain 1.11 %
+      coast Coast { dimension: 0.99809784, length_ratio: 0.96107787, aligned: 0.41262588, block_index: 5.532046, edges: 11702 }
+   ── L1 (Continent(0.375)), offset [0, 0]:
+      land 42.3 % of the torus (67666 km²) · masses > 1 000 km²: 1 (67537 km²) · masses in all 2
+      C1 (64²): continental cells at t₀ 1789 · land t₀ 1446 → end 1677 cells · lost 4 (rift thinning < −0.05: 3) · gained 235 (type flipped: 7)
+      circumnavigation 64² (end of C1): WRAPS the torus (main 1672 cells) → not circumnavigable
+      circumnavigation 2048²: WRAPS the torus (main 1774407 cells) → not circumnavigable
+      land_topology: band x true · band y true · largest 428032 km² · bbox 1024 × 1024 km
+      border land after the offset: 256² 559 cells (mean 1107 m vs land 515 m) · 2048² 4349 cells (mean 972 m vs land 513 m)
+      interior: land > 20 km from the coast 49.0 % · > 40 km 17.0 % (max 76 km)
+   L1 classes               plain   0.8 % · plateau   0.4 % · hill  35.0 % · mountain  63.8 % · land 67666 km² · deciles 104/184/259/335/424/521/635/785/1015
+      C1 tectonics: plates at the end 2 · C-C collision cells 0 · upper-plate (active margin) cells 54 · Davis-Suppe Σ Δs > 0.05 on 61.7 % of the land · cratons 58 cells (64²), land p50 273 m (256²), block index 3.30
+      Σ Δs_DS by distance to a convergent cell / suture (cells of 6.25 km; mean [land cells]): 0: 1.560 [89] · 1: 1.651 [303] · 2: 0.827 [266] · 3: 0.338 [225] · 4: 0.148 [181] · 5: 0.084 [134] · 6: 0.072 [122] · 7: 0.051 [113] · 8: 0.050 [96] · 9: 0.057 [68] · 10: 0.052 [54] · >11: 0.065 [26]
+      2048² whole     16 of 19 within ×1.5 · out: octave 6.25–12.50 km 105.182/159.805; S_2 − 1 0.109/0.172; A_dir 0.404/0.206
+      2048² mountain  14 of 19 within ×1.5 · out: octave 6.25–12.50 km 131.661/200.536; S_2 − 1 0.112/0.175; S_5 − 1 0.167/0.255; A_dir 0.397/0.200; F 0.020/0.006
+      slope guard: peak 256² 3022 m · 2048² 2996 m · mountain-class slope p50/p90 0.267/0.479 (Corsica 0.318/0.550)
+      lakes (256²): 3 / 273 km²
+      F by class: plain 26.33 % · plateau 6.40 % · hill 8.42 % · mountain 1.99 %
+      coast Coast { dimension: 1.0245838, length_ratio: 1.0164263, aligned: 0.5061958, block_index: 8.707646, edges: 17342 }
+   ── L2 (Continent(0.625)), offset [0, 0]:
+      land 68.4 % of the torus (109500 km²) · masses > 1 000 km²: 1 (109363 km²) · masses in all 2
+      C1 (64²): continental cells at t₀ 2874 · land t₀ 2619 → end 2677 cells · lost 118 (rift thinning < −0.05: 78) · gained 176 (type flipped: 7)
+      circumnavigation 64² (end of C1): WRAPS the torus (main 2671 cells) → not circumnavigable
+      circumnavigation 2048²: WRAPS the torus (main 2899240 cells) → not circumnavigable
+      land_topology: band x true · band y true · largest 683776 km² · bbox 1024 × 1024 km
+      border land after the offset: 256² 566 cells (mean 1242 m vs land 787 m) · 2048² 4520 cells (mean 1049 m vs land 776 m)
+      interior: land > 20 km from the coast 62.3 % · > 40 km 29.7 % (max 96 km)
+   L2 classes               plain   0.4 % · plateau   0.3 % · hill  21.4 % · mountain  77.9 % · land 109500 km² · deciles 169/282/390/502/620/748/903/1107/1528
+      C1 tectonics: plates at the end 2 · C-C collision cells 58 · upper-plate (active margin) cells 54 · Davis-Suppe Σ Δs > 0.05 on 50.1 % of the land · cratons 220 cells (64²), land p50 895 m (256²), block index 3.54
+      Σ Δs_DS by distance to a convergent cell / suture (cells of 6.25 km; mean [land cells]): 0: 0.624 [226] · 1: 0.770 [491] · 2: 0.433 [451] · 3: 0.388 [393] · 4: 0.259 [311] · 5: 0.249 [217] · 6: 0.229 [168] · 7: 0.218 [143] · 8: 0.205 [110] · 9: 0.215 [78] · 10: 0.170 [60] · >11: 0.079 [29]
+      2048² whole     17 of 19 within ×1.5 · out: A_dir 0.416/0.206; F 0.027/0.043
+      2048² mountain  15 of 19 within ×1.5 · out: facets 10.459/6.746; S_5 − 1 0.166/0.255; A_dir 0.411/0.200; F 0.014/0.006
+      slope guard: peak 256² 5084 m · 2048² 5260 m · mountain-class slope p50/p90 0.301/0.497 (Corsica 0.318/0.550)
+      lakes (256²): 2 / 1367 km²
+      F by class: plain 26.96 % · plateau 11.96 % · hill 7.07 % · mountain 1.42 %
+      coast Coast { dimension: 1.013803, length_ratio: 0.9793233, aligned: 0.5500366, block_index: 10.981067, edges: 13944 }
+      SUCCESS test (L2): mountain 77.9 % false · plain + plateau 0.7 % false · circumnavigable (64² and 2048²) false · coast degraded vs L0 aligned, block index → no
+      the mountain class (256²) decomposed: cratons 8.7 % · Davis-Suppe zones ≤ 5 cells (31 km) from a convergent cell / suture 37.9 % · 6–15 cells 14.6 % · > 15 cells 0.0 % · arcs 0.0 % · the rest 38.8 %
+   seed 1: the mountain share against the land area: 45610 km² → 76.0 % · 67666 km² → 63.8 % · 109500 km² → 77.9 % · slope L0 → L2 +0.30 points per 10 000 km²
+   ══ seed 9 ══
+   ── L0 (Production), offset [35, 10]:
+      land 31.9 % of the torus (51064 km²) · masses > 1 000 km²: 1 (51064 km²) · masses in all 1
+      C1 (64²): continental cells at t₀ 1298 · land t₀ 1091 → end 1304 cells · lost 2 (rift thinning < −0.05: 0) · gained 215 (type flipped: 19)
+      circumnavigation 64² (end of C1): circumnavigable (main 1304 cells) · r* 6 cells → a sea loop ≥ 13 cells = 81.2 km wide
+      circumnavigation 2048²: circumnavigable (main 1343198 cells) · r* 218 cells → a sea loop ≥ 437 cells = 85.4 km wide
+      land_topology: band x false · band y false · largest 333824 km² · bbox 688 × 800 km
+      border land after the offset: 256² 0 cells (mean -0 m vs land 733 m) · 2048² 0 cells (mean -0 m vs land 730 m)
+      interior: land > 20 km from the coast 62.8 % · > 40 km 34.0 % (max 85 km)
+   L0 classes               plain   0.4 % · plateau   1.8 % · hill  22.1 % · mountain  75.7 % · land 51064 km² · deciles 159/274/384/491/601/719/869/1111/1604
+      C1 tectonics: plates at the end 2 · C-C collision cells 0 · upper-plate (active margin) cells 73 · Davis-Suppe Σ Δs > 0.05 on 59.1 % of the land · cratons 115 cells (64²), land p50 774 m (256²), block index 3.48
+      Σ Δs_DS by distance to a convergent cell / suture (cells of 6.25 km; mean [land cells]): 0: 0.975 [98] · 1: 1.843 [202] · 2: 1.402 [205] · 3: 0.610 [194] · 4: 0.231 [165] · 5: 0.113 [138] · 6: 0.075 [118] · 7: 0.048 [91] · 8: 0.015 [57] · 9: 0.000 [34] · 10: 0.000 [2] · >11: NaN [0]
+      2048² whole     17 of 19 within ×1.5 · out: octave 6.25–12.50 km 103.662/159.805; A_dir 0.398/0.206
+      2048² mountain  13 of 19 within ×1.5 · out: facets 10.165/6.746; octave 3.12–6.25 km 82.325/126.569; octave 6.25–12.50 km 119.301/200.536; S_5 − 1 0.168/0.255; A_dir 0.405/0.200; F 0.013/0.006
+      slope guard: peak 256² 3948 m · 2048² 3473 m · mountain-class slope p50/p90 0.300/0.494 (Corsica 0.318/0.550)
+      lakes (256²): 6 / 979 km²
+      F by class: plain 31.60 % · plateau 11.07 % · hill 7.77 % · mountain 1.34 %
+      coast Coast { dimension: 0.98113775, length_ratio: 0.9073562, aligned: 0.27663127, block_index: 0.95697796, edges: 7624 }
+   ── L1 (Continent(0.375)), offset [37, 0]:
+      land 43.5 % of the torus (69668 km²) · masses > 1 000 km²: 1 (69668 km²) · masses in all 1
+      C1 (64²): continental cells at t₀ 1785 · land t₀ 1528 → end 1771 cells · lost 6 (rift thinning < −0.05: 2) · gained 249 (type flipped: 16)
+      circumnavigation 64² (end of C1): WRAPS the torus (main 1771 cells) → not circumnavigable
+      circumnavigation 2048²: WRAPS the torus (main 1833254 cells) → not circumnavigable
+      land_topology: band x false · band y true · largest 453376 km² · bbox 752 × 1024 km
+      border land after the offset: 256² 170 cells (mean 1069 m vs land 670 m) · 2048² 1304 cells (mean 1165 m vs land 666 m)
+      interior: land > 20 km from the coast 61.4 % · > 40 km 26.7 % (max 88 km)
+   L1 classes               plain   0.1 % · plateau   0.6 % · hill  25.4 % · mountain  73.9 % · land 69668 km² · deciles 151/250/343/434/529/641/780/985/1401
+      C1 tectonics: plates at the end 2 · C-C collision cells 0 · upper-plate (active margin) cells 67 · Davis-Suppe Σ Δs > 0.05 on 51.2 % of the land · cratons 188 cells (64²), land p50 661 m (256²), block index 3.49
+      Σ Δs_DS by distance to a convergent cell / suture (cells of 6.25 km; mean [land cells]): 0: 0.907 [141] · 1: 1.559 [331] · 2: 0.842 [299] · 3: 0.332 [274] · 4: 0.135 [227] · 5: 0.069 [178] · 6: 0.055 [137] · 7: 0.040 [91] · 8: 0.015 [57] · 9: 0.000 [34] · 10: 0.000 [2] · >11: NaN [0]
+      2048² whole     17 of 19 within ×1.5 · out: octave 6.25–12.50 km 104.383/159.805; A_dir 0.401/0.206
+      2048² mountain  16 of 19 within ×1.5 · out: octave 6.25–12.50 km 121.496/200.536; A_dir 0.393/0.200; F 0.017/0.006
+      slope guard: peak 256² 3646 m · 2048² 3793 m · mountain-class slope p50/p90 0.293/0.490 (Corsica 0.318/0.550)
+      lakes (256²): 1 / 42 km²
+      F by class: plain 40.42 % · plateau 8.03 % · hill 10.18 % · mountain 1.69 %
+      coast Coast { dimension: 0.9902161, length_ratio: 0.9433093, aligned: 0.39503568, block_index: 4.4742002, edges: 10814 }
+   ── L2 (Continent(0.625)), offset [0, 0]:
+      land 69.9 % of the torus (111770 km²) · masses > 1 000 km²: 1 (111631 km²) · masses in all 2
+      C1 (64²): continental cells at t₀ 2874 · land t₀ 2643 → end 2830 cells · lost 19 (rift thinning < −0.05: 17) · gained 206 (type flipped: 5)
+      circumnavigation 64² (end of C1): WRAPS the torus (main 2827 cells) → not circumnavigable
+      circumnavigation 2048²: WRAPS the torus (main 2933240 cells) → not circumnavigable
+      land_topology: band x true · band y true · largest 723712 km² · bbox 1024 × 1024 km
+      border land after the offset: 256² 505 cells (mean 1348 m vs land 931 m) · 2048² 4036 cells (mean 1360 m vs land 929 m)
+      interior: land > 20 km from the coast 77.1 % · > 40 km 52.6 % (max 124 km)
+   L2 classes               plain   0.0 % · plateau   9.6 % · hill  11.6 % · mountain  78.8 % · land 111770 km² · deciles 274/448/606/732/846/953/1083/1298/1687
+      C1 tectonics: plates at the end 2 · C-C collision cells 50 · upper-plate (active margin) cells 66 · Davis-Suppe Σ Δs > 0.05 on 56.0 % of the land · cratons 188 cells (64²), land p50 894 m (256²), block index 3.76
+      Σ Δs_DS by distance to a convergent cell / suture (cells of 6.25 km; mean [land cells]): 0: 0.452 [227] · 1: 0.970 [501] · 2: 0.610 [455] · 3: 0.371 [420] · 4: 0.214 [366] · 5: 0.169 [305] · 6: 0.126 [220] · 7: 0.072 [153] · 8: 0.048 [97] · 9: 0.026 [64] · 10: 0.000 [22] · >11: NaN [0]
+      2048² whole     16 of 19 within ×1.5 · out: S_2 − 1 0.108/0.172; S_5 − 1 0.154/0.239; A_dir 0.452/0.206
+      2048² mountain  14 of 19 within ×1.5 · out: octave 6.25–12.50 km 132.178/200.536; S_2 − 1 0.111/0.175; S_5 − 1 0.157/0.255; A_dir 0.422/0.200; F 0.024/0.006
+      slope guard: peak 256² 4903 m · 2048² 4280 m · mountain-class slope p50/p90 0.277/0.493 (Corsica 0.318/0.550)
+      lakes (256²): 11 / 6541 km²
+      F by class: plain 0.00 % · plateau 27.18 % · hill 9.89 % · mountain 2.40 %
+      coast Coast { dimension: 1.0024146, length_ratio: 0.9599447, aligned: 0.54863846, block_index: 11.00827, edges: 12334 }
+      SUCCESS test (L2): mountain 78.8 % false · plain + plateau 9.6 % false · circumnavigable (64² and 2048²) false · coast degraded vs L0 aligned, block index → no
+      the mountain class (256²) decomposed: cratons 6.8 % · Davis-Suppe zones ≤ 5 cells (31 km) from a convergent cell / suture 48.3 % · 6–15 cells 5.6 % · > 15 cells 0.0 % · arcs 0.0 % · the rest 39.3 %
+   seed 9: the mountain share against the land area: 51064 km² → 75.7 % · 69668 km² → 73.9 % · 111770 km² → 78.8 % · slope L0 → L2 +0.50 points per 10 000 km²
+   the regularity baseline (Corsica 391 m: CV_λ 0.609 · CV_L 0.869 · θ 62.0° σ 29.9° · R2_g 0.477 | 195 m: CV_λ 0.683 · CV_L 0.915 · θ 71.1° σ 27.4° · R2_g 0.473):
+   seed 10481999410520546993 L2: 391 m: CV_λ 0.649 · CV_L 0.880 · θ 63.5° σ 23.8° · R2_g 0.632 | 195 m: CV_λ 0.659 · CV_L 0.892 · θ 69.6° σ 23.3° · R2_g 0.472 | Hovius A ≥ 10: R 2.27 (716 basins) · A ≥ 25: R 2.34 (340 basins) · A ≥ 100: R 2.38 (99 basins)
+   seed 42 L2: 391 m: CV_λ 0.705 · CV_L 1.016 · θ 62.1° σ 24.2° · R2_g 0.691 | 195 m: CV_λ 0.707 · CV_L 1.067 · θ 68.7° σ 23.5° · R2_g 0.474 | Hovius A ≥ 10: R 2.60 (674 basins) · A ≥ 25: R 2.58 (329 basins) · A ≥ 100: R 2.53 (103 basins)
+   seed 1 L2: 391 m: CV_λ 0.654 · CV_L 0.986 · θ 63.6° σ 23.8° · R2_g 0.618 | 195 m: CV_λ 0.656 · CV_L 0.997 · θ 69.4° σ 23.2° · R2_g 0.466 | Hovius A ≥ 10: R 2.38 (839 basins) · A ≥ 25: R 2.40 (448 basins) · A ≥ 100: R 2.40 (127 basins)
+   seed 9 L2: 391 m: CV_λ 0.706 · CV_L 1.085 · θ 62.3° σ 24.3° · R2_g 0.713 | 195 m: CV_λ 0.705 · CV_L 1.108 · θ 68.0° σ 23.8° · R2_g 0.497 | Hovius A ≥ 10: R 3.00 (694 basins) · A ≥ 25: R 2.72 (386 basins) · A ≥ 100: R 2.55 (104 basins)
+   R: macro success in L2 on 0 / 4 · mountains > 37.2 % on 4 / 4 · circumnavigation lost on 4 / 4 → the mountains still exceed 37.2 %: decomposed above, stop
+   images: f168_seeds_256.png (the sea loop red), f168_seeds_2048.png, f168_classes_seeds.png (rows = seeds [10481999410520546993, 42, 1, 9]; columns L0 | L1 | L2), f168_ds_profile.png (panels = seeds; x = distance 0–11 cells, y = mean Σ Δs_DS 0–1.89; the 0.05 line grey; L0 grey, L1 blue, L2 red), f168_coast_25km.png (Corsica | L0 | L1 | L2 per seed, each world's first 40–60 % land window) · north up · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+==========  end Finding 168 . 857.5 s wall  ==========
+test f168_cascade ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 857.48s
