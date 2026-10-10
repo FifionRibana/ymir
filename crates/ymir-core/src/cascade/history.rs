@@ -31,6 +31,7 @@ use crate::tectonics_c1::production_upscale::{
 use crate::tectonics_c1::state::C1State;
 pub use crate::tectonics_c1::time_loop::C1Term;
 use crate::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures_observed, run_with_closures_terms};
+use crate::tectonics_v2::boundaries::plate_type::{PlateType, PlateTypeField};
 use crate::tectonics_v2::field::Field2D;
 use std::cell::RefCell;
 
@@ -128,6 +129,69 @@ pub struct C1Sources {
     pub craton: Vec<bool>,
 }
 
+/// ADR Finding 167-B -- the thickness → altitude mapping of the record: C1's own (F165–F166), or the physical Airy
+/// mapping with an absolute sea level.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Mapping {
+    C1,
+    Airy(Airy),
+}
+
+/// ADR Finding 167-B -- **Airy isostasy with an absolute sea level** (Whitehead & Clift 2009, p. 3 and eq. 1–2):
+/// e = b · L · S̃ − H₀ above sea level, b = (ρm − ρc)/ρm, and water-loaded below it (× ρm/(ρm − ρw)), one continuous
+/// monotone function of S̃; H₀ from the anchor e(S̃ = 1) = `anchor_km`. Declared in
+/// `docs/reports/relief_method/f167_isostasy/f167_declared.md` (B).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Airy {
+    /// km of crust per unit S̃ (C1's convention, S̃ = 1 ↔ 35 km).
+    pub km_per_s: f64,
+    pub rho_c: f64,
+    pub rho_m: f64,
+    pub rho_w: f64,
+    /// The altitude of S̃ = 1 (km).
+    pub anchor_km: f64,
+    /// The S̃ the oceanic-plate cells are read at (C1's « phantom oceanic advective spike » is not a thickness); `None`
+    /// = every cell's own S̃.
+    pub oceanic_s: Option<f64>,
+    /// C1's Gaussian blur of its altitude (`IsostasyConfig::altitude_smoothing_sigma`), kept.
+    pub sigma: f32,
+}
+
+impl Airy {
+    /// F167's declaration: ρc 2 800, ρm 3 300, ρw 1 030 kg/m³, 35 km per S̃, S̃ = 1 → +0.45 km, the oceanic cells at S̃ = 0.2,
+    /// C1's σ = 0.5.
+    pub fn declared() -> Self {
+        Self { km_per_s: 35.0, rho_c: 2800.0, rho_m: 3300.0, rho_w: 1030.0, anchor_km: 0.45, oceanic_s: Some(0.2), sigma: 0.5 }
+    }
+    /// The altitude (km) of a column of thickness S̃.
+    pub fn altitude_km(&self, s: f64) -> f64 {
+        let b = (self.rho_m - self.rho_c) / self.rho_m;
+        let h0 = b * self.km_per_s - self.anchor_km;
+        let e = b * self.km_per_s * s - h0;
+        if e >= 0.0 { e } else { e * self.rho_m / (self.rho_m - self.rho_w) }
+    }
+}
+
+/// ADR Finding 167-B -- the Airy mapping of a C1 state's thickness, in C1's raw coarse units (m / `depth_scale_m`), so
+/// [`C1History::normalized`] treats it as C1's.
+pub fn airy_raw(s: &Field2D, plate_type: &PlateTypeField, a: &Airy, depth_scale_m: f64) -> GridF32 {
+    let (nx, ny) = (s.nx(), s.ny());
+    let data: Vec<f32> = s
+        .data()
+        .iter()
+        .zip(plate_type.data())
+        .map(|(v, t)| {
+            let sv = match (a.oceanic_s, t) {
+                (Some(o), PlateType::Oceanic) => o,
+                _ => *v,
+            };
+            (a.altitude_km(sv) * 1000.0 / depth_scale_m) as f32
+        })
+        .collect();
+    let g = GridF32::from_vec(nx, ny, data);
+    if a.sigma > 0.0 { g.gaussian_blur(a.sigma) } else { g }
+}
+
 /// ADR Finding 166-B1 -- run C1 (exactly; `run_with_closures_terms`) and record h_src every `every` steps, the terms in
 /// `exclude` taken out of `s`. With nothing excluded the snapshots are [`run_c1_recorded`]'s, bit for bit
 /// (`the_sources_with_every_term_are_f165s_history`).
@@ -142,6 +206,23 @@ pub fn run_c1_sources(
     ss: &SteinSteinParams,
     exclude: &[C1Term],
 ) -> C1Sources {
+    run_c1_sources_mapped(state, kin, cfg, closures, every, iso, ss, exclude, Mapping::C1)
+}
+
+/// ADR Finding 167-B -- [`run_c1_sources`] with the thickness → altitude mapping chosen; `Mapping::C1` is
+/// [`run_c1_sources`] exactly (`the_c1_mapping_is_f166s_record`).
+#[allow(clippy::too_many_arguments)]
+pub fn run_c1_sources_mapped(
+    state: &mut C1State,
+    kin: &mut PlateKinematics,
+    cfg: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    every: usize,
+    iso: &IsostasyConfig,
+    ss: &SteinSteinParams,
+    exclude: &[C1Term],
+    mapping: Mapping,
+) -> C1Sources {
     let (nx, ny) = (state.nx(), state.ny());
     let n = nx * ny;
     let s0 = state.s.data().to_vec();
@@ -149,6 +230,10 @@ pub fn run_c1_sources(
     let removed = RefCell::new(vec![0f64; n]);
     let sums = RefCell::new(C1Term::ALL.iter().map(|&t| (t, vec![0f64; n])).collect::<Vec<_>>());
     let src_alt = |st: &C1State, removed: &[f64]| -> GridF32 {
+        if let Mapping::Airy(a) = &mapping {
+            let s_src = Field2D::from_vec(nx, ny, st.s.data().iter().zip(removed).map(|(s, r)| s - r).collect());
+            return airy_raw(&s_src, &st.plate_type, a, ss.depth_scale_m);
+        }
         if exclude.is_empty() {
             return c1_coarse_raw_altitude(st, iso, ss);
         }
@@ -367,6 +452,31 @@ mod tests {
         assert_eq!(h.steps, vec![0, 10, 20, 30, 40]);
         assert_eq!(h.raw.len(), 5);
         assert!(h.suture.iter().any(|&s| s), "some cell is convergent at some step");
+    }
+
+    /// ADR Finding 167-B5, the negative control -- the record under C1's mapping is F166's bit for bit; the Airy mapping
+    /// follows the declaration (S̃ = 1 → +0.45 km, S̃ = 2 → +5.75 km, S̃ = 0.2 → −5.51 km, continuous at sea level) and
+    /// reads the oceanic cells at S̃ = 0.2.
+    #[test]
+    fn the_c1_mapping_is_f166s_record() {
+        let (mut a, mut ka, cfg) = c1(40);
+        let x = run_c1_sources(&mut a, &mut ka, &cfg, &C1Closures::default(), 10, &IsostasyConfig::c1_default(), &SteinSteinParams::default(), &[C1Term::Erosion]);
+        let (mut b, mut kb, _) = c1(40);
+        let y = run_c1_sources_mapped(&mut b, &mut kb, &cfg, &C1Closures::default(), 10, &IsostasyConfig::c1_default(), &SteinSteinParams::default(), &[C1Term::Erosion], Mapping::C1);
+        for (p, q) in x.hist.raw.iter().zip(&y.hist.raw) {
+            assert_eq!(p.data, q.data);
+        }
+        let air = Airy::declared();
+        assert!((air.altitude_km(1.0) - 0.45).abs() < 1e-9);
+        assert!((air.altitude_km(2.0) - 5.753).abs() < 0.01, "{}", air.altitude_km(2.0));
+        assert!((air.altitude_km(0.2) + 5.51).abs() < 0.01, "{}", air.altitude_km(0.2));
+        let bl = (air.rho_m - air.rho_c) / air.rho_m * air.km_per_s;
+        let s0 = (bl - air.anchor_km) / bl;
+        assert!(air.altitude_km(s0 - 1e-9).abs() < 1e-6 && air.altitude_km(s0 + 1e-9).abs() < 1e-6, "continuous at sea level");
+        let (mut c, mut kc, _) = c1(40);
+        let z = run_c1_sources_mapped(&mut c, &mut kc, &cfg, &C1Closures::default(), 10, &IsostasyConfig::c1_default(), &SteinSteinParams::default(), &[C1Term::Erosion], Mapping::Airy(Airy { sigma: 0.0, ..air }));
+        let oceanic = c.plate_type.data().iter().position(|t| *t == PlateType::Oceanic).unwrap();
+        assert!((z.hist.raw.last().unwrap().data[oceanic] as f64 * 5000.0 / 1000.0 - air.altitude_km(0.2)).abs() < 1e-3);
     }
 
     /// ADR Finding 166-B4, the negative control -- with no term excluded the sources' record is F165's history bit for

@@ -22026,3 +22026,129 @@ s'en rapprocher encore, mais on va gérer déjà ce qui est prioritaire. »
 mais semble beaucoup plus intéressant. Des plateaux apparaissent, des chaines, des vallées, des plaines. C'est de plus
 en plus propre. Mon avis est qu'il faudra bien traiter la trop grosse régularité des motifs. un K bruité autour des
 valeurs dépendant de la tectonique serait peut-être une solution? »
+
+## Finding 167 — the thickness → altitude mapping: Airy isostasy (Whitehead & Clift 2009) with an absolute sea level, in the cascade only: the ocean–land coupling is gone and the land is kept, but the mountains rise to 53–78 % — the « mountains above 37.2 % » stop fires on 4 / 4 seeds; 50–81 % of the mountain cells are C1's Davis-Suppe wedge, which a physical (steeper) mapping turns into relief everywhere; the regularity baseline for F169 is measured (more regular than Corsica on the confluence angles, the gullies' parallelism at 391 m and the tributaries' lengths; Hovius's ratio 2.1–2.5, Corsica's 2.3–2.5); production unchanged
+
+**Status: built, measured, gated; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f167_isostasy/finding_167.md`.
+- Declared before any measurement: `f167_declared.md`. Predictions: `f167_predictions.md`.
+- F166 committed (`4ffec0d`) with:
+  - the new order (F167, F168, F169);
+  - the mapping in the cascade only;
+  - the facets / walls and the rim queued;
+  - the author's remark, verbatim.
+
+**The sources, read and cited by page** (`docs/refs/`):
+- **Whitehead & Clift 2009, p. 3**: ~38 km stable crust, ~35 km at sea level (seismic); ρc 2 800, ρm 3 300; 42.5 km →
+  ~1.5 km, 58 km → ~3.8 km. **p. 7**: ρw 1 030.
+- **Lachenbruch & Morgan 1990, p. 42, eq. (4)–(7)**: the ridge at −2.5 km as the reference column (ρa 3.2, ρl 2.8,
+  L 5.5 km, ρw 1.0).
+- **Talling et al. 1997, p. 276**: Hovius's W/S 1.91–2.23 over 11 orogens.
+
+**The reviewer's errors** (the papers prevail):
+1. **Whitehead's three numbers are not one Airy line**: 42.5 → 1.5 km puts sea level at 32.6 km, so 35 km → +0.36 km
+   and 38 km → +0.82 km. « 38 km → +0.45 km » follows neither reading. The anchor was taken at the brief's central
+   +0.45 km, ±0.2 km measured.
+2. **L&M's −2.5 km ridge is a lithosphere column** over a 3.2 asthenosphere. A crust-only Airy puts it at −5.84 km, so
+   it cannot anchor the continents' function; it is reported as a check.
+3. « Whitehead 2009 » is Whitehead **and Clift** 2009.
+4. Hovius / Talling: confirmed.
+
+**A — the inventory**:
+- **C1's ramp**: a field-percentile datum → 5 650 m at S̃ = 2, a σ = 0.5 blur, Stein-Stein over the oceanic cells. It
+  crosses sea level near **S̃ ≈ 0.3** on the témoin.
+- **`age` is never incremented**, so no thermal subsidence.
+- **Only C1's erosion closure reads h** (its slopes), and the sources' drive excludes it. So the cascade-only
+  correction does not approximate the drive.
+- **The inventory of s**: 76–186 oceanic cells per seed end with S̃ > 0.915 (C1's « phantom oceanic advective
+  spike »). **Main**: oceanic-plate cells read at S̃ = 0.2. **Variant**: every cell by its own s.
+
+**B — `history::Airy`**:
+- e = 5.303 · S̃ − 4.853 km above sea level, water-loaded below (× 3300/2270); continuous and monotone; the sea at
+  S̃ = 0.915; **sea level 0 m absolute**.
+- S̃ = 2 → +5.75 km (inside 5–6.5); the cratons (1.25) → +1.78 km; S̃ = 0.2 → −5.51 km.
+- **The negative control** (permanent): `Mapping::C1` is F166's record bit for bit.
+- **T = 5.62 Myr** fixed.
+
+**C — the measures** (256²; Europe plain 51.6 / plateau 4.7 / hill 18.9 / mountain 24.8):
+
+| seed | F166 mountain | **F167**: plain / plateau / hill / mountain | peak | cratons p50 | land lost |
+|---|---|---|---|---|---|
+| témoin | 61.3 | 0.0 / 0.0 / 25.6 / **74.4** | 2 670 m | 1 165 m | 2.0 % |
+| 42 | 28.5 | 0.9 / 0.4 / 45.3 / **53.3** | 3 004 m | 367 m | 1.9 % |
+| 1 | 63.9 | 0.0 / 0.0 / 22.4 / **77.6** | 4 195 m | 921 m | 1.0 % |
+| 9 | 55.9 | 0.3 / 5.6 / 23.1 / **70.9** | 4 182 m | 858 m | 1.7 % |
+
+- **The decoupling**: the main is identical on 3 seeds (0 cells), and 0.28 % on seed 9; « own s » 4–14 %.
+- **« Own s » adds 3 800–5 800 phantom-island cells** (+32 to +62 % land): the substitution keeps the ocean an ocean.
+- **The anchor ±0.2 km**: ±1–10 points of mountain, < 1 % of land.
+- **At 2 048²**:
+  - the mountain-class slopes stay Corsica's;
+  - the facets fail in the mountain class on 3 / 4;
+  - the coast is degraded against F166 on seed 42.
+- **The mountain class decomposed**: Davis-Suppe zones 50–81 %, cratons 5–10 %, arcs 0–2 %, the rest 14–41 %.
+
+**The regularity baseline** (F164, F166, F167 against Corsica at 391 / 195 m):
+- **More regular than Corsica**:
+  - the confluence angles' spread, σ_θ 22–25° against 27–30° (both cells);
+  - the gullies' parallelism at 391 m, R2_g 0.50–0.65 against 0.48 (equal at 195 m);
+  - the tributaries' lengths under the sources' drive, CV_L 0.73–0.78 against 0.87–0.92.
+- **Not more regular**: the valley spacing (CV_λ ≈ Corsica's), and the basins' shape.
+- **Hovius's R** (per basin, A ≥ 25 km²): F167 2.14–2.53, F166 1.91–2.42, F164 1.47–1.95; Corsica 2.34 (2.33–2.55),
+  near Hovius's 1.91–2.23.
+
+**R**:
+- **Macro success 0 / 4.**
+- **The « mountains above 37.2 % » stop (4 / 4): decomposed, stopped.** The land-lost stop does not fire.
+
+**The reading** (hypotheses to check):
+- **The mountains are C1's Davis-Suppe wedge.** It is wide (l_taper 25 km, l_decay 37 km, reach 30 cells = 187 km) and
+  thickens most of each small continent.
+- Airy's land slope (5.3 km per S̃) is ~1.5× C1's (~3.5), so the same Σ Δs makes more relief.
+- Lowering S̃ = 1 to 0.45 km does not make plains, because the continents are not left at S̃ ≈ 1.
+- **What C1 (b) would have to give**: a wedge confined to the margins, collisions, normal crust left normal.
+
+**Predictions**:
+- **The reviewer's**:
+  - held: R4, R5 on 3 / 4 (seed 9 −22 %), R7, meta;
+  - refuted: R1 (3 / 4 exact, seed 9 0.28 %), R2, R3, R6 (the cratons > 1 km on 1 / 4; the plateaus on 1 seed).
+- **Mine**:
+  - held: R1 on « own s » refuted, R6's plateaus, R7, no macro success, the regularity on σ_θ / R2_g, the cost, meta;
+  - refuted: the sharp land loss (15–35 %; measured 1–2 %), R2 holding, R3 on ≥ 2, R5's 20–40 % drop, the cratons
+    above 1 km.
+
+**Cost** (CPU):
+- the Airy record 0.2–0.3 s;
+- the physics level 9–15 s;
+- a frozen chain ~170–235 s CPU (~30 s wall).
+
+**Open, for the author** (nothing chosen):
+- (a) C1 (b): the wedge's extent, the collisions, and the mapping in production;
+- (b) whether F168 (the sea-level rise) still comes next, now that little land sits near zero;
+- (c) F169's K against the regularity baseline;
+- (d) the facets.
+
+**At commit (2026-10-10), decided (the reviewer's proposals, not contested by the author)**:
+- **The Airy mapping with the sea at 0 m absolute becomes the cascade's default** (the oceanic plates read at
+  S̃ = 0.2). Production is unchanged.
+- **The reviewer's errors, recorded** (above):
+  - Whitehead & Clift's numbers are not one Airy line;
+  - Lachenbruch & Morgan's ridge is a lithosphere column;
+  - the paper is Whitehead **and Clift** 2009.
+- **Seed 9's plateaus are craton blocks** (the reviewer's reading, a hypothesis to check): the 5.6 % of plateau sits on
+  the 1.78 km craton shields, flat 64² blocks under Airy.
+- **The queue**:
+  - F168 = the land's size (C1 (b), part 1); F169 = the sea-level rise; F170 = the heterogeneous K;
+  - then the rest of C1 (b): the wedge's reach if it is still at fault, the collisions, the switch in production;
+  - the facets and walls, the map-border rim, the coasts, the warp's depressions, the river width, the deposition,
+    the alignment, the lakes, K per rock, the resources.
+- **The reviewer's hypothesis for F168** (to check): our continents are islands, 18–29 % of the map against ~58 % in
+  the European window. With Corsica-like slopes a single 3 km range is ~85 km wide in mountain class, so on 30 000 km²
+  of land one range is a quarter of it.
+
+**The author's decisions for F168, verbatim**:
+- « Tant qu'on peut assurer de la mer tout autour, pourquoi pas. »
+- « On applique déjà un offset dans le viz pour centrer le continent et qu'on ait un chemin qui permet de faire le tour
+  du continent par la mer. Ainsi, globalement on obtient toujours une ile à la fin. Par contre le % de terre vs mer peut
+  être variable. Ce n'est pas pareil que de dire qu'on a aucune terre qui touche le bord de la carte. Toutes les seeds
+  témoins sont dans le cas: devient une ile lorsqu'un offset est appliqué car on peut en faire le tour. »

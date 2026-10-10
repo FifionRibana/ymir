@@ -445,9 +445,121 @@ pub fn coast(land: &[bool], w: usize, h: usize, block: usize) -> Coast {
     }
 }
 
+/// ADR Finding 167-C -- Hovius's spacing ratio on the mountain fronts (Hovius 1996, via Talling et al. 1997 eq. 1,
+/// R = W/S), read per transverse basin (amended at its control): an outlet is a cell of the `mountain` class whose D8
+/// receiver lies outside it; each mountain cell belongs to the outlet it drains to; for each outlet whose basin (inside
+/// the class) covers ≥ `a_min_km2`, L = the largest distance from the outlet to a cell of its basin (the half-width W for
+/// a transverse basin) and S = A / L (its width along the front, the outlet spacing); R = the mean of L / S = L² / A.
+#[derive(Clone, Debug, Default)]
+pub struct Hovius {
+    pub ratio: f32,
+    pub outlets: usize,
+    /// The means of S and W (km).
+    pub spacing_km: f32,
+    pub half_width_km: f32,
+}
+
+/// [`Hovius`] on a field in metres and its mountain mask.
+pub fn hovius(z: &crate::grid::GridF32, mountain: &[bool], cell_km: f32, a_min_km2: f32) -> Hovius {
+    use crate::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let n = z.width;
+    let hy = super::hydro::hydrology(z, cell_km);
+    let recv = |k: usize| -> Option<usize> {
+        let d = hy.dir[k];
+        if d == DIR_NONE {
+            return None;
+        }
+        let (x, y) = ((k % n) as i64 + D8_DX[d as usize] as i64, (k / n) as i64 + D8_DY[d as usize] as i64);
+        (x >= 0 && y >= 0 && x < n as i64 && y < n as i64).then(|| y as usize * n + x as usize)
+    };
+    // the outlet each mountain cell drains to (u32::MAX: none), memoised along the D8 paths
+    const NONE: u32 = u32::MAX;
+    const TODO: u32 = u32::MAX - 1;
+    let mut lab = vec![TODO; n * n];
+    for k in 0..n * n {
+        if !mountain[k] {
+            lab[k] = NONE;
+        }
+    }
+    let mut path = Vec::new();
+    for s in 0..n * n {
+        if lab[s] != TODO {
+            continue;
+        }
+        path.clear();
+        let mut cur = s;
+        let res = loop {
+            if lab[cur] != TODO {
+                break lab[cur];
+            }
+            path.push(cur);
+            match recv(cur) {
+                Some(r) if mountain[r] => cur = r,
+                Some(_) => break cur as u32,
+                None => break NONE,
+            }
+        };
+        for &c in &path {
+            lab[c] = res;
+        }
+    }
+    let mut basins: std::collections::HashMap<u32, (usize, f32)> = std::collections::HashMap::new();
+    for k in 0..n * n {
+        let o = lab[k];
+        if o == NONE || o == TODO {
+            continue;
+        }
+        let (ox, oy) = ((o as usize % n) as f32, (o as usize / n) as f32);
+        let d = (((k % n) as f32 - ox).powi(2) + ((k / n) as f32 - oy).powi(2)).sqrt() + 0.5;
+        let e = basins.entry(o).or_insert((0, 0.0));
+        e.0 += 1;
+        e.1 = e.1.max(d);
+    }
+    let c2 = cell_km * cell_km;
+    let rows: Vec<(f32, f32)> = basins
+        .values()
+        .filter(|(cells, _)| *cells as f32 * c2 >= a_min_km2)
+        .map(|(cells, l)| (*cells as f32 * c2, l * cell_km))
+        .collect();
+    if rows.is_empty() {
+        return Hovius { ratio: f32::NAN, ..Default::default() };
+    }
+    let m = rows.len() as f32;
+    Hovius {
+        ratio: rows.iter().map(|(a, l)| l * l / a).sum::<f32>() / m,
+        outlets: rows.len(),
+        spacing_km: rows.iter().map(|(a, l)| a / l).sum::<f32>() / m,
+        half_width_km: rows.iter().map(|(_, l)| *l).sum::<f32>() / m,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Hovius's ratio on a synthetic range: a ridge of half-width 24 cells with transverse V valleys every 12 cells,
+    /// draining both flanks to the sea, reads R ≈ W/S = 2 (within ±35 %, the front's ends and the D8 staircase).
+    #[test]
+    fn hovius_reads_a_synthetic_range() {
+        let (n, c) = (256usize, 0.2f32);
+        let mut z = crate::grid::GridF32::new(n, n, -50.0);
+        let mut m = vec![false; n * n];
+        for y in 0..n {
+            for x in 16..240 {
+                let d = (y as f32 - 128.0).abs();
+                if d > 24.0 {
+                    continue;
+                }
+                let k = y * n + x;
+                let v = ((x % 12) as f32 - 6.0).abs();
+                z.data[k] = 10.0 + 40.0 * (24.0 - d) + 30.0 * v;
+                m[k] = true;
+            }
+        }
+        let h = hovius(&z, &m, c, 0.5);
+        assert!(h.outlets > 20, "{h:?}");
+        assert!((h.ratio - 2.0).abs() < 0.7, "{h:?}");
+    }
 
     /// The classifier on synthetic terrain: a flat lowland reads plain, a high flat table plateau, a 2 600 m block
     /// mountain, a rough low terrain hill; the distance transform is exact on a rectangle; a lattice-aligned square

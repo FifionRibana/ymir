@@ -1,0 +1,233 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+    Finished `release` profile [optimized] target(s) in 18.53s
+     Running tests\f167_cascade.rs (target_f167\release\deps\f167_cascade-109aa0b0f17df1a2.exe)
+
+running 1 test
+
+==========  Finding 167 . the thickness → altitude mapping (Airy, absolute sea level), cascade only  ==========
+   the Airy mapping: S̃ = 0.2 → -5.51 km · 0.6 → -2.43 · 1.0 → 0.45 · 1.25 → 1.78 · 1.5 → 3.10 · 2.0 → 5.75 km (the normalised ceiling 5.65 km) · the sea at S̃ = 0.915 · a 5.5 km crust (L&M's ridge column) → -5.84 km
+   Europe                   plain  51.6 % · plateau   4.7 % · hill  18.9 % · mountain  24.8 % · land 5260525 km² · deciles 40/81/117/153/195/262/383/580/889
+   Corse 195 m: mountain-class slope p50/p90 0.318/0.550 · coast Coast { dimension: 1.122932, length_ratio: 1.370949, aligned: 0.27188444, block_index: 0.78062284, edges: 5780 }
+   Corse Hovius (A_min 10 km²): R 2.33 over 73 basins · S 4.21 km · W 9.58 km
+   Corse Hovius (A_min 25 km²): R 2.34 over 34 basins · S 6.05 km · W 14.02 km
+   Corse Hovius (A_min 100 km²): R 2.55 over 12 basins · S 8.56 km · W 21.43 km
+test f167_cascade has been running for over 60 seconds
+   the Airy record's cost per C1 run: 0.2 s CPU / 0.2 s wall · 0.3 s CPU / 0.3 s wall · 0.3 s CPU / 0.3 s wall · 0.3 s CPU / 0.2 s wall
+
+   C — 256² (Europe: plain 51.6 · plateau 4.7 · hill 18.9 · mountain 24.8):
+   ── seed 10481999410520546993:
+   F164 (steady)            plain   8.7 % · plateau   0.0 % · hill  48.5 % · mountain  42.8 % · land 28306 km² · deciles 9/36/83/144/228/335/483/696/1040
+      F164 (steady)        peak 2863 m · cratons' land p50 586 m (912 cells) · land lost 0.0 % · gained 0.0 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 72 cells · lakes 14 / 2458 km² · 6.2 s CPU / 7.0 s wall
+   F166 (C1 mapping)        plain   1.0 % · plateau   0.0 % · hill  37.7 % · mountain  61.3 % · land 32937 km² · deciles 82/150/224/313/418/561/751/989/1276
+      F166 (C1 mapping)    peak 2704 m · cratons' land p50 832 m (912 cells) · land lost 0.0 % · gained 16.4 % vs F164 · interior ≤ 0 m 0.03 % · land on oceanic plate 540 cells · lakes 2 / 88 km² · 11.5 s CPU / 8.7 s wall
+   F167 (Airy)              plain   0.0 % · plateau   0.0 % · hill  25.6 % · mountain  74.4 % · land 31091 km² · deciles 150/248/342/443/563/706/870/1068/1342
+      F167 (Airy)          peak 2670 m · cratons' land p50 1165 m (912 cells) · land lost 2.0 % · gained 11.9 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 460 cells · lakes 3 / 51 km² · 9.2 s CPU / 6.7 s wall
+   F167 − EH                plain   0.0 % · plateau   0.0 % · hill  25.6 % · mountain  74.4 % · land 31091 km² · deciles 150/248/342/443/563/706/870/1068/1342
+      F167 − EH            peak 2670 m · cratons' land p50 1165 m (912 cells) · land lost 2.0 % · gained 11.9 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 460 cells · lakes 3 / 51 km² · 10.2 s CPU / 6.4 s wall
+   F167 own s               plain   0.0 % · plateau   0.1 % · hill  21.8 % · mountain  78.0 % · land 39880 km² · deciles 163/279/395/528/702/894/1108/1310/1583
+      F167 own s           peak 4022 m · cratons' land p50 1331 m (912 cells) · land lost 1.7 % · gained 42.6 % vs F164 · interior ≤ 0 m 0.01 % · land on oceanic plate 3850 cells · lakes 7 / 1570 km² · 10.4 s CPU / 7.5 s wall
+   F167 own s − EH          plain   4.6 % · plateau   1.8 % · hill  21.7 % · mountain  71.9 % · land 45601 km² · deciles 95/223/344/472/631/852/1164/1461/1727
+      F167 own s − EH      peak 3904 m · cratons' land p50 1481 m (912 cells) · land lost 1.6 % · gained 62.8 % vs F164 · interior ≤ 0 m 0.07 % · land on oceanic plate 6173 cells · lakes 9 / 2268 km² · 11.6 s CPU / 8.4 s wall
+   anchor 0.25 km           plain   0.0 % · plateau   0.1 % · hill  27.0 % · mountain  72.9 % · land 30725 km² · deciles 141/237/328/427/551/694/847/1016/1273
+      anchor 0.25 km       peak 2643 m · cratons' land p50 1106 m (912 cells) · land lost 2.3 % · gained 10.9 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 397 cells · lakes 2 / 59 km² · 9.0 s CPU / 7.0 s wall
+   anchor 0.65 km           plain   0.0 % · plateau   0.0 % · hill  23.9 % · mountain  76.1 % · land 31460 km² · deciles 158/262/360/465/588/735/907/1119/1403
+      anchor 0.65 km       peak 2916 m · cratons' land p50 1186 m (912 cells) · land lost 1.9 % · gained 13.0 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 512 cells · lakes 1 / 22 km² · 9.3 s CPU / 6.5 s wall
+      decoupling (main): sources vs sources − EH differ on 0 land cells = 0.000 % of the land → IDENTICAL within 0.1 %
+      decoupling (own s): sources vs sources − EH differ on 2367 land cells = 14.489 % of the land → NOT within 0.1 %
+   ── seed 42:
+   F164 (steady)            plain  30.6 % · plateau   0.0 % · hill  57.7 % · mountain  11.6 % · land 36101 km² · deciles 2/7/18/34/56/88/132/203/332
+      F164 (steady)        peak 1815 m · cratons' land p50 136 m (1216 cells) · land lost 0.0 % · gained 0.0 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 108 cells · lakes 11 / 3835 km² · 4.9 s CPU / 4.9 s wall
+   F166 (C1 mapping)        plain  10.7 % · plateau   0.0 % · hill  60.7 % · mountain  28.5 % · land 39470 km² · deciles 20/45/74/109/151/207/288/410/620
+      F166 (C1 mapping)    peak 3262 m · cratons' land p50 70 m (1135 cells) · land lost 4.5 % · gained 20.2 % vs F164 · interior ≤ 0 m 5.52 % · land on oceanic plate 699 cells · lakes 4 / 208 km² · 12.6 s CPU / 8.3 s wall
+   F167 (Airy)              plain   0.9 % · plateau   0.4 % · hill  45.3 % · mountain  53.3 % · land 42207 km² · deciles 79/138/198/262/331/411/508/644/937
+      F167 (Airy)          peak 3004 m · cratons' land p50 367 m (1199 cells) · land lost 1.9 % · gained 18.8 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 408 cells · lakes 2 / 24 km² · 11.7 s CPU / 8.5 s wall
+   F167 − EH                plain   0.9 % · plateau   0.4 % · hill  45.3 % · mountain  53.3 % · land 42207 km² · deciles 79/138/198/262/331/411/508/644/937
+      F167 − EH            peak 3004 m · cratons' land p50 367 m (1199 cells) · land lost 1.9 % · gained 18.8 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 408 cells · lakes 2 / 24 km² · 10.4 s CPU / 8.1 s wall
+   F167 own s               plain   0.1 % · plateau   0.0 % · hill  26.3 % · mountain  73.6 % · land 56731 km² · deciles 135/236/336/435/536/652/793/1001/1419
+      F167 own s           peak 4052 m · cratons' land p50 568 m (1254 cells) · land lost 0.8 % · gained 61.5 % vs F164 · interior ≤ 0 m 2.18 % · land on oceanic plate 5837 cells · lakes 4 / 56 km² · 10.8 s CPU / 8.5 s wall
+   F167 own s − EH          plain   0.2 % · plateau   0.0 % · hill  27.5 % · mountain  72.3 % · land 59131 km² · deciles 128/227/322/419/523/639/786/995/1408
+      F167 own s − EH      peak 4077 m · cratons' land p50 655 m (1285 cells) · land lost 0.8 % · gained 68.1 % vs F164 · interior ≤ 0 m 2.15 % · land on oceanic plate 6684 cells · lakes 2 / 56 km² · 11.4 s CPU / 9.2 s wall
+   anchor 0.25 km           plain   2.0 % · plateau   0.6 % · hill  49.1 % · mountain  48.3 % · land 41719 km² · deciles 71/125/179/238/301/375/464/593/881
+      anchor 0.25 km       peak 2907 m · cratons' land p50 353 m (1188 cells) · land lost 2.4 % · gained 17.9 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 358 cells · lakes 2 / 32 km² · 10.3 s CPU / 7.8 s wall
+   anchor 0.65 km           plain   0.4 % · plateau   0.1 % · hill  42.5 % · mountain  57.0 % · land 42615 km² · deciles 88/152/215/283/358/440/539/689/1007
+      anchor 0.65 km       peak 3183 m · cratons' land p50 395 m (1207 cells) · land lost 1.6 % · gained 19.6 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 452 cells · lakes 0 / 0 km² · 11.6 s CPU / 7.7 s wall
+      decoupling (main): sources vs sources − EH differ on 0 land cells = 0.000 % of the land → IDENTICAL within 0.1 %
+      decoupling (own s): sources vs sources − EH differ on 1026 land cells = 4.319 % of the land → NOT within 0.1 %
+   ── seed 1:
+   F164 (steady)            plain  36.3 % · plateau   0.0 % · hill  50.5 % · mountain  13.2 % · land 40833 km² · deciles 3/11/23/39/62/93/140/218/359
+      F164 (steady)        peak 2498 m · cratons' land p50 173 m (799 cells) · land lost 0.0 % · gained 0.0 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 93 cells · lakes 12 / 4124 km² · 5.7 s CPU / 5.7 s wall
+   F166 (C1 mapping)        plain   1.6 % · plateau   0.0 % · hill  34.5 % · mountain  63.9 % · land 47778 km² · deciles 91/156/240/345/477/652/916/1362/2011
+      F166 (C1 mapping)    peak 4301 m · cratons' land p50 455 m (900 cells) · land lost 0.0 % · gained 17.1 % vs F164 · interior ≤ 0 m 0.12 % · land on oceanic plate 889 cells · lakes 5 / 876 km² · 12.4 s CPU / 8.5 s wall
+   F167 (Airy)              plain   0.0 % · plateau   0.0 % · hill  22.4 % · mountain  77.6 % · land 45562 km² · deciles 162/273/395/549/756/1035/1340/1688/2062
+      F167 (Airy)          peak 4195 m · cratons' land p50 921 m (850 cells) · land lost 1.0 % · gained 12.6 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 563 cells · lakes 1 / 27 km² · 11.5 s CPU / 7.8 s wall
+   F167 − EH                plain   0.0 % · plateau   0.0 % · hill  22.4 % · mountain  77.6 % · land 45562 km² · deciles 162/273/395/549/756/1035/1340/1688/2062
+      F167 − EH            peak 4195 m · cratons' land p50 921 m (850 cells) · land lost 1.0 % · gained 12.6 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 563 cells · lakes 1 / 27 km² · 11.6 s CPU / 7.7 s wall
+   F167 own s               plain   0.1 % · plateau   0.0 % · hill  21.3 % · mountain  78.6 % · land 54338 km² · deciles 165/283/407/553/745/1001/1347/1729/2172
+      F167 own s           peak 4326 m · cratons' land p50 1370 m (905 cells) · land lost 0.9 % · gained 34.0 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 3833 cells · lakes 3 / 81 km² · 13.8 s CPU / 8.8 s wall
+   F167 own s − EH          plain   0.5 % · plateau   0.0 % · hill  23.5 % · mountain  76.0 % · land 57710 km² · deciles 140/255/370/506/681/928/1273/1674/2157
+      F167 own s − EH      peak 4853 m · cratons' land p50 1234 m (923 cells) · land lost 0.9 % · gained 42.3 % vs F164 · interior ≤ 0 m 0.10 % · land on oceanic plate 5118 cells · lakes 2 / 59 km² · 13.3 s CPU / 9.1 s wall
+   anchor 0.25 km           plain   0.1 % · plateau   0.0 % · hill  23.5 % · mountain  76.5 % · land 45117 km² · deciles 151/258/380/535/738/985/1236/1541/1903
+      anchor 0.25 km       peak 4136 m · cratons' land p50 945 m (842 cells) · land lost 1.3 % · gained 11.8 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 494 cells · lakes 1 / 39 km² · 11.5 s CPU / 7.5 s wall
+   anchor 0.65 km           plain   0.0 % · plateau   0.2 % · hill  20.9 % · mountain  78.8 % · land 46025 km² · deciles 173/289/407/549/744/1020/1355/1784/2249
+      anchor 0.65 km       peak 4437 m · cratons' land p50 877 m (859 cells) · land lost 0.8 % · gained 13.6 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 625 cells · lakes 0 / 0 km² · 13.8 s CPU / 7.7 s wall
+      decoupling (main): sources vs sources − EH differ on 0 land cells = 0.000 % of the land → IDENTICAL within 0.1 %
+      decoupling (own s): sources vs sources − EH differ on 1421 land cells = 6.384 % of the land → NOT within 0.1 %
+   ── seed 9:
+   F164 (steady)            plain  38.9 % · plateau   0.0 % · hill  44.0 % · mountain  17.1 % · land 45879 km² · deciles 3/10/23/41/65/103/163/271/444
+      F164 (steady)        peak 2545 m · cratons' land p50 130 m (1725 cells) · land lost 0.0 % · gained 0.0 % vs F164 · interior ≤ 0 m 0.00 % · land on oceanic plate 171 cells · lakes 12 / 1755 km² · 13.0 s CPU / 13.0 s wall
+   F166 (C1 mapping)        plain   4.8 % · plateau   0.0 % · hill  39.3 % · mountain  55.9 % · land 49873 km² · deciles 58/114/182/265/363/492/671/971/1678
+      F166 (C1 mapping)    peak 5365 m · cratons' land p50 470 m (1674 cells) · land lost 3.8 % · gained 12.9 % vs F164 · interior ≤ 0 m 0.33 % · land on oceanic plate 617 cells · lakes 17 / 4026 km² · 11.1 s CPU / 8.6 s wall
+   F167 (Airy)              plain   0.3 % · plateau   5.6 % · hill  23.1 % · mountain  70.9 % · land 51023 km² · deciles 161/271/380/485/599/746/948/1313/1862
+      F167 (Airy)          peak 4182 m · cratons' land p50 858 m (1702 cells) · land lost 1.7 % · gained 12.9 % vs F164 · interior ≤ 0 m 0.06 % · land on oceanic plate 713 cells · lakes 7 / 518 km² · 12.9 s CPU / 8.0 s wall
+   F167 − EH                plain   0.3 % · plateau   5.6 % · hill  23.1 % · mountain  71.0 % · land 51108 km² · deciles 161/271/380/484/600/747/949/1312/1866
+      F167 − EH            peak 4371 m · cratons' land p50 859 m (1702 cells) · land lost 1.6 % · gained 13.0 % vs F164 · interior ≤ 0 m 0.06 % · land on oceanic plate 725 cells · lakes 8 / 586 km² · 11.5 s CPU / 8.3 s wall
+   F167 own s               plain   0.2 % · plateau  10.8 % · hill  23.2 % · mountain  65.8 % · land 60100 km² · deciles 142/260/393/539/707/858/1002/1304/1934
+      F167 own s           peak 4455 m · cratons' land p50 894 m (1698 cells) · land lost 1.5 % · gained 32.5 % vs F164 · interior ≤ 0 m 0.01 % · land on oceanic plate 4306 cells · lakes 7 / 925 km² · 14.5 s CPU / 9.1 s wall
+   F167 own s − EH          plain   2.2 % · plateau  16.5 % · hill  25.1 % · mountain  56.2 % · land 64878 km² · deciles 106/217/339/489/675/910/1089/1754/1915
+      F167 own s − EH      peak 4726 m · cratons' land p50 895 m (1699 cells) · land lost 1.4 % · gained 43.7 % vs F164 · interior ≤ 0 m 0.62 % · land on oceanic plate 6146 cells · lakes 22 / 2930 km² · 15.4 s CPU / 9.5 s wall
+   anchor 0.25 km           plain   0.7 % · plateau   9.4 % · hill  28.4 % · mountain  61.5 % · land 50620 km² · deciles 143/240/341/451/586/772/962/1261/1518
+      anchor 0.25 km       peak 3950 m · cratons' land p50 766 m (1691 cells) · land lost 1.9 % · gained 12.4 % vs F164 · interior ≤ 0 m 0.13 % · land on oceanic plate 657 cells · lakes 12 / 2253 km² · 11.0 s CPU / 8.3 s wall
+   anchor 0.65 km           plain   0.1 % · plateau   5.3 % · hill  20.9 % · mountain  73.7 % · land 51406 km² · deciles 178/293/406/518/633/775/971/1370/2158
+      anchor 0.65 km       peak 4437 m · cratons' land p50 876 m (1711 cells) · land lost 1.4 % · gained 13.5 % vs F164 · interior ≤ 0 m 0.01 % · land on oceanic plate 769 cells · lakes 6 / 435 km² · 13.1 s CPU / 8.0 s wall
+      decoupling (main): sources vs sources − EH differ on 59 land cells = 0.282 % of the land → NOT within 0.1 %
+      decoupling (own s): sources vs sources − EH differ on 2196 land cells = 8.920 % of the land → NOT within 0.1 %
+
+   ── seed 10481999410520546993 at 2048² (195 m) against Corsica:
+      F164 (steady)      whole     17 of 19 within ×1.5 · out: A_dir 0.369/0.206; F 0.091/0.043
+      F164 (steady)      mountain  15 of 19 within ×1.5 · out: facets 16.238/6.746; walls 28° 4.333/2.320; S_5 − 1 0.167/0.255; A_dir 0.401/0.200
+      F164 (steady)      slope guard: peak 2983 m · mountain-class slope p50/p90 0.378/0.515 (Corsica 0.318/0.550)
+      F164 (steady)      F by class: plain 58.10 % · plateau 0.00 % · hill 11.41 % · mountain 0.64 %
+      F164 (steady)      coast Coast { dimension: 1.0079554, length_ratio: 0.9516129, aligned: 0.2891593, block_index: 2.8069508, edges: 8402 }
+      F166 (C1 mapping)  whole     17 of 19 within ×1.5 · out: octave 6.25–12.50 km 101.661/159.805; A_dir 0.388/0.206
+      F166 (C1 mapping)  mountain  15 of 19 within ×1.5 · out: facets 12.794/6.746; walls 28° 3.649/2.320; octave 6.25–12.50 km 129.953/200.536; A_dir 0.396/0.200
+      F166 (C1 mapping)  slope guard: peak 2929 m · mountain-class slope p50/p90 0.344/0.508 (Corsica 0.318/0.550)
+      F166 (C1 mapping)  F by class: plain 34.01 % · plateau 0.00 % · hill 7.48 % · mountain 0.71 %
+      F166 (C1 mapping)  coast Coast { dimension: 1.0168701, length_ratio: 1.015625, aligned: 0.27612087, block_index: 0.32239193, edges: 6154 }
+      F167 (Airy)        whole     15 of 19 within ×1.5 · out: octave 6.25–12.50 km 102.650/159.805; S_2 − 1 0.114/0.172; A_dir 0.404/0.206; F 0.018/0.043
+      F167 (Airy)        mountain  15 of 19 within ×1.5 · out: facets 11.352/6.746; octave 6.25–12.50 km 119.214/200.536; S_5 − 1 0.166/0.255; A_dir 0.407/0.200
+      F167 (Airy)        slope guard: peak 2870 m · mountain-class slope p50/p90 0.324/0.500 (Corsica 0.318/0.550)
+      F167 (Airy)        F by class: plain 0.00 % · plateau 0.00 % · hill 4.56 % · mountain 0.79 %
+      F167 (Airy)        coast Coast { dimension: 0.99148554, length_ratio: 0.9417135, aligned: 0.26660076, block_index: 0.5116279, edges: 6192 }
+      SUCCESS test (F167): mountain 74.4 % false · plain + plateau 0.0 % false · land lost 2.0 % true · coast degraded vs F166 none → no
+      the mountain class (256²) decomposed: cratons 9.5 % · Davis-Suppe zones (Σ Δs > 0.05) 76.1 % · arcs 0.0 % · the rest 14.4 %
+
+   ── seed 42 at 2048² (195 m) against Corsica:
+      F164 (steady)      whole     12 of 19 within ×1.5 · out: slope p50 0.070/0.247; slope p90 0.311/0.501; octave 1.56–3.12 km 29.834/62.883; octave 3.12–6.25 km 38.260/100.862; octave 6.25–12.50 km 60.147/159.805; A_dir 0.346/0.206; F 0.198/0.043
+      F164 (steady)      mountain  13 of 19 within ×1.5 · out: octave 0.39–0.78 km 38.168/19.227; octave 0.78–1.56 km 73.639/43.222; S_2 − 1 0.100/0.175; S_10 − 1 NaN/0.289; A_dir 0.513/0.200; F 0.014/0.006
+      F164 (steady)      slope guard: peak 1716 m · mountain-class slope p50/p90 0.314/0.487 (Corsica 0.318/0.550)
+      F164 (steady)      F by class: plain 41.45 % · plateau 0.00 % · hill 15.39 % · mountain 1.39 %
+      F164 (steady)      coast Coast { dimension: 1.0135347, length_ratio: 0.97836536, aligned: 0.40507516, block_index: 6.3201447, edges: 15468 }
+      F166 (C1 mapping)  whole     14 of 19 within ×1.5 · out: slope p50 0.122/0.247; octave 3.12–6.25 km 58.952/100.862; octave 6.25–12.50 km 95.992/159.805; A_dir 0.378/0.206; F 0.123/0.043
+      F166 (C1 mapping)  mountain  13 of 19 within ×1.5 · out: facets 10.591/6.746; octave 0.39–0.78 km 35.063/19.227; octave 0.78–1.56 km 66.312/43.222; S_5 − 1 0.168/0.255; A_dir 0.411/0.200; F 0.012/0.006
+      F166 (C1 mapping)  slope guard: peak 2625 m · mountain-class slope p50/p90 0.326/0.497 (Corsica 0.318/0.550)
+      F166 (C1 mapping)  F by class: plain 39.44 % · plateau 10.42 % · hill 12.10 % · mountain 1.18 %
+      F166 (C1 mapping)  coast Coast { dimension: 1.0690705, length_ratio: 1.1420853, aligned: 0.40445417, block_index: 4.4531093, edges: 17850 }
+      F167 (Airy)        whole     15 of 19 within ×1.5 · out: octave 3.12–6.25 km 65.643/100.862; octave 6.25–12.50 km 93.746/159.805; S_2 − 1 0.114/0.172; A_dir 0.389/0.206
+      F167 (Airy)        mountain  14 of 19 within ×1.5 · out: octave 6.25–12.50 km 128.397/200.536; S_2 − 1 0.114/0.175; S_5 − 1 0.163/0.255; A_dir 0.411/0.200; F 0.016/0.006
+      F167 (Airy)        slope guard: peak 3079 m · mountain-class slope p50/p90 0.291/0.483 (Corsica 0.318/0.550)
+      F167 (Airy)        F by class: plain 27.14 % · plateau 11.61 % · hill 8.98 % · mountain 1.56 %
+      F167 (Airy)        coast Coast { dimension: 1.0160985, length_ratio: 1.0072188, aligned: 0.43982747, block_index: 6.5467744, edges: 12122 }
+      SUCCESS test (F167): mountain 53.3 % false · plain + plateau 1.3 % false · land lost 1.9 % true · coast degraded vs F166 length ratio, block index → no
+      the mountain class (256²) decomposed: cratons 7.6 % · Davis-Suppe zones (Σ Δs > 0.05) 49.6 % · arcs 2.0 % · the rest 40.7 %
+
+   ── seed 1 at 2048² (195 m) against Corsica:
+      F164 (steady)      whole     12 of 19 within ×1.5 · out: slope p50 0.067/0.247; slope p90 0.296/0.501; octave 1.56–3.12 km 29.027/62.883; octave 3.12–6.25 km 37.982/100.862; octave 6.25–12.50 km 53.159/159.805; A_dir 0.338/0.206; F 0.203/0.043
+      F164 (steady)      mountain  12 of 19 within ×1.5 · out: octave 0.39–0.78 km 37.085/19.227; octave 0.78–1.56 km 68.426/43.222; S_2 − 1 0.114/0.175; S_5 − 1 0.151/0.255; S_10 − 1 0.174/0.289; A_dir 0.447/0.200; F 0.017/0.006
+      F164 (steady)      slope guard: peak 2421 m · mountain-class slope p50/p90 0.290/0.463 (Corsica 0.318/0.550)
+      F164 (steady)      F by class: plain 37.46 % · plateau 0.00 % · hill 15.09 % · mountain 1.70 %
+      F164 (steady)      coast Coast { dimension: 1.0280129, length_ratio: 0.96443206, aligned: 0.385054, block_index: 6.020731, edges: 14664 }
+      F166 (C1 mapping)  whole     15 of 19 within ×1.5 · out: facets 11.230/6.241; walls 28° 3.146/1.547; octave 0.39–0.78 km 24.434/15.322; A_dir 0.386/0.206
+      F166 (C1 mapping)  mountain  15 of 19 within ×1.5 · out: facets 16.466/6.746; walls 28° 4.866/2.320; octave 0.39–0.78 km 30.534/19.227; A_dir 0.380/0.200
+      F166 (C1 mapping)  slope guard: peak 4961 m · mountain-class slope p50/p90 0.381/0.522 (Corsica 0.318/0.550)
+      F166 (C1 mapping)  F by class: plain 24.70 % · plateau 0.00 % · hill 8.50 % · mountain 0.71 %
+      F166 (C1 mapping)  coast Coast { dimension: 1.0216076, length_ratio: 1.03125, aligned: 0.42567188, block_index: 5.405866, edges: 12206 }
+      F167 (Airy)        whole     14 of 19 within ×1.5 · out: facets 13.548/6.241; walls 28° 3.703/1.547; octave 0.39–0.78 km 23.452/15.322; A_dir 0.394/0.206; F 0.015/0.043
+      F167 (Airy)        mountain  16 of 19 within ×1.5 · out: facets 16.878/6.746; walls 28° 4.724/2.320; A_dir 0.385/0.200
+      F167 (Airy)        slope guard: peak 4545 m · mountain-class slope p50/p90 0.385/0.522 (Corsica 0.318/0.550)
+      F167 (Airy)        F by class: plain 1.44 % · plateau 0.78 % · hill 4.69 % · mountain 0.51 %
+      F167 (Airy)        coast Coast { dimension: 0.99669796, length_ratio: 0.9546642, aligned: 0.40714264, block_index: 5.7938566, edges: 11720 }
+      SUCCESS test (F167): mountain 77.6 % false · plain + plateau 0.0 % false · land lost 1.0 % true · coast degraded vs F166 none → no
+      the mountain class (256²) decomposed: cratons 5.1 % · Davis-Suppe zones (Σ Δs > 0.05) 80.6 % · arcs 0.0 % · the rest 14.3 %
+
+   ── seed 9 at 2048² (195 m) against Corsica:
+      F164 (steady)      whole     12 of 19 within ×1.5 · out: slope p50 0.068/0.247; slope p90 0.314/0.501; octave 1.56–3.12 km 34.404/62.883; octave 3.12–6.25 km 46.687/100.862; octave 6.25–12.50 km 69.921/159.805; A_dir 0.321/0.206; F 0.206/0.043
+      F164 (steady)      mountain  13 of 19 within ×1.5 · out: octave 0.39–0.78 km 37.523/19.227; octave 0.78–1.56 km 66.403/43.222; S_2 − 1 0.110/0.175; S_5 − 1 0.159/0.255; A_dir 0.427/0.200; F 0.023/0.006
+      F164 (steady)      slope guard: peak 2731 m · mountain-class slope p50/p90 0.270/0.469 (Corsica 0.318/0.550)
+      F164 (steady)      F by class: plain 38.02 % · plateau 3.12 % · hill 15.02 % · mountain 2.27 %
+      F164 (steady)      coast Coast { dimension: 1.04647, length_ratio: 1.0308285, aligned: 0.4717302, block_index: 8.220655, edges: 19288 }
+      F166 (C1 mapping)  whole     15 of 19 within ×1.5 · out: octave 0.39–0.78 km 31.043/15.322; S_2 − 1 0.113/0.172; A_dir 0.401/0.206; F 0.072/0.043
+      F166 (C1 mapping)  mountain  12 of 19 within ×1.5 · out: facets 13.490/6.746; walls 28° 3.932/2.320; octave 0.39–0.78 km 41.468/19.227; octave 0.78–1.56 km 67.263/43.222; S_5 − 1 0.166/0.255; A_dir 0.396/0.200; F 0.016/0.006
+      F166 (C1 mapping)  slope guard: peak 5156 m · mountain-class slope p50/p90 0.342/0.515 (Corsica 0.318/0.550)
+      F166 (C1 mapping)  F by class: plain 33.66 % · plateau 0.00 % · hill 11.91 % · mountain 1.63 %
+      F166 (C1 mapping)  coast Coast { dimension: 1.020071, length_ratio: 1.0304145, aligned: 0.59982383, block_index: 12.614187, edges: 13364 }
+      F167 (Airy)        whole     17 of 19 within ×1.5 · out: octave 0.39–0.78 km 24.899/15.322; A_dir 0.392/0.206
+      F167 (Airy)        mountain  15 of 19 within ×1.5 · out: facets 10.797/6.746; octave 0.39–0.78 km 29.617/19.227; A_dir 0.388/0.200; F 0.014/0.006
+      F167 (Airy)        slope guard: peak 4171 m · mountain-class slope p50/p90 0.305/0.498 (Corsica 0.318/0.550)
+      F167 (Airy)        F by class: plain 27.91 % · plateau 15.02 % · hill 7.37 % · mountain 1.39 %
+      F167 (Airy)        coast Coast { dimension: 1.013315, length_ratio: 1.0005068, aligned: 0.5910836, block_index: 13.0653515, edges: 12976 }
+      SUCCESS test (F167): mountain 70.9 % false · plain + plateau 5.9 % false · land lost 1.7 % true · coast degraded vs F166 none → no
+      the mountain class (256²) decomposed: cratons 10.3 % · Davis-Suppe zones (Σ Δs > 0.05) 58.4 % · arcs 0.0 % · the rest 31.3 %
+
+   the regularity baseline (Corsica 391 m: CV_λ 0.609 · CV_L 0.869 · θ 62.0° σ 29.9° · R2_g 0.477 | 195 m: CV_λ 0.683 · CV_L 0.915 · θ 71.1° σ 27.4° · R2_g 0.473):
+   seed 10481999410520546993 F164 (steady)      391 m: CV_λ 0.656 · CV_L 0.845 · θ 59.8° σ 22.2° · R2_g 0.621 | 195 m: CV_λ 0.637 · CV_L 0.843 · θ 66.7° σ 22.7° · R2_g 0.485 | Hovius A ≥ 10: R 2.06 (205 basins, S 4.0 km, W 7.8 km) · A ≥ 25: R 1.95 (96 basins, S 5.5 km, W 10.3 km) · A ≥ 100: R 2.01 (12 basins, S 9.7 km, W 18.6 km)
+   seed 10481999410520546993 F166 (C1 mapping)  391 m: CV_λ 0.614 · CV_L 0.696 · θ 64.0° σ 22.9° · R2_g 0.525 | 195 m: CV_λ 0.608 · CV_L 0.717 · θ 70.1° σ 22.1° · R2_g 0.464 | Hovius A ≥ 10: R 2.08 (280 basins, S 4.2 km, W 8.6 km) · A ≥ 25: R 2.05 (122 basins, S 6.2 km, W 12.5 km) · A ≥ 100: R 2.11 (28 basins, S 11.2 km, W 23.2 km)
+   seed 10481999410520546993 F167 (Airy)        391 m: CV_λ 0.619 · CV_L 0.746 · θ 64.8° σ 23.3° · R2_g 0.515 | 195 m: CV_λ 0.611 · CV_L 0.773 · θ 70.3° σ 22.3° · R2_g 0.452 | Hovius A ≥ 10: R 2.31 (255 basins, S 4.5 km, W 9.9 km) · A ≥ 25: R 2.38 (142 basins, S 6.0 km, W 13.1 km) · A ≥ 100: R 2.06 (27 basins, S 12.9 km, W 25.0 km)
+   seed 42 F164 (steady)      391 m: CV_λ 0.573 · CV_L 0.950 · θ 62.2° σ 23.9° · R2_g 0.630 | 195 m: CV_λ 0.593 · CV_L 0.927 · θ 65.9° σ 24.0° · R2_g 0.478 | Hovius A ≥ 10: R 1.76 (83 basins, S 3.3 km, W 5.5 km) · A ≥ 25: R 1.47 (12 basins, S 5.0 km, W 7.4 km) · A ≥ 100: R NaN (0 basins, S 0.0 km, W 0.0 km)
+   seed 42 F166 (C1 mapping)  391 m: CV_λ 0.600 · CV_L 0.824 · θ 62.8° σ 23.1° · R2_g 0.602 | 195 m: CV_λ 0.613 · CV_L 0.839 · θ 66.1° σ 22.4° · R2_g 0.478 | Hovius A ≥ 10: R 1.98 (199 basins, S 3.6 km, W 6.9 km) · A ≥ 25: R 1.91 (58 basins, S 5.5 km, W 10.4 km) · A ≥ 100: R 2.15 (7 basins, S 9.4 km, W 19.6 km)
+   seed 42 F167 (Airy)        391 m: CV_λ 0.595 · CV_L 0.734 · θ 65.4° σ 23.1° · R2_g 0.503 | 195 m: CV_λ 0.613 · CV_L 0.755 · θ 69.6° σ 22.4° · R2_g 0.447 | Hovius A ≥ 10: R 2.09 (389 basins, S 3.9 km, W 7.9 km) · A ≥ 25: R 2.14 (152 basins, S 5.6 km, W 11.6 km) · A ≥ 100: R 2.37 (25 basins, S 9.9 km, W 22.2 km)
+   seed 1 F164 (steady)      391 m: CV_λ 0.568 · CV_L 0.982 · θ 63.8° σ 23.5° · R2_g 0.631 | 195 m: CV_λ 0.599 · CV_L 0.973 · θ 67.0° σ 23.7° · R2_g 0.479 | Hovius A ≥ 10: R 1.74 (101 basins, S 3.7 km, W 6.4 km) · A ≥ 25: R 1.83 (36 basins, S 5.2 km, W 9.4 km) · A ≥ 100: R 1.98 (1 basins, S 8.8 km, W 17.5 km)
+   seed 1 F166 (C1 mapping)  391 m: CV_λ 0.649 · CV_L 0.797 · θ 63.4° σ 23.2° · R2_g 0.583 | 195 m: CV_λ 0.645 · CV_L 0.798 · θ 70.5° σ 22.8° · R2_g 0.485 | Hovius A ≥ 10: R 2.20 (346 basins, S 4.5 km, W 9.6 km) · A ≥ 25: R 2.29 (160 basins, S 6.5 km, W 14.3 km) · A ≥ 100: R 2.29 (45 basins, S 11.6 km, W 24.9 km)
+   seed 1 F167 (Airy)        391 m: CV_λ 0.645 · CV_L 0.773 · θ 64.3° σ 23.8° · R2_g 0.551 | 195 m: CV_λ 0.641 · CV_L 0.771 · θ 71.6° σ 22.8° · R2_g 0.458 | Hovius A ≥ 10: R 2.30 (350 basins, S 4.6 km, W 10.6 km) · A ≥ 25: R 2.53 (171 basins, S 6.6 km, W 15.9 km) · A ≥ 100: R 2.38 (45 basins, S 12.0 km, W 28.4 km)
+   seed 9 F164 (steady)      391 m: CV_λ 0.549 · CV_L 0.821 · θ 65.0° σ 23.7° · R2_g 0.571 | 195 m: CV_λ 0.590 · CV_L 0.818 · θ 68.5° σ 24.2° · R2_g 0.449 | Hovius A ≥ 10: R 1.88 (151 basins, S 3.9 km, W 7.1 km) · A ≥ 25: R 1.79 (53 basins, S 5.8 km, W 10.2 km) · A ≥ 100: R 1.94 (6 basins, S 10.0 km, W 18.8 km)
+   seed 9 F166 (C1 mapping)  391 m: CV_λ 0.676 · CV_L 1.011 · θ 61.7° σ 24.4° · R2_g 0.648 | 195 m: CV_λ 0.686 · CV_L 1.058 · θ 66.7° σ 23.9° · R2_g 0.490 | Hovius A ≥ 10: R 2.47 (346 basins, S 3.9 km, W 9.0 km) · A ≥ 25: R 2.42 (130 basins, S 6.0 km, W 14.0 km) · A ≥ 100: R 2.62 (23 basins, S 12.6 km, W 32.0 km)
+   seed 9 F167 (Airy)        391 m: CV_λ 0.629 · CV_L 0.760 · θ 65.1° σ 24.5° · R2_g 0.556 | 195 m: CV_λ 0.641 · CV_L 0.781 · θ 70.4° σ 23.4° · R2_g 0.456 | Hovius A ≥ 10: R 2.33 (378 basins, S 4.4 km, W 9.8 km) · A ≥ 25: R 2.29 (174 basins, S 6.5 km, W 14.4 km) · A ≥ 100: R 2.36 (38 basins, S 13.1 km, W 30.0 km)
+
+   R: macro success on 0 / 4 · mountains > 37.2 % on 4 / 4 · land lost > 15 % on 0 / 4 → the mountains still exceed 37.2 %: decomposed above, stop
+   images: f167_seeds_256.png, f167_seeds_2048.png, f167_classes_seeds.png (rows = seeds [10481999410520546993, 42, 1, 9]; columns F166 | F167), f167_mapping.png (h(S̃), 0–2.5 on x, −6 to +7 km on y; C1's land ramp at the témoin's final datum red, Airy blue; sea level black, the 5.65 km ceiling grey), f167_coast_25km.png (Corsica | F166 | F167; window (832, 384) of 2048², Corsica (384, 64)) · north up · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+
+==========  end Finding 167 . 825.3 s wall  ==========
+
+test f167_cascade ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 825.32s
+
