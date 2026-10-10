@@ -1,0 +1,261 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.17s
+     Running tests\f170_cascade.rs (target_f170b\release\deps\f170_cascade-b87b331084472aa0.exe)
+running 1 test
+==========  Finding 170 . more plates (12, 16), the chronology, the continent's age (torus)  ==========
+   Europe                     plain  51.6 % · plateau   4.7 % · hill  18.9 % · mountain  24.8 % · land 5260525 km² · deciles 40/81/117/153/195/262/383/580/889
+   Corse 195 m: mountain-class slope p50/p90 0.318/0.550 · coast Coast { dimension: 1.122932, length_ratio: 1.370949, aligned: 0.27188444, block_index: 0.78062284, edges: 5780 }
+   C2 young 20 Myr: r 1.007252 · the oldest step d_1 = 0.163 Myr · the diffusion weight 0.052 → 4 sub-steps · the incision's K·A^m·dt/dx at A = 100 000 km² 65.8 (implicit, indicative)
+   C2 intermediate 100 Myr: r 1.014687 · the oldest step d_1 = 1.466 Myr · the diffusion weight 0.469 → 4 sub-steps · the incision's K·A^m·dt/dx at A = 100 000 km² 593.3 (implicit, indicative)
+   C2 old 300 Myr: r 1.019306 · the oldest step d_1 = 5.700 Myr · the diffusion weight 1.824 → 10 sub-steps · the incision's K·A^m·dt/dx at A = 100 000 km² 2307.4 (implicit, indicative)
+   A — the continental plates' selection (land 50–62 %, circumnavigable with r* ≥ 1, the largest r*):
+      N 12 seed 10481999410520546993: 120 candidates (60 BFS, 60 compact; 104 distinct C1 runs) · in 50–62 %: 35 · circumnavigable r* ≥ 1: 0 [] · r* = 0: 0 [] · best r* in range None · NONE QUALIFIES
+      N 12 seed 10481999410520546993: the selection's cost 27.8 s wall / 27.3 s CPU
+         BFS: 0 qualifying candidates
+         compact: 0 qualifying candidates
+      N 12 seed 42: 120 candidates (60 BFS, 60 compact; 108 distinct C1 runs) · in 50–62 %: 38 · circumnavigable r* ≥ 1: 0 [] · r* = 0: 0 [] · best r* in range None · NONE QUALIFIES
+      N 12 seed 42: the selection's cost 27.9 s wall / 27.5 s CPU
+         BFS: 0 qualifying candidates
+         compact: 0 qualifying candidates
+test f170_cascade has been running for over 60 seconds
+      N 12 seed 1: 120 candidates (60 BFS, 60 compact; 104 distinct C1 runs) · in 50–62 %: 30 · circumnavigable r* ≥ 1: 0 [] · r* = 0: 2 [k 5 C s8 53.4 %; k 8 C s10 55.6 %] · best r* in range Some(0) · NONE QUALIFIES
+      N 12 seed 1: the selection's cost 29.2 s wall / 28.7 s CPU
+         BFS: 0 qualifying candidates
+         compact: 0 qualifying candidates
+      N 12 seed 9: 120 candidates (60 BFS, 60 compact; 110 distinct C1 runs) · in 50–62 %: 33 · circumnavigable r* ≥ 1: 0 [] · r* = 0: 1 [k 5 B s10 53.2 %] · best r* in range Some(0) · NONE QUALIFIES
+      N 12 seed 9: the selection's cost 30.1 s wall / 29.7 s CPU
+         BFS: 0 qualifying candidates
+         compact: 0 qualifying candidates
+      N 16 seed 10481999410520546993: 224 candidates (112 BFS, 112 compact; 203 distinct C1 runs) · in 50–62 %: 64 · circumnavigable r* ≥ 1: 0 [] · r* = 0: 7 [k 9 B s4 57.9 %; k 8 B s4 55.1 %; k 7 B s2 53.1 %; k 8 C s2 55.9 %; k 7 C s1 51.5 %; k 10 B s11 54.1 %; k 8 C s8 54.1 %] · best r* in range Some(0) · NONE QUALIFIES
+      N 16 seed 10481999410520546993: the selection's cost 53.8 s wall / 53.2 s CPU
+         BFS: 0 qualifying candidates
+         compact: 0 qualifying candidates
+      N 16 seed 42: 224 candidates (112 BFS, 112 compact; 196 distinct C1 runs) · in 50–62 %: 68 · circumnavigable r* ≥ 1: 4 [k 7 C s3 51.3 % r* 2; k 7 B s4 50.8 % r* 1; k 9 C s2 51.1 % r* 1; k 11 C s9 51.8 % r* 1] · r* = 0: 6 [k 10 C s2 51.5 %; k 8 B s14 54.8 %; k 7 B s14 50.7 %; k 10 C s14 55.1 %; k 9 C s14 55.7 %; k 8 C s14 54.8 %] · best r* in range Some(2) · CHOSEN k 7 compact start 3 (RNG rank 1) land 51.3 % r* 2
+      N 16 seed 42: the selection's cost 47.5 s wall / 47.0 s CPU
+         BFS: 1 qualifying candidates
+         compact: 3 qualifying candidates
+      N 16 seed 1: 224 candidates (112 BFS, 112 compact; 215 distinct C1 runs) · in 50–62 %: 61 · circumnavigable r* ≥ 1: 1 [k 10 B s6 50.4 % r* 1] · r* = 0: 6 [k 8 C s2 50.7 %; k 8 B s10 55.1 %; k 12 C s10 60.3 %; k 11 C s10 53.4 %; k 10 C s14 53.4 %; k 9 C s14 51.8 %] · best r* in range Some(1) · CHOSEN k 10 BFS start 6 (RNG rank 3) land 50.4 % r* 1
+      N 16 seed 1: the selection's cost 53.9 s wall / 53.4 s CPU
+         BFS: 1 qualifying candidates
+         compact: 0 qualifying candidates
+      N 16 seed 9: 224 candidates (112 BFS, 112 compact; 206 distinct C1 runs) · in 50–62 %: 66 · circumnavigable r* ≥ 1: 2 [k 7 C s15 51.2 % r* 3; k 9 C s13 51.4 % r* 1] · r* = 0: 4 [k 9 B s12 51.6 %; k 10 B s3 54.2 %; k 8 B s4 56.5 %; k 10 B s2 54.2 %] · best r* in range Some(3) · CHOSEN k 7 compact start 15 (RNG rank 6) land 51.2 % r* 3
+      N 16 seed 9: the selection's cost 51.8 s wall / 51.4 s CPU
+         BFS: 0 qualifying candidates
+         compact: 2 qualifying candidates
+      N 12: 0 / 4 seeds qualify (BFS family alone 0 · compact alone 0)
+      N 16: 3 / 4 seeds qualify (BFS family alone 2 · compact alone 2)
+      → N = 16 (the rule: the most seeds, 12 on a tie)
+   A4 — C1's tectonics (chosen worlds) against F168 L2 (8 plates):
+      seed 10481999410520546993: not selected · F168 L2 convergent + suture 523 cells over 98438 km² → 332 km per 10 000 km²
+      seed 42 (Selected { plates: 16, k: 7, start: 3, compact: true }): plates at the end 6 · C-C collision cells 0 · upper-plate cells 59 · convergent + suture 621 cells over 82070 km² → 473 km per 10 000 km² · F168 L2 263 (452 cells over 107500 km²) → ratio 1.80
+      seed 1 (Selected { plates: 16, k: 10, start: 6, compact: false }): plates at the end 6 · C-C collision cells 58 · upper-plate cells 10 · convergent + suture 744 cells over 80664 km² → 576 km per 10 000 km² · F168 L2 241 (403 cells over 104570 km²) → ratio 2.39
+      seed 9 (Selected { plates: 16, k: 7, start: 15, compact: true }): plates at the end 4 · C-C collision cells 8 · upper-plate cells 16 · convergent + suture 767 cells over 81992 km² → 585 km per 10 000 km² · F168 L2 226 (399 cells over 110547 km²) → ratio 2.59
+   cost (idle), the témoin's L2: physics torus 26.5 s wall / 30.7 s CPU · window 20.5 s wall / 24.8 s CPU · chain torus 68.3 s wall / 517.1 s CPU · window 54.3 s wall / 388.7 s CPU
+   seed 10481999410520546993: no selected continent, skipped
+   seed 42 B0: C1 0.6 s wall / 0.4 s CPU · physics 21.8 s wall / 26.0 s CPU · chain 54.1 s wall / 449.8 s CPU → 476 s CPU per world
+   seed 42 young 20 Myr: C1 0.6 s wall / 0.4 s CPU · physics 22.3 s wall / 25.3 s CPU · chain 55.7 s wall / 462.2 s CPU → 488 s CPU per world
+   seed 42 intermediate 100 Myr: C1 0.6 s wall / 0.4 s CPU · physics 23.1 s wall / 26.3 s CPU · chain 55.4 s wall / 471.8 s CPU → 498 s CPU per world
+   seed 42 old 300 Myr: C1 0.6 s wall / 0.4 s CPU · physics 22.1 s wall / 26.3 s CPU · chain 55.4 s wall / 474.8 s CPU → 501 s CPU per world
+   seed 1 B0: C1 0.5 s wall / 0.2 s CPU · physics 22.4 s wall / 27.1 s CPU · chain 55.9 s wall / 460.3 s CPU → 488 s CPU per world
+   seed 1 young 20 Myr: C1 0.5 s wall / 0.2 s CPU · physics 22.3 s wall / 25.9 s CPU · chain 56.3 s wall / 477.5 s CPU → 504 s CPU per world
+   seed 1 intermediate 100 Myr: C1 0.5 s wall / 0.2 s CPU · physics 22.2 s wall / 24.8 s CPU · chain 57.6 s wall / 462.8 s CPU → 488 s CPU per world
+   seed 1 old 300 Myr: C1 0.5 s wall / 0.2 s CPU · physics 21.0 s wall / 24.9 s CPU · chain 54.5 s wall / 449.2 s CPU → 474 s CPU per world
+   seed 9 B0: C1 0.6 s wall / 0.3 s CPU · physics 22.4 s wall / 26.8 s CPU · chain 54.5 s wall / 456.3 s CPU → 483 s CPU per world
+   seed 9 young 20 Myr: C1 0.6 s wall / 0.3 s CPU · physics 23.7 s wall / 27.0 s CPU · chain 55.2 s wall / 457.3 s CPU → 485 s CPU per world
+   seed 9 intermediate 100 Myr: C1 0.6 s wall / 0.3 s CPU · physics 22.3 s wall / 24.7 s CPU · chain 55.6 s wall / 472.4 s CPU → 497 s CPU per world
+   seed 9 old 300 Myr: C1 0.6 s wall / 0.3 s CPU · physics 22.4 s wall / 25.2 s CPU · chain 54.0 s wall / 439.3 s CPU → 465 s CPU per world
+   B1 — when C1 thickens (end land, 64²):
+      seed 42: DavisSuppe Σ 1165.1 (thirds 664.9 / 260.8 / 239.4) · Subduction Σ 15.1 (thirds 8.7 / 3.3 / 3.2) · RiftThinning Σ -70.8 (thirds -51.9 / -10.7 / -8.2) · Transport Σ 10.7 (thirds 15.5 / -2.2 / -2.6)
+      seed 42: the land's Σ Δs_DS received in the last 10 % 6.2 % · last 25 % 15.5 % · last 50 % 29.7 % (first half 70.3 %)
+      seed 42: C-C collision cells at the snapshots (step, cells): [(10, 148), (20, 148), (30, 148), (40, 148), (50, 37), (60, 37), (70, 37), (80, 37), (90, 37), (100, 24), (110, 24), (120, 24), (130, 24), (140, 24), (150, 3), (160, 3), (170, 3), (180, 3), (190, 3), (200, 3), (210, 3), (220, 3), (230, 3), (240, 3), (250, 2), (260, 0), (270, 0), (280, 0), (290, 0), (300, 0)]
+      seed 42: the thickening age (step) over 1210 land cells with Σ Δs_DS > 0.05: p10 22 · p50 45 · p90 179
+      seed 1: DavisSuppe Σ 1082.4 (thirds 817.9 / 257.1 / 7.3) · Subduction Σ 7.4 (thirds 5.3 / 2.0 / 0.0) · RiftThinning Σ -61.4 (thirds -47.1 / -12.0 / -2.4) · Transport Σ 49.6 (thirds 49.9 / -0.6 / 0.2)
+      seed 1: the land's Σ Δs_DS received in the last 10 % 0.2 % · last 25 % 0.5 % · last 50 % 1.0 % (first half 99.0 %)
+      seed 1: C-C collision cells at the snapshots (step, cells): [(10, 115), (20, 115), (30, 115), (40, 115), (50, 24), (60, 24), (70, 24), (80, 48), (90, 48), (100, 36), (110, 36), (120, 36), (130, 34), (140, 34), (150, 58), (160, 58), (170, 58), (180, 58), (190, 58), (200, 58), (210, 58), (220, 58), (230, 58), (240, 58), (250, 58), (260, 58), (270, 58), (280, 58), (290, 58), (300, 58)]
+      seed 1: the thickening age (step) over 1250 land cells with Σ Δs_DS > 0.05: p10 24 · p50 69 · p90 129
+      seed 9: DavisSuppe Σ 1171.3 (thirds 852.7 / 258.3 / 60.3) · Subduction Σ 7.0 (thirds 4.8 / 1.7 / 0.6) · RiftThinning Σ -69.1 (thirds -49.7 / -16.9 / -2.5) · Transport Σ 139.2 (thirds 30.8 / 37.4 / 71.1)
+      seed 9: the land's Σ Δs_DS received in the last 10 % 1.6 % · last 25 % 3.9 % · last 50 % 8.5 % (first half 91.5 %)
+      seed 9: C-C collision cells at the snapshots (step, cells): [(10, 142), (20, 142), (30, 142), (40, 142), (50, 75), (60, 75), (70, 75), (80, 104), (90, 104), (100, 84), (110, 84), (120, 84), (130, 72), (140, 72), (150, 27), (160, 27), (170, 8), (180, 8), (190, 8), (200, 8), (210, 8), (220, 8), (230, 8), (240, 8), (250, 8), (260, 8), (270, 8), (280, 8), (290, 8), (300, 8)]
+      seed 9: the thickening age (step) over 1503 land cells with Σ Δs_DS > 0.05: p10 24 · p50 48 · p90 125
+   ══ seed 42 (Selected { plates: 16, k: 7, start: 3, compact: true }), display offset [43, 19] ══
+      C1: plates at the end 6 · C-C collision cells 0 · upper-plate cells 59 · circumnavigation 64² circumnavigable (main 2101 cells) · r* 2 → sea loop ≥ 31.2 km
+   ── B0:
+      land 53.1 % of the torus · circumnavigation 2048² circumnavigable (main 2230549 cells) · r* 59 → sea loop ≥ 23.2 km · the rim 2048²: display window 0 border land cells, ratio -0.00 · C1's frame border 4601 cells, ratio 1.13
+   B0 classes                 plain   0.6 % · plateau   0.0 % · hill  26.6 % · mountain  72.8 % · land 84353 km² · deciles 134/234/327/423/525/638/773/956/1246
+      peaks 256² 3461 m · 2048² 3730 m · the mountain class: cratons 10.6 % · DS thickened in the 1st third of the steps 33.2 % · 2nd 12.3 % · last 5.0 % · arcs 0.6 % · the rest 38.4 %
+      the mountain class by the distance to a convergent cell / suture: ≤ 31 km 94.5 % · 37–94 km 5.5 % · > 94 km 0.0 %
+      plain: 0.6 % of the land · distance to the coast 3 km · to a convergent cell / suture 15 km · altitude 40 m · R7 127 m
+      plateau: 0.0 % of the land · distance to the coast 52 km · to a convergent cell / suture 32 km · altitude 1230 m · R7 278 m
+      B2 « the rest » (9646 cells = 38.4 % of the mountain class): altitude 683 m · R7 714 m · distance to the coast 51 km · its share of Σ rebound 28.9 % (of 27.7 % of the land's cells) · mean rebound 1653 m · its altitude at t₀ 446 m
+      lakes (256²): 1 / 34 km²
+      2048² whole     15 of 19 within ×1.5 · out: octave 6.25–12.50 km 94.726/159.805; S_2 − 1 0.097/0.172; S_5 − 1 0.141/0.239; A_dir 0.504/0.206
+      2048² mountain  13 of 19 within ×1.5 · out: octave 3.12–6.25 km 79.099/126.569; octave 6.25–12.50 km 110.970/200.536; S_2 − 1 0.104/0.175; S_5 − 1 0.147/0.255; A_dir 0.484/0.200; F 0.024/0.006
+      slope guard: mountain-class slope p50/p90 0.277/0.484 (Corsica 0.318/0.550)
+      F by class: plain 24.77 % · plateau 7.81 % · hill 9.82 % · mountain 2.36 %
+      coast (torus) Coast { dimension: 0.9848277, length_ratio: 0.9123428, aligned: 0.29899803, block_index: 0.7419176, edges: 10826 } · F169 L2 on the torus Coast { dimension: 0.9818812, length_ratio: 0.90552884, aligned: 0.30563182, block_index: 1.1565378, edges: 8688 }
+   ── young 20 Myr:
+      land 53.2 % of the torus · circumnavigation 2048² circumnavigable (main 2243433 cells) · r* 59 → sea loop ≥ 23.2 km · the rim 2048²: display window 0 border land cells, ratio -0.00 · C1's frame border 4628 cells, ratio 1.91
+   young 20 Myr classes       plain  43.0 % · plateau   0.0 % · hill  45.4 % · mountain  11.6 % · land 84751 km² · deciles 31/61/92/122/152/186/225/275/375
+      peaks 256² 3334 m · 2048² 2890 m · the mountain class: cratons 8.6 % · DS thickened in the 1st third of the steps 25.0 % · 2nd 33.4 % · last 24.2 % · arcs 2.0 % · the rest 6.8 %
+      the mountain class by the distance to a convergent cell / suture: ≤ 31 km 97.4 % · 37–94 km 2.6 % · > 94 km 0.0 %
+      plain: 42.8 % of the land · distance to the coast 37 km · to a convergent cell / suture 15 km · altitude 101 m · R7 98 m
+      plateau: none
+      lakes (256²): 15 / 730 km²
+      2048² whole     10 of 19 within ×1.5 · out: slope p50 0.058/0.247; slope p90 0.247/0.501; octave 0.39–0.78 km 10.081/15.322; octave 0.78–1.56 km 20.859/34.443; octave 1.56–3.12 km 24.149/62.883; octave 3.12–6.25 km 30.279/100.862; octave 6.25–12.50 km 48.804/159.805; A_dir 0.395/0.206; F 0.231/0.043
+      2048² mountain  13 of 19 within ×1.5 · out: facets 11.586/6.746; octave 0.39–0.78 km 29.698/19.227; S_2 − 1 0.114/0.175; S_5 − 1 0.165/0.255; A_dir 0.424/0.200; F 0.018/0.006
+      slope guard: mountain-class slope p50/p90 0.315/0.495 (Corsica 0.318/0.550)
+      F by class: plain 31.14 % · plateau 0.00 % · hill 20.58 % · mountain 1.80 %
+      coast (torus) Coast { dimension: 0.98876834, length_ratio: 0.94089454, aligned: 0.3130986, block_index: 0.9325513, edges: 10912 } · F169 L2 on the torus Coast { dimension: 0.9818812, length_ratio: 0.90552884, aligned: 0.30563182, block_index: 1.1565378, edges: 8688 }
+   ── intermediate 100 Myr:
+      land 53.2 % of the torus · circumnavigation 2048² circumnavigable (main 2241959 cells) · r* 59 → sea loop ≥ 23.2 km · the rim 2048²: display window 0 border land cells, ratio -0.00 · C1's frame border 4633 cells, ratio 2.28
+   intermediate 100 Myr classes plain  73.8 % · plateau   0.0 % · hill  19.1 % · mountain   7.1 % · land 83464 km² · deciles 11/24/37/49/63/77/96/127/216
+      peaks 256² 3109 m · 2048² 2708 m · the mountain class: cratons 5.2 % · DS thickened in the 1st third of the steps 18.7 % · 2nd 38.4 % · last 32.1 % · arcs 2.1 % · the rest 3.4 %
+      the mountain class by the distance to a convergent cell / suture: ≤ 31 km 99.3 % · 37–94 km 0.7 % · > 94 km 0.0 %
+      plain: 72.4 % of the land · distance to the coast 44 km · to a convergent cell / suture 15 km · altitude 56 m · R7 59 m
+      plateau: 0.0 % of the land · distance to the coast 27 km · to a convergent cell / suture 19 km · altitude 657 m · R7 286 m
+      lakes (256²): 17 / 664 km²
+      2048² whole     10 of 19 within ×1.5 · out: slope p50 0.027/0.247; slope p90 0.166/0.501; octave 0.39–0.78 km 7.657/15.322; octave 0.78–1.56 km 16.440/34.443; octave 1.56–3.12 km 18.913/62.883; octave 3.12–6.25 km 22.711/100.862; octave 6.25–12.50 km 38.440/159.805; A_dir 0.339/0.206; F 0.335/0.043
+      2048² mountain  14 of 19 within ×1.5 · out: facets 11.341/6.746; octave 0.39–0.78 km 28.852/19.227; S_5 − 1 0.161/0.255; A_dir 0.447/0.200; F 0.009/0.006
+      slope guard: mountain-class slope p50/p90 0.332/0.492 (Corsica 0.318/0.550)
+      F by class: plain 41.09 % · plateau 4.17 % · hill 15.22 % · mountain 0.94 %
+      coast (torus) Coast { dimension: 0.9929342, length_ratio: 0.94380915, aligned: 0.3036113, block_index: 0.93743217, edges: 11060 } · F169 L2 on the torus Coast { dimension: 0.9818812, length_ratio: 0.90552884, aligned: 0.30563182, block_index: 1.1565378, edges: 8688 }
+   ── old 300 Myr:
+      land 53.0 % of the torus · circumnavigation 2048² circumnavigable (main 2238461 cells) · r* 59 → sea loop ≥ 23.2 km · the rim 2048²: display window 0 border land cells, ratio -0.00 · C1's frame border 4623 cells, ratio 2.31
+   old 300 Myr classes        plain  76.0 % · plateau   0.0 % · hill  17.8 % · mountain   6.2 % · land 82729 km² · deciles 9/20/30/40/50/61/77/103/190
+      peaks 256² 2928 m · 2048² 2695 m · the mountain class: cratons 4.9 % · DS thickened in the 1st third of the steps 17.1 % · 2nd 39.8 % · last 33.3 % · arcs 2.1 % · the rest 2.8 %
+      the mountain class by the distance to a convergent cell / suture: ≤ 31 km 99.6 % · 37–94 km 0.4 % · > 94 km 0.0 %
+      plain: 74.1 % of the land · distance to the coast 43 km · to a convergent cell / suture 15 km · altitude 46 m · R7 50 m
+      plateau: none
+      lakes (256²): 13 / 427 km²
+      2048² whole     10 of 19 within ×1.5 · out: slope p50 0.023/0.247; slope p90 0.147/0.501; octave 0.39–0.78 km 7.264/15.322; octave 0.78–1.56 km 15.419/34.443; octave 1.56–3.12 km 17.456/62.883; octave 3.12–6.25 km 20.605/100.862; octave 6.25–12.50 km 35.897/159.805; A_dir 0.336/0.206; F 0.361/0.043
+      2048² mountain  14 of 19 within ×1.5 · out: facets 10.744/6.746; octave 0.39–0.78 km 29.133/19.227; octave 3.12–6.25 km 82.638/126.569; A_dir 0.443/0.200; F 0.010/0.006
+      slope guard: mountain-class slope p50/p90 0.326/0.488 (Corsica 0.318/0.550)
+      F by class: plain 43.57 % · plateau 0.00 % · hill 15.31 % · mountain 1.01 %
+      coast (torus) Coast { dimension: 0.9940322, length_ratio: 0.9465981, aligned: 0.31072065, block_index: 0.9584987, edges: 11084 } · F169 L2 on the torus Coast { dimension: 0.9818812, length_ratio: 0.90552884, aligned: 0.30563182, block_index: 1.1565378, edges: 8688 }
+      SUCCESS test (old): mountain 6.2 % false · plain + plateau 76.0 % true · circumnavigable r* ≥ 1 true · coast degraded vs F169 (torus) none · median land 50 m (Europe 195) → no
+   seed 42: the mountain share against A: B0 72.8 % · young 20 Myr 11.6 % · intermediate 100 Myr 7.1 % · old 300 Myr 6.2 % → decreasing with A: true
+   ══ seed 1 (Selected { plates: 16, k: 10, start: 6, compact: false }), display offset [0, 57] ══
+      C1: plates at the end 6 · C-C collision cells 58 · upper-plate cells 10 · circumnavigation 64² circumnavigable (main 2065 cells) · r* 1 → sea loop ≥ 18.8 km
+   ── B0:
+      land 54.3 % of the torus · circumnavigation 2048² circumnavigable (main 2277623 cells) · r* 44 → sea loop ≥ 17.4 km · the rim 2048²: display window 3322 border land cells, ratio 0.85 · C1's frame border 5455 cells, ratio 0.84
+   B0 classes                 plain   0.3 % · plateau   1.6 % · hill  46.0 % · mountain  52.2 % · land 83884 km² · deciles 76/135/193/257/327/407/502/624/823
+      peaks 256² 1673 m · 2048² 1988 m · the mountain class: cratons 8.5 % · DS thickened in the 1st third of the steps 40.2 % · 2nd 12.0 % · last 1.2 % · arcs 0.0 % · the rest 38.2 %
+      the mountain class by the distance to a convergent cell / suture: ≤ 31 km 98.4 % · 37–94 km 1.6 % · > 94 km 0.0 %
+      plain: 0.3 % of the land · distance to the coast 8 km · to a convergent cell / suture 8 km · altitude 33 m · R7 104 m
+      plateau: 1.5 % of the land · distance to the coast 36 km · to a convergent cell / suture 29 km · altitude 1192 m · R7 176 m
+      B2 « the rest » (6841 cells = 38.2 % of the mountain class): altitude 553 m · R7 601 m · distance to the coast 42 km · its share of Σ rebound 20.4 % (of 19.2 % of the land's cells) · mean rebound 1616 m · its altitude at t₀ 476 m
+      lakes (256²): 3 / 176 km²
+      2048² whole     12 of 19 within ×1.5 · out: octave 1.56–3.12 km 41.632/62.883; octave 3.12–6.25 km 51.366/100.862; octave 6.25–12.50 km 71.133/159.805; S_2 − 1 0.093/0.172; S_5 − 1 0.136/0.239; S_10 − 1 0.185/0.282; A_dir 0.489/0.206
+      2048² mountain  13 of 19 within ×1.5 · out: octave 3.12–6.25 km 70.856/126.569; octave 6.25–12.50 km 98.122/200.536; S_2 − 1 0.102/0.175; S_5 − 1 0.149/0.255; A_dir 0.478/0.200; F 0.016/0.006
+      slope guard: mountain-class slope p50/p90 0.276/0.467 (Corsica 0.318/0.550)
+      F by class: plain 27.64 % · plateau 4.79 % · hill 9.46 % · mountain 1.57 %
+      coast (torus) Coast { dimension: 0.99315125, length_ratio: 0.9545599, aligned: 0.31333333, block_index: 0.79178125, edges: 13822 } · F169 L2 on the torus Coast { dimension: 0.99614805, length_ratio: 0.9361007, aligned: 0.2790208, block_index: 0.8825684, edges: 9282 }
+   ── young 20 Myr:
+      land 53.9 % of the torus · circumnavigation 2048² circumnavigable (main 2281528 cells) · r* 44 → sea loop ≥ 17.4 km · the rim 2048²: display window 3344 border land cells, ratio 0.92 · C1's frame border 5508 cells, ratio 0.76
+   young 20 Myr classes       plain  91.6 % · plateau   0.0 % · hill   7.7 % · mountain   0.6 % · land 81611 km² · deciles 10/18/27/36/46/58/72/90/118
+      peaks 256² 827 m · 2048² 1010 m · the mountain class: cratons 0.0 % · DS thickened in the 1st third of the steps 13.2 % · 2nd 11.3 % · last 58.5 % · arcs 0.0 % · the rest 17.0 %
+      the mountain class by the distance to a convergent cell / suture: ≤ 31 km 100.0 % · 37–94 km 0.0 % · > 94 km 0.0 %
+      plain: 86.7 % of the land · distance to the coast 27 km · to a convergent cell / suture 12 km · altitude 51 m · R7 74 m
+      plateau: none
+      lakes (256²): 0 / 0 km²
+      2048² whole     11 of 19 within ×1.5 · out: slope p50 0.029/0.247; slope p90 0.090/0.501; octave 0.39–0.78 km 5.353/15.322; octave 0.78–1.56 km 9.029/34.443; octave 1.56–3.12 km 8.322/62.883; octave 3.12–6.25 km 9.006/100.862; octave 6.25–12.50 km 18.172/159.805; F 0.357/0.043
+      2048² mountain  12 of 19 within ×1.5 · out: octave 0.39–0.78 km 67.264/19.227; octave 0.78–1.56 km 113.451/43.222; σ_θ 13.582/26.792; S_2 − 1 NaN/0.175; S_5 − 1 NaN/0.255; S_10 − 1 NaN/0.289; F 0.011/0.006
+      slope guard: mountain-class slope p50/p90 0.302/0.476 (Corsica 0.318/0.550)
+      F by class: plain 36.96 % · plateau 0.00 % · hill 17.85 % · mountain 1.08 %
+      coast (torus) Coast { dimension: 1.003298, length_ratio: 0.9748087, aligned: 0.31760788, block_index: 0.9162393, edges: 14040 } · F169 L2 on the torus Coast { dimension: 0.99614805, length_ratio: 0.9361007, aligned: 0.2790208, block_index: 0.8825684, edges: 9282 }
+   ── intermediate 100 Myr:
+      land 50.3 % of the torus · circumnavigation 2048² circumnavigable (main 2184107 cells) · r* 44 → sea loop ≥ 17.4 km · the rim 2048²: display window 2697 border land cells, ratio 0.73 · C1's frame border 4803 cells, ratio 0.61
+   intermediate 100 Myr classes plain  96.3 % · plateau   0.0 % · hill   3.3 % · mountain   0.3 % · land 77402 km² · deciles 1/2/3/4/5/6/8/10/13
+      peaks 256² 647 m · 2048² 823 m · the mountain class: cratons 0.0 % · DS thickened in the 1st third of the steps 13.3 % · 2nd 8.6 % · last 63.8 % · arcs 0.0 % · the rest 14.3 %
+      the mountain class by the distance to a convergent cell / suture: ≤ 31 km 100.0 % · 37–94 km 0.0 % · > 94 km 0.0 %
+      plain: 92.7 % of the land · distance to the coast 20 km · to a convergent cell / suture 13 km · altitude 6 m · R7 8 m
+      plateau: none
+      lakes (256²): 1 / 39 km²
+      2048² whole     9 of 19 within ×1.5 · out: slope p50 0.008/0.247; slope p90 0.017/0.501; octave 0.39–0.78 km 1.837/15.322; octave 0.78–1.56 km 3.101/34.443; octave 1.56–3.12 km 2.942/62.883; octave 3.12–6.25 km 3.943/100.862; octave 6.25–12.50 km 10.184/159.805; S_5 − 1 0.387/0.239; S_10 − 1 0.485/0.282; F 0.442/0.043
+      2048² mountain  6 of 19 within ×1.5 · out: facets 16.983/6.746; slope p50 0.147/0.318; octave 0.39–0.78 km 32.137/19.227; octave 1.56–3.12 km 51.468/78.910; octave 3.12–6.25 km 68.979/126.569; CV_L 0.417/0.825; σ_θ 4.065/26.792; R2_g 0.863/0.472; S_2 − 1 NaN/0.175; S_5 − 1 NaN/0.255; S_10 − 1 NaN/0.289; A_dir NaN/0.200; F 0.057/0.006
+      slope guard: mountain-class slope p50/p90 0.147/0.369 (Corsica 0.318/0.550)
+      F by class: plain 43.86 % · plateau 0.00 % · hill 26.18 % · mountain 5.71 %
+      coast (torus) Coast { dimension: 1.0164663, length_ratio: 0.9959559, aligned: 0.30756372, block_index: 1.0764631, edges: 18728 } · F169 L2 on the torus Coast { dimension: 0.99614805, length_ratio: 0.9361007, aligned: 0.2790208, block_index: 0.8825684, edges: 9282 }
+   ── old 300 Myr:
+      land 46.8 % of the torus · circumnavigation 2048² circumnavigable (main 1725772 cells) · r* 45 → sea loop ≥ 17.8 km · the rim 2048²: display window 2457 border land cells, ratio 0.75 · C1's frame border 4543 cells, ratio 0.60
+   old 300 Myr classes        plain  96.6 % · plateau   0.0 % · hill   3.1 % · mountain   0.3 % · land 73909 km² · deciles 1/1/2/2/3/4/5/6/9
+      peaks 256² 592 m · 2048² 761 m · the mountain class: cratons 0.0 % · DS thickened in the 1st third of the steps 15.3 % · 2nd 4.7 % · last 65.9 % · arcs 0.0 % · the rest 14.1 %
+      the mountain class by the distance to a convergent cell / suture: ≤ 31 km 100.0 % · 37–94 km 0.0 % · > 94 km 0.0 %
+      plain: 95.4 % of the land · distance to the coast 18 km · to a convergent cell / suture 13 km · altitude 4 m · R7 5 m
+      plateau: none
+      lakes (256²): 1 / 10 km²
+      2048² whole     8 of 19 within ×1.5 · out: slope p50 0.006/0.247; slope p90 0.015/0.501; octave 0.39–0.78 km 1.667/15.322; octave 0.78–1.56 km 2.764/34.443; octave 1.56–3.12 km 2.655/62.883; octave 3.12–6.25 km 3.374/100.862; octave 6.25–12.50 km 10.136/159.805; S_2 − 1 0.275/0.172; S_5 − 1 0.441/0.239; S_10 − 1 0.573/0.282; F 0.451/0.043
+      2048² mountain  5 of 19 within ×1.5 · out: facets 19.135/6.746; slope p50 0.128/0.318; slope p90 0.335/0.550; octave 0.39–0.78 km 31.843/19.227; octave 1.56–3.12 km 50.721/78.910; octave 3.12–6.25 km 64.462/126.569; CV_L 0.285/0.825; σ_θ 0.000/26.792; R2_g 0.906/0.472; S_2 − 1 NaN/0.175; S_5 − 1 NaN/0.255; S_10 − 1 NaN/0.289; A_dir NaN/0.200; F 0.084/0.006
+      slope guard: mountain-class slope p50/p90 0.128/0.335 (Corsica 0.318/0.550)
+      F by class: plain 44.19 % · plateau 0.00 % · hill 26.39 % · mountain 8.38 %
+      coast (torus) Coast { dimension: 1.0560557, length_ratio: 1.0959507, aligned: 0.33617803, block_index: 1.175219, edges: 25568 } · F169 L2 on the torus Coast { dimension: 0.99614805, length_ratio: 0.9361007, aligned: 0.2790208, block_index: 0.8825684, edges: 9282 }
+      SUCCESS test (old): mountain 0.3 % false · plain + plateau 96.6 % false · circumnavigable r* ≥ 1 true · coast degraded vs F169 (torus) aligned, block index · median land 3 m (Europe 195) → no
+   seed 1: the mountain share against A: B0 52.2 % · young 20 Myr 0.6 % · intermediate 100 Myr 0.3 % · old 300 Myr 0.3 % → decreasing with A: true
+   ══ seed 9 (Selected { plates: 16, k: 7, start: 15, compact: true }), display offset [55, 28] ══
+      C1: plates at the end 4 · C-C collision cells 8 · upper-plate cells 16 · circumnavigation 64² circumnavigable (main 2099 cells) · r* 3 → sea loop ≥ 43.8 km
+   ── B0:
+      land 52.8 % of the torus · circumnavigation 2048² circumnavigable (main 2218080 cells) · r* 108 → sea loop ≥ 42.4 km · the rim 2048²: display window 0 border land cells, ratio -0.00 · C1's frame border 4403 cells, ratio 1.15
+   B0 classes                 plain   0.4 % · plateau   5.3 % · hill  34.3 % · mountain  59.9 % · land 84124 km² · deciles 100/178/260/349/455/586/780/1083/1510
+      peaks 256² 3587 m · 2048² 3689 m · the mountain class: cratons 12.5 % · DS thickened in the 1st third of the steps 48.3 % · 2nd 14.5 % · last 1.7 % · arcs 0.0 % · the rest 23.1 %
+      the mountain class by the distance to a convergent cell / suture: ≤ 31 km 95.8 % · 37–94 km 4.2 % · > 94 km 0.0 %
+      plain: 0.4 % of the land · distance to the coast 2 km · to a convergent cell / suture 3 km · altitude 29 m · R7 111 m
+      plateau: 5.3 % of the land · distance to the coast 70 km · to a convergent cell / suture 10 km · altitude 1466 m · R7 178 m
+      B2 « the rest » (4771 cells = 23.1 % of the mountain class): altitude 756 m · R7 683 m · distance to the coast 50 km · its share of Σ rebound 14.9 % (of 13.8 % of the land's cells) · mean rebound 1667 m · its altitude at t₀ 451 m
+      lakes (256²): 8 / 1306 km²
+      2048² whole     14 of 19 within ×1.5 · out: octave 3.12–6.25 km 62.340/100.862; octave 6.25–12.50 km 80.612/159.805; S_2 − 1 0.104/0.172; S_5 − 1 0.152/0.239; A_dir 0.459/0.206
+      2048² mountain  13 of 19 within ×1.5 · out: octave 3.12–6.25 km 80.546/126.569; octave 6.25–12.50 km 104.154/200.536; S_2 − 1 0.108/0.175; S_5 − 1 0.151/0.255; A_dir 0.462/0.200; F 0.014/0.006
+      slope guard: mountain-class slope p50/p90 0.298/0.486 (Corsica 0.318/0.550)
+      F by class: plain 25.94 % · plateau 16.30 % · hill 8.23 % · mountain 1.38 %
+      coast (torus) Coast { dimension: 0.99805933, length_ratio: 0.9609155, aligned: 0.29234475, block_index: 0.79961926, edges: 12606 } · F169 L2 on the torus Coast { dimension: 0.9869407, length_ratio: 0.8998463, aligned: 0.26797011, block_index: 0.7918486, edges: 8244 }
+   ── young 20 Myr:
+      land 52.9 % of the torus · circumnavigation 2048² circumnavigable (main 2233003 cells) · r* 108 → sea loop ≥ 42.4 km · the rim 2048²: display window 0 border land cells, ratio -0.00 · C1's frame border 4460 cells, ratio 1.13
+   young 20 Myr classes       plain  52.7 % · plateau   0.6 % · hill  38.5 % · mountain   8.1 % · land 84331 km² · deciles 18/34/53/75/101/137/188/259/368
+      peaks 256² 1768 m · 2048² 2104 m · the mountain class: cratons 3.6 % · DS thickened in the 1st third of the steps 46.0 % · 2nd 24.3 % · last 8.5 % · arcs 0.0 % · the rest 17.6 %
+      the mountain class by the distance to a convergent cell / suture: ≤ 31 km 99.8 % · 37–94 km 0.2 % · > 94 km 0.0 %
+      plain: 52.5 % of the land · distance to the coast 21 km · to a convergent cell / suture 11 km · altitude 58 m · R7 84 m
+      plateau: 0.6 % of the land · distance to the coast 72 km · to a convergent cell / suture 10 km · altitude 546 m · R7 267 m
+      lakes (256²): 5 / 85 km²
+      2048² whole     10 of 19 within ×1.5 · out: slope p50 0.052/0.247; slope p90 0.201/0.501; octave 0.39–0.78 km 9.575/15.322; octave 0.78–1.56 km 17.798/34.443; octave 1.56–3.12 km 18.706/62.883; octave 3.12–6.25 km 22.383/100.862; octave 6.25–12.50 km 33.555/159.805; A_dir 0.354/0.206; F 0.246/0.043
+      2048² mountain  12 of 19 within ×1.5 · out: octave 0.39–0.78 km 33.633/19.227; octave 3.12–6.25 km 78.621/126.569; octave 6.25–12.50 km 117.863/200.536; S_2 − 1 0.101/0.175; S_5 − 1 0.166/0.255; A_dir 0.495/0.200; F 0.035/0.006
+      slope guard: mountain-class slope p50/p90 0.235/0.458 (Corsica 0.318/0.550)
+      F by class: plain 34.73 % · plateau 8.43 % · hill 14.44 % · mountain 3.52 %
+      coast (torus) Coast { dimension: 1.0005885, length_ratio: 0.9715258, aligned: 0.32102063, block_index: 0.82096905, edges: 12590 } · F169 L2 on the torus Coast { dimension: 0.9869407, length_ratio: 0.8998463, aligned: 0.26797011, block_index: 0.7918486, edges: 8244 }
+   ── intermediate 100 Myr:
+      land 51.5 % of the torus · circumnavigation 2048² circumnavigable (main 2193161 cells) · r* 107 → sea loop ≥ 42.0 km · the rim 2048²: display window 0 border land cells, ratio -0.00 · C1's frame border 4376 cells, ratio 1.57
+   intermediate 100 Myr classes plain  91.9 % · plateau   0.0 % · hill   5.5 % · mountain   2.6 % · land 81685 km² · deciles 2/5/8/11/17/24/36/53/93
+      peaks 256² 1484 m · 2048² 1748 m · the mountain class: cratons 0.0 % · DS thickened in the 1st third of the steps 42.2 % · 2nd 29.9 % · last 21.4 % · arcs 0.0 % · the rest 6.5 %
+      the mountain class by the distance to a convergent cell / suture: ≤ 31 km 100.0 % · 37–94 km 0.0 % · > 94 km 0.0 %
+      plain: 91.1 % of the land · distance to the coast 36 km · to a convergent cell / suture 12 km · altitude 25 m · R7 27 m
+      plateau: none
+      lakes (256²): 3 / 88 km²
+      2048² whole     9 of 19 within ×1.5 · out: slope p50 0.013/0.247; slope p90 0.052/0.501; octave 0.39–0.78 km 4.369/15.322; octave 0.78–1.56 km 9.088/34.443; octave 1.56–3.12 km 10.651/62.883; octave 3.12–6.25 km 12.112/100.862; octave 6.25–12.50 km 21.723/159.805; S_5 − 1 0.375/0.239; S_10 − 1 0.461/0.282; F 0.427/0.043
+      2048² mountain  13 of 19 within ×1.5 · out: facets 10.578/6.746; octave 3.12–6.25 km 75.842/126.569; S_5 − 1 0.157/0.255; S_10 − 1 0.180/0.289; A_dir 0.358/0.200; F 0.012/0.006
+      slope guard: mountain-class slope p50/p90 0.295/0.481 (Corsica 0.318/0.550)
+      F by class: plain 44.69 % · plateau 0.00 % · hill 13.10 % · mountain 1.21 %
+      coast (torus) Coast { dimension: 1.0495859, length_ratio: 1.1023763, aligned: 0.32351533, block_index: 1.155784, edges: 15560 } · F169 L2 on the torus Coast { dimension: 0.9869407, length_ratio: 0.8998463, aligned: 0.26797011, block_index: 0.7918486, edges: 8244 }
+   ── old 300 Myr:
+      land 47.5 % of the torus · circumnavigation 2048² circumnavigable (main 2020800 cells) · r* 108 → sea loop ≥ 42.4 km · the rim 2048²: display window 0 border land cells, ratio -0.00 · C1's frame border 3795 cells, ratio 1.81
+   old 300 Myr classes        plain  91.4 % · plateau   0.0 % · hill   6.2 % · mountain   2.4 % · land 75024 km² · deciles 1/2/3/6/9/14/22/35/64
+      peaks 256² 1251 m · 2048² 1504 m · the mountain class: cratons 0.0 % · DS thickened in the 1st third of the steps 40.5 % · 2nd 31.9 % · last 23.4 % · arcs 0.0 % · the rest 4.2 %
+      the mountain class by the distance to a convergent cell / suture: ≤ 31 km 100.0 % · 37–94 km 0.0 % · > 94 km 0.0 %
+      plain: 90.3 % of the land · distance to the coast 35 km · to a convergent cell / suture 12 km · altitude 15 m · R7 16 m
+      plateau: none
+      lakes (256²): 2 / 476 km²
+      2048² whole     8 of 19 within ×1.5 · out: slope p50 0.009/0.247; slope p90 0.037/0.501; octave 0.39–0.78 km 3.981/15.322; octave 0.78–1.56 km 8.447/34.443; octave 1.56–3.12 km 9.806/62.883; octave 3.12–6.25 km 11.062/100.862; octave 6.25–12.50 km 20.142/159.805; S_2 − 1 0.259/0.172; S_5 − 1 0.402/0.239; S_10 − 1 0.507/0.282; F 0.433/0.043
+      2048² mountain  15 of 19 within ×1.5 · out: octave 3.12–6.25 km 72.046/126.569; octave 6.25–12.50 km 131.177/200.536; S_10 − 1 NaN/0.289; F 0.012/0.006
+      slope guard: mountain-class slope p50/p90 0.276/0.468 (Corsica 0.318/0.550)
+      F by class: plain 45.13 % · plateau 0.00 % · hill 12.91 % · mountain 1.16 %
+      coast (torus) Coast { dimension: 1.0719405, length_ratio: 1.1824284, aligned: 0.3397413, block_index: 1.0393283, edges: 18104 } · F169 L2 on the torus Coast { dimension: 0.9869407, length_ratio: 0.8998463, aligned: 0.26797011, block_index: 0.7918486, edges: 8244 }
+      SUCCESS test (old): mountain 2.4 % false · plain + plateau 91.4 % false · circumnavigable r* ≥ 1 true · coast degraded vs F169 (torus) aligned, block index · median land 9 m (Europe 195) → no
+   seed 9: the mountain share against A: B0 59.9 % · young 20 Myr 8.1 % · intermediate 100 Myr 2.6 % · old 300 Myr 2.4 % → decreasing with A: true
+   the regularity baseline (Corsica 391 m: CV_λ 0.609 · CV_L 0.869 · θ 62.0° σ 29.9° · R2_g 0.477 | 195 m: CV_λ 0.683 · CV_L 0.915 · θ 71.1° σ 27.4° · R2_g 0.473):
+   seed 42 old: 391 m: CV_λ 0.624 · CV_L 1.017 · θ 69.0° σ 28.3° · R2_g 0.742 | 195 m: CV_λ 0.611 · CV_L 1.081 · θ 72.4° σ 28.4° · R2_g 0.470 | Hovius A ≥ 10: R 1.97 (112 basins) · A ≥ 25: R 1.87 (21 basins) · A ≥ 100: R NaN (0 basins)
+   seed 1 old: 391 m: CV_λ 1.128 · CV_L 0.850 · θ 79.7° σ 32.7° · R2_g 0.494 | 195 m: CV_λ 0.730 · CV_L 0.869 · θ 78.5° σ 34.6° · R2_g 0.425 | Hovius A ≥ 10: R NaN (0 basins) · A ≥ 25: R NaN (0 basins) · A ≥ 100: R NaN (0 basins)
+   seed 9 old: 391 m: CV_λ 0.680 · CV_L 0.861 · θ 77.6° σ 31.1° · R2_g 0.543 | 195 m: CV_λ 0.648 · CV_L 0.881 · θ 78.7° σ 33.0° · R2_g 0.431 | Hovius A ≥ 10: R 2.34 (31 basins) · A ≥ 25: R 1.92 (4 basins) · A ≥ 100: R NaN (0 basins)
+   R: N = 16 · selection on 3 / 4 · macro success (old) on 0 / 3 · mountains > 37.2 % (old) on 0 / 3 · peak < 1.5 km (old) on 2 / 3 → no success, no stop condition met as written
+   section old_belt: 64² cell (52, 49) thickened at step 7 · W–E line of 200 km through it · B0 grey, old red
+   section recent_belt: 64² cell (39, 1) thickened at step 272 · W–E line of 200 km through it · B0 grey, old red
+   images: f169_seeds_256.png, f169_seeds_2048.png, f169_classes_seeds.png (rows = the seeds; columns B0 | young | intermediate | old), f169_thickening_age.png (the seeds left to right; blue early → red late, grey = land without Davis-Suppe), f170_hyps_<seed>.png, f170_plates.png (the chosen plates at t₀: continental greens, oceanic blues) (Europe black, B0 grey, young green, intermediate blue, old red), f169_section_*.png · north up, the display offset applied at the end
+==========  end Finding 170 . 1954.5 s wall  ==========
+test f170_cascade ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1954.52s

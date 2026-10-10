@@ -34,7 +34,7 @@ use ymir_core::cascade::history::{
 };
 use ymir_core::cascade::hydro::{Hydro, draw, hydrology};
 use ymir_core::cascade::physio::{MOUNTAIN, classify};
-use ymir_core::cascade::profile::{C1Profile, select_continent};
+use ymir_core::cascade::profile::{C1Profile, select_continent_plates};
 use ymir_core::cascade::{
     CascadeConfig, CascadeProgress, LevelRecord, PeakCalibration, Rebound, SubStep, diff_rgba, physics_level, roll,
     shade_m_rgba,
@@ -264,7 +264,8 @@ impl Default for CascadeUi {
             airy: false,
             profile: C1Profile::Production,
             select: false,
-            torus: false,
+            // ADR Finding 169 (at commit) -- the torus is the cascade's default
+            torus: true,
             age_ma: 5.62,
             snapshots: Vec::new(),
             term_maps: Vec::new(),
@@ -481,8 +482,9 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                             if history.as_ref().is_none_or(|h| h.0 != (sources, o.airy, o.profile, o.select)) {
                                 // F169-A4: the selected continent (C1 run per candidate), L2 when none qualifies
                                 let profile = if o.select {
-                                    let _ = etx.send(Evt::Progress("sélection des plaques continentales (16 essais de C1)".into(), 0.0));
-                                    let s = select_continent(seed);
+                                    let _ = etx.send(Evt::Progress("sélection des plaques continentales (16 plaques, ~200 essais de C1)".into(), 0.0));
+                                    // F170-A: 16 plates, k = 6 … 12, the BFS and the compact families, r* ≥ 1
+                                    let s = select_continent_plates(seed, 16, &(6..=12).collect::<Vec<_>>(), 1);
                                     s.chosen.map(|i| s.candidates[i].profile()).unwrap_or(C1Profile::L2)
                                 } else {
                                     o.profile
@@ -830,8 +832,8 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
             }
         }
         if ui
-            .selectable_label(cu.select, "sélection (F169)")
-            .on_hover_text("F169-A4 : parmi les 16 groupes de plaques (f = 0,625 et 0,5, chaque plaque de départ), celui dont les terres finales font 50–62 % et dont on peut faire le tour par la mer, avec la plus large mer ; sinon continent L2 (aucune graine témoin n'en a un au F169)")
+            .selectable_label(cu.select, "sélection (F170)")
+            .on_hover_text("F170-A : 16 plaques ; parmi les groupes de k = 6 à 12 plaques continentales (familles BFS et compacte, chaque plaque de départ), celui dont les terres finales font 50–62 % et dont on peut faire le tour par la mer avec r* ≥ 1 (≥ 19 km de mer), avec la plus large mer ; sinon continent L2 (le témoin n'en a pas au F170 ; 42, 1 et 9 oui). Environ 50 s de calcul")
             .clicked()
         {
             cu.select = true;

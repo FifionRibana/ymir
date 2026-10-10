@@ -1,0 +1,2 @@
+   cost (idle, alone) run 0: physics window 21.0 s wall / 26.0 s CPU · torus 28.5 s wall / 30.9 s CPU · chain window 55.0 s wall / 386.5 s CPU · torus 61.5 s wall / 520.4 s CPU
+   cost (idle, alone) run 1: physics window 20.3 s wall / 22.9 s CPU · torus 26.5 s wall / 29.4 s CPU · chain window 55.7 s wall / 384.7 s CPU · torus 61.8 s wall / 522.0 s CPU

@@ -220,7 +220,8 @@ impl AmpConfig {
             n1_pi_m: Vec::new(),
             n1_recal_depth: 1,
             warp: None,
-            torus: None,
+            // ADR Finding 169 (at commit) -- the torus is the cascade's default; the input in C1's own frame
+            torus: Some([0, 0]),
         }
     }
     /// N1's k at a level of `n` cells.

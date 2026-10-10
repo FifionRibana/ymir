@@ -12,7 +12,7 @@ use crate::cascade::physio::{Circumnavigation, circumnavigation};
 use crate::tectonics::isostasy::IsostasyConfig;
 use crate::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use crate::tectonics_c1::init_r7::clustering::start_plate_order;
-use crate::tectonics_c1::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7_start};
+use crate::tectonics_c1::init_r7::{ClusterGrowth, Phase2InitParams, init_c1_state_phase_2_r7_growth, init_c1_state_phase_2_r7_start};
 use crate::tectonics_c1::kinematics::PlateKinematics;
 use crate::tectonics_c1::state::C1State;
 use crate::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig};
@@ -30,8 +30,10 @@ pub enum C1Profile {
     Production,
     /// Production with the initial continental fraction overridden.
     Continent(f64),
-    /// ADR Finding 169-A4 -- the continent profile with its BFS grown from a SELECTED start plate ([`select_continent`]).
-    Selected { fraction: f64, start: u16 },
+    /// ADR Finding 169-A4 / 170-A1 -- a SELECTED continent ([`select_continent`], [`select_continent_plates`]): `plates`
+    /// Voronoi plates (production's 8, or more), `k` of them continental, grown from `start` by C1's BFS or by the
+    /// compact family.
+    Selected { plates: usize, k: usize, start: u16, compact: bool },
 }
 
 impl C1Profile {
@@ -43,22 +45,27 @@ impl C1Profile {
         let mut p = Phase2InitParams::default();
         match self {
             Self::Production => {}
-            Self::Continent(f) | Self::Selected { fraction: f, .. } => p.cluster.continental_fraction = f,
+            Self::Continent(f) => p.cluster.continental_fraction = f,
+            Self::Selected { plates, k, .. } => {
+                p.num_plates = plates;
+                p.cluster.continental_fraction = k as f64 / plates as f64;
+            }
         }
         p
     }
 
-    /// The BFS start plate (`None` = C1's RNG draw).
-    pub fn start(self) -> Option<u16> {
+    /// How the continental cluster grows.
+    pub fn growth(self) -> ClusterGrowth {
         match self {
-            Self::Selected { start, .. } => Some(start),
-            _ => None,
+            Self::Selected { start, compact: false, .. } => ClusterGrowth::Bfs(start),
+            Self::Selected { start, compact: true, .. } => ClusterGrowth::Compact(start),
+            _ => ClusterGrowth::Rng,
         }
     }
 
     /// C1's initial state under this profile.
     pub fn init_state(self, grid: usize, seed: u64) -> C1State {
-        init_c1_state_phase_2_r7_start(grid, seed, &self.init_params(), self.start())
+        init_c1_state_phase_2_r7_growth(grid, seed, &self.init_params(), self.growth())
     }
 }
 
@@ -71,6 +78,10 @@ pub const SELECT_FRACTIONS: [f64; 2] = [CONTINENT_L2, 0.5];
 #[derive(Clone, Copy, Debug)]
 pub struct Candidate {
     pub fraction: f64,
+    /// F170: the plate count, the continental count, the family.
+    pub plates: usize,
+    pub k: usize,
+    pub compact: bool,
     pub start: u16,
     /// Its rank in C1's RNG draw order (0 = today's start plate).
     pub rng_rank: usize,
@@ -81,10 +92,14 @@ pub struct Candidate {
 
 impl Candidate {
     pub fn qualifies(&self) -> bool {
-        (SELECT_LAND.0..=SELECT_LAND.1).contains(&self.land) && !self.circ.wraps && self.circ.sea_r.is_some()
+        self.qualifies_min(0)
+    }
+    /// F170-A2: within the land range and circumnavigable with r* ≥ `min_r`.
+    pub fn qualifies_min(&self, min_r: usize) -> bool {
+        (SELECT_LAND.0..=SELECT_LAND.1).contains(&self.land) && !self.circ.wraps && self.circ.sea_r.is_some_and(|r| r >= min_r)
     }
     pub fn profile(&self) -> C1Profile {
-        C1Profile::Selected { fraction: self.fraction, start: self.start }
+        C1Profile::Selected { plates: self.plates, k: self.k, start: self.start, compact: self.compact }
     }
 }
 
@@ -93,6 +108,8 @@ impl Candidate {
 pub struct Selection {
     pub candidates: Vec<Candidate>,
     pub chosen: Option<usize>,
+    /// The distinct C1 runs (F170: candidates with the same plate set share one).
+    pub runs: usize,
 }
 
 /// The C1 run of the cascade's history (the benches' and the viz's).
@@ -124,7 +141,8 @@ pub fn select_continent(seed: u64) -> Selection {
             let last = src.hist.normalized(None).pop().unwrap();
             let land: Vec<bool> = last.data.iter().map(|&v| v > 0.5).collect();
             let share = land.iter().filter(|&&b| b).count() as f32 / land.len() as f32;
-            candidates.push(Candidate { fraction, start, rng_rank, land: share, circ: circumnavigation(&land, 64) });
+            let k = ((params.num_plates as f64 * fraction).round() as usize).clamp(1, params.num_plates);
+            candidates.push(Candidate { fraction, plates: params.num_plates, k, compact: false, start, rng_rank, land: share, circ: circumnavigation(&land, 64) });
         }
     }
     // the candidates are in preference order, so a strict `>` keeps the earlier one on a tie
@@ -134,7 +152,57 @@ pub fn select_continent(seed: u64) -> Selection {
             chosen = Some(i);
         }
     }
-    Selection { candidates, chosen }
+    let runs = candidates.len();
+    Selection { candidates, chosen, runs }
+}
+
+/// The end land (64², h_src > 0 under the Airy sources' record) and its circumnavigation for one C1 initial state.
+fn end_land(mut st: C1State) -> (f32, Circumnavigation) {
+    let cfg = c1_run_config();
+    let ss = SteinSteinParams::default();
+    let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+    let src = run_c1_sources_mapped(&mut st, &mut kin, &cfg, &C1Closures::default(), 10, &cfg.iso_config, &ss, &[C1Term::Erosion], Mapping::Airy(Airy::declared()));
+    let last = src.hist.normalized(None).pop().unwrap();
+    let land: Vec<bool> = last.data.iter().map(|&v| v > 0.5).collect();
+    (land.iter().filter(|&&b| b).count() as f32 / land.len() as f32, circumnavigation(&land, 64))
+}
+
+/// ADR Finding 170-A1/A2 -- **the selection with `plates` plates**: for every k in `ks`, every start plate and both families
+/// (C1's BFS, the compact growth), C1 runs to its end (candidates with the same plate set share one run). A candidate
+/// qualifies within [`SELECT_LAND`] and circumnavigable with r* ≥ `min_r`. The chosen one has the largest r*; ties go to the
+/// start plate's rank in C1's RNG draw order, then BFS before compact, then the larger k. Deterministic from the seed.
+pub fn select_continent_plates(seed: u64, plates: usize, ks: &[usize], min_r: usize) -> Selection {
+    let base = Phase2InitParams { num_plates: plates, ..Phase2InitParams::default() };
+    let order = start_plate_order(&base.cluster, plates);
+    let mut memo: std::collections::HashMap<Vec<bool>, (f32, Circumnavigation)> = std::collections::HashMap::new();
+    let mut candidates = Vec::new();
+    // the preference order: RNG rank, then BFS before compact, then the larger k
+    for (rng_rank, &start) in order.iter().enumerate() {
+        for compact in [false, true] {
+            let mut ks_desc = ks.to_vec();
+            ks_desc.sort_unstable_by(|a, b| b.cmp(a));
+            for k in ks_desc {
+                let p = C1Profile::Selected { plates, k, start, compact };
+                let st = p.init_state(64, seed);
+                // the plate set: which plates are continental
+                let mut set = vec![false; plates];
+                for (pid, ty) in st.plate_id.data().iter().zip(st.plate_type.data()) {
+                    if *ty == crate::tectonics_v2::boundaries::plate_type::PlateType::Continental {
+                        set[*pid as usize] = true;
+                    }
+                }
+                let (land, circ) = *memo.entry(set).or_insert_with(|| end_land(st));
+                candidates.push(Candidate { fraction: k as f64 / plates as f64, plates, k, compact, start, rng_rank, land, circ });
+            }
+        }
+    }
+    let mut chosen: Option<usize> = None;
+    for (i, c) in candidates.iter().enumerate() {
+        if c.qualifies_min(min_r) && chosen.is_none_or(|j| c.circ.sea_r > candidates[j].circ.sea_r) {
+            chosen = Some(i);
+        }
+    }
+    Selection { candidates, chosen, runs: memo.len() }
 }
 
 #[cfg(test)]
@@ -182,6 +250,32 @@ mod tests {
 
     /// F169-A4, the negative control (permanent): a start plate equal to C1's first RNG draw is today's init bit for bit,
     /// for the production fraction and for L2.
+    /// F170-A5 (permanent): at 12 and 16 plates, the BFS family from C1's first RNG draw is C1's own init at that plate
+    /// count bit for bit; the compact family grows a connected group of k plates.
+    #[test]
+    fn more_plates_keep_the_rng_init_and_the_compact_family_is_connected() {
+        for plates in [12usize, 16] {
+            let base = Phase2InitParams { num_plates: plates, ..Phase2InitParams::default() };
+            let first = start_plate_order(&base.cluster, plates)[0];
+            let k = plates / 2;
+            let p = C1Profile::Selected { plates, k, start: first, compact: false };
+            let params = p.init_params();
+            let a = crate::tectonics_c1::init_r7::init_c1_state_phase_2_r7(64, 42, &params);
+            let b = p.init_state(64, 42);
+            assert_eq!(a.plate_type.data(), b.plate_type.data());
+            assert_eq!(a.s.data().iter().map(|v| v.to_bits()).collect::<Vec<_>>(), b.s.data().iter().map(|v| v.to_bits()).collect::<Vec<_>>());
+            let c = C1Profile::Selected { plates, k, start: first, compact: true }.init_state(64, 42);
+            let mut set = vec![false; plates];
+            for (pid, ty) in c.plate_id.data().iter().zip(c.plate_type.data()) {
+                if *ty == PlateType::Continental {
+                    set[*pid as usize] = true;
+                }
+            }
+            assert_eq!(set.iter().filter(|&&s| s).count(), k, "{plates} plates");
+            assert!(set[first as usize]);
+        }
+    }
+
     #[test]
     fn the_start_plate_at_the_rng_draw_is_c1_bit_for_bit() {
         for seed in [42u64, 9] {

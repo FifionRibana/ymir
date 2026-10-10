@@ -130,7 +130,8 @@ impl CascadeConfig {
             receiver_tau: None,
             roughness_m: 0.0,
             seed: 0,
-            torus: None,
+            // ADR Finding 169 (at commit) -- the torus is the cascade's default; the input in C1's own frame
+            torus: Some([0, 0]),
         }
     }
     /// Metres per norm unit (`c1_altitude_norm_to_metres`' slope).
@@ -868,7 +869,8 @@ mod tests {
     #[test]
     fn the_steady_physics_level_is_pinned() {
         let coarse = bump(32);
-        let base = CascadeConfig::declared(5000.0);
+        // ADR Finding 169/170 -- the negative control: the window mode (`torus: None`) is F168's cascade bit for bit
+        let base = CascadeConfig { torus: None, ..CascadeConfig::declared(5000.0) };
         let f164 = CascadeConfig { mfd_exponent: Some(6.0), roughness_m: 40.0, seed: 7, ..base.clone() };
         let mut hs = Vec::new();
         for c in [&base, &f164] {

@@ -301,6 +301,25 @@ pub fn init_c1_state_phase_2_r7(grid_size: usize, seed: u64, params: &Phase2Init
 /// C1's RNG draw, i.e. [`init_c1_state_phase_2_r7`] exactly). The cascade's « continent » profile selects it; production
 /// never passes `Some`.
 pub fn init_c1_state_phase_2_r7_start(grid_size: usize, seed: u64, params: &Phase2InitParams, start: Option<u16>) -> C1State {
+    let growth = match start {
+        None => ClusterGrowth::Rng,
+        Some(s) => ClusterGrowth::Bfs(s),
+    };
+    init_c1_state_phase_2_r7_growth(grid_size, seed, params, growth)
+}
+
+/// ADR Finding 170-A1 -- how the continental cluster grows: C1's RNG start and BFS (production), the BFS from a given start
+/// plate (F169), or the compact family from a given start plate (F170).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClusterGrowth {
+    Rng,
+    Bfs(u16),
+    Compact(u16),
+}
+
+/// ADR Finding 170-A1 -- [`init_c1_state_phase_2_r7`] with the continental cluster grown as `growth` (`Rng` = production
+/// exactly).
+pub fn init_c1_state_phase_2_r7_growth(grid_size: usize, seed: u64, params: &Phase2InitParams, growth: ClusterGrowth) -> C1State {
     let nx = grid_size;
     let ny = grid_size;
 
@@ -325,9 +344,10 @@ pub fn init_c1_state_phase_2_r7_start(grid_size: usize, seed: u64, params: &Phas
 
     // Step 4 — cluster-based continental type override.
     let mut per_plate_type = voronoi.per_plate_type;
-    match start {
-        None => assign_continental_clusters(&mut per_plate_type, &adjacency, &params.cluster),
-        Some(s) => clustering::assign_continental_clusters_from(&mut per_plate_type, &adjacency, &params.cluster, s),
+    match growth {
+        ClusterGrowth::Rng => assign_continental_clusters(&mut per_plate_type, &adjacency, &params.cluster),
+        ClusterGrowth::Bfs(s) => clustering::assign_continental_clusters_from(&mut per_plate_type, &adjacency, &params.cluster, s),
+        ClusterGrowth::Compact(s) => clustering::assign_continental_compact(&mut per_plate_type, &adjacency, &plate_id, &params.cluster, s),
     }
 
     // Step 5 — broadcast the updated `per_plate_type` back into

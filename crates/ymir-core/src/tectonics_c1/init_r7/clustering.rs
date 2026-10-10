@@ -221,6 +221,79 @@ pub fn assign_continental_clusters_from(
     bfs_clusters(per_plate_type, adjacency, &[start], target_continental);
 }
 
+/// ADR Finding 170-A1 -- the plates' centroids on the torus: per axis the circular mean of the plate's cells (cell units).
+pub fn plate_centroids(plate_id_field: &PlateIdField, num_plates: usize) -> Vec<(f64, f64)> {
+    let (nx, ny) = (plate_id_field.nx(), plate_id_field.ny());
+    let tau = std::f64::consts::TAU;
+    let mut acc = vec![(0f64, 0f64, 0f64, 0f64); num_plates];
+    for j in 0..ny {
+        for i in 0..nx {
+            let p = plate_id_field.get(i, j) as usize;
+            if p < num_plates {
+                let (ax, ay) = (tau * i as f64 / nx as f64, tau * j as f64 / ny as f64);
+                acc[p].0 += ax.cos();
+                acc[p].1 += ax.sin();
+                acc[p].2 += ay.cos();
+                acc[p].3 += ay.sin();
+            }
+        }
+    }
+    acc.iter()
+        .map(|a| {
+            let cx = a.1.atan2(a.0).rem_euclid(tau) / tau * nx as f64;
+            let cy = a.3.atan2(a.2).rem_euclid(tau) / tau * ny as f64;
+            (cx, cy)
+        })
+        .collect()
+}
+
+/// ADR Finding 170-A1 -- **the compact family**: from `start`, add one plate at a time, the plate ADJACENT to the group
+/// whose centroid is nearest (on the torus) to the start plate's centroid (ties: the smaller plate id), up to the target
+/// count round(num_plates · continental_fraction).
+pub fn assign_continental_compact(
+    per_plate_type: &mut [PlateType],
+    adjacency: &[Vec<u16>],
+    plate_id_field: &PlateIdField,
+    params: &ContinentalClusterParams,
+    start: u16,
+) {
+    if !params.enabled || per_plate_type.is_empty() {
+        return;
+    }
+    let num_plates = per_plate_type.len();
+    let target = ((num_plates as f64 * params.continental_fraction).round() as usize).clamp(1, num_plates);
+    let cen = plate_centroids(plate_id_field, num_plates);
+    let (nx, ny) = (plate_id_field.nx() as f64, plate_id_field.ny() as f64);
+    let s = cen[start as usize];
+    let dist = |p: usize| {
+        let dx = (cen[p].0 - s.0).rem_euclid(nx);
+        let dy = (cen[p].1 - s.1).rem_euclid(ny);
+        let (dx, dy) = (dx.min(nx - dx), dy.min(ny - dy));
+        dx * dx + dy * dy
+    };
+    for t in per_plate_type.iter_mut() {
+        *t = PlateType::Oceanic;
+    }
+    let mut group = vec![false; num_plates];
+    group[start as usize] = true;
+    per_plate_type[start as usize] = PlateType::Continental;
+    for _ in 1..target {
+        let mut best: Option<(f64, usize)> = None;
+        for p in 0..num_plates {
+            if group[p] || !adjacency[p].iter().any(|&q| group[q as usize]) {
+                continue;
+            }
+            let d = dist(p);
+            if best.is_none_or(|b| d < b.0) {
+                best = Some((d, p));
+            }
+        }
+        let Some((_, p)) = best else { break };
+        group[p] = true;
+        per_plate_type[p] = PlateType::Continental;
+    }
+}
+
 /// Steps 3–4 of [`assign_continental_clusters`]: the BFS from `seeds` (every plate already Oceanic).
 fn bfs_clusters(per_plate_type: &mut [PlateType], adjacency: &[Vec<u16>], seeds: &[u16], target_continental: usize) {
     let num_plates = per_plate_type.len();

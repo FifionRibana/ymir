@@ -22352,3 +22352,98 @@ load; to remeasure alone.
 - **The numbering**: F170 = the plates, the chronology and the age; F171 = the sea-level rise; F172 = the heterogeneous K.
 
 **The author's decision, verbatim** (recalled): « SI ça marche pas on fera plus de plaques. »
+
+## Finding 170 — more plates, the chronology, the continent's age: with 16 plates the selection qualifies 3 / 4 seeds (r* 1–3; 12 plates qualify none, the témoin's best is r* = 0); C1 thickens early (70–99 % of Σ Δs_DS in the first half); but the age overshoots from the other side — the mountains fall from 52–73 % (B0) to 0.6–11.6 % already at 20 Myr and to 0.3–6.2 % at 300 Myr, the old continent a sea-level plain (median 3–50 m) — macro success 0 / 3, no stop met as written, A not tuned; the torus is now the cascade's default; production unchanged
+
+**Status: built, measured, gated; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f170_plates_age/finding_170.md`.
+- Declared before any measurement: `f170_declared.md`. Predictions: `f170_predictions.md`.
+- F169 committed (`c382299`).
+
+**Part 0**:
+- **The torus is the cascade's default**: `CascadeConfig::declared` and `AmpConfig::declared` carry `torus: Some([0, 0])`; the
+  viz ticks « tore ». The pin asks for `torus: None`: F168 bit for bit.
+- **The cost, idle and alone** (the témoin's L2):
+  - the chain 385 s CPU / 55 s wall in window mode, against 521 s / 62 s on the torus: **+35 % CPU, +11 % wall**;
+  - the physics level 23–26 s against 29–31 s.
+  - F169's 466–554 s was the torus's normal cost.
+
+**A — the selection** (`select_continent_plates`; N ∈ {12, 16}; k 5–9 and 6–12; the BFS and the compact families
+(`assign_continental_compact`); 120 and 224 candidates per seed, memoised on the plate set; 50–62 % land, r* ≥ 1, the largest
+r*):
+- **12 plates**: 0 / 4 seeds.
+- **16 plates**: 3 / 4.
+  - 42: compact k 7, 51.3 %, r* 2.
+  - 1: BFS k 10, 50.4 %, r* 1.
+  - 9: compact k 7, 51.2 %, r* 3.
+  - The témoin: best r* 0 (7 candidates with r* = 0).
+- **N = 16** by the rule.
+- **A4**:
+  - plates at the end 4–6 (8 plates: 2); C-C cells 0 / 58 / 8;
+  - **convergent + suture per 10 000 km² of land: ×1.80–2.59 F168 L2's**;
+  - yet B0's mountains are 52–73 %, against L2's 75–80 %. The reviewer's « mountains follow the suture length » is not
+    supported in its direction.
+- **A5 — the negative controls** (permanent): 8 plates = F168; `torus: None` = F168; 12 / 16 plates at the RNG's first draw (BFS)
+  = C1's init at that N; the compact family is connected.
+
+**B — the chronology** (3 seeds):
+- the first half of the steps brings **70.3 / 99.0 / 91.5 %** of the land's Σ Δs_DS; the last 10 % brings 6.2 / 0.2 / 1.6 %;
+- the thickening age p50 is at steps 45–69;
+- the C-C collisions peak at step 10 (115–148 cells) and fade as the plates merge;
+- **« the rest »** (B0, 23–38 % of the mountains): altitude 553–756 m, R7 600–714 m, **altitude at t₀ 446–476 m**. It is the
+  initial crust, dissected (the reviewer's reading holds).
+
+**C, D — the age** (Europe: mountain 24.8 %, median 195 m):
+
+| seed | mountain B0 → 20 → 100 → 300 Myr | plain + plateau, old | median land, old | peak 2 048², old |
+|---|---|---|---|---|
+| 42 | 72.8 → 11.6 → 7.1 → 6.2 % | 76.0 % | 50 m | 2 695 m |
+| 1 | 52.2 → 0.6 → 0.3 → 0.3 % | 96.6 % | 3 m | 761 m |
+| 9 | 59.9 → 8.1 → 2.6 → 2.4 % | 91.4 % | 9 m | 1 504 m |
+
+- The surviving mountains of the old profile are the late belts (23–66 % thickened in the last third).
+- The old plains: 4–46 m, R7 5–50 m. The land shrinks to 47–53 %.
+- **The coast**, old profile: dimension up to 1.06–1.07, length ratio 1.10–1.18, towards Corsica's 1.12 / 1.37. But the
+  aligned share is 0.31–0.34: « degraded » against F169 on 2 / 3.
+- **The confluence angles** on the old profile: σ_θ 28–33°, Corsica's.
+- **Cost** (idle): 465–504 s CPU per world at every age.
+
+**R**:
+- the selection passes (16 plates);
+- **macro success 0 / 3** (the mountains far under 16.5 %);
+- « erases the high mountains »: 2 / 3 at 256², 1 / 3 at 2 048²;
+- no stop met as written with 3 seeds;
+- A not tuned.
+
+**The reading** (hypotheses to check):
+- The cascade's K (K_SI 2 × 10⁻⁶ /yr, an erodible value) wears an un-uplifted relief down within a few Myr, and C1 thickens
+  early. So any A ≥ 20 Myr erases most of the relief; the mountain band lies between T and 20 Myr.
+- What would keep an old continent's relief is physical: resistant old crust (F172's K, K per rock, the cratons) or a late
+  uplift.
+
+**Predictions**:
+- **The reviewer's**:
+  - held: W1 (16 / 12), W2's first clause, W3, W4, W5, W8, the meta;
+  - refuted: « compact qualifies more seeds », B0 > 75 %, W6, W7.
+- **Mine**:
+  - held: 16 plates, compact r* larger, W3, W4, W8, the erase stop not firing, the meta;
+  - refuted: 12 plates 2–3 seeds, the old ranges, W5's ranges, W6, W7, the macro success, the coast unchanged, the costs.
+
+**Open, for the author** (nothing chosen):
+- (a) the age: the declared values give a sea-level plain; a choice inside T–20 Myr would be a calibration;
+- (b) the relief kept physically (resistant old crust or a late uplift);
+- (c) the témoin (20 or 24 plates, or r* = 0);
+- (d) 16 plates as the profile's count.
+
+**At commit (2026-10-11), decided (the reviewer's proposals)**:
+- **The torus is the cascade's default mode.** Its cost, measured idle and alone: **+35 % CPU, +11 % wall** on the frozen chain.
+- **The selection works with 16 plates** (3 / 4 seeds), and with 12 plates on none. The témoin has only r* = 0 candidates.
+- **The reviewer's error, recorded**: the hypothesis « the mountains follow the suture length per land area » is refuted. The
+  sutures are ×1.8–2.6, and B0 has fewer mountains (52–73 % against F168 L2's 75–80 %).
+- **The old profile is a peneplain at sea level** (median land 3–50 m, against Europe's 195 m).
+  - **The reviewer's reading, a hypothesis to check**: with a single soft-rock K and n = 1, every un-uplifted relief vanishes
+    in a few Myr. So the age A does not correspond to a geological age as long as K does not depend on the rock.
+  - **A is not tuned between T and 20 Myr.**
+- **Noted**: the old profile brings the coast closer to Corsica (dimension up to 1.07, Corsica 1.12) and the confluence angles
+  too (σ_θ 28–33°, Corsica 27–30°).
+- **The default plate count and the order of the next findings** depend on the author's answer. The F171 prompt will follow.
