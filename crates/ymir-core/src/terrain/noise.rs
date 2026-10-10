@@ -40,6 +40,28 @@ impl SeededNoise {
         value / max_amplitude
     }
 
+    /// ADR Finding 169-A1 -- [`Self::fbm`] made PERIODIC on a torus of `period` × `period` (in the units of `x`, `y`,
+    /// i.e. wavelengths): each octave samples the same OpenSimplex source on a 4D Clifford torus, (x, y) ↦
+    /// (R cos 2πx/P, R sin 2πx/P, R cos 2πy/P, R sin 2πy/P) with R = P·f/2π, so its local wavelength stays 1/f and the
+    /// field wraps exactly at P.
+    pub fn fbm_torus(&self, x: f64, y: f64, period: f64, octaves: usize, lacunarity: f64, persistence: f64) -> f64 {
+        let tau = std::f64::consts::TAU;
+        let (ax, ay) = (tau * x / period, tau * y / period);
+        let (cx, sx, cy, sy) = (ax.cos(), ax.sin(), ay.cos(), ay.sin());
+        let mut value = 0.0;
+        let mut amplitude = 1.0;
+        let mut frequency = 1.0;
+        let mut max_amplitude = 0.0;
+        for i in 0..octaves.min(self.sources.len()) {
+            let r = period * frequency / tau;
+            value += self.sources[i].get([r * cx, r * sx, r * cy, r * sy]) * amplitude;
+            max_amplitude += amplitude;
+            frequency *= lacunarity;
+            amplitude *= persistence;
+        }
+        value / max_amplitude
+    }
+
     /// Sample anisotropic FBM: the noise is stretched along a direction.
     ///
     /// `angle` is the direction of compression (radians, 0 = x-axis).

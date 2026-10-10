@@ -341,7 +341,34 @@ pub struct Coast {
 
 /// B4 on a land mask (`true` = land).
 pub fn coast(land: &[bool], w: usize, h: usize, block: usize) -> Coast {
-    let is_land = |x: i64, y: i64| x >= 0 && y >= 0 && x < w as i64 && y < h as i64 && land[y as usize * w + x as usize];
+    coast_t(land, w, h, block, false)
+}
+
+/// ADR Finding 169-A3 -- B4 on the TORUS: the land / sea edges wrap, the boxes tile the torus, the crack contours close
+/// across the seam, and the window border is never a coast. `w` and `h` must be multiples of 64 and of `block`.
+pub fn coast_torus(land: &[bool], w: usize, h: usize, block: usize) -> Coast {
+    coast_t(land, w, h, block, true)
+}
+
+fn coast_t(land: &[bool], w: usize, h: usize, block: usize, per: bool) -> Coast {
+    let (wi, hi) = (w as i64, h as i64);
+    let is_land = |x: i64, y: i64| {
+        if per {
+            land[y.rem_euclid(hi) as usize * w + x.rem_euclid(wi) as usize]
+        } else {
+            x >= 0 && y >= 0 && x < wi && y < hi && land[y as usize * w + x as usize]
+        }
+    };
+    // on the torus the vertices are wrapped and the displacements unwrapped
+    let wrapv = |v: (i64, i64)| if per { (v.0.rem_euclid(wi), v.1.rem_euclid(hi)) } else { v };
+    let diff = |a: (i64, i64), b: (i64, i64)| {
+        let (mut dx, mut dy) = (b.0 - a.0, b.1 - a.1);
+        if per {
+            if dx > wi / 2 { dx -= wi } else if dx < -wi / 2 { dx += wi }
+            if dy > hi / 2 { dy -= hi } else if dy < -hi / 2 { dy += hi }
+        }
+        (dx, dy)
+    };
     // the coastline cells: land with a 4-neighbour sea (the outside is sea)
     let cl: Vec<bool> = (0..w * h)
         .map(|k| {
@@ -377,7 +404,7 @@ pub fn coast(land: &[bool], w: usize, h: usize, block: usize) -> Coast {
                 continue;
             }
             let mut add = |a: (i64, i64), c: (i64, i64), lattice: bool| {
-                out_edges.entry(a).or_default().push(c);
+                out_edges.entry(wrapv(a)).or_default().push(wrapv(c));
                 edges += 1;
                 if lattice {
                     on_lattice += 1;
@@ -404,7 +431,7 @@ pub fn coast(land: &[bool], w: usize, h: usize, block: usize) -> Coast {
         while let Some(first) = out_edges.get_mut(&s).and_then(|v| v.pop()) {
             let mut path = vec![s, first];
             let mut cur = first;
-            let mut prev_dir = (first.0 - s.0, first.1 - s.1);
+            let mut prev_dir = diff(s, first);
             while cur != s {
                 let Some(v) = out_edges.get_mut(&cur) else { break };
                 if v.is_empty() {
@@ -412,15 +439,23 @@ pub fn coast(land: &[bool], w: usize, h: usize, block: usize) -> Coast {
                 }
                 // at a saddle, turn left first (keeps a land cell on the left)
                 let left = (-prev_dir.1, prev_dir.0);
-                let pick = v.iter().position(|&n| (n.0 - cur.0, n.1 - cur.1) == left).unwrap_or(0);
+                let pick = v.iter().position(|&n| diff(cur, n) == left).unwrap_or(0);
                 let nxt = v.swap_remove(pick);
-                prev_dir = (nxt.0 - cur.0, nxt.1 - cur.1);
+                prev_dir = diff(cur, nxt);
                 path.push(nxt);
                 cur = nxt;
             }
             if path.len() < 33 {
                 continue;
             }
+            // the unwrapped path (on the torus a step never exceeds one cell)
+            let mut un = vec![path[0]];
+            for k in 1..path.len() {
+                let (dx, dy) = diff(path[k - 1], path[k]);
+                let l = un[k - 1];
+                un.push((l.0 + dx, l.1 + dy));
+            }
+            let path = un;
             let mut i = 0;
             while i + 8 < path.len() {
                 let (dx, dy) = ((path[i + 8].0 - path[i].0) as f32, (path[i + 8].1 - path[i].1) as f32);
@@ -649,6 +684,27 @@ pub fn circumnavigation(land: &[bool], n: usize) -> Circumnavigation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// F169-A3: the torus coast never counts the window border, and a disc across the seam reads as the centred disc.
+    #[test]
+    fn the_torus_coast_ignores_the_window_border() {
+        let n = 256;
+        let band: Vec<bool> = (0..n * n).map(|k| (100..140).contains(&(k / n))).collect();
+        assert_eq!(coast_torus(&band, n, n, 32).edges, 2 * n);
+        assert_eq!(coast(&band, n, n, 32).edges, 2 * n + 2 * 40);
+        let disc = |cx: f32, cy: f32| -> Vec<bool> {
+            (0..n * n)
+                .map(|k| {
+                    let dx = ((k % n) as f32 - cx + 128.0).rem_euclid(256.0) - 128.0;
+                    let dy = ((k / n) as f32 - cy + 128.0).rem_euclid(256.0) - 128.0;
+                    (dx * dx + dy * dy).sqrt() < 60.0
+                })
+                .collect()
+        };
+        let (a, b) = (coast_torus(&disc(128.0, 128.0), n, n, 32), coast_torus(&disc(0.0, 0.0), n, n, 32));
+        assert_eq!(a.edges, b.edges);
+        assert!((a.dimension - b.dimension).abs() < 0.02 && (a.aligned - b.aligned).abs() < 0.02, "{a:?} {b:?}");
+    }
 
     /// F168-A3: a centred square of side 20 on a 64² torus is circumnavigable with r* = 21 (side 62 still leaves a
     /// 2-cell gap; side 64 closes it); a full band and a diagonal line wrap; a ring around the seam does not.

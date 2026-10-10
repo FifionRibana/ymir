@@ -1,0 +1,30 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.16s
+     Running tests\f169_cascade.rs (target_f169b\release\deps\f169_cascade-155f94439e1353e8.exe)
+running 1 test
+==========  Finding 169 . A1–A3 at full scale (F168 L2 worlds, torus on)  ==========
+test f169_infra has been running for over 60 seconds
+   seed 10481999410520546993 shift [5, 0]: 256² 0 cells differ (max 0 m) · 2048² 0 cells differ (max 0 m)
+   seed 10481999410520546993 shift [0, 23]: 256² 0 cells differ (max 0 m) · 2048² 0 cells differ (max 0 m)
+   seed 10481999410520546993 shift [37, 50]: 256² 0 cells differ (max 0 m) · 2048² 0 cells differ (max 0 m)
+   seed 10481999410520546993: the rim 2048² (F168 L2: 1.15–2.1×): display window 3261 border land cells, mean 1041 m vs land 859 m → ratio 1.21 · C1's frame border 3261 cells, mean 1041 m → ratio 1.21 · land 62.9 %
+   seed 10481999410520546993: coast on the torus Coast { dimension: 0.99111676, length_ratio: 0.92136496, aligned: 0.3122202, block_index: 0.69166666, edges: 11520 } · coast in the window (F168's measure) Coast { dimension: 1.0009261, length_ratio: 0.9537037, aligned: 0.4908258, block_index: 7.597294, edges: 14780 } · peak 5436 m · chain 58.1 s wall / 466.2 s CPU
+   seed 42 shift [5, 0]: 256² 0 cells differ (max 0 m) · 2048² 0 cells differ (max 0 m)
+   seed 42 shift [0, 23]: 256² 0 cells differ (max 0 m) · 2048² 0 cells differ (max 0 m)
+   seed 42 shift [37, 50]: 256² 0 cells differ (max 0 m) · 2048² 0 cells differ (max 0 m)
+   seed 42: the rim 2048² (F168 L2: 1.15–2.1×): display window 3707 border land cells, mean 689 m vs land 1133 m → ratio 0.61 · C1's frame border 5713 cells, mean 716 m → ratio 0.63 · land 70.1 %
+   seed 42: coast on the torus Coast { dimension: 0.9818812, length_ratio: 0.90552884, aligned: 0.30563182, block_index: 1.1565378, edges: 8688 } · coast in the window (F168's measure) Coast { dimension: 0.9944478, length_ratio: 0.9467905, aligned: 0.54926527, block_index: 10.379216, edges: 12394 } · peak 6139 m · chain 62.1 s wall / 544.0 s CPU
+   seed 1 shift [5, 0]: 256² 0 cells differ (max 0 m) · 2048² 0 cells differ (max 0 m)
+   seed 1 shift [0, 23]: 256² 0 cells differ (max 0 m) · 2048² 0 cells differ (max 0 m)
+   seed 1 shift [37, 50]: 256² 0 cells differ (max 0 m) · 2048² 0 cells differ (max 0 m)
+   seed 1: the rim 2048² (F168 L2: 1.15–2.1×): display window 4493 border land cells, mean 642 m vs land 768 m → ratio 0.84 · C1's frame border 4493 cells, mean 642 m → ratio 0.84 · land 69.2 %
+   seed 1: coast on the torus Coast { dimension: 0.99614805, length_ratio: 0.9361007, aligned: 0.2790208, block_index: 0.8825684, edges: 9282 } · coast in the window (F168's measure) Coast { dimension: 1.0143188, length_ratio: 0.9903236, aligned: 0.5499367, block_index: 11.024546, edges: 13770 } · peak 5028 m · chain 63.9 s wall / 548.4 s CPU
+   seed 9 shift [5, 0]: 256² 0 cells differ (max 0 m) · 2048² 0 cells differ (max 0 m)
+   seed 9 shift [0, 23]: 256² 0 cells differ (max 0 m) · 2048² 0 cells differ (max 0 m)
+   seed 9 shift [37, 50]: 256² 0 cells differ (max 0 m) · 2048² 0 cells differ (max 0 m)
+   seed 9: the rim 2048² (F168 L2: 1.15–2.1×): display window 4019 border land cells, mean 639 m vs land 892 m → ratio 0.72 · C1's frame border 4019 cells, mean 639 m → ratio 0.72 · land 70.1 %
+   seed 9: coast on the torus Coast { dimension: 0.9869407, length_ratio: 0.8998463, aligned: 0.26797011, block_index: 0.7918486, edges: 8244 } · coast in the window (F168's measure) Coast { dimension: 0.9994551, length_ratio: 0.9443493, aligned: 0.5618671, block_index: 11.014682, edges: 12260 } · peak 4230 m · chain 64.4 s wall / 553.7 s CPU
+   → the invariance bit for bit on 4 / 4 seeds
+==========  end F169 infra  ==========
+test f169_infra ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 1474.32s

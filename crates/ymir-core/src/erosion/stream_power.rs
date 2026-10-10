@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::grid::GridF32;
 use crate::terrain::flow::{
-    D8_DIST, D8_DX, D8_DY, DIR_NONE, FlowConfig, compute_flow, mfd_accumulation,
+    D8_DIST, D8_DX, D8_DY, DIR_NONE, FlowConfig, compute_flow, mfd_accumulation_framed,
 };
 
 /// The BASE LEVEL a detachment-limited incision cannot cut below (ADR Finding 80).
@@ -615,7 +615,27 @@ pub fn incise_with_floor(
     floor: Option<&[f32]>,
     progress: &mut dyn FnMut(usize, &GridF32),
 ) -> GridF32 {
+    incise_with_floor_torus(height, cfg, k_field, floor, progress, None)
+}
+
+/// ADR Finding 169-A1 -- [`incise_with_floor`] on a TORUS (`Some(origin)`, the cascade's flag; `None` is production
+/// exactly): no D8 receiver leaves the map (it wraps, so the base level is the sea cells alone), the lateral erosion,
+/// the talus and the linear diffusion are periodic, and every tie-break or hash reads the TERRAIN index, `origin` being
+/// the shift (cells of this grid) from the grid to the terrain's own frame. The nonlinear diffusion branch has no torus
+/// form (the cascade never runs it).
+pub fn incise_with_floor_torus(
+    height: &GridF32,
+    cfg: &StreamPowerConfig,
+    k_field: Option<&[f32]>,
+    floor: Option<&[f32]>,
+    progress: &mut dyn FnMut(usize, &GridF32),
+    torus: Option<[usize; 2]>,
+) -> GridF32 {
     let (w, h) = (height.width, height.height);
+    assert!(
+        torus.is_none() || !(cfg.diffusion > 0.0 && cfg.critical_slope > 0.0),
+        "the nonlinear diffusion has no torus form"
+    );
     let n = w * h;
     let mut field = height.clone();
     let flow_cfg = FlowConfig { sea_level: cfg.sea_level, ..Default::default() };
@@ -625,13 +645,13 @@ pub fn incise_with_floor(
         let mut flow = compute_flow(&field, &flow_cfg);
         // ADR Finding 163 -- the weighted random receiver (`None` in production)
         if let Some(rr) = &cfg.random_receiver {
-            randomize_receivers(&mut flow, rr, cfg.sea_level, w, h);
+            randomize_receivers(&mut flow, rr, cfg.sea_level, w, h, torus);
         }
         // MFD area for the incision ONLY (D8 receiver/stack + rivers/lakes stay D8). When
         // set, the drainage area A is dispersed so the rilling feedback cannot run away.
         let mfd_acc = cfg
             .mfd_exponent
-            .map(|p| mfd_accumulation(&flow.filled, &flow.direction, cfg.sea_level, p, w, h));
+            .map(|p| mfd_accumulation_framed(&flow.filled, &flow.direction, cfg.sea_level, p, w, h, torus.unwrap_or([0, 0])));
         let acc: &GridF32 = mfd_acc.as_ref().unwrap_or(&flow.accumulation);
 
         // 2. Receiver + distance per cell (base = points off-grid / no outlet /
@@ -647,7 +667,11 @@ pub fn incise_with_floor(
             }
             let nx = x as i32 + D8_DX[d as usize];
             let ny = y as i32 + D8_DY[d as usize];
-            if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+            if torus.is_some() {
+                // F169-A1: the torus has no edge
+                receiver[k] = (ny.rem_euclid(h as i32) as usize) * w + nx.rem_euclid(w as i32) as usize;
+                dist[k] = D8_DIST[d as usize];
+            } else if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
                 receiver[k] = k; // routes off the map edge → outlet/base
             } else {
                 receiver[k] = ny as usize * w + nx as usize;
@@ -849,7 +873,10 @@ pub fn incise_with_floor(
                 let (x, y) = (k % w, k / w);
                 for (px, py) in [(-fdy, fdx), (fdy, -fdx)] {
                     for step in 1..=half_cells {
-                        let (bx, by) = (x as i32 + px * step, y as i32 + py * step);
+                        let (mut bx, mut by) = (x as i32 + px * step, y as i32 + py * step);
+                        if torus.is_some() {
+                            (bx, by) = (bx.rem_euclid(w as i32), by.rem_euclid(h as i32));
+                        }
                         if bx < 0 || by < 0 || bx >= w as i32 || by >= h as i32 {
                             break;
                         }
@@ -872,7 +899,7 @@ pub fn incise_with_floor(
         // no convergence loop — the C1-consistent alternative to the nonlinear-diffusion
         // solver. `talus_passes` clears the residual re-steepening a single sweep leaves.
         // Applied EVERYWHERE (no channel exclusion; Finding 8). See ADR 0001 Finding 10.
-        talus_sweep(&mut field, cfg, cell_m, norm_to_m);
+        talus_sweep_torus(&mut field, cfg, cell_m, norm_to_m, torus);
 
         // 5. Hillslope diffusion (explicit, a few sub-steps), interleaved with the
         // incision each iteration so it holds interfluves WHILE channels incise (the
@@ -929,7 +956,7 @@ pub fn incise_with_floor(
                 }
             }
         } else {
-            linear_diffusion(&mut field, cfg, Some(acc));
+            linear_diffusion_torus(&mut field, cfg, Some(acc), torus.is_some());
         }
 
         progress(iter, &field);
@@ -948,8 +975,29 @@ fn receiver_hash(k: u64, seed: u64) -> f32 {
 
 /// ADR Finding 163 -- redraw the D8 receivers of `flow` ([`StreamPowerConfig::random_receiver`]) and recompute its D8
 /// accumulation on them (1 per land cell, in topological order; the off-map wrap as in `compute_flow`).
-fn randomize_receivers(flow: &mut crate::terrain::flow::FlowResult, rr: &RandomReceiver, sea: f32, w: usize, h: usize) {
+fn randomize_receivers(
+    flow: &mut crate::terrain::flow::FlowResult,
+    rr: &RandomReceiver,
+    sea: f32,
+    w: usize,
+    h: usize,
+    torus: Option<[usize; 2]>,
+) {
     let n = w * h;
+    // F169-A1: on a torus the hash reads the terrain index and no receiver leaves the map
+    let canon = |k: usize| match torus {
+        Some(o) => ((k / w + o[1]) % h) * w + (k % w + o[0]) % w,
+        None => k,
+    };
+    let wrap = |nx: i32, ny: i32| -> Option<usize> {
+        if torus.is_some() {
+            Some(ny.rem_euclid(h as i32) as usize * w + nx.rem_euclid(w as i32) as usize)
+        } else if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+            None
+        } else {
+            Some(ny as usize * w + nx as usize)
+        }
+    };
     let z = &flow.filled.data;
     let mut dir = flow.direction.clone();
     for k in 0..n {
@@ -959,17 +1007,14 @@ fn randomize_receivers(flow: &mut crate::terrain::flow::FlowResult, rr: &RandomR
         }
         let (x, y) = ((k % w) as i32, (k / w) as i32);
         let (dx, dy) = (x + D8_DX[d as usize], y + D8_DY[d as usize]);
-        if dx < 0 || dy < 0 || dx >= w as i32 || dy >= h as i32 {
+        if wrap(dx, dy).is_none() {
             continue; // the D8 receiver leaves the map: an outlet, kept
         }
         let mut s = [0f32; 8];
         let mut smax = 0f32;
         for (dd, sd) in s.iter_mut().enumerate() {
-            let (nx, ny) = (x + D8_DX[dd], y + D8_DY[dd]);
-            if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
-                continue;
-            }
-            let drop = z[k] - z[ny as usize * w + nx as usize];
+            let Some(j) = wrap(x + D8_DX[dd], y + D8_DY[dd]) else { continue };
+            let drop = z[k] - z[j];
             if drop > 0.0 {
                 *sd = drop / D8_DIST[dd];
                 smax = smax.max(*sd);
@@ -980,7 +1025,7 @@ fn randomize_receivers(flow: &mut crate::terrain::flow::FlowResult, rr: &RandomR
         }
         let floor = rr.tau * smax;
         let total: f32 = s.iter().filter(|&&v| v >= floor).sum();
-        let mut u = receiver_hash(k as u64, rr.seed) * total;
+        let mut u = receiver_hash(canon(k) as u64, rr.seed) * total;
         let mut pick = d;
         for (dd, &v) in s.iter().enumerate() {
             if v >= floor && v > 0.0 {
@@ -1035,8 +1080,27 @@ fn randomize_receivers(flow: &mut crate::terrain::flow::FlowResult, rr: &RandomR
 /// (`crate::cascade`) can run it as its own sub-step. `incise_with_floor` calls it at the same place; the extraction
 /// is pinned by `the_f159_extraction_changes_no_output`. `cell_m` and `norm_to_m` as in the caller.
 pub fn talus_sweep(field: &mut GridF32, cfg: &StreamPowerConfig, cell_m: f32, norm_to_m: f32) {
+    talus_sweep_torus(field, cfg, cell_m, norm_to_m, None)
+}
+
+/// ADR Finding 169-A1 -- [`talus_sweep`] on a torus (`Some(origin)`): periodic neighbours, the sweep's height ties broken
+/// on the terrain index. `None` is [`talus_sweep`] exactly.
+pub fn talus_sweep_torus(field: &mut GridF32, cfg: &StreamPowerConfig, cell_m: f32, norm_to_m: f32, torus: Option<[usize; 2]>) {
     let (w, h) = (field.width, field.height);
     let n = w * h;
+    let canon = |k: usize| match torus {
+        Some(o) => ((k / w + o[1]) % h) * w + (k % w + o[0]) % w,
+        None => k,
+    };
+    let at = |nx: i32, ny: i32| -> Option<usize> {
+        if torus.is_some() {
+            Some(ny.rem_euclid(h as i32) as usize * w + nx.rem_euclid(w as i32) as usize)
+        } else if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+            None
+        } else {
+            Some(ny as usize * w + nx as usize)
+        }
+    };
     if cfg.talus_slope > 0.0 && cfg.talus_passes > 0 {
         let base_drop = cfg.talus_slope * cell_m / norm_to_m; // cardinal repose drop (norm)
         for _ in 0..cfg.talus_passes {
@@ -1047,7 +1111,7 @@ pub fn talus_sweep(field: &mut GridF32, cfg: &StreamPowerConfig, cell_m: f32, no
                 field.data[b]
                     .partial_cmp(&field.data[a])
                     .unwrap_or(std::cmp::Ordering::Equal)
-                    .then(a.cmp(&b))
+                    .then(canon(a).cmp(&canon(b)))
             });
             for &k in &idx {
                 let (x, y) = ((k % w) as i32, (k / w) as i32);
@@ -1055,11 +1119,7 @@ pub fn talus_sweep(field: &mut GridF32, cfg: &StreamPowerConfig, cell_m: f32, no
                 let (mut total, mut maxe) = (0.0f32, 0.0f32);
                 let mut exc = [0.0f32; 8];
                 for d in 0..8 {
-                    let (nx, ny) = (x + D8_DX[d], y + D8_DY[d]);
-                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
-                        continue;
-                    }
-                    let j = ny as usize * w + nx as usize;
+                    let Some(j) = at(x + D8_DX[d], y + D8_DY[d]) else { continue };
                     let zj = field.data[j];
                     if zj >= zk {
                         continue; // downhill only
@@ -1083,8 +1143,7 @@ pub fn talus_sweep(field: &mut GridF32, cfg: &StreamPowerConfig, cell_m: f32, no
                 field.data[k] = zk - mv;
                 for d in 0..8 {
                     if exc[d] > 0.0 {
-                        let (nx, ny) = (x + D8_DX[d], y + D8_DY[d]);
-                        let j = ny as usize * w + nx as usize;
+                        let j = at(x + D8_DX[d], y + D8_DY[d]).unwrap();
                         field.data[j] += mv * exc[d] / total;
                     }
                 }
@@ -1097,7 +1156,35 @@ pub fn talus_sweep(field: &mut GridF32, cfg: &StreamPowerConfig, cell_m: f32, no
 /// [`talus_sweep`]). `acc` is read only by the regime split (`diffuse_channels == false` with `min_area_cells > 0`);
 /// `None` treats every cell as a hillslope cell, which is what `diffuse_channels = true` does anyway.
 pub fn linear_diffusion(field: &mut GridF32, cfg: &StreamPowerConfig, acc: Option<&GridF32>) {
+    linear_diffusion_torus(field, cfg, acc, false)
+}
+
+/// ADR Finding 169-A1 -- [`linear_diffusion`] on a torus (`periodic`): the 5-point Laplacian wraps and every cell
+/// diffuses, the border rows and columns included. `false` is [`linear_diffusion`] exactly.
+pub fn linear_diffusion_torus(field: &mut GridF32, cfg: &StreamPowerConfig, acc: Option<&GridF32>, periodic: bool) {
     if !(cfg.diffusion > 0.0 && cfg.diffusion_substeps > 0) {
+        return;
+    }
+    if periodic {
+        let (w, h) = (field.width, field.height);
+        let dsub = cfg.diffusion / cfg.diffusion_substeps as f32;
+        for _ in 0..cfg.diffusion_substeps {
+            let src = field.data.clone();
+            for y in 0..h {
+                for x in 0..w {
+                    let k = y * w + x;
+                    if src[k] <= cfg.sea_level {
+                        continue;
+                    }
+                    if !cfg.diffuse_channels && cfg.min_area_cells > 0.0 && acc.is_some_and(|a| a.data[k] >= cfg.min_area_cells) {
+                        continue;
+                    }
+                    let (xm, xp, ym, yp) = ((x + w - 1) % w, (x + 1) % w, (y + h - 1) % h, (y + 1) % h);
+                    let lap = src[y * w + xm] + src[y * w + xp] + src[ym * w + x] + src[yp * w + x] - 4.0 * src[k];
+                    field.data[k] = src[k] + dsub * lap;
+                }
+            }
+        }
         return;
     }
     let (w, h) = (field.width, field.height);
@@ -1698,7 +1785,7 @@ mod tests {
             }
         }
         let mut flow = compute_flow(&f, &FlowConfig { sea_level: 0.5, ..Default::default() });
-        randomize_receivers(&mut flow, &RandomReceiver { seed: 7, tau: 0.5 }, 0.5, w, h);
+        randomize_receivers(&mut flow, &RandomReceiver { seed: 7, tau: 0.5 }, 0.5, w, h, None);
         let mut count = [0usize; 8];
         for y in 2..h - 2 {
             for x in 3..w - 1 {

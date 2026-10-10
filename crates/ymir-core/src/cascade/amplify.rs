@@ -11,7 +11,7 @@
 //! 0 m during a level and its bathymetry restored at the end; land never goes below +0.5 m (production's base level).
 //! Every update is Jacobi (computed from the previous buffer), so the rayon split cannot change a bit.
 
-use crate::erosion::stream_power::{StreamPowerConfig, incise_with_floor};
+use crate::erosion::stream_power::{StreamPowerConfig, incise_with_floor_torus};
 use crate::grid::GridF32;
 use crate::seed::WorldSeed;
 use crate::terrain::noise::SeededNoise;
@@ -151,6 +151,10 @@ pub struct AmpConfig {
     pub n1_recal_depth: usize,
     /// ADR Finding 164-D1 -- the warp of the upscaled field (`None` = F159–F163).
     pub warp: Option<Warp>,
+    /// ADR Finding 169-A1 -- the torus flag: `Some(origin)`, the shift (64² cells) from the input grid to the terrain's own
+    /// frame. Every neighbour operation is periodic, the ocean is the largest periodic sea component, and every noise,
+    /// tie-break and ordered sum reads the terrain's coordinates. `None` = F168 exactly.
+    pub torus: Option<[usize; 2]>,
 }
 
 /// ADR Finding 164-D1 -- where the warp acts: once, on the physics level's output (at the first amplification level),
@@ -216,6 +220,7 @@ impl AmpConfig {
             n1_pi_m: Vec::new(),
             n1_recal_depth: 1,
             warp: None,
+            torus: None,
         }
     }
     /// N1's k at a level of `n` cells.
@@ -302,6 +307,8 @@ pub struct AmpLevel {
     pub secs: [f64; 4],
     /// Erosion iterations' cell-updates where s ≥ s_max, and all eroding cell-updates.
     pub smax_bind: (u64, u64),
+    /// F169-A1: the torus origin at this level's resolution (`None` = the window).
+    pub torus: Option<[usize; 2]>,
 }
 
 impl AmpLevel {
@@ -399,15 +406,105 @@ pub fn lift_interior(z: &mut GridF32, ocean: &[bool], to_m: f32) -> (usize, f32)
     (c, if c > 0 { (s / c as f64) as f32 } else { 0.0 })
 }
 
-/// A fractal noise in world coordinates (km), rescaled to [0, 1] over the grid (min–max).
-pub(crate) fn noise01(n: usize, cell_km: f32, wavelength_km: f32, octaves: usize, seed: u64, phase: &str) -> Vec<f32> {
+/// ADR Finding 169-A1 -- the torus origin at a level of `n` cells (`origin64` in 64² cells).
+pub fn torus_at(origin64: Option<[usize; 2]>, n: usize) -> Option<[usize; 2]> {
+    origin64.map(|o| [(o[0] * n / 64) % n, (o[1] * n / 64) % n])
+}
+
+/// F169-A1: the terrain index of cell `k` of an n² grid whose terrain origin is `o`.
+#[inline]
+pub fn canon_index(k: usize, n: usize, o: [usize; 2]) -> usize {
+    ((k / n + o[1]) % n) * n + (k % n + o[0]) % n
+}
+
+/// F169-A1: the grid's cells in TERRAIN order (the grid's own order when `torus` is `None`), for sums that must not
+/// depend on the framing.
+pub fn terrain_order(n: usize, torus: Option<[usize; 2]>) -> Vec<usize> {
+    match torus {
+        None => (0..n * n).collect(),
+        Some(o) => (0..n * n).map(|c| ((c / n + n - o[1]) % n) * n + (c % n + n - o[0]) % n).collect(),
+    }
+}
+
+/// F169-A1: the periodic neighbour in direction `d` (`per`), or the window's (`None` off the map).
+#[inline]
+fn nb(x: i32, y: i32, d: usize, n: usize, per: bool) -> Option<usize> {
+    let (nx, ny) = (x + D8[d].0, y + D8[d].1);
+    if per {
+        Some(ny.rem_euclid(n as i32) as usize * n + nx.rem_euclid(n as i32) as usize)
+    } else if nx < 0 || ny < 0 || nx >= n as i32 || ny >= n as i32 {
+        None
+    } else {
+        Some(ny as usize * n + nx as usize)
+    }
+}
+
+/// ADR Finding 169-A1 -- the ocean on a torus: the largest periodic 4-connected component of the cells ≤ 0 m (ties: the
+/// smallest terrain index). Other sea components are land (D5), as an interior basin is today. `None` = [`ocean_mask`].
+pub fn ocean_mask_t(z: &GridF32, torus: Option<[usize; 2]>) -> Vec<bool> {
+    let Some(o) = torus else { return ocean_mask(z) };
+    let n = z.width;
+    let sea: Vec<bool> = z.data.iter().map(|&v| v <= 0.0).collect();
+    let mut lab = vec![u32::MAX; n * n];
+    let mut best: Option<(usize, usize, u32)> = None; // (size, smallest terrain index, label)
+    let mut stack = Vec::new();
+    let mut next = 0u32;
+    for s in 0..n * n {
+        if !sea[s] || lab[s] != u32::MAX {
+            continue;
+        }
+        lab[s] = next;
+        stack.push(s);
+        let (mut size, mut cmin) = (0usize, usize::MAX);
+        while let Some(k) = stack.pop() {
+            size += 1;
+            cmin = cmin.min(canon_index(k, n, o));
+            let (x, y) = (k % n, k / n);
+            for j in [y * n + (x + 1) % n, y * n + (x + n - 1) % n, ((y + 1) % n) * n + x, ((y + n - 1) % n) * n + x] {
+                if sea[j] && lab[j] == u32::MAX {
+                    lab[j] = next;
+                    stack.push(j);
+                }
+            }
+        }
+        if best.is_none_or(|b| size > b.0 || (size == b.0 && cmin < b.1)) {
+            best = Some((size, cmin, next));
+        }
+        next += 1;
+    }
+    match best {
+        Some((_, _, l)) => lab.iter().map(|&v| v == l).collect(),
+        None => vec![false; n * n],
+    }
+}
+
+/// A fractal noise in world coordinates (km), rescaled to [0, 1] over the grid (min–max); ADR Finding 169-A1 -- with
+/// `torus` (`Some(origin)` at this resolution): periodic over the domain
+/// ([`SeededNoise::fbm_torus`]) and sampled at the TERRAIN's coordinates, so it follows the land when the input is rolled.
+pub(crate) fn noise01_t(
+    n: usize,
+    cell_km: f32,
+    wavelength_km: f32,
+    octaves: usize,
+    seed: u64,
+    phase: &str,
+    torus: Option<[usize; 2]>,
+) -> Vec<f32> {
     let s = WorldSeed::new(seed).derive_seed(phase) as u32;
     let src = SeededNoise::new(s, octaves);
+    let period = n as f64 * cell_km as f64 / wavelength_km as f64;
     let mut v: Vec<f32> = (0..n * n)
         .into_par_iter()
-        .map(|k| {
-            let (x, y) = ((k % n) as f64 * cell_km as f64, (k / n) as f64 * cell_km as f64);
-            src.fbm(x / wavelength_km as f64, y / wavelength_km as f64, octaves, 2.0, 0.5) as f32
+        .map(|k| match torus {
+            None => {
+                let (x, y) = ((k % n) as f64 * cell_km as f64, (k / n) as f64 * cell_km as f64);
+                src.fbm(x / wavelength_km as f64, y / wavelength_km as f64, octaves, 2.0, 0.5) as f32
+            }
+            Some(o) => {
+                let c = canon_index(k, n, o);
+                let (x, y) = ((c % n) as f64 * cell_km as f64, (c / n) as f64 * cell_km as f64);
+                src.fbm_torus(x / wavelength_km as f64, y / wavelength_km as f64, period, octaves, 2.0, 0.5) as f32
+            }
         })
         .collect();
     let (lo, hi) = v.iter().fold((f32::MAX, f32::MIN), |(a, b), &x| (a.min(x), b.max(x)));
@@ -421,10 +518,15 @@ pub(crate) fn noise01(n: usize, cell_km: f32, wavelength_km: f32, octaves: usize
 /// ADR Finding 164-D1 -- the warp's displacement at a level of `n` cells (in cells of THIS level): A and L are in cells
 /// of the previous level (n / 2), so ×2 here.
 pub fn warp_field(n: usize, cell_km: f32, w: &Warp, seed: u64) -> (Vec<f32>, Vec<f32>) {
+    warp_field_t(n, cell_km, w, seed, None)
+}
+
+/// F169-A1: [`warp_field`] on the torus (the noise periodic and anchored on the terrain).
+pub fn warp_field_t(n: usize, cell_km: f32, w: &Warp, seed: u64, torus: Option<[usize; 2]>) -> (Vec<f32>, Vec<f32>) {
     let a = 2.0 * w.amp / std::f32::consts::SQRT_2;
     let lam_km = 2.0 * w.corr * cell_km;
-    let fx = noise01(n, cell_km, lam_km, 1, seed, &format!("cascade_warp_x_{n}"));
-    let fy = noise01(n, cell_km, lam_km, 1, seed, &format!("cascade_warp_y_{n}"));
+    let fx = noise01_t(n, cell_km, lam_km, 1, seed, &format!("cascade_warp_x_{n}"), torus);
+    let fy = noise01_t(n, cell_km, lam_km, 1, seed, &format!("cascade_warp_y_{n}"), torus);
     (fx.iter().map(|v| a * (2.0 * v - 1.0)).collect(), fy.iter().map(|v| a * (2.0 * v - 1.0)).collect())
 }
 
@@ -486,6 +588,45 @@ pub fn warp_grid(g: &GridF32, dx: &[f32], dy: &[f32]) -> GridF32 {
     GridF32 { width: n, height: g.height, data }
 }
 
+/// ADR Finding 169-A1 -- [`warp_grid`] with the integer and fractional parts of x + d(x) taken apart (x + ⌊d⌋,
+/// d − ⌊d⌋), so the sample does not depend on the cell's index magnitude: a rolled input warps to the rolled output bit
+/// for bit. The torus mode's warp.
+pub fn warp_grid_t(g: &GridF32, dx: &[f32], dy: &[f32]) -> GridF32 {
+    let n = g.width;
+    let (w, h) = (g.width as i64, g.height as i64);
+    let data = (0..n * n)
+        .into_par_iter()
+        .map(|k| {
+            let (fx, fy) = (dx[k].floor(), dy[k].floor());
+            let (wx, wy) = (cr_weights(dx[k] - fx), cr_weights(dy[k] - fy));
+            let (x0, y0) = ((k % n) as i64 + fx as i64, (k / n) as i64 + fy as i64);
+            let mut s = 0f32;
+            for (j, wyj) in wy.iter().enumerate() {
+                let y = (y0 + j as i64 - 1).rem_euclid(h) as usize;
+                let mut r = 0f32;
+                for (i, wxi) in wx.iter().enumerate() {
+                    let x = (x0 + i as i64 - 1).rem_euclid(w) as usize;
+                    r += wxi * g.data[y * g.width + x];
+                }
+                s += wyj * r;
+            }
+            s
+        })
+        .collect();
+    GridF32 { width: n, height: g.height, data }
+}
+
+/// F169-A1: [`warp_mask`] with the offset rounded apart from the index (x + ⌊d + ½⌋).
+fn warp_mask_t(m: &[bool], n: usize, dx: &[f32], dy: &[f32]) -> Vec<bool> {
+    (0..n * n)
+        .map(|k| {
+            let x = ((k % n) as i64 + (dx[k] + 0.5).floor() as i64).rem_euclid(n as i64) as usize;
+            let y = ((k / n) as i64 + (dy[k] + 0.5).floor() as i64).rem_euclid(n as i64) as usize;
+            m[y * n + x]
+        })
+        .collect()
+}
+
 /// A mask warped by nearest-cell sampling at x + d(x).
 fn warp_mask(m: &[bool], n: usize, dx: &[f32], dy: &[f32]) -> Vec<bool> {
     (0..n * n)
@@ -503,7 +644,7 @@ fn dist(d: usize, cell_m: f32) -> f32 {
 }
 
 /// The sum of the downhill weights s^p of every cell (the denominator of eq. 1); 0 on a pit or the ocean.
-fn norms(z: &[f32], ocean: &[bool], n: usize, cell_m: f32, p: f32) -> Vec<f32> {
+fn norms(z: &[f32], ocean: &[bool], n: usize, cell_m: f32, p: f32, per: bool) -> Vec<f32> {
     (0..n * n)
         .into_par_iter()
         .map(|k| {
@@ -513,11 +654,7 @@ fn norms(z: &[f32], ocean: &[bool], n: usize, cell_m: f32, p: f32) -> Vec<f32> {
             let (x, y) = ((k % n) as i32, (k / n) as i32);
             let mut s = 0f32;
             for d in 0..8 {
-                let (nx, ny) = (x + D8[d].0, y + D8[d].1);
-                if nx < 0 || ny < 0 || nx >= n as i32 || ny >= n as i32 {
-                    continue;
-                }
-                let j = ny as usize * n + nx as usize;
+                let Some(j) = nb(x, y, d, n, per) else { continue };
                 let sl = (z[k] - z[j]) / dist(d, cell_m);
                 if sl > 0.0 {
                     s += sl.powf(p);
@@ -531,15 +668,11 @@ fn norms(z: &[f32], ocean: &[bool], n: usize, cell_m: f32, p: f32) -> Vec<f32> {
 /// Σ over the uphill land neighbours q of p of w(q, p) · src(q) (eqs. 1–2's sum).
 #[inline]
 #[allow(clippy::too_many_arguments)]
-fn gather(z: &[f32], ocean: &[bool], norm: &[f32], src: &[f32], k: usize, n: usize, cell_m: f32, p: f32) -> f32 {
+fn gather(z: &[f32], ocean: &[bool], norm: &[f32], src: &[f32], k: usize, n: usize, cell_m: f32, p: f32, per: bool) -> f32 {
     let (x, y) = ((k % n) as i32, (k / n) as i32);
     let mut acc = 0f32;
     for d in 0..8 {
-        let (nx, ny) = (x + D8[d].0, y + D8[d].1);
-        if nx < 0 || ny < 0 || nx >= n as i32 || ny >= n as i32 {
-            continue;
-        }
-        let q = ny as usize * n + nx as usize;
+        let Some(q) = nb(x, y, d, n, per) else { continue };
         if ocean[q] || norm[q] <= 0.0 {
             continue;
         }
@@ -553,15 +686,11 @@ fn gather(z: &[f32], ocean: &[bool], norm: &[f32], src: &[f32], k: usize, n: usi
 
 /// The steepest downhill neighbour of k: (slope, receiver index), `None` on a pit.
 #[inline]
-fn steepest(z: &[f32], k: usize, n: usize, cell_m: f32) -> Option<(f32, usize)> {
+fn steepest(z: &[f32], k: usize, n: usize, cell_m: f32, per: bool) -> Option<(f32, usize)> {
     let (x, y) = ((k % n) as i32, (k / n) as i32);
     let mut best: Option<(f32, usize)> = None;
     for d in 0..8 {
-        let (nx, ny) = (x + D8[d].0, y + D8[d].1);
-        if nx < 0 || ny < 0 || nx >= n as i32 || ny >= n as i32 {
-            continue;
-        }
-        let j = ny as usize * n + nx as usize;
+        let Some(j) = nb(x, y, d, n, per) else { continue };
         let sl = (z[k] - z[j]) / dist(d, cell_m);
         if sl > 0.0 && best.is_none_or(|b| sl > b.0) {
             best = Some((sl, j));
@@ -573,9 +702,18 @@ fn steepest(z: &[f32], k: usize, n: usize, cell_m: f32) -> Option<(f32, usize)> 
 /// One exact multiple-direction accumulation (cells sorted by height, the weights of eq. 1): the level's starting
 /// drainage (D2's one deviation) and the retargeting's ridge detection.
 pub fn exact_area(z: &[f32], ocean: &[bool], n: usize, cell_m: f32, p: f32) -> Vec<f32> {
-    let norm = norms(z, ocean, n, cell_m, p);
+    exact_area_t(z, ocean, n, cell_m, p, None)
+}
+
+/// F169-A1: [`exact_area`] on the torus (periodic neighbours, the height ties broken on the terrain index).
+pub fn exact_area_t(z: &[f32], ocean: &[bool], n: usize, cell_m: f32, p: f32, torus: Option<[usize; 2]>) -> Vec<f32> {
+    let per = torus.is_some();
+    let o = torus.unwrap_or([0, 0]);
+    let norm = norms(z, ocean, n, cell_m, p, per);
     let mut order: Vec<usize> = (0..n * n).filter(|&k| !ocean[k]).collect();
-    order.sort_unstable_by(|&a, &b| z[b].partial_cmp(&z[a]).unwrap_or(std::cmp::Ordering::Equal).then(a.cmp(&b)));
+    order.sort_unstable_by(|&a, &b| {
+        z[b].partial_cmp(&z[a]).unwrap_or(std::cmp::Ordering::Equal).then(canon_index(a, n, o).cmp(&canon_index(b, n, o)))
+    });
     let mut a = vec![1f32; n * n];
     for &k in &order {
         if norm[k] <= 0.0 {
@@ -583,11 +721,7 @@ pub fn exact_area(z: &[f32], ocean: &[bool], n: usize, cell_m: f32, p: f32) -> V
         }
         let (x, y) = ((k % n) as i32, (k / n) as i32);
         for d in 0..8 {
-            let (nx, ny) = (x + D8[d].0, y + D8[d].1);
-            if nx < 0 || ny < 0 || nx >= n as i32 || ny >= n as i32 {
-                continue;
-            }
-            let j = ny as usize * n + nx as usize;
+            let Some(j) = nb(x, y, d, n, per) else { continue };
             let sl = (z[k] - z[j]) / dist(d, cell_m);
             if sl > 0.0 {
                 a[j] += sl.powf(p) / norm[k] * a[k];
@@ -598,9 +732,9 @@ pub fn exact_area(z: &[f32], ocean: &[bool], n: usize, cell_m: f32, p: f32) -> V
 }
 
 /// p90 of the land slope (steepest descent, m/m).
-fn land_slope_p90(z: &[f32], ocean: &[bool], n: usize, cell_m: f32) -> f32 {
+fn land_slope_p90(z: &[f32], ocean: &[bool], n: usize, cell_m: f32, per: bool) -> f32 {
     let mut s: Vec<f32> =
-        (0..n * n).filter(|&k| !ocean[k]).map(|k| steepest(z, k, n, cell_m).map_or(0.0, |b| b.0)).collect();
+        (0..n * n).filter(|&k| !ocean[k]).map(|k| steepest(z, k, n, cell_m, per).map_or(0.0, |b| b.0)).collect();
     if s.is_empty() {
         return 0.0;
     }
@@ -654,17 +788,23 @@ impl AmpLevel {
         let t = Instant::now();
         let mut up = super::upsample2(prev);
         let n = up.width;
+        let torus = torus_at(cfg.torus, n);
+        let per = torus.is_some();
         let mut d5_up = prev_d5.map(|m| super::measure::upsample_mask2(m, n / 2));
         let (mut pre_warp, mut post_warp, mut warp_jmin, mut warp_jlow) = (None, None, f32::NAN, f32::NAN);
         if let Some(w) = warp {
-            let (dx, dy) = warp_field(n, cfg.cell_km(n), w, cfg.seed);
+            let (dx, dy) = warp_field_t(n, cfg.cell_km(n), w, cfg.seed, torus);
             (warp_jmin, warp_jlow) = jacobian(&dx, &dy, n);
-            let warped = warp_grid(&up, &dx, &dy);
-            d5_up = d5_up.map(|m| warp_mask(&m, n, &dx, &dy));
+            let (warped, d5w) = if per {
+                (warp_grid_t(&up, &dx, &dy), d5_up.map(|m| warp_mask_t(&m, n, &dx, &dy)))
+            } else {
+                (warp_grid(&up, &dx, &dy), d5_up.map(|m| warp_mask(&m, n, &dx, &dy)))
+            };
+            d5_up = d5w;
             pre_warp = Some(std::mem::replace(&mut up, warped));
             post_warp = Some(up.clone());
         }
-        let ocean = ocean_mask(&up);
+        let ocean = ocean_mask_t(&up, torus);
         let mut d5 = d5_up.unwrap_or_else(|| vec![false; n * n]);
         for k in 0..n * n {
             if !ocean[k] && up.data[k] <= 0.0 {
@@ -674,7 +814,7 @@ impl AmpLevel {
                 d5[k] = false;
             }
         }
-        let prev_ocean = ocean_mask(prev);
+        let prev_ocean = ocean_mask_t(prev, torus_at(cfg.torus, prev.width));
         let mut prev_work = GridF32 {
             width: prev.width,
             height: prev.height,
@@ -701,8 +841,8 @@ impl AmpLevel {
         }
         let cell_km = cfg.cell_km(n);
         let cell_m = cell_km * 1000.0;
-        let area = exact_area(&z.data, &ocean, n, cell_m, cfg.p_flow);
-        let s_ref = land_slope_p90(&z.data, &ocean, n, cell_m).max(1e-4);
+        let area = exact_area_t(&z.data, &ocean, n, cell_m, cfg.p_flow, torus);
+        let s_ref = land_slope_p90(&z.data, &ocean, n, cell_m, per).max(1e-4);
         let depth_m = cfg.depth_m(n);
         let n_e = Budget::moyen(n).erosion as f32;
         let k_dep = depth_m / (n_e * s_ref.min(cfg.s_max).powf(cfg.n_exp) * cfg.a_max.powf(cfg.m_exp));
@@ -712,17 +852,17 @@ impl AmpLevel {
             v if v.is_n1() && cfg.n1_rho.is_some() => {
                 let amp = cfg.n1_rho.unwrap_or(0.0);
                 let oct = (((25.0 / (2.0 * cell_km)).log2().floor() as i32) + 1).max(1) as usize;
-                let f = noise01(n, cell_km, 25.0, oct, cfg.seed, "cascade_hardness_n1");
+                let f = noise01_t(n, cell_km, 25.0, oct, cfg.seed, "cascade_hardness_n1", torus);
                 f.iter().map(|&v| (1.0 - (0.5 + amp * (2.0 * v - 1.0))) / 0.5).collect()
             }
             Variant::SRho => {
-                let f = noise01(n, cell_km, cfg.rho_wavelength_km, cfg.rho_octaves, cfg.seed, "cascade_hardness");
+                let f = noise01_t(n, cell_km, cfg.rho_wavelength_km, cfg.rho_octaves, cfg.seed, "cascade_hardness", torus);
                 // ρ = mean + amp·(2f − 1) ∈ [0.1, 0.9]; k(1 − ρ) / (1 − mean) keeps S's mean erodibility
                 f.iter().map(|&v| (1.0 - (cfg.rho_mean + cfg.rho_amp * (2.0 * v - 1.0))) / (1.0 - cfg.rho_mean)).collect()
             }
             _ => vec![1.0; n * n],
         };
-        let nu = noise01(n, cell_km, cfg.talus_wavelength_km, cfg.talus_octaves, cfg.seed, "cascade_talus");
+        let nu = noise01_t(n, cell_km, cfg.talus_wavelength_km, cfg.talus_octaves, cfg.seed, "cascade_talus", torus);
         // F161-D2: the repose slope carried to the cell (a self-affine scaling, PROXY), F160's constant otherwise
         let tan_c = if cfg.talus_adapt {
             cfg.talus_tan * (cell_m / cfg.talus_ref_m).powf(cfg.talus_h - 1.0)
@@ -746,8 +886,9 @@ impl AmpLevel {
         let mut z = z;
         let mut pi = vec![0f32; n * n];
         if let Some(&(_, amp)) = cfg.n1_pi_m.iter().find(|(m, _)| *m == n).filter(|_| cfg.variant.is_n1()) {
-            let g = noise01(n, cell_km, 4.0 * cell_km, 2, cfg.seed, "cascade_pi");
-            let land: Vec<usize> = (0..n * n).filter(|&k| !ocean[k]).collect();
+            let g = noise01_t(n, cell_km, 4.0 * cell_km, 2, cfg.seed, "cascade_pi", torus);
+            // F169-A1: summed in terrain order
+            let land: Vec<usize> = terrain_order(n, torus).into_iter().filter(|&k| !ocean[k]).collect();
             let mean = land.iter().map(|&k| g[k] as f64).sum::<f64>() / land.len().max(1) as f64;
             let rms = (land.iter().map(|&k| (g[k] as f64 - mean).powi(2)).sum::<f64>() / land.len().max(1) as f64).sqrt().max(1e-9);
             for &k in &land {
@@ -789,6 +930,7 @@ impl AmpLevel {
             done: Budget::default(),
             secs: [t.elapsed().as_secs_f64(), 0.0, 0.0, 0.0],
             smax_bind: (0, 0),
+            torus,
         }
     }
 
@@ -813,10 +955,11 @@ impl AmpLevel {
                 }
             }
             let z = &self.z.data;
-            let norm = norms(z, &self.ocean, n, cell_m, p);
+            let per = self.torus.is_some();
+            let norm = norms(z, &self.ocean, n, cell_m, p, per);
             let area: Vec<f32> = (0..n * n)
                 .into_par_iter()
-                .map(|k| 1.0 + gather(z, &self.ocean, &norm, &self.area, k, n, cell_m, p))
+                .map(|k| 1.0 + gather(z, &self.ocean, &norm, &self.area, k, n, cell_m, p, per))
                 .collect();
             let out: Vec<(f32, u8)> = (0..n * n)
                 .into_par_iter()
@@ -824,7 +967,7 @@ impl AmpLevel {
                     if self.ocean[k] {
                         return (z[k], 0);
                     }
-                    let Some((s, r)) = steepest(z, k, n, cell_m) else { return (z[k], 0) };
+                    let Some((s, r)) = steepest(z, k, n, cell_m, per) else { return (z[k], 0) };
                     let sn = s.powf(cfg.n_exp);
                     let e = sn.min(smax_n) * area[k].powf(cfg.m_exp).min(amax_m);
                     let h = (z[k] - self.k * self.kf[k] * e).max(z[r]).max(cfg.land_floor_m.min(z[k]));
@@ -880,7 +1023,7 @@ impl AmpLevel {
                     .collect(),
             };
             let kfield = cfg.n1_rho.is_some().then_some(self.kf.as_slice());
-            let out = incise_with_floor(&zn, &sp, kfield, None, &mut |_, _| {});
+            let out = incise_with_floor_torus(&zn, &sp, kfield, None, &mut |_, _| {}, self.torus);
             for k in 0..n * n {
                 if self.ocean[k] {
                     continue;
@@ -946,6 +1089,7 @@ impl AmpLevel {
         let n = self.n;
         let cell_m = self.cell_km * 1000.0;
         let m = cfg.talus_eps * cell_m;
+        let per = self.torus.is_some();
         for _ in 0..iters {
             if cancel() {
                 break;
@@ -960,11 +1104,7 @@ impl AmpLevel {
                     let (x, y) = ((k % n) as i32, (k / n) as i32);
                     let (mut a, mut b) = (0i32, 0i32);
                     for d in 0..8 {
-                        let (nx, ny) = (x + D8[d].0, y + D8[d].1);
-                        if nx < 0 || ny < 0 || nx >= n as i32 || ny >= n as i32 {
-                            continue;
-                        }
-                        let j = ny as usize * n + nx as usize;
+                        let Some(j) = nb(x, y, d, n, per) else { continue };
                         let dd = dist(d, cell_m);
                         if (z[j] - z[k]) / dd > self.s0[k] {
                             a += 1;
@@ -998,18 +1138,19 @@ impl AmpLevel {
                 break;
             }
             let z = &self.z.data;
-            let norm = norms(z, &self.ocean, n, cell_m, p);
+            let per = self.torus.is_some();
+            let norm = norms(z, &self.ocean, n, cell_m, p, per);
             let out: Vec<(f32, f32, f32)> = (0..n * n)
                 .into_par_iter()
                 .map(|k| {
-                    let a = 1.0 + gather(z, &self.ocean, &norm, &self.area, k, n, cell_m, p);
+                    let a = 1.0 + gather(z, &self.ocean, &norm, &self.area, k, n, cell_m, p, per);
                     if self.ocean[k] {
                         return (z[k], 0.0, a);
                     }
-                    let e_m = steepest(z, k, n, cell_m).map_or(0.0, |(s, _)| {
+                    let e_m = steepest(z, k, n, cell_m, per).map_or(0.0, |(s, _)| {
                         self.k_dep * self.kf[k] * s.powf(cfg.n_exp).min(smax_n) * a.powf(cfg.m_exp).min(amax_m)
                     });
-                    let tr = gather(z, &self.ocean, &norm, &g, k, n, cell_m, p);
+                    let tr = gather(z, &self.ocean, &norm, &g, k, n, cell_m, p, per);
                     let phi = tr - e_m;
                     let d = if phi > 0.0 { tr.min(cfg.kd * phi) } else { 0.0 };
                     (z[k] + d, cfg.kc * e_m + tr - d, a)
@@ -1078,7 +1219,7 @@ pub fn retarget(h_a: &GridF32, h0: &GridF32, ocean: &[bool], cfg: &AmpConfig) ->
             za[k] = 0.0;
         }
     }
-    let a = exact_area(&za, ocean, n, cell_m, cfg.p_flow);
+    let a = exact_area_t(&za, ocean, n, cell_m, cfg.p_flow, torus_at(cfg.torus, n));
     let cons: Vec<bool> = (0..n * n).map(|k| !ocean[k] && a[k] < cfg.retarget_a0).collect();
     let e0: Vec<f32> = (0..n * n).map(|k| if cons[k] { h0.data[k] - h_a.data[k] } else { 0.0 }).collect();
     let mut e = e0.clone();
@@ -1118,7 +1259,7 @@ pub struct Chain {
 
 impl Chain {
     pub fn new(physics_m: GridF32, cfg: AmpConfig) -> Self {
-        let ocean = ocean_mask(&physics_m);
+        let ocean = ocean_mask_t(&physics_m, torus_at(cfg.torus, physics_m.width));
         let peak_m = physics_m.data.iter().zip(&ocean).filter(|(_, o)| !**o).map(|(v, _)| *v).fold(f32::MIN, f32::max);
         Self { cfg, physics_m, peak_m, levels: Vec::new(), d5_phys: Vec::new() }
     }
@@ -1154,7 +1295,7 @@ impl Chain {
         let prev2 = (self.cfg.n1_recal_depth >= 2).then(|| match self.levels.last() {
             Some(l) => l.prev_work.clone(),
             None => {
-                let oc = ocean_mask(&self.physics_m);
+                let oc = ocean_mask_t(&self.physics_m, torus_at(self.cfg.torus, self.physics_m.width));
                 let w = GridF32 {
                     width: self.physics_m.width,
                     height: self.physics_m.height,

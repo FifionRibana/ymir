@@ -28,8 +28,8 @@ pub mod predict;
 pub mod profile;
 
 use crate::erosion::stream_power::{
-    RELIEF_V1_A_C_KM2, RELIEF_V3_MFD_P, RandomReceiver, StreamPowerConfig, incise_with_floor, linear_diffusion,
-    talus_sweep,
+    RELIEF_V1_A_C_KM2, RELIEF_V3_MFD_P, RandomReceiver, StreamPowerConfig, incise_with_floor_torus,
+    linear_diffusion_torus, talus_sweep_torus,
 };
 use crate::seed::WorldSeed;
 use crate::grid::GridF32;
@@ -101,6 +101,10 @@ pub struct CascadeConfig {
     /// The seed of the receivers' draws and of the roughness (`WorldSeed` phases "cascade_phys_receiver",
     /// "cascade_phys_rough").
     pub seed: u64,
+    /// ADR Finding 169-A1 -- the torus flag: `Some(origin)`, the shift (64² cells) from the input grid to the terrain's own
+    /// frame: the solver, the talus and the diffusion are periodic, and the roughness, the ordered sums and the rebound's
+    /// FFT read the terrain's frame. `None` = F168 exactly.
+    pub torus: Option<[usize; 2]>,
 }
 
 impl CascadeConfig {
@@ -126,6 +130,7 @@ impl CascadeConfig {
             receiver_tau: None,
             roughness_m: 0.0,
             seed: 0,
+            torus: None,
         }
     }
     /// Metres per norm unit (`c1_altitude_norm_to_metres`' slope).
@@ -471,12 +476,25 @@ pub struct Drive<'a> {
     /// Stop at equilibrium (else run all the steps).
     pub eq_stop: bool,
     pub rebound: Option<Rebound>,
+    /// ADR Finding 169-C1 -- the duration of step `i` (years); `None` = `cfg.dt_yr` at every step. The linear diffusion's
+    /// sub-steps follow the step's weight w: max(`cfg.diffusion_substeps`, ⌈w / 0.2⌉) (the explicit limit is 0.25).
+    pub dt: Option<Box<dyn Fn(usize) -> f32 + 'a>>,
 }
 
 impl<'a> Drive<'a> {
     pub fn steady(du: &'a [f32]) -> Self {
-        Self { du: Box::new(move |_| std::borrow::Cow::Borrowed(du)), hold_sea: true, eq_stop: true, rebound: None }
+        Self { du: Box::new(move |_| std::borrow::Cow::Borrowed(du)), hold_sea: true, eq_stop: true, rebound: None, dt: None }
     }
+}
+
+/// F169-A1: a level's field in TERRAIN order (`o` the terrain origin at the level's resolution).
+pub fn to_terrain(v: &[f32], n: usize, o: [usize; 2]) -> Vec<f32> {
+    (0..n * n).map(|c| v[((c / n + n - o[1]) % n) * n + (c % n + n - o[0]) % n]).collect()
+}
+
+/// F169-A1: the inverse of [`to_terrain`].
+pub fn from_terrain(v: &[f32], n: usize, o: [usize; 2]) -> Vec<f32> {
+    (0..n * n).map(|k| v[amplify::canon_index(k, n, o)]).collect()
 }
 
 /// The level's loop (F159's, generalised by F165): uplift, the implicit stream power, the talus and the linear
@@ -497,7 +515,9 @@ fn run_loop(
     let land0 = land_mask(&upscaled, cfg.sea_level);
     let n2m = cfg.norm_to_m();
     let mut solver = cfg.solver(n);
-    let hill = cfg.hillslope(n);
+    let mut hill = cfg.hillslope(n);
+    // ADR Finding 169-A1: the torus origin at this level
+    let tor = amplify::torus_at(cfg.torus, n);
     // ADR Finding 163-D: the random receivers are drawn anew at every step
     let receiver_seed = WorldSeed::new(cfg.seed).derive_seed("cascade_phys_receiver");
     let cell_m = cfg.cell_km(n) * 1000.0;
@@ -522,6 +542,14 @@ fn run_loop(
             return None;
         }
         let du = (drive.du)(steps);
+        // ADR Finding 169-C1: the step's own duration
+        if let Some(dtf) = &drive.dt {
+            let mut ct = cfg.clone();
+            ct.dt_yr = dtf(steps);
+            solver = ct.solver(n);
+            hill = ct.hillslope(n);
+            hill.diffusion_substeps = cfg.diffusion_substeps.max((hill.diffusion / 0.2).ceil() as usize);
+        }
         let mean_du = if drive.hold_sea {
             du.iter().map(|&v| v as f64).sum::<f64>() / n_land0 as f64
         } else {
@@ -548,7 +576,7 @@ fn run_loop(
             seed: receiver_seed ^ (steps as u64 + 1).wrapping_mul(0xA24B_AED4_963E_E407),
             tau,
         });
-        z = incise_with_floor(&z, &solver, None, None, &mut |_, _| {});
+        z = incise_with_floor_torus(&z, &solver, None, None, &mut |_, _| {}, tor);
         for k in 0..cells {
             s_ero[k] += z.data[k] - before[k];
         }
@@ -556,7 +584,12 @@ fn run_loop(
         if let Some(rb) = &drive.rebound {
             let e: Vec<f32> = (0..cells).map(|k| (before[k] - z.data[k]).max(0.0)).collect();
             let a = rb.alpha_km as f64;
-            let w = measure::filter_isotropic(&e, n, cfg.cell_km(n), &|k| 1.0 / (1.0 + (k * a).powi(4) / 4.0));
+            let gain = |k: f64| 1.0 / (1.0 + (k * a).powi(4) / 4.0);
+            // F169-A1: on a torus the FFT runs in the terrain's frame
+            let w = match tor {
+                None => measure::filter_isotropic(&e, n, cfg.cell_km(n), &gain),
+                Some(o) => from_terrain(&measure::filter_isotropic(&to_terrain(&e, n, o), n, cfg.cell_km(n), &gain), n, o),
+            };
             let f = rb.rho_c / rb.rho_m;
             for k in 0..cells {
                 let d = f * w[k];
@@ -568,7 +601,7 @@ fn run_loop(
         // 3. diffusion: the talus, then the linear diffusion (production's order)
         let t = Instant::now();
         let before = z.data.clone();
-        talus_sweep(&mut z, &hill, cell_m, n2m);
+        talus_sweep_torus(&mut z, &hill, cell_m, n2m, tor);
         let mut moved = 0usize;
         for k in 0..cells {
             let d = z.data[k] - before[k];
@@ -580,7 +613,7 @@ fn run_loop(
             }
         }
         talus_last = moved as f32 / n_land as f32;
-        linear_diffusion(&mut z, &hill, None);
+        linear_diffusion_torus(&mut z, &hill, None, tor.is_some());
         // the sea stays the base level (the talus may have shed onto it)
         for k in 0..cells {
             if !land[k] {
@@ -670,7 +703,8 @@ pub fn physics_level(
     let n2m = cfg.norm_to_m();
     let mut z0 = upsample_to(coarse, n);
     let zm = GridF32 { width: n, height: n, data: z0.data.iter().map(|v| (v - cfg.sea_level) * n2m).collect() };
-    let ocean = amplify::ocean_mask(&zm);
+    let tor = amplify::torus_at(cfg.torus, n);
+    let ocean = amplify::ocean_mask_t(&zm, tor);
     let (mut lifted, mut depth) = (0usize, 0f64);
     let mut lifted_mask = vec![false; n * n];
     for k in 0..n * n {
@@ -685,8 +719,8 @@ pub fn physics_level(
     // D5 cells untouched), times `roughness_m`, never below sea + 1 m
     if cfg.roughness_m > 0.0 {
         let cell_km = cfg.cell_km(n);
-        let g = amplify::noise01(n, cell_km, 8.0 * cell_km, 2, cfg.seed, "cascade_phys_rough");
-        let land: Vec<usize> = (0..n * n).filter(|&k| !ocean[k] && !lifted_mask[k]).collect();
+        let g = amplify::noise01_t(n, cell_km, 8.0 * cell_km, 2, cfg.seed, "cascade_phys_rough", tor);
+        let land: Vec<usize> = amplify::terrain_order(n, tor).into_iter().filter(|&k| !ocean[k] && !lifted_mask[k]).collect();
         let mean = land.iter().map(|&k| g[k] as f64).sum::<f64>() / land.len().max(1) as f64;
         let rms = (land.iter().map(|&k| (g[k] as f64 - mean).powi(2)).sum::<f64>() / land.len().max(1) as f64).sqrt();
         let floor = cfg.sea_level + 1.0 / n2m;

@@ -332,6 +332,31 @@ pub struct HistoryRun {
     pub steps: usize,
     pub rebound: Option<Rebound>,
     pub timing: Timing,
+    /// ADR Finding 169-C1 -- the continent's age A (years): C1's step k lasts d_N · r^(N−k), d_N = T/N, r solved so the
+    /// steps sum to A (r = 1 exactly at A = T). `None` = linear time (F165–F168).
+    pub age_years: Option<f64>,
+}
+
+/// ADR Finding 169-C1 -- the durations (years) of `steps` C1 steps whose last lasts `t_years / steps` and which sum to
+/// `age_years`, growing geometrically into the past; and r. At `age_years == t_years`, r = 1 exactly.
+pub fn step_durations(t_years: f64, age_years: f64, steps: usize) -> (Vec<f64>, f64) {
+    let d_n = t_years / steps as f64;
+    let total = |r: f64| (1..=steps).map(|k| d_n * r.powi((steps - k) as i32)).sum::<f64>();
+    let r = if age_years == t_years {
+        1.0
+    } else {
+        assert!(age_years > t_years, "the age A must be at least T");
+        let (mut lo, mut hi) = (1.0f64, 2.0f64);
+        while total(hi) < age_years {
+            hi *= 2.0;
+        }
+        for _ in 0..200 {
+            let m = 0.5 * (lo + hi);
+            if total(m) > age_years { hi = m } else { lo = m }
+        }
+        0.5 * (lo + hi)
+    };
+    ((1..=steps).map(|k| d_n * r.powi((steps - k) as i32)).collect(), r)
 }
 
 /// The historical level's result.
@@ -364,8 +389,10 @@ pub fn physics_history(
     // the roughness of the current level (F163), on the land of the initial state
     if cfg.roughness_m > 0.0 {
         let cell_km = cfg.cell_km(n);
-        let g = amplify::noise01(n, cell_km, 8.0 * cell_km, 2, cfg.seed, "cascade_phys_rough");
-        let land: Vec<usize> = (0..n * n).filter(|&k| z0.data[k] > cfg.sea_level).collect();
+        let tor = amplify::torus_at(cfg.torus, n);
+        let g = amplify::noise01_t(n, cell_km, 8.0 * cell_km, 2, cfg.seed, "cascade_phys_rough", tor);
+        // F169-A1: summed in terrain order
+        let land: Vec<usize> = amplify::terrain_order(n, tor).into_iter().filter(|&k| z0.data[k] > cfg.sea_level).collect();
         let mean = land.iter().map(|&k| g[k] as f64).sum::<f64>() / land.len().max(1) as f64;
         let rms = (land.iter().map(|&k| (g[k] as f64 - mean).powi(2)).sum::<f64>() / land.len().max(1) as f64).sqrt();
         let floor = cfg.sea_level + 1.0 / n2m;
@@ -395,6 +422,31 @@ pub fn physics_history(
     let zeros = vec![0f32; n * n];
     let steps = run.steps;
     let timing = run.timing;
+    // ADR Finding 169-C1: the continent's age -- each step its own duration, the interval's Δh spread in proportion
+    if let (Some(age), Timing::History) = (run.age_years, timing) {
+        let (d, _) = step_durations(run.t_years, age, steps);
+        let interval = move |i: usize| ((i * intervals) / steps).min(intervals - 1);
+        let mut dsum = vec![0f64; intervals];
+        for (i, di) in d.iter().enumerate() {
+            dsum[interval(i)] += di;
+        }
+        let delta: Vec<Vec<f32>> = (0..intervals).map(|j| up[j + 1].data.iter().zip(&up[j].data).map(|(b, a)| b - a).collect()).collect();
+        let dd = d.clone();
+        let drive = Drive {
+            du: Box::new(move |i| {
+                let j = interval(i);
+                let f = (dd[i] / dsum[j]) as f32;
+                std::borrow::Cow::Owned(delta[j].iter().map(|v| v * f).collect())
+            }),
+            hold_sea: false,
+            eq_stop: false,
+            rebound: run.rebound,
+            dt: Some(Box::new(move |i| d[i.min(steps - 1)] as f32)),
+        };
+        let uplift = GridF32::new(n, n, 0.0);
+        let rec = run_loop(z0.clone(), uplift, &cfg_t, n, run.steps, Some(0), &drive, progress, cancel)?;
+        return Some(HistoryLevel { rec, z0, snapshots: up });
+    }
     let drive = Drive {
         du: Box::new(move |i| {
             let v: &[f32] = match timing {
@@ -410,6 +462,7 @@ pub fn physics_history(
         hold_sea: false,
         eq_stop: false,
         rebound: run.rebound,
+        dt: None,
     };
     let uplift = GridF32::new(n, n, 0.0);
     let rec = run_loop(z0.clone(), uplift, &cfg_t, n, run.steps, Some(0), &drive, progress, cancel)?;
@@ -510,7 +563,7 @@ mod tests {
         let h = run_c1_recorded(&mut s, &mut k, &cfg, &C1Closures::default(), 10, &IsostasyConfig::c1_default(), &SteinSteinParams::default());
         let snaps = h.normalized(None);
         let c = CascadeConfig { mfd_exponent: Some(6.0), roughness_m: 40.0, seed: 7, ..CascadeConfig::declared(5000.0) };
-        let a = physics_history(&snaps, 128, &c, &HistoryRun { t_years: 0.0, steps: 120, rebound: None, timing: Timing::Steady }, &mut |_| {}, &|| false).unwrap();
+        let a = physics_history(&snaps, 128, &c, &HistoryRun { t_years: 0.0, steps: 120, rebound: None, timing: Timing::Steady, age_years: None }, &mut |_| {}, &|| false).unwrap();
         let (b, _) = super::super::physics_level(snaps.last().unwrap(), 128, &c, STEADY_PEAK_M, 120, &mut |_| {}, &|| false).unwrap();
         assert_eq!(a.rec.z.data, b.z.data);
         assert_eq!(a.rec.steps, b.steps);
@@ -530,19 +583,165 @@ mod tests {
             b.data.iter().zip(&a.data).map(|(x, y)| x - y).collect()
         };
         for timing in [Timing::History, Timing::Late10] {
-            let run = HistoryRun { t_years: 2.0e6, steps: 40, rebound: None, timing };
+            let run = HistoryRun { t_years: 2.0e6, steps: 40, rebound: None, timing, age_years: None };
             let l = physics_history(&snaps, n, &c, &run, &mut |_| {}, &|| false).unwrap();
             assert_eq!(l.rec.steps, 40);
             let err = l.rec.sum_uplift.iter().zip(&want).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
             assert!(err < 1e-4, "{timing:?}: Σ uplift off by {err}");
         }
-        let a = physics_history(&snaps, n, &c, &HistoryRun { t_years: 2.0e6, steps: 40, rebound: None, timing: Timing::History }, &mut |_| {}, &|| false).unwrap();
-        let b = physics_history(&snaps, n, &c, &HistoryRun { t_years: 2.0e6, steps: 40, rebound: Some(Rebound::declared()), timing: Timing::History }, &mut |_| {}, &|| false).unwrap();
+        let a = physics_history(&snaps, n, &c, &HistoryRun { t_years: 2.0e6, steps: 40, rebound: None, timing: Timing::History, age_years: None }, &mut |_| {}, &|| false).unwrap();
+        let b = physics_history(&snaps, n, &c, &HistoryRun { t_years: 2.0e6, steps: 40, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: None }, &mut |_| {}, &|| false).unwrap();
         let mean = |r: &LevelRecord| r.z.data.iter().map(|&v| v as f64).sum::<f64>();
         assert!(mean(&b.rec) > mean(&a.rec), "the rebound lifts");
         // the filter passes the mean (Ĝ(0) = 1): Σ rebound = (ρc / ρm) · Σ erosion
         let (sr, se) = (b.rec.sum_rebound.iter().map(|&v| v as f64).sum::<f64>(), b.rec.sum_erosion.iter().map(|&v| v as f64).sum::<f64>());
         assert!((sr + 2700.0 / 3300.0 * se).abs() < 0.01 * sr.abs().max(1e-9), "Σ rebound {sr} against Σ erosion {se}");
         assert!((Rebound::declared().alpha_km - 64.4).abs() < 0.5, "α {}", Rebound::declared().alpha_km);
+    }
+}
+
+/// ADR Finding 169 -- the torus, the terrain frame and the age, tested (permanent).
+#[cfg(test)]
+mod f169_tests {
+    use super::*;
+    use crate::cascade::amplify::{AmpConfig, Chain, Variant, Warp, WarpPlace, noise01_t};
+    use crate::cascade::{CascadeConfig, roll};
+
+    /// 31 synthetic 64² snapshots (norm, sea 0.5): an island straddling both seams of the torus, rising in time, with a
+    /// ridge that grows late.
+    fn snaps() -> Vec<GridF32> {
+        (0..31)
+            .map(|s| {
+                let a = s as f32 / 30.0;
+                let mut g = GridF32::new(64, 64, 0.44);
+                for y in 0..64 {
+                    for x in 0..64 {
+                        // periodic distance to (60, 3)
+                        let dx = ((x as f32 - 60.0 + 32.0).rem_euclid(64.0)) - 32.0;
+                        let dy = ((y as f32 - 3.0 + 32.0).rem_euclid(64.0)) - 32.0;
+                        let r2 = (dx * dx + 1.6 * dy * dy) / 140.0;
+                        let ridge = (-((dx - 0.6 * dy) / 2.5).powi(2)).exp() * (-r2 / 3.0).exp();
+                        g.data[y * 64 + x] = 0.44 + (0.06 + 0.02 * a) * (-r2).exp() + 0.05 * a * a * ridge;
+                    }
+                }
+                g
+            })
+            .collect()
+    }
+
+    fn cfg(origin: [usize; 2]) -> CascadeConfig {
+        CascadeConfig {
+            mfd_exponent: Some(6.0),
+            roughness_m: 40.0,
+            receiver_tau: Some(0.5),
+            seed: 11,
+            torus: Some(origin),
+            ..CascadeConfig::declared(5000.0)
+        }
+    }
+
+    fn run(snaps: &[GridF32], origin: [usize; 2], age: Option<f64>) -> (GridF32, GridF32) {
+        let run = HistoryRun { t_years: 2.0e6, steps: 30, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: age };
+        let l = physics_history(snaps, 128, &cfg(origin), &run, &mut |_| {}, &|| false).unwrap();
+        let n2m = cfg(origin).norm_to_m();
+        let zm = GridF32 { width: 128, height: 128, data: l.rec.z.data.iter().map(|v| (v - 0.5) * n2m).collect() };
+        let amp = AmpConfig {
+            budget_scale: 0.01,
+            n1_recal_depth: 2,
+            n1_pi_m: vec![(256, 3.0)],
+            warp: Some(Warp { amp: 0.5, corr: 4.0, place: WarpPlace::All }),
+            torus: Some(origin),
+            ..AmpConfig::declared(11, Variant::N1, 1.0)
+        };
+        let mut ch = Chain::new(zm.clone(), amp);
+        let out = ch.next_level(&|| false).unwrap().result();
+        (zm, out)
+    }
+
+    /// F169-A1, the invariance test (declared before measuring: bit for bit): the input rolled by (dx, dy) 64² cells,
+    /// with that origin, gives the reference output rolled by (dx, dy)·n/64 at the physics level (128²) and at the
+    /// amplification level (256²) -- shifts on one axis, the other, and both edges.
+    #[test]
+    fn the_torus_cascade_is_translation_invariant_bit_for_bit() {
+        let base = snaps();
+        let (p0, a0) = run(&base, [0, 0], None);
+        for d in [[5usize, 0usize], [0, 23], [37, 50]] {
+            let rolled: Vec<GridF32> = base.iter().map(|g| roll(g, d)).collect();
+            let (p, a) = run(&rolled, d, None);
+            assert_eq!(p.data, roll(&p0, [2 * d[0], 2 * d[1]]).data, "physics level, shift {d:?}");
+            assert_eq!(a.data, roll(&a0, [4 * d[0], 4 * d[1]]).data, "amplification level, shift {d:?}");
+        }
+    }
+
+    /// F169-C1 (permanent): A = T is linear time bit for bit (r = 1), and an older continent is not.
+    #[test]
+    fn the_age_at_t_is_linear_time_bit_for_bit() {
+        let base = snaps();
+        let (p_lin, _) = run(&base, [0, 0], None);
+        let (p_t, _) = run(&base, [0, 0], Some(2.0e6));
+        assert_eq!(p_lin.data, p_t.data);
+        let (p_old, _) = run(&base, [0, 0], Some(2.0e7));
+        assert_ne!(p_lin.data, p_old.data);
+        let (d, r) = step_durations(5.623e6, 3.0e8, 300);
+        assert!((d.iter().sum::<f64>() / 3.0e8 - 1.0).abs() < 1e-9 && (d[299] - 5.623e6 / 300.0).abs() < 1e-6, "r {r}");
+        assert!((r - 1.019306).abs() < 1e-5, "r {r}");
+        assert_eq!(step_durations(5.623e6, 5.623e6, 300).1, 1.0);
+    }
+
+    /// F169-A1: the torus noise follows the terrain (an origin rolls it exactly) and wraps (no seam).
+    #[test]
+    fn the_torus_noise_follows_the_terrain_and_wraps() {
+        let n = 64;
+        let a = noise01_t(n, 6.25, 25.0, 3, 5, "t", Some([0, 0]));
+        let b = noise01_t(n, 6.25, 25.0, 3, 5, "t", Some([9, 40]));
+        let ga = GridF32 { width: n, height: n, data: a.clone() };
+        assert_eq!(b, roll(&ga, [9, 40]).data);
+        // across the seam the step is like any neighbour step
+        let step = |x0: usize, x1: usize| (0..n).map(|y| (a[y * n + x0] - a[y * n + x1]).abs()).sum::<f32>() / n as f32;
+        let inner: f32 = (0..n - 1).map(|x| step(x, x + 1)).sum::<f32>() / (n - 1) as f32;
+        assert!(step(n - 1, 0) < 3.0 * inner, "seam {} vs {}", step(n - 1, 0), inner);
+    }
+
+    /// F169-A1, a diagnostic kept for whoever breaks the invariance: compares each amplification stage of the reference
+    /// and of a rolled input (the first differing stage names the unanchored source; it found the warp's f32 sampling).
+    #[test]
+    #[ignore]
+    fn f169_debug_amp_stages() {
+        let base = snaps();
+        let stage = |sn: &[GridF32], o: [usize; 2]| {
+            let (zm, _) = run(sn, o, None);
+            let amp = AmpConfig { budget_scale: 0.01, n1_recal_depth: 2, n1_pi_m: vec![(256, 3.0)], warp: Some(Warp { amp: 0.5, corr: 4.0, place: WarpPlace::All }), torus: Some(o), ..AmpConfig::declared(11, Variant::N1, 1.0) };
+            let mut ch = Chain::new(zm, amp.clone());
+            let b = amp.budget(256);
+            let mut v: Vec<(&str, Vec<f32>)> = Vec::new();
+            let l = ch.start_level();
+            v.push(("upscaled", l.upscaled.data.clone()));
+            v.push(("ocean", l.ocean.iter().map(|&b| b as u8 as f32).collect()));
+            v.push(("d5", l.d5.iter().map(|&b| b as u8 as f32).collect()));
+            v.push(("area", l.area.clone()));
+            v.push(("s0", l.s0.clone()));
+            v.push(("pi", l.pi.clone()));
+            v.push(("z0", l.z.data.clone()));
+            v.push(("prev_work", crate::cascade::upsample2(&l.prev_work).data));
+            v.push(("prev2", l.prev2_work.as_ref().map(|g| crate::cascade::upsample_to(g, 256).data).unwrap_or_default()));
+            l.erode(b.erosion, &amp, &|| false);
+            v.push(("erode", l.z.data.clone()));
+            l.talus(b.talus, &amp, &|| false);
+            v.push(("talus", l.z.data.clone()));
+            l.deposit(b.deposit, &amp, &|| false);
+            v.push(("deposit", l.z.data.clone()));
+            v
+        };
+        let a = stage(&base, [0, 0]);
+        let d = [5usize, 0usize];
+        let rolled: Vec<GridF32> = base.iter().map(|g| roll(g, d)).collect();
+        let b = stage(&rolled, d);
+        for ((name, x), (_, y)) in a.iter().zip(&b) {
+            if x.is_empty() { continue; }
+            let xr = roll(&GridF32 { width: 256, height: 256, data: x.clone() }, [4 * d[0], 4 * d[1]]).data;
+            let diff: Vec<usize> = (0..xr.len()).filter(|&k| xr[k].to_bits() != y[k].to_bits()).collect();
+            let maxd = diff.iter().map(|&k| (xr[k] - y[k]).abs()).fold(0f32, f32::max);
+            eprintln!("{name}: {} cells differ, max {maxd}, first {:?}", diff.len(), diff.first().map(|&k| (k % 256, k / 256)));
+        }
     }
 }

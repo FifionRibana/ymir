@@ -225,7 +225,7 @@ fn run_of(name: &str, zm: GridF32, d5: Vec<bool>, cost: (f64, f64), sum_up: Opti
 }
 fn hist_run(name: &str, snaps: &[GridF32], cfg: &CascadeConfig, t: f64) -> Run {
     let clk = Clock::start();
-    let l = physics_history(snaps, 256, cfg, &HistoryRun { t_years: t, steps: N_PHYS, rebound: Some(Rebound::declared()), timing: Timing::History }, &mut |_| {}, &|| false).unwrap();
+    let l = physics_history(snaps, 256, cfg, &HistoryRun { t_years: t, steps: N_PHYS, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: None }, &mut |_| {}, &|| false).unwrap();
     let cost = clk.stop();
     let k = n2m();
     let zm = to_m(&l.rec.z, k);

@@ -22271,3 +22271,84 @@ valeurs dépendant de la tectonique serait peut-être une solution? »
    A évaluer la différenec entre jeune, intermédiaire et vieux. »
 3. On the order (F169 = the infrastructure, the chronology and the age; F170 = the sea-level rise; F171 = the
    heterogeneous K): « Oui »
+
+## Finding 169 — a world that does not depend on its framing, a continent that can be sailed around, the continent's age: the torus cascade is translation-invariant bit for bit (the unit test, and 4 / 4 seeds × 3 shifts at 256² and 2 048²), the map-border rim is gone and the coast is measured on the torus (F168's « degraded coast » was the window); but the continental plates' selection fails on 4 / 4 seeds — no BFS cluster with 50–62 % land is circumnavigable with 8 plates — so the stop fires (next: more plates) and the chronology, the ages and the physical measures were not run; the age mapping and its viz slider are built and tested; production unchanged
+
+**Status: built, partly measured, gated; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f169_age/finding_169.md`.
+- Declared before any measurement: `f169_declared.md`. Predictions: `f169_predictions.md`.
+- F168 committed (`3271a44`).
+
+**A1 — the torus** (`CascadeConfig::torus`, `AmpConfig::torus`; `None` = F168 bit for bit):
+- **The solver**: `incise_with_floor_torus`, with no off-map receiver and a periodic lateral erosion, talus and diffusion.
+- **The terrain index** breaks every tie (the talus sweep, the MFD accumulation, the exact area) and feeds the random
+  receiver's hash.
+- **The noises** are periodic on the torus (4D Clifford embedding of the same OpenSimplex sources) and sampled at the
+  terrain's coordinates.
+- **The ocean** is the largest periodic sea component.
+- **The ordered sums and the rebound's FFT** run in the terrain frame.
+- `StreamPowerConfig` and `ContinentalClusterParams` are untouched: they enter cache keys.
+- **Found by the test**: the warp sampled u(x + d) in f32, so its fraction depended on the index's magnitude. Fixed by taking
+  ⌊d⌋ and d − ⌊d⌋ apart.
+- **The invariance**: bit for bit in the permanent unit test (64 → 128 → 256, both seams), and at full scale on F168's L2
+  worlds (4 / 4 seeds × (5, 0), (0, 23), (37, 50); 0 cells differ at 256² and 2 048²).
+
+**A2 — the rim**: the border land over the land's mean, 2 048², reads 1.21 / 0.61 / 0.84 / 0.72 (F168: 2.01 / 1.29 / 1.35 /
+1.46).
+- No border is raised.
+- The declared band 0.8–1.25 holds on 2 / 4: seeds 42 and 9 read under it, the window crossing lowlands.
+
+**A3 — `coast_torus`**: the L2 coasts read aligned 0.27–0.31 and block index 0.69–1.16 on the torus, against 0.49–0.56 and
+7.6–11.0 in the window.
+- Corsica: 0.27 / 0.78.
+- They remain smoother than Corsica (dimension ≈ 1.0 against 1.12).
+
+**A4 — the selection** (16 candidates per seed: f 0.625 and 0.5 × 8 start plates; end land 64² under Airy; the negative
+control permanent):
+
+| seed | candidates in 50–62 % | circumnavigable among them | the circumnavigable candidates |
+|---|---|---|---|
+| témoin | 5 | 0 | 47.1 % and 44.0 %, both r* 0 |
+| 42 | 10 | 0 | none |
+| 1 | 5 | 0 | 46.9 % (r* 0), 31–41 % (r* 4–5) |
+| 9 | 4 | 0 | 29–36 % (r* 4–8) |
+
+**R**: the invariance passes. **The selection fails on 4 / 4 seeds: stop; next, more plates.** B, C and D were not measured.
+
+**Built and tested for the next round**:
+- `history::step_durations` and `HistoryRun::age_years`: A = T is linear time bit for bit (permanent test); r(300 Myr) =
+  1.019306, d_1 = 5.70 Myr.
+- The diffusion's sub-steps max(4, ⌈w / 0.2⌉): 10 at 300 Myr.
+- The B bench (the chronology, the thickening age, the C-C collisions per snapshot).
+- **The viz** (Cascade window): « Âge du continent (Ma) » with its presets, « tore (F169) », « sélection (F169) », and the view
+  « Âge d'épaississement ».
+
+**Cost**: the selection 4–5 s CPU per seed. The torus chains 466–554 s CPU on L2 worlds (F168's L2 352–448), measured under
+load; to remeasure alone.
+
+**Predictions**:
+- **The reviewer's**: V1 held, V2 refuted, V3–V7 not measured.
+- **Mine**:
+  - held: V1 « not at the first run », the small r*, the meta;
+  - refuted: V2 on 3–4 seeds, the rim band on 4 / 4.
+
+**Open, for the author** (nothing chosen):
+- (a) how many plates (12 or 16);
+- (b) whether r* = 0 at 44–47 % land would do meanwhile;
+- (c) the torus as the cascade's default.
+
+**At commit (2026-10-10), decided (the reviewer's proposals, not contested by the author)**:
+- **The torus becomes the cascade's default mode**. The display offset is applied at the display and the export only.
+  Production is unchanged.
+- **Every comparison before F169 was made in window mode** (F159–F168: the solver's off-map receivers, the window-anchored
+  noises, the window border as coast).
+- **The reviewer's error, recorded**: the rim band 0.8–1.25 was two-sided. A border that cuts through lowlands reads under 0.8
+  with no rim (seeds 42 and 9).
+- **F168's « degraded coast » was a window artefact** (A3).
+- **The selection is impossible with 8 plates** (A4: no 50–62 % cluster is circumnavigable on any seed).
+- **The threshold becomes r* ≥ 1** (a sea ring of at least 3 cells of 64², ≈ 19 km); the r* = 0 candidates are reported too.
+  12 and 16 plates are tried.
+- **The cost**: the torus chains are to be remeasured on an idle machine.
+- **The numbering**: F170 = the plates, the chronology and the age; F171 = the sea-level rise; F172 = the heterogeneous K.
+
+**The author's decision, verbatim** (recalled): « SI ça marche pas on fera plus de plaques. »

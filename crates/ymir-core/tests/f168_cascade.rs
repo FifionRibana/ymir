@@ -279,7 +279,7 @@ struct Run {
 }
 fn hist_run(snaps: &[GridF32], cfg: &CascadeConfig) -> Run {
     let clk = Clock::start();
-    let run = HistoryRun { t_years: T_F166_YEARS, steps: N_PHYS, rebound: Some(Rebound::declared()), timing: Timing::History };
+    let run = HistoryRun { t_years: T_F166_YEARS, steps: N_PHYS, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: None };
     let l = physics_history(snaps, 256, cfg, &run, &mut |_| {}, &|| false).unwrap();
     let cost = clk.stop();
     let zm = to_m(&l.rec.z, n2m());

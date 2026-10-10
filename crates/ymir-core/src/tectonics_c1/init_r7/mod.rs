@@ -294,6 +294,13 @@ fn select_shield_mask(
 }
 
 pub fn init_c1_state_phase_2_r7(grid_size: usize, seed: u64, params: &Phase2InitParams) -> C1State {
+    init_c1_state_phase_2_r7_start(grid_size, seed, params, None)
+}
+
+/// ADR Finding 169-A4 -- [`init_c1_state_phase_2_r7`] with the continental BFS grown from a GIVEN start plate (`None` =
+/// C1's RNG draw, i.e. [`init_c1_state_phase_2_r7`] exactly). The cascade's « continent » profile selects it; production
+/// never passes `Some`.
+pub fn init_c1_state_phase_2_r7_start(grid_size: usize, seed: u64, params: &Phase2InitParams, start: Option<u16>) -> C1State {
     let nx = grid_size;
     let ny = grid_size;
 
@@ -318,7 +325,10 @@ pub fn init_c1_state_phase_2_r7(grid_size: usize, seed: u64, params: &Phase2Init
 
     // Step 4 — cluster-based continental type override.
     let mut per_plate_type = voronoi.per_plate_type;
-    assign_continental_clusters(&mut per_plate_type, &adjacency, &params.cluster);
+    match start {
+        None => assign_continental_clusters(&mut per_plate_type, &adjacency, &params.cluster),
+        Some(s) => clustering::assign_continental_clusters_from(&mut per_plate_type, &adjacency, &params.cluster, s),
+    }
 
     // Step 5 — broadcast the updated `per_plate_type` back into
     // cell-level `PlateTypeField`.

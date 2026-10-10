@@ -883,11 +883,27 @@ pub fn mfd_accumulation(
     w: usize,
     h: usize,
 ) -> GridF32 {
+    mfd_accumulation_framed(filled, direction, sea_level, p, w, h, [0, 0])
+}
+
+/// ADR Finding 169-A1 -- [`mfd_accumulation`] with its height ties broken on the TERRAIN index: `origin` is the shift
+/// (cells of this grid) from the grid to the terrain's own frame, so a rolled input sums in the same order. `[0, 0]` is
+/// [`mfd_accumulation`] exactly.
+pub fn mfd_accumulation_framed(
+    filled: &GridF32,
+    direction: &[u8],
+    sea_level: f32,
+    p: f32,
+    w: usize,
+    h: usize,
+    origin: [usize; 2],
+) -> GridF32 {
     let n = w * h;
     let is_ocean: Vec<bool> = (0..n).map(|i| filled.data[i] <= sea_level).collect();
     let mut land: Vec<usize> = (0..n).filter(|&i| !is_ocean[i]).collect();
+    let canon = |k: usize| ((k / w + origin[1]) % h) * w + (k % w + origin[0]) % w;
     land.sort_unstable_by(|&a, &b| {
-        filled.data[b].partial_cmp(&filled.data[a]).unwrap_or(CmpOrd::Equal).then(b.cmp(&a))
+        filled.data[b].partial_cmp(&filled.data[a]).unwrap_or(CmpOrd::Equal).then(canon(b).cmp(&canon(a)))
     });
     let mut acc = GridF32::new(w, h, 0.0);
     for &i in &land {

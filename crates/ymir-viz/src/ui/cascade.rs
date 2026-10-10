@@ -34,7 +34,7 @@ use ymir_core::cascade::history::{
 };
 use ymir_core::cascade::hydro::{Hydro, draw, hydrology};
 use ymir_core::cascade::physio::{MOUNTAIN, classify};
-use ymir_core::cascade::profile::C1Profile;
+use ymir_core::cascade::profile::{C1Profile, select_continent};
 use ymir_core::cascade::{
     CascadeConfig, CascadeProgress, LevelRecord, PeakCalibration, Rebound, SubStep, diff_rgba, physics_level, roll,
     shade_m_rgba,
@@ -46,7 +46,7 @@ use ymir_core::tectonics_c1::init_r7::init_c1_state_phase_2_r7;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::land_topology::land_topology;
 use ymir_core::tectonics_c1::production_upscale::c1_coarse_normalized_altitude;
-use ymir_core::tectonics_c1::time_loop::{C1TimeLoopConfig, run_with_closures};
+use ymir_core::tectonics_c1::time_loop::{C1TimeLoopConfig, run_with_closures, run_with_closures_terms};
 
 use crate::bridge::c1::C1RunSpec;
 
@@ -196,6 +196,12 @@ pub struct CascadeUi {
     airy: bool,
     /// F168-B4: the C1 profile of the history (production / continent L1 / continent L2).
     profile: C1Profile,
+    /// F169-A4: the selected continent instead of `profile`.
+    select: bool,
+    /// F169-A1: the torus cascade.
+    torus: bool,
+    /// F169-C: the continent's age (Myr; ≤ T = linear time).
+    age_ma: f32,
     snapshots: Vec<Shown>,
     /// F166-B5: the Σ Δh per C1 term (64², m), and the coarse field they are shown on.
     term_maps: Vec<(String, Vec<f32>)>,
@@ -257,6 +263,9 @@ impl Default for CascadeUi {
             history_mode: 0,
             airy: false,
             profile: C1Profile::Production,
+            select: false,
+            torus: false,
+            age_ma: 5.62,
             snapshots: Vec::new(),
             term_maps: Vec::new(),
             snap_i: 0,
@@ -307,14 +316,16 @@ pub fn cascade_coarse(seed: u64, offset_cells: [i64; 2]) -> GridF32 {
 
 /// F165-C1 / F166-B5: [`cascade_coarse`]'s C1 run with its history recorded (31 snapshots, normalised and rolled like it):
 /// h_iso (F165, `sources` false; the last snapshot is the coarse field) or h_src without C1's erosion term (F166). Also
-/// the témoin-style Σ Δh per C1 term (m, 64², the linear land ramp at the final datum), rolled.
+/// the témoin-style Σ Δh per C1 term (m, 64², the linear land ramp at the final datum), rolled. F169: also the
+/// thickening age (the step at which a cell's Σ Δs_DS reaches half its total, minus 150, NaN-free: 0 where no Davis-Suppe),
+/// and the offset the snapshots were rolled by.
 pub fn cascade_history(
     seed: u64,
     offset_cells: [i64; 2],
     sources: bool,
     airy: bool,
     profile: C1Profile,
-) -> (Vec<GridF32>, Vec<(String, Vec<f32>)>) {
+) -> (Vec<GridF32>, Vec<(String, Vec<f32>)>, [usize; 2]) {
     // F168-B4: the C1 profile (production, or the continent L1 / L2 initial fraction)
     let spec = C1RunSpec { seed, init_params: profile.init_params(), ..C1RunSpec::default() };
     let run = C1TimeLoopConfig {
@@ -325,7 +336,8 @@ pub fn cascade_history(
         iso_config: IsostasyConfig::c1_default(),
         drainage_max_distance: spec.drainage_max_distance,
     };
-    let mut state = init_c1_state_phase_2_r7(spec.grid_size, seed, &spec.init_params);
+    // F169-A4: a selected profile grows its BFS from its start plate
+    let mut state = profile.init_state(spec.grid_size, seed);
     let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
     let ss = SteinSteinParams::default();
     let exclude: &[C1Term] = if sources { &[C1Term::Erosion] } else { &[] };
@@ -355,8 +367,43 @@ pub fn cascade_history(
                 .collect();
             (format!("{term:?}"), rolled(&dh))
         })
+        .collect::<Vec<_>>();
+    // F169-B1: the thickening age, from a second (read-only, bit-identical) C1 run observed per step
+    let mut terms = terms;
+    let mut st2 = profile.init_state(spec.grid_size, seed);
+    let mut kin2 = PlateKinematics::preset_phase_1_1(st2.num_plates);
+    let cur = std::cell::RefCell::new(vec![0f64; n * n]);
+    let steps = std::cell::RefCell::new(Vec::<Vec<f64>>::new());
+    let mut on_term = |t: C1Term, a: &[f64], b: &[f64]| {
+        if t == C1Term::DavisSuppe {
+            for (c, (x, y)) in cur.borrow_mut().iter_mut().zip(a.iter().zip(b)) {
+                *c += y - x;
+            }
+        }
+    };
+    run_with_closures_terms(&mut st2, &mut kin2, &run, &spec.closures, |_, _, _| {
+        let v = std::mem::replace(&mut *cur.borrow_mut(), vec![0f64; n * n]);
+        steps.borrow_mut().push(v);
+    }, &mut on_term);
+    let steps = steps.into_inner();
+    let age: Vec<f64> = (0..n * n)
+        .map(|i| {
+            let total: f64 = steps.iter().map(|s| s[i]).sum();
+            if total <= 0.05 || un.last().unwrap().data[i] <= 0.5 {
+                return 0.0;
+            }
+            let mut c = 0.0;
+            for (k, s) in steps.iter().enumerate() {
+                c += s[i];
+                if c >= 0.5 * total {
+                    return (k + 1) as f64 - 150.0;
+                }
+            }
+            steps.len() as f64 - 150.0
+        })
         .collect();
-    (snaps, terms)
+    terms.push(("Âge d'épaississement".to_string(), rolled(&age)));
+    (snaps, terms, off)
 }
 
 fn n2m() -> f32 {
@@ -386,18 +433,21 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
             // F161: N1 by default, as the window
             let (mut variant, mut scale, mut boost) = (Variant::N1, 1.0f32, 1.0f32);
             // F162: the talus at a quarter from 1 024² by default (decided at F161's commit); ρ, π, R4 as ticked
-            let amp_cfg = |v: Variant, f: f32, b: f32, r: &Remedies| AmpConfig {
+            let amp_cfg = |v: Variant, f: f32, b: f32, r: &Remedies, torus: Option<[usize; 2]>| AmpConfig {
                 k_boost: b,
                 talus_fine_scale: 0.25,
                 n1_rho: r.rho,
                 n1_pi_m: r.pi_m.clone(),
                 n1_recal_depth: if r.r4 { 2 } else { 1 },
                 warp: r.warp,
+                torus,
                 ..AmpConfig::declared(seed, v, f)
             };
+            // F169-A1: the torus origin of the current physics level (None = the window)
+            let mut torus_origin: Option<[usize; 2]> = None;
             let mut remedies = Remedies::default();
             let mut chain: Option<Chain> = None;
-            let mut history: Option<((bool, bool, C1Profile), Vec<GridF32>)> = None;
+            let mut history: Option<((bool, bool, C1Profile, bool), Vec<GridF32>, [usize; 2])> = None;
             let send_level = |etx: &Sender<Evt>, ch: &Chain, i: usize| {
                 let l = &ch.levels[i];
                 let _ = etx.send(Evt::Level(i, shown(l.result()), Arc::new(l.clone())));
@@ -409,13 +459,16 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                     Cmd::Physics(n, o) => {
                         let cap = if n <= 128 { 400 } else { 300 };
                         // F163-V: the physics level's variants (the random receiver, the roughness, the MFD exponent)
-                        let ccfg = CascadeConfig {
+                        let mut ccfg = CascadeConfig {
                             receiver_tau: o.tau,
                             roughness_m: o.rough_m,
                             mfd_exponent: o.mfd,
                             seed,
                             ..ccfg.clone()
                         };
+                        // F169-A1: the steady level's coarse field is rolled by the workspace's offset
+                        let g64 = 64i64;
+                        torus_origin = o.torus.then(|| [offset_cells[0].rem_euclid(g64) as usize, offset_cells[1].rem_euclid(g64) as usize]);
                         let ptx = etx.clone();
                         let mut prog = |p: CascadeProgress| {
                             let what = if p.level.is_none() { "physique, essai" } else { "physique, calée" };
@@ -425,14 +478,27 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                         // F165-C4: driven by C1's history (recorded on demand, the same C1 run as the coarse field)
                         let result = if o.history > 0 {
                             let sources = o.history == 2;
-                            if history.as_ref().is_none_or(|h| h.0 != (sources, o.airy, o.profile)) {
-                                let (s, terms) = cascade_history(seed, offset_cells, sources, o.airy, o.profile);
+                            if history.as_ref().is_none_or(|h| h.0 != (sources, o.airy, o.profile, o.select)) {
+                                // F169-A4: the selected continent (C1 run per candidate), L2 when none qualifies
+                                let profile = if o.select {
+                                    let _ = etx.send(Evt::Progress("sélection des plaques continentales (16 essais de C1)".into(), 0.0));
+                                    let s = select_continent(seed);
+                                    s.chosen.map(|i| s.candidates[i].profile()).unwrap_or(C1Profile::L2)
+                                } else {
+                                    o.profile
+                                };
+                                let (s, terms, off) = cascade_history(seed, offset_cells, sources, o.airy, profile);
                                 let _ = etx.send(Evt::Terms(terms));
-                                history = Some(((sources, o.airy, o.profile), s));
+                                history = Some(((sources, o.airy, o.profile, o.select), s, off));
                             }
+                            torus_origin = o.torus.then(|| history.as_ref().unwrap().2);
+                            ccfg.torus = torus_origin;
                             let snaps = history.as_ref().unwrap().1.clone();
                             let t_years = if sources { T_F166_YEARS } else { T_F165_YEARS };
-                            let run = HistoryRun { t_years, steps: 300, rebound: Some(Rebound::declared()), timing: Timing::History };
+                            // F169-C: the continent's age (linear time at A ≤ T)
+                            let age = (o.age_ma as f64 * 1.0e6).max(t_years);
+                            let age_years = (age > t_years * 1.0001).then_some(age);
+                            let run = HistoryRun { t_years, steps: 300, rebound: Some(Rebound::declared()), timing: Timing::History, age_years };
                             physics_history(&snaps, n, &ccfg, &run, &mut prog, &cancel).map(|l| {
                                 let shown_snaps: Vec<Shown> = l.snapshots.iter().map(|g| shown(to_m(g))).collect();
                                 let _ = etx.send(Evt::Snapshots(shown_snaps));
@@ -451,11 +517,12 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                                 (l.rec, cal)
                             })
                         } else {
+                            ccfg.torus = torus_origin;
                             physics_level(&coarse, n, &ccfg, PEAK_TARGET_M, cap, &mut prog, &cancel)
                         };
                         if let Some((rec, cal)) = result {
                             let pm = to_m(&rec.z);
-                            chain = Some(Chain::new(pm.clone(), amp_cfg(variant, scale, boost, &remedies)));
+                            chain = Some(Chain::new(pm.clone(), amp_cfg(variant, scale, boost, &remedies, torus_origin)));
                             let _ = etx.send(Evt::Truncate(0));
                             let _ = etx.send(Evt::Physics(shown(pm), Arc::new(rec), cal));
                         }
@@ -464,7 +531,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                         (variant, scale, boost) = (v, f, b);
                         remedies = r;
                         if let Some(ch) = chain.as_mut() {
-                            ch.cfg = amp_cfg(v, f, b, &remedies);
+                            ch.cfg = amp_cfg(v, f, b, &remedies, torus_origin);
                             ch.levels.clear();
                             let _ = etx.send(Evt::Truncate(0));
                         }
@@ -757,7 +824,30 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
             "F168-B4 : le profil des paramètres de C1 de l'histoire. « production » = le défaut de C1 ; « continent L1 / L2 » = la fraction continentale initiale portée à 0,375 / 0,625 (3 / 5 plaques continentales sur 8 ; ~36 % / ~62 % de terres sur le témoin), réglée une fois sur le témoin puis figée. Un profil continent est cadré par la règle du viz (la plus grande masse centrée) sur son propre champ final",
         );
         for (name, p) in [("production", C1Profile::Production), ("continent L1", C1Profile::L1), ("continent L2", C1Profile::L2)] {
-            ui.selectable_value(&mut cu.profile, p, name);
+            if ui.selectable_label(!cu.select && cu.profile == p, name).clicked() {
+                cu.profile = p;
+                cu.select = false;
+            }
+        }
+        if ui
+            .selectable_label(cu.select, "sélection (F169)")
+            .on_hover_text("F169-A4 : parmi les 16 groupes de plaques (f = 0,625 et 0,5, chaque plaque de départ), celui dont les terres finales font 50–62 % et dont on peut faire le tour par la mer, avec la plus large mer ; sinon continent L2 (aucune graine témoin n'en a un au F169)")
+            .clicked()
+        {
+            cu.select = true;
+        }
+        ui.separator();
+        ui.checkbox(&mut cu.torus, "tore (F169)").on_hover_text(
+            "F169-A1 : la cascade entièrement périodique — aucun récepteur hors carte, voisinages périodiques, bruits définis sur le tore et attachés au terrain ; le cadrage ne change plus le monde",
+        );
+        ui.label(small("Âge du continent (Ma) :".into())).on_hover_text(
+            "F169-C : les pas de C1 traduits en temps géologique — le pas le plus récent garde T/300 (T = 5,62 Ma), les plus anciens s'allongent géométriquement jusqu'à ce que la somme fasse A. A ≤ T = le temps linéaire",
+        );
+        ui.add(egui::Slider::new(&mut cu.age_ma, 5.62..=300.0).logarithmic(true).max_decimals(1));
+        for (name, a) in [("linéaire", 5.62f32), ("jeune", 20.0), ("intermédiaire", 100.0), ("vieux", 300.0)] {
+            if ui.small_button(name).clicked() {
+                cu.age_ma = a;
+            }
         }
         ui.separator();
         ui.label(small("MFD p :".into())).on_hover_text("P-dissection, F163-D : l'exposant de l'aire MFD de l'incision (2 = F159–F162 ; D8 = sans MFD)");
@@ -1058,9 +1148,11 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
         }
         Sel::Term(i) => {
             if let Some((name, _)) = cu.term_maps.get(i) {
-                ui.label(small(format!(
-                    "Σ Δh du terme {name} de C1 sur toute l'histoire (64², rampe isostatique linéaire au niveau de référence final, F166-A2)"
-                )));
+                ui.label(small(if name.starts_with("Âge") {
+                    "F169-B1 : l'âge d'épaississement — le pas de C1 où la Σ Δs de Davis-Suppe d'une cellule de terre atteint la moitié de son total, moins 150 (bleu = tôt, rouge = tard, blanc = sans Davis-Suppe)".to_string()
+                } else {
+                    format!("Σ Δh du terme {name} de C1 sur toute l'histoire (64², rampe isostatique linéaire au niveau de référence final, F166-A2)")
+                }));
             }
         }
     }
@@ -1267,12 +1359,16 @@ struct PhysOpts {
     airy: bool,
     /// F168: the history's C1 parameter profile.
     profile: C1Profile,
+    /// F169: the selected continent, the torus, the age (Myr).
+    select: bool,
+    torus: bool,
+    age_ma: f32,
 }
 
 impl Default for PhysOpts {
     /// P0, F159–F162's level.
     fn default() -> Self {
-        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production }
+        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62 }
     }
 }
 
@@ -1284,6 +1380,9 @@ fn phys_opts(cu: &CascadeUi) -> PhysOpts {
         history: cu.history_mode,
         airy: cu.airy,
         profile: cu.profile,
+        select: cu.select,
+        torus: cu.torus,
+        age_ma: cu.age_ma,
     }
 }
 

@@ -1,0 +1,82 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.17s
+     Running tests\f169_cascade.rs (target_f169b\release\deps\f169_cascade-155f94439e1353e8.exe)
+running 1 test
+==========  Finding 169 . the torus cascade, the plates' selection, the continent's age  ==========
+   Europe                     plain  51.6 % · plateau   4.7 % · hill  18.9 % · mountain  24.8 % · land 5260525 km² · deciles 40/81/117/153/195/262/383/580/889
+   Corse 195 m: mountain-class slope p50/p90 0.318/0.550 · coast Coast { dimension: 1.122932, length_ratio: 1.370949, aligned: 0.27188444, block_index: 0.78062284, edges: 5780 }
+   C2 young 20 Myr: r 1.007252 · the oldest step d_1 = 0.163 Myr · the diffusion weight 0.052 → 4 sub-steps · the incision's K·A^m·dt/dx at A = 100 000 km² 65.8 (implicit, indicative)
+   C2 intermediate 100 Myr: r 1.014687 · the oldest step d_1 = 1.466 Myr · the diffusion weight 0.469 → 4 sub-steps · the incision's K·A^m·dt/dx at A = 100 000 km² 593.3 (implicit, indicative)
+   C2 old 300 Myr: r 1.019306 · the oldest step d_1 = 5.700 Myr · the diffusion weight 1.824 → 10 sub-steps · the incision's K·A^m·dt/dx at A = 100 000 km² 2307.4 (implicit, indicative)
+   A4 — the continental plates' selection (land 50–62 %, circumnavigable, the largest r*):
+      seed 10481999410520546993 f 0.625 start 4 (RNG rank 0): land 61.5 % · WRAPS (main 2520 cells) 
+      seed 10481999410520546993 f 0.625 start 2 (RNG rank 1): land 63.9 % · WRAPS (main 2617 cells) 
+      seed 10481999410520546993 f 0.625 start 7 (RNG rank 2): land 60.5 % · WRAPS (main 2479 cells) 
+      seed 10481999410520546993 f 0.625 start 1 (RNG rank 3): land 64.2 % · WRAPS (main 2630 cells) 
+      seed 10481999410520546993 f 0.625 start 5 (RNG rank 4): land 64.2 % · WRAPS (main 2630 cells) 
+      seed 10481999410520546993 f 0.625 start 0 (RNG rank 5): land 56.1 % · WRAPS (main 2298 cells) 
+      seed 10481999410520546993 f 0.625 start 6 (RNG rank 6): land 55.8 % · WRAPS (main 2283 cells) 
+      seed 10481999410520546993 f 0.625 start 3 (RNG rank 7): land 63.9 % · WRAPS (main 2617 cells) 
+      seed 10481999410520546993 f 0.500 start 4 (RNG rank 0): land 49.7 % · WRAPS (main 2035 cells) 
+      seed 10481999410520546993 f 0.500 start 2 (RNG rank 1): land 48.6 % · WRAPS (main 1992 cells) 
+      seed 10481999410520546993 f 0.500 start 7 (RNG rank 2): land 51.1 % · WRAPS (main 2095 cells) 
+      seed 10481999410520546993 f 0.500 start 1 (RNG rank 3): land 49.1 % · WRAPS (main 2011 cells) 
+      seed 10481999410520546993 f 0.500 start 5 (RNG rank 4): land 47.1 % · circumnavigable (main 1928 cells) · r* 0 → sea loop ≥ 6.2 km 
+      seed 10481999410520546993 f 0.500 start 0 (RNG rank 5): land 44.0 % · circumnavigable (main 1801 cells) · r* 0 → sea loop ≥ 6.2 km 
+      seed 10481999410520546993 f 0.500 start 6 (RNG rank 6): land 46.8 % · WRAPS (main 1915 cells) 
+      seed 10481999410520546993 f 0.500 start 3 (RNG rank 7): land 48.6 % · WRAPS (main 1992 cells) 
+      seed 10481999410520546993: NO CANDIDATE QUALIFIES · the selection's cost 4.6 s wall / 4.2 s CPU
+      seed 42 f 0.625 start 4 (RNG rank 0): land 67.2 % · WRAPS (main 2751 cells) 
+      seed 42 f 0.625 start 2 (RNG rank 1): land 64.4 % · WRAPS (main 2638 cells) 
+      seed 42 f 0.625 start 7 (RNG rank 2): land 59.6 % · WRAPS (main 2443 cells) 
+      seed 42 f 0.625 start 1 (RNG rank 3): land 64.4 % · WRAPS (main 2638 cells) 
+      seed 42 f 0.625 start 5 (RNG rank 4): land 58.5 % · WRAPS (main 2397 cells) 
+      seed 42 f 0.625 start 0 (RNG rank 5): land 58.5 % · WRAPS (main 2397 cells) 
+      seed 42 f 0.625 start 6 (RNG rank 6): land 71.2 % · WRAPS (main 2916 cells) 
+      seed 42 f 0.625 start 3 (RNG rank 7): land 58.5 % · WRAPS (main 2397 cells) 
+      seed 42 f 0.500 start 4 (RNG rank 0): land 61.2 % · WRAPS (main 2507 cells) 
+      seed 42 f 0.500 start 2 (RNG rank 1): land 52.5 % · WRAPS (main 2152 cells) 
+      seed 42 f 0.500 start 7 (RNG rank 2): land 46.8 % · WRAPS (main 1918 cells) 
+      seed 42 f 0.500 start 1 (RNG rank 3): land 52.5 % · WRAPS (main 2152 cells) 
+      seed 42 f 0.500 start 5 (RNG rank 4): land 49.7 % · WRAPS (main 2035 cells) 
+      seed 42 f 0.500 start 0 (RNG rank 5): land 52.5 % · WRAPS (main 2152 cells) 
+      seed 42 f 0.500 start 6 (RNG rank 6): land 60.9 % · WRAPS (main 2493 cells) 
+      seed 42 f 0.500 start 3 (RNG rank 7): land 52.5 % · WRAPS (main 2152 cells) 
+      seed 42: NO CANDIDATE QUALIFIES · the selection's cost 4.1 s wall / 3.9 s CPU
+      seed 1 f 0.625 start 4 (RNG rank 0): land 65.4 % · WRAPS (main 2671 cells) 
+      seed 1 f 0.625 start 2 (RNG rank 1): land 70.5 % · WRAPS (main 2886 cells) 
+      seed 1 f 0.625 start 7 (RNG rank 2): land 41.6 % · WRAPS (main 1704 cells) 
+      seed 1 f 0.625 start 1 (RNG rank 3): land 54.3 % · WRAPS (main 2224 cells) 
+      seed 1 f 0.625 start 5 (RNG rank 4): land 65.4 % · WRAPS (main 2671 cells) 
+      seed 1 f 0.625 start 0 (RNG rank 5): land 61.0 % · WRAPS (main 2498 cells) 
+      seed 1 f 0.625 start 6 (RNG rank 6): land 75.9 % · WRAPS (main 3104 cells) 
+      seed 1 f 0.625 start 3 (RNG rank 7): land 46.9 % · circumnavigable (main 1918 cells) · r* 0 → sea loop ≥ 6.2 km 
+      seed 1 f 0.500 start 4 (RNG rank 0): land 57.4 % · WRAPS (main 2346 cells) 
+      seed 1 f 0.500 start 2 (RNG rank 1): land 51.7 % · WRAPS (main 2114 cells) 
+      seed 1 f 0.500 start 7 (RNG rank 2): land 31.2 % · circumnavigable (main 1279 cells) · r* 5 → sea loop ≥ 68.8 km 
+      seed 1 f 0.500 start 1 (RNG rank 3): land 44.6 % · WRAPS (main 1827 cells) 
+      seed 1 f 0.500 start 5 (RNG rank 4): land 46.2 % · WRAPS (main 1888 cells) 
+      seed 1 f 0.500 start 0 (RNG rank 5): land 40.5 % · circumnavigable (main 1656 cells) · r* 4 → sea loop ≥ 56.2 km 
+      seed 1 f 0.500 start 6 (RNG rank 6): land 54.1 % · WRAPS (main 2212 cells) 
+      seed 1 f 0.500 start 3 (RNG rank 7): land 31.2 % · circumnavigable (main 1279 cells) · r* 5 → sea loop ≥ 68.8 km 
+      seed 1: NO CANDIDATE QUALIFIES · the selection's cost 4.1 s wall / 3.7 s CPU
+      seed 9 f 0.625 start 4 (RNG rank 0): land 69.1 % · WRAPS (main 2827 cells) 
+      seed 9 f 0.625 start 2 (RNG rank 1): land 41.2 % · WRAPS (main 1688 cells) 
+      seed 9 f 0.625 start 7 (RNG rank 2): land 53.3 % · WRAPS (main 2182 cells) 
+      seed 9 f 0.625 start 1 (RNG rank 3): land 58.9 % · WRAPS (main 2412 cells) 
+      seed 9 f 0.625 start 5 (RNG rank 4): land 48.1 % · WRAPS (main 1972 cells) 
+      seed 9 f 0.625 start 0 (RNG rank 5): land 75.9 % · WRAPS (main 3108 cells) 
+      seed 9 f 0.625 start 6 (RNG rank 6): land 69.1 % · WRAPS (main 2827 cells) 
+      seed 9 f 0.625 start 3 (RNG rank 7): land 45.8 % · WRAPS (main 1877 cells) 
+      seed 9 f 0.500 start 4 (RNG rank 0): land 49.1 % · WRAPS (main 2009 cells) 
+      seed 9 f 0.500 start 2 (RNG rank 1): land 33.4 % · WRAPS (main 1365 cells) 
+      seed 9 f 0.500 start 7 (RNG rank 2): land 50.6 % · WRAPS (main 2069 cells) 
+      seed 9 f 0.500 start 1 (RNG rank 3): land 49.1 % · WRAPS (main 2009 cells) 
+      seed 9 f 0.500 start 5 (RNG rank 4): land 29.2 % · circumnavigable (main 1197 cells) · r* 8 → sea loop ≥ 106.2 km 
+      seed 9 f 0.500 start 0 (RNG rank 5): land 63.0 % · WRAPS (main 2581 cells) 
+      seed 9 f 0.500 start 6 (RNG rank 6): land 54.9 % · WRAPS (main 2247 cells) 
+      seed 9 f 0.500 start 3 (RNG rank 7): land 35.5 % · circumnavigable (main 1455 cells) · r* 4 → sea loop ≥ 56.2 km 
+      seed 9: NO CANDIDATE QUALIFIES · the selection's cost 4.5 s wall / 4.2 s CPU
+   R: the selection fails on 4 / 4 seeds → STOP (next: more plates)
+test f169_cascade ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.05s

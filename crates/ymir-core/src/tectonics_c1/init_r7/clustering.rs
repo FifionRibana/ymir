@@ -183,18 +183,47 @@ pub fn assign_continental_clusters(
     }
 
     // Step 2 — pick BFS seed plates deterministically.
-    let mut rng = ChaCha8Rng::seed_from_u64(params.seed);
     let seed_count = params.seed_cluster_count.clamp(1, num_plates);
-    let mut available: Vec<u16> = (0..num_plates as u16).collect();
-    let mut seeds: Vec<u16> = Vec::with_capacity(seed_count);
-    for _ in 0..seed_count {
-        if available.is_empty() {
-            break;
-        }
-        let idx = (rng.random::<u64>() as usize) % available.len();
-        seeds.push(available.swap_remove(idx));
-    }
+    let seeds: Vec<u16> = start_plate_order(params, num_plates).into_iter().take(seed_count).collect();
+    bfs_clusters(per_plate_type, adjacency, &seeds, target_continental);
+}
 
+/// ADR Finding 169-A4 -- the order in which C1's RNG draws the BFS start plates (`params.seed`, the swap-remove draw
+/// sequence of [`assign_continental_clusters`]): its first `seed_cluster_count` entries are today's seeds.
+pub fn start_plate_order(params: &ContinentalClusterParams, num_plates: usize) -> Vec<u16> {
+    let mut rng = ChaCha8Rng::seed_from_u64(params.seed);
+    let mut available: Vec<u16> = (0..num_plates as u16).collect();
+    let mut order: Vec<u16> = Vec::with_capacity(num_plates);
+    while !available.is_empty() {
+        let idx = (rng.random::<u64>() as usize) % available.len();
+        order.push(available.swap_remove(idx));
+    }
+    order
+}
+
+/// ADR Finding 169-A4 -- [`assign_continental_clusters`] grown from ONE given start plate (the same BFS, the same
+/// target count). At today's first RNG draw it is [`assign_continental_clusters`] with one seed cluster, exactly.
+pub fn assign_continental_clusters_from(
+    per_plate_type: &mut [PlateType],
+    adjacency: &[Vec<u16>],
+    params: &ContinentalClusterParams,
+    start: u16,
+) {
+    if !params.enabled || per_plate_type.is_empty() {
+        return;
+    }
+    let num_plates = per_plate_type.len();
+    let target_continental =
+        ((num_plates as f64 * params.continental_fraction).round() as usize).clamp(1, num_plates);
+    for t in per_plate_type.iter_mut() {
+        *t = PlateType::Oceanic;
+    }
+    bfs_clusters(per_plate_type, adjacency, &[start], target_continental);
+}
+
+/// Steps 3–4 of [`assign_continental_clusters`]: the BFS from `seeds` (every plate already Oceanic).
+fn bfs_clusters(per_plate_type: &mut [PlateType], adjacency: &[Vec<u16>], seeds: &[u16], target_continental: usize) {
+    let num_plates = per_plate_type.len();
     // Step 3 — BFS from seeds, marking Continental as we go.
     let mut visited: Vec<bool> = vec![false; num_plates];
     let mut queue: VecDeque<u16> = VecDeque::new();
