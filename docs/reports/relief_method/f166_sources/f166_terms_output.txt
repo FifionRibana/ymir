@@ -1,0 +1,8 @@
+   Transport          land mean -18 m · min -1523 · max +19
+   DavisSuppe         land mean +2906 m · min +0 · max +34467
+   EquilibriumHeight  land mean +0 m · min +0 · max +0
+   Erosion            land mean -4015 m · min -34754 · max +0
+   Subduction         land mean +12 m · min -554 · max +311
+   RiftThinning       land mean -95 m · min -4005 · max +0
+   datum drift        land mean +708 m · min +0 · max +902
+   image f166_terms.png: Transport, DavisSuppe, EquilibriumHeight, Erosion, Subduction, RiftThinning, datum drift (land only, one shared saturation at the pooled p98, ±8831 m; red +, blue −), north up

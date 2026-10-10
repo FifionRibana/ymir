@@ -549,7 +549,58 @@ pub fn run_with_closures_observed<F>(
     kinematics: &mut PlateKinematics,
     config: &C1TimeLoopConfig,
     closures: &C1Closures,
+    on_step: F,
+) where
+    F: FnMut(usize, &C1State, &PlateKinematics),
+{
+    run_inner(state, kinematics, config, closures, on_step, None);
+}
+
+/// ADR Finding 166-A1 -- the terms of C1's step that change `s`, in their order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum C1Term {
+    /// The upwind advection (continental crust rigid).
+    Transport,
+    /// The Davis-Suppe orogenic source.
+    DavisSuppe,
+    /// The equilibrium-height sink (crust thicker than h_eq).
+    EquilibriumHeight,
+    /// C1's stream-power erosion closure.
+    Erosion,
+    /// The slab consumption and the arc mass.
+    Subduction,
+    /// The rift thinning.
+    RiftThinning,
+}
+
+impl C1Term {
+    pub const ALL: [C1Term; 6] =
+        [C1Term::Transport, C1Term::DavisSuppe, C1Term::EquilibriumHeight, C1Term::Erosion, C1Term::Subduction, C1Term::RiftThinning];
+}
+
+/// ADR Finding 166-B1 -- [`run_with_closures_observed`] with a READ-ONLY observer of each term's effect on `s`:
+/// `on_term(term, s_before, s_after)` after every term that can change `s`. The run is the same, bit for bit (the
+/// observer only reads copies), `tectonics_c1::time_loop::tests::the_term_observer_leaves_c1_bit_identical`.
+pub fn run_with_closures_terms<F>(
+    state: &mut C1State,
+    kinematics: &mut PlateKinematics,
+    config: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    on_step: F,
+    on_term: &mut dyn FnMut(C1Term, &[f64], &[f64]),
+) where
+    F: FnMut(usize, &C1State, &PlateKinematics),
+{
+    run_inner(state, kinematics, config, closures, on_step, Some(on_term));
+}
+
+fn run_inner<F>(
+    state: &mut C1State,
+    kinematics: &mut PlateKinematics,
+    config: &C1TimeLoopConfig,
+    closures: &C1Closures,
     mut on_step: F,
+    mut on_term: Option<&mut dyn FnMut(C1Term, &[f64], &[f64])>,
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
@@ -672,6 +723,7 @@ pub fn run_with_closures_observed<F>(
         }
 
         // 1. Advection (no-flux rigid boundary when rigid; #145).
+        let before = on_term.is_some().then(|| state.s.data().to_vec());
         match &rigid_mask {
             Some(m) => {
                 step_upwind_masked(
@@ -734,8 +786,12 @@ pub fn run_with_closures_observed<F>(
         }
         std::mem::swap(&mut state.s, &mut s_next);
         std::mem::swap(&mut state.age, &mut age_next);
+        if let (Some(h), Some(b)) = (on_term.as_mut(), before.as_ref()) {
+            h(C1Term::Transport, b, state.s.data());
+        }
 
         // 2. Davis-Suppe orogenic source term (Phase 1.2).
+        let before = on_term.is_some().then(|| state.s.data().to_vec());
         apply_davis_suppe_step_routed(
             &mut state.s,
             &state.plate_id,
@@ -746,6 +802,9 @@ pub fn run_with_closures_observed<F>(
             dt,
             oc_wedge,
         );
+        if let (Some(h), Some(b)) = (on_term.as_mut(), before.as_ref()) {
+            h(C1Term::DavisSuppe, b, state.s.data());
+        }
 
         // 3. Equilibrium height sink (Phase 1.3).
         // Order critical: AFTER Davis-Suppe.
@@ -754,7 +813,11 @@ pub fn run_with_closures_observed<F>(
         //   - Davis-Suppe re-injects mass above h_eq
         //   - Next step: excess from re-injection
         //   - Etc., oscillation around h_eq instead of stable equilibrium.
+        let before = on_term.is_some().then(|| state.s.data().to_vec());
         apply_equilibrium_height_step(&mut state.s, &closures.equilibrium_height, dt);
+        if let (Some(h), Some(b)) = (on_term.as_mut(), before.as_ref()) {
+            h(C1Term::EquilibriumHeight, b, state.s.data());
+        }
 
         // 4. Stream-power erosion sink (Phase 1.4 — Issue #127).
         //
@@ -834,6 +897,7 @@ pub fn run_with_closures_observed<F>(
                 let drainage_map =
                     compute_drainage_targets(&state.s, sea_level_ref, config.drainage_max_distance);
                 let drainage_areas = compute_drainage_areas(&drainage_map);
+                let before = on_term.is_some().then(|| state.s.data().to_vec());
                 // #155 A′: craton-aware erosion (resist from params; 1.0 = byte-identical).
                 apply_erosion_step_craton(
                     &mut state.s,
@@ -844,6 +908,9 @@ pub fn run_with_closures_observed<F>(
                     config.dx,
                     &state.cratonic_mask,
                 );
+                if let (Some(h), Some(b)) = (on_term.as_mut(), before.as_ref()) {
+                    h(C1Term::Erosion, b, state.s.data());
+                }
             }
         }
 
@@ -880,6 +947,7 @@ pub fn run_with_closures_observed<F>(
         // (Issue #137 Viz-D0 Option B). Default = all-zero when a closure
         // is disabled (the `apply_*_step` functions early-return their
         // `Default` stats on `!enabled`).
+        let before = on_term.is_some().then(|| state.s.data().to_vec());
         let subduction_stats = if closures.subduction.enabled {
             apply_subduction_step(
                 &mut state.s,
@@ -894,6 +962,10 @@ pub fn run_with_closures_observed<F>(
             Default::default()
         };
 
+        if let (Some(h), Some(b)) = (on_term.as_mut(), before.as_ref()) {
+            h(C1Term::Subduction, b, state.s.data());
+        }
+        let before = on_term.is_some().then(|| state.s.data().to_vec());
         let rifting_thinning_stats = if closures.rifting.enabled {
             apply_rifting_thinning(
                 &mut state.s,
@@ -908,6 +980,9 @@ pub fn run_with_closures_observed<F>(
             Default::default()
         };
 
+        if let (Some(h), Some(b)) = (on_term.as_mut(), before.as_ref()) {
+            h(C1Term::RiftThinning, b, state.s.data());
+        }
         if let Some(tracker) = convergence_tracker.as_mut() {
             tracker.update(&state.plate_id, kinematics);
         }
@@ -982,6 +1057,43 @@ pub fn run_with_closures_observed<F>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ADR Finding 166-B1 -- the term observer is read-only: C1's s, age, plate_id, plate_type and cratonic_mask are
+    /// bit-identical with and without it, and the terms' Δs add up to the run's total change of s.
+    #[test]
+    fn the_term_observer_leaves_c1_bit_identical() {
+        use crate::tectonics_c1::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
+        let cfg = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 30,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: IsostasyConfig::c1_default(),
+            drainage_max_distance: 30,
+        };
+        let mut a = init_c1_state_phase_2_r7(64, 5, &Phase2InitParams::default());
+        let mut ka = PlateKinematics::preset_phase_1_1(a.num_plates);
+        run_with_closures(&mut a, &mut ka, &cfg, &C1Closures::default(), |_, _| {});
+        let mut b = init_c1_state_phase_2_r7(64, 5, &Phase2InitParams::default());
+        let s0 = b.s.data().to_vec();
+        let mut kb = PlateKinematics::preset_phase_1_1(b.num_plates);
+        let mut sum = vec![0f64; 64 * 64];
+        let mut seen = std::collections::BTreeSet::new();
+        run_with_closures_terms(&mut b, &mut kb, &cfg, &C1Closures::default(), |_, _, _| {}, &mut |term, before, after| {
+            seen.insert(term);
+            for k in 0..sum.len() {
+                sum[k] += after[k] - before[k];
+            }
+        });
+        assert_eq!(a.s.data(), b.s.data());
+        assert_eq!(a.age.data(), b.age.data());
+        assert_eq!(a.plate_id.data(), b.plate_id.data());
+        assert_eq!(a.plate_type.data(), b.plate_type.data());
+        assert_eq!(a.cratonic_mask.data(), b.cratonic_mask.data());
+        let err = (0..sum.len()).map(|k| (s0[k] + sum[k] - b.s.data()[k]).abs()).fold(0f64, f64::max);
+        assert!(err < 1e-9, "the terms add up to the run (max error {err})");
+        assert!(seen.contains(&C1Term::Erosion) && seen.contains(&C1Term::Transport) && seen.contains(&C1Term::DavisSuppe));
+    }
     use crate::tectonics_v2::boundaries::plate_type::{PlateType, PlateTypeField};
     use crate::tectonics_v2::voronoi::PlateIdField;
 

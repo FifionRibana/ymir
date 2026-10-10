@@ -1,0 +1,256 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.18s
+     Running tests\f166_cascade.rs (target_f166\release\deps\f166_cascade-c425320d6ce80334.exe)
+
+running 1 test
+
+==========  Finding 166 . the physics level driven by C1's tectonic sources only  ==========
+   Europe                   plain  51.6 % · plateau   4.7 % · hill  18.9 % · mountain  24.8 % · land 5260525 km² · deciles 40/81/117/153/195/262/383/580/889
+   Corse 195 m: mountain-class slope p50/p90 0.318/0.550 · coast Coast { dimension: 1.122932, length_ratio: 1.370949, aligned: 0.27188444, block_index: 0.78062284, edges: 5780 }
+
+   A2 — F165's history decomposed by C1 term (the témoin; C1 with the observer: 0.2 s CPU / 0.2 s wall)
+      the isostatic datum (raw h_sea): t₀ 0.0867 → final 0.0499 · land cells: interior 20 · margin 620
+      Transport            interior Σ Δs +0.0000 (Δh +0 m) · margin Σ Δs -0.0057 (Δh -19 m)
+      DavisSuppe           interior Σ Δs +0.0523 (Δh +163 m) · margin Σ Δs +0.9045 (Δh +2995 m)
+      EquilibriumHeight    interior Σ Δs +0.0000 (Δh +0 m) · margin Σ Δs +0.0000 (Δh +0 m)
+      Erosion              interior Σ Δs -0.3813 (Δh -1205 m) · margin Σ Δs -1.2434 (Δh -4106 m)
+      Subduction           interior Σ Δs +0.0000 (Δh +0 m) · margin Σ Δs +0.0036 (Δh +12 m)
+      RiftThinning         interior Σ Δs +0.0000 (Δh +0 m) · margin Σ Δs -0.0297 (Δh -99 m)
+      datum drift          interior Σ Δs +0.0000 (Δh +657 m) · margin Σ Δs +0.0000 (Δh +710 m)
+      observed Δh_iso (final − t₀): interior -564 m · margin -569 m
+   → Q1: the surface term and the sinks make 100 % of the interior's negative Σ Δh (-1205 of -1205 m) → HOLDS
+
+   A3 — h_iso(t₀) on each seed's land:
+   seed 10481999410520546993: land 766 cells · mean 1573 m · deciles 570/1522/1669/1814/1832/1832/1832/1832/1832
+   seed 42: land 1123 cells · mean 1561 m · deciles 469/1519/1669/1814/1832/1832/1832/1832/1832
+   seed 1: land 1201 cells · mean 1568 m · deciles 468/1541/1687/1815/1832/1832/1832/1832/1832
+   seed 9: land 1298 cells · mean 1626 m · deciles 596/1541/1766/1832/1832/1832/1832/1832/1832
+
+   B3 — T, calibrated once on the témoin (sources):
+      T trial 1.000e5 yr → peak 5762 m
+      T trial 1.000e6 yr → peak 5529 m
+      T trial 1.000e7 yr → peak 839 m
+      T trial 1.000e8 yr → peak 67 m
+      T trial 1.000e9 yr → peak 8 m
+      T trial 3.162e6 yr → peak 4029 m
+      T trial 5.623e6 yr → peak 2728 m
+   → T = 5.623e6 yr (7 trials, 75.6 s CPU / 43.3 s wall) against C1's nominal 10–30 Ma (×0.56–×0.19)
+test f166_cascade has been running for over 60 seconds
+
+   check: the témoin's F165 history recomputed: peak 2852 m (F165: 2852), land 20381 km² (F165: 20376)
+
+   C — 256² (Europe: plain 51.6 · plateau 4.7 · hill 18.9 · mountain 24.8):
+   ── seed 10481999410520546993:
+   F164 (steady)            plain   8.7 % · plateau   0.0 % · hill  48.5 % · mountain  42.8 % · land 28306 km² · deciles 9/36/83/144/228/335/483/696/1040
+      F164 (steady)          peak 2863 m · land lost 0.0 % · gained 0.0 % vs F164 · interior ≤ 0 m 0.00 % · mountain regions > 100 km² 2 · lakes 14 / 2458 km² (0.0 % on plateau cells) · 3.6 s CPU / 3.6 s wall
+   F165 (Δh_iso)            plain   1.1 % · plateau   0.1 % · hill  39.9 % · mountain  58.8 % · land 20381 km² · deciles 52/116/193/286/455/727/1065/1370/1650
+      F165 (Δh_iso)          peak 2852 m · land lost 23.2 % · gained 2.9 % vs F164 · interior ≤ 0 m 9.67 % · mountain regions > 100 km² 3 · lakes 13 / 354 km² (4.1 % on plateau cells) · 11.0 s CPU / 11.1 s wall
+         the {Σ U > 0} boundary's block index (lattice 4 = the 64² blocks): 1.66
+   sources                  plain   1.0 % · plateau   0.0 % · hill  37.6 % · mountain  61.3 % · land 32925 km² · deciles 82/150/225/313/419/560/751/989/1275
+      sources                peak 2728 m · land lost 0.0 % · gained 16.4 % vs F164 · interior ≤ 0 m 0.03 % · mountain regions > 100 km² 1 · lakes 2 / 85 km² (0.0 % on plateau cells) · 10.7 s CPU / 8.7 s wall
+         the {Σ U > 0} boundary's block index (lattice 4 = the 64² blocks): 1.61
+   sources − EH             plain   2.6 % · plateau   0.0 % · hill  44.1 % · mountain  53.3 % · land 32571 km² · deciles 64/119/180/250/330/429/567/753/1029
+      sources − EH           peak 2349 m · land lost 0.0 % · gained 16.1 % vs F164 · interior ≤ 0 m 0.87 % · mountain regions > 100 km² 1 · lakes 1 / 88 km² (0.0 % on plateau cells) · 9.4 s CPU / 7.1 s wall
+         the {Σ U > 0} boundary's block index (lattice 4 = the 64² blocks): 1.65
+   ── seed 42:
+   F164 (steady)            plain  30.6 % · plateau   0.0 % · hill  57.7 % · mountain  11.6 % · land 36101 km² · deciles 2/7/18/34/56/88/132/203/332
+      F164 (steady)          peak 1815 m · land lost 0.0 % · gained 0.0 % vs F164 · interior ≤ 0 m 0.00 % · mountain regions > 100 km² 6 · lakes 11 / 3835 km² (0.0 % on plateau cells) · 5.4 s CPU / 5.4 s wall
+   F165 (Δh_iso)            plain   4.0 % · plateau   0.0 % · hill  41.0 % · mountain  55.0 % · land 21731 km² · deciles 36/88/156/242/357/479/646/877/1214
+      F165 (Δh_iso)          peak 2454 m · land lost 38.1 % · gained 1.0 % vs F164 · interior ≤ 0 m 4.41 % · mountain regions > 100 km² 6 · lakes 11 / 591 km² (0.0 % on plateau cells) · 10.6 s CPU / 7.2 s wall
+         the {Σ U > 0} boundary's block index (lattice 4 = the 64² blocks): 1.23
+   sources                  plain  10.5 % · plateau   0.0 % · hill  61.1 % · mountain  28.3 % · land 39402 km² · deciles 20/45/74/109/151/206/286/408/615
+      sources                peak 3261 m · land lost 4.5 % · gained 20.2 % vs F164 · interior ≤ 0 m 5.64 % · mountain regions > 100 km² 6 · lakes 4 / 200 km² (0.0 % on plateau cells) · 12.2 s CPU / 8.6 s wall
+         the {Σ U > 0} boundary's block index (lattice 4 = the 64² blocks): 1.34
+   sources − EH             plain  12.6 % · plateau   0.0 % · hill  63.0 % · mountain  24.4 % · land 34778 km² · deciles 15/35/58/88/125/175/246/362/575
+      sources − EH           peak 3281 m · land lost 14.3 % · gained 16.4 % vs F164 · interior ≤ 0 m 5.71 % · mountain regions > 100 km² 7 · lakes 3 / 222 km² (0.0 % on plateau cells) · 11.4 s CPU / 8.6 s wall
+         the {Σ U > 0} boundary's block index (lattice 4 = the 64² blocks): 1.40
+   ── seed 1:
+   F164 (steady)            plain  36.3 % · plateau   0.0 % · hill  50.5 % · mountain  13.2 % · land 40833 km² · deciles 3/11/23/39/62/93/140/218/359
+      F164 (steady)          peak 2498 m · land lost 0.0 % · gained 0.0 % vs F164 · interior ≤ 0 m 0.00 % · mountain regions > 100 km² 4 · lakes 12 / 4124 km² (0.0 % on plateau cells) · 5.7 s CPU / 5.7 s wall
+   F165 (Δh_iso)            plain   2.6 % · plateau   0.0 % · hill  36.9 % · mountain  60.6 % · land 28455 km² · deciles 49/112/200/308/461/669/969/1442/2049
+      F165 (Δh_iso)          peak 3475 m · land lost 22.6 % · gained 0.6 % vs F164 · interior ≤ 0 m 10.60 % · mountain regions > 100 km² 4 · lakes 9 / 239 km² (0.0 % on plateau cells) · 10.7 s CPU / 7.1 s wall
+         the {Σ U > 0} boundary's block index (lattice 4 = the 64² blocks): 1.60
+   sources                  plain   1.5 % · plateau   0.0 % · hill  34.6 % · mountain  63.9 % · land 47791 km² · deciles 91/156/239/344/478/652/914/1359/2012
+      sources                peak 4301 m · land lost 0.0 % · gained 17.2 % vs F164 · interior ≤ 0 m 0.12 % · mountain regions > 100 km² 2 · lakes 5 / 879 km² (0.0 % on plateau cells) · 12.7 s CPU / 8.5 s wall
+         the {Σ U > 0} boundary's block index (lattice 4 = the 64² blocks): 1.77
+   sources − EH             plain   1.8 % · plateau   0.1 % · hill  36.2 % · mountain  61.9 % · land 47107 km² · deciles 68/132/218/322/457/643/901/1335/1896
+      sources − EH           peak 4123 m · land lost 0.0 % · gained 17.0 % vs F164 · interior ≤ 0 m 1.38 % · mountain regions > 100 km² 4 · lakes 5 / 745 km² (0.0 % on plateau cells) · 12.2 s CPU / 9.0 s wall
+         the {Σ U > 0} boundary's block index (lattice 4 = the 64² blocks): 1.75
+   ── seed 9:
+   F164 (steady)            plain  38.9 % · plateau   0.0 % · hill  44.0 % · mountain  17.1 % · land 45879 km² · deciles 3/10/23/41/65/103/163/271/444
+      F164 (steady)          peak 2545 m · land lost 0.0 % · gained 0.0 % vs F164 · interior ≤ 0 m 0.00 % · mountain regions > 100 km² 5 · lakes 12 / 1755 km² (0.0 % on plateau cells) · 13.4 s CPU / 13.6 s wall
+   F165 (Δh_iso)            plain   1.7 % · plateau   0.1 % · hill  32.5 % · mountain  65.7 % · land 35374 km² · deciles 64/148/252/388/586/838/1116/1400/1832
+      F165 (Δh_iso)          peak 3964 m · land lost 21.3 % · gained 3.5 % vs F164 · interior ≤ 0 m 6.23 % · mountain regions > 100 km² 6 · lakes 39 / 2361 km² (0.0 % on plateau cells) · 13.7 s CPU / 8.4 s wall
+         the {Σ U > 0} boundary's block index (lattice 4 = the 64² blocks): 1.40
+   sources                  plain   4.8 % · plateau   0.0 % · hill  39.2 % · mountain  56.0 % · land 49895 km² · deciles 59/114/182/266/364/493/670/970/1668
+      sources                peak 5365 m · land lost 3.8 % · gained 12.9 % vs F164 · interior ≤ 0 m 0.32 % · mountain regions > 100 km² 8 · lakes 17 / 4023 km² (0.0 % on plateau cells) · 14.1 s CPU / 9.2 s wall
+         the {Σ U > 0} boundary's block index (lattice 4 = the 64² blocks): 1.54
+   sources − EH             plain   9.3 % · plateau   6.1 % · hill  40.6 % · mountain  44.0 % · land 39487 km² · deciles 29/67/129/209/306/445/646/1019/1453
+      sources − EH           peak 5403 m · land lost 21.0 % · gained 10.7 % vs F164 · interior ≤ 0 m 4.04 % · mountain regions > 100 km² 6 · lakes 16 / 1201 km² (14.8 % on plateau cells) · 13.9 s CPU / 8.8 s wall
+         the {Σ U > 0} boundary's block index (lattice 4 = the 64² blocks): 1.59
+
+   ── seed 10481999410520546993 at 2048² against Corsica 195 m:
+      F164 (steady)    whole     17 of 19 within ×1.5 · out: A_dir 0.369/0.206; F 0.091/0.043
+      F164 (steady)    mountain  15 of 19 within ×1.5 · out: facets 16.238/6.746; walls 28° 4.333/2.320; S_5 − 1 0.167/0.255; A_dir 0.401/0.200
+      F164 (steady)    slope guard: peak 2983 m · mountain-class slope p50/p90 0.378/0.515 (Corsica 0.318/0.550)
+      F164 (steady)    F by class: plain 58.10 % · plateau 0.00 % · hill 11.41 % · mountain 0.64 %
+      F164 (steady)    coast Coast { dimension: 1.0079554, length_ratio: 0.9516129, aligned: 0.2891593, block_index: 2.8069508, edges: 8402 }
+      F164 (steady)    warp depressions: 512²: depressions 71 → 62, new 14 | 1024²: depressions 153 → 152, new 18 | 2048²: depressions 367 → 360, new 34 · 512²: 5 of 14 new still a lake · 1024²: 4 of 18 new still a lake · 2048²: 7 of 34 new still a lake · chain 172.4 s CPU / 28.9 s wall
+      F165 (Δh_iso)    whole     14 of 19 within ×1.5 · out: facets 14.608/6.241; walls 28° 4.146/1.547; S_2 − 1 0.113/0.172; S_5 − 1 0.157/0.239; A_dir 0.410/0.206
+      F165 (Δh_iso)    mountain  16 of 19 within ×1.5 · out: facets 22.728/6.746; walls 28° 6.708/2.320; A_dir 0.421/0.200
+      F165 (Δh_iso)    slope guard: peak 3085 m · mountain-class slope p50/p90 0.428/0.533 (Corsica 0.318/0.550)
+      F165 (Δh_iso)    F by class: plain 49.99 % · plateau 1.69 % · hill 6.98 % · mountain 0.39 %
+      F165 (Δh_iso)    coast Coast { dimension: 1.0569094, length_ratio: 1.0076567, aligned: 0.27255931, block_index: 1.2251816, edges: 13216 }
+      F165 (Δh_iso)    warp depressions: 512²: depressions 33 → 35, new 8 | 1024²: depressions 105 → 106, new 10 | 2048²: depressions 389 → 385, new 49 · 512²: 2 of 8 new still a lake · 1024²: 6 of 10 new still a lake · 2048²: 33 of 49 new still a lake · chain 161.6 s CPU / 28.2 s wall
+      sources          whole     17 of 19 within ×1.5 · out: octave 6.25–12.50 km 101.798/159.805; A_dir 0.385/0.206
+      sources          mountain  15 of 19 within ×1.5 · out: facets 12.713/6.746; walls 28° 3.622/2.320; octave 6.25–12.50 km 130.088/200.536; A_dir 0.396/0.200
+      sources          slope guard: peak 2914 m · mountain-class slope p50/p90 0.344/0.507 (Corsica 0.318/0.550)
+      sources          F by class: plain 33.93 % · plateau 0.00 % · hill 7.46 % · mountain 0.70 %
+      sources          coast Coast { dimension: 1.0163746, length_ratio: 1.0137649, aligned: 0.2698398, block_index: 0.32218254, edges: 6158 }
+      sources          warp depressions: 512²: depressions 218 → 227, new 30 | 1024²: depressions 418 → 405, new 30 | 2048²: depressions 1022 → 1002, new 101 · 512²: 8 of 30 new still a lake · 1024²: 5 of 30 new still a lake · 2048²: 30 of 101 new still a lake · chain 190.7 s CPU / 31.3 s wall
+      SUCCESS test (sources): mountain 61.3 % false · plain + plateau 1.0 % false · land lost 0.0 % true · coast degraded none → no
+      sources − EH     whole     16 of 19 within ×1.5 · out: octave 3.12–6.25 km 63.568/100.862; octave 6.25–12.50 km 94.237/159.805; A_dir 0.380/0.206
+      sources − EH     mountain  15 of 19 within ×1.5 · out: facets 12.016/6.746; octave 6.25–12.50 km 129.075/200.536; S_5 − 1 0.166/0.255; A_dir 0.405/0.200
+      sources − EH     slope guard: peak 2584 m · mountain-class slope p50/p90 0.336/0.505 (Corsica 0.318/0.550)
+      sources − EH     F by class: plain 36.91 % · plateau 0.00 % · hill 8.59 % · mountain 0.83 %
+      sources − EH     coast Coast { dimension: 1.014222, length_ratio: 1.0096726, aligned: 0.2550565, block_index: 0.3322518, edges: 6164 }
+      sources − EH     warp depressions: 512²: depressions 197 → 196, new 30 | 1024²: depressions 352 → 353, new 45 | 2048²: depressions 883 → 859, new 86 · 512²: 10 of 30 new still a lake · 1024²: 10 of 45 new still a lake · 2048²: 20 of 86 new still a lake · chain 196.0 s CPU / 30.7 s wall
+
+   ── seed 42 at 2048² against Corsica 195 m:
+      F164 (steady)    whole     12 of 19 within ×1.5 · out: slope p50 0.070/0.247; slope p90 0.311/0.501; octave 1.56–3.12 km 29.834/62.883; octave 3.12–6.25 km 38.260/100.862; octave 6.25–12.50 km 60.147/159.805; A_dir 0.346/0.206; F 0.198/0.043
+      F164 (steady)    mountain  13 of 19 within ×1.5 · out: octave 0.39–0.78 km 38.168/19.227; octave 0.78–1.56 km 73.639/43.222; S_2 − 1 0.100/0.175; S_10 − 1 NaN/0.289; A_dir 0.513/0.200; F 0.014/0.006
+      F164 (steady)    slope guard: peak 1716 m · mountain-class slope p50/p90 0.314/0.487 (Corsica 0.318/0.550)
+      F164 (steady)    F by class: plain 41.45 % · plateau 0.00 % · hill 15.39 % · mountain 1.39 %
+      F164 (steady)    coast Coast { dimension: 1.0135347, length_ratio: 0.97836536, aligned: 0.40507516, block_index: 6.3201447, edges: 15468 }
+      F164 (steady)    warp depressions: 512²: depressions 86 → 75, new 11 | 1024²: depressions 181 → 165, new 13 | 2048²: depressions 430 → 382, new 38 · 512²: 3 of 11 new still a lake · 1024²: 3 of 13 new still a lake · 2048²: 5 of 38 new still a lake · chain 219.2 s CPU / 32.8 s wall
+      F165 (Δh_iso)    whole     15 of 19 within ×1.5 · out: facets 12.053/6.241; walls 28° 3.184/1.547; S_2 − 1 0.114/0.172; A_dir 0.396/0.206
+      F165 (Δh_iso)    mountain  16 of 19 within ×1.5 · out: facets 19.151/6.746; walls 28° 5.436/2.320; A_dir 0.419/0.200
+      F165 (Δh_iso)    slope guard: peak 2784 m · mountain-class slope p50/p90 0.403/0.525 (Corsica 0.318/0.550)
+      F165 (Δh_iso)    F by class: plain 53.66 % · plateau 12.50 % · hill 7.33 % · mountain 0.49 %
+      F165 (Δh_iso)    coast Coast { dimension: 1.0777348, length_ratio: 1.0644857, aligned: 0.32051468, block_index: 3.014898, edges: 26312 }
+      F165 (Δh_iso)    warp depressions: 512²: depressions 40 → 38, new 4 | 1024²: depressions 85 → 85, new 10 | 2048²: depressions 255 → 253, new 31 · 512²: 2 of 4 new still a lake · 1024²: 4 of 10 new still a lake · 2048²: 14 of 31 new still a lake · chain 169.7 s CPU / 28.1 s wall
+      sources          whole     14 of 19 within ×1.5 · out: slope p50 0.122/0.247; octave 3.12–6.25 km 59.115/100.862; octave 6.25–12.50 km 96.591/159.805; A_dir 0.369/0.206; F 0.123/0.043
+      sources          mountain  14 of 19 within ×1.5 · out: facets 10.685/6.746; octave 0.39–0.78 km 35.809/19.227; octave 0.78–1.56 km 66.978/43.222; A_dir 0.408/0.200; F 0.012/0.006
+      sources          slope guard: peak 2601 m · mountain-class slope p50/p90 0.326/0.497 (Corsica 0.318/0.550)
+      sources          F by class: plain 39.24 % · plateau 10.31 % · hill 12.20 % · mountain 1.20 %
+      sources          coast Coast { dimension: 1.0678102, length_ratio: 1.1372664, aligned: 0.39992487, block_index: 4.472964, edges: 17828 }
+      sources          warp depressions: 512²: depressions 220 → 203, new 24 | 1024²: depressions 336 → 312, new 33 | 2048²: depressions 887 → 841, new 83 · 512²: 3 of 24 new still a lake · 1024²: 8 of 33 new still a lake · 2048²: 15 of 83 new still a lake · chain 221.3 s CPU / 34.4 s wall
+      SUCCESS test (sources): mountain 28.3 % true · plain + plateau 10.6 % false · land lost 4.5 % true · coast degraded none → no
+      sources − EH     whole     13 of 19 within ×1.5 · out: slope p50 0.108/0.247; octave 1.56–3.12 km 41.311/62.883; octave 3.12–6.25 km 58.520/100.862; octave 6.25–12.50 km 95.207/159.805; A_dir 0.372/0.206; F 0.152/0.043
+      sources − EH     mountain  14 of 19 within ×1.5 · out: facets 11.502/6.746; octave 0.39–0.78 km 37.548/19.227; octave 0.78–1.56 km 70.318/43.222; A_dir 0.410/0.200; F 0.011/0.006
+      sources − EH     slope guard: peak 2629 m · mountain-class slope p50/p90 0.338/0.502 (Corsica 0.318/0.550)
+      sources − EH     F by class: plain 45.30 % · plateau 0.00 % · hill 13.49 % · mountain 1.09 %
+      sources − EH     coast Coast { dimension: 1.0697302, length_ratio: 1.1167665, aligned: 0.3804841, block_index: 3.8905215, edges: 20826 }
+      sources − EH     warp depressions: 512²: depressions 167 → 150, new 19 | 1024²: depressions 267 → 239, new 23 | 2048²: depressions 679 → 624, new 54 · 512²: 3 of 19 new still a lake · 1024²: 6 of 23 new still a lake · 2048²: 7 of 54 new still a lake · chain 221.8 s CPU / 33.5 s wall
+
+   ── seed 1 at 2048² against Corsica 195 m:
+      F164 (steady)    whole     12 of 19 within ×1.5 · out: slope p50 0.067/0.247; slope p90 0.296/0.501; octave 1.56–3.12 km 29.027/62.883; octave 3.12–6.25 km 37.982/100.862; octave 6.25–12.50 km 53.159/159.805; A_dir 0.338/0.206; F 0.203/0.043
+      F164 (steady)    mountain  12 of 19 within ×1.5 · out: octave 0.39–0.78 km 37.085/19.227; octave 0.78–1.56 km 68.426/43.222; S_2 − 1 0.114/0.175; S_5 − 1 0.151/0.255; S_10 − 1 0.174/0.289; A_dir 0.447/0.200; F 0.017/0.006
+      F164 (steady)    slope guard: peak 2421 m · mountain-class slope p50/p90 0.290/0.463 (Corsica 0.318/0.550)
+      F164 (steady)    F by class: plain 37.46 % · plateau 0.00 % · hill 15.09 % · mountain 1.70 %
+      F164 (steady)    coast Coast { dimension: 1.0280129, length_ratio: 0.96443206, aligned: 0.385054, block_index: 6.020731, edges: 14664 }
+      F164 (steady)    warp depressions: 512²: depressions 129 → 116, new 21 | 1024²: depressions 245 → 222, new 14 | 2048²: depressions 700 → 642, new 69 · 512²: 10 of 21 new still a lake · 1024²: 2 of 14 new still a lake · 2048²: 11 of 69 new still a lake · chain 211.8 s CPU / 33.6 s wall
+      F165 (Δh_iso)    whole     16 of 19 within ×1.5 · out: facets 14.779/6.241; walls 28° 4.070/1.547; A_dir 0.362/0.206
+      F165 (Δh_iso)    mountain  14 of 19 within ×1.5 · out: facets 22.422/6.746; walls 28° 6.368/2.320; S_5 − 1 0.167/0.255; A_dir 0.351/0.200; F 0.003/0.006
+      F165 (Δh_iso)    slope guard: peak 4201 m · mountain-class slope p50/p90 0.427/0.534 (Corsica 0.318/0.550)
+      F165 (Δh_iso)    F by class: plain 39.73 % · plateau 0.78 % · hill 6.90 % · mountain 0.35 %
+      F165 (Δh_iso)    coast Coast { dimension: 1.0479257, length_ratio: 1.0044816, aligned: 0.33484316, block_index: 3.578059, edges: 19434 }
+      F165 (Δh_iso)    warp depressions: 512²: depressions 56 → 45, new 7 | 1024²: depressions 186 → 181, new 18 | 2048²: depressions 547 → 541, new 59 · 512²: 5 of 7 new still a lake · 1024²: 10 of 18 new still a lake · 2048²: 35 of 59 new still a lake · chain 200.8 s CPU / 31.3 s wall
+      sources          whole     15 of 19 within ×1.5 · out: facets 11.295/6.241; walls 28° 3.163/1.547; octave 0.39–0.78 km 24.454/15.322; A_dir 0.392/0.206
+      sources          mountain  15 of 19 within ×1.5 · out: facets 16.539/6.746; walls 28° 4.896/2.320; octave 0.39–0.78 km 30.565/19.227; A_dir 0.393/0.200
+      sources          slope guard: peak 4925 m · mountain-class slope p50/p90 0.382/0.522 (Corsica 0.318/0.550)
+      sources          F by class: plain 24.74 % · plateau 0.00 % · hill 8.69 % · mountain 0.67 %
+      sources          coast Coast { dimension: 1.0215129, length_ratio: 1.0310606, aligned: 0.4190953, block_index: 5.4102607, edges: 12202 }
+      sources          warp depressions: 512²: depressions 239 → 256, new 49 | 1024²: depressions 596 → 599, new 65 | 2048²: depressions 1533 → 1528, new 126 · 512²: 17 of 49 new still a lake · 1024²: 26 of 65 new still a lake · 2048²: 50 of 126 new still a lake · chain 231.1 s CPU / 35.7 s wall
+      SUCCESS test (sources): mountain 63.9 % false · plain + plateau 1.5 % false · land lost 0.0 % true · coast degraded none → no
+      sources − EH     whole     15 of 19 within ×1.5 · out: facets 11.335/6.241; walls 28° 3.058/1.547; octave 0.39–0.78 km 23.660/15.322; A_dir 0.403/0.206
+      sources − EH     mountain  15 of 19 within ×1.5 · out: facets 16.945/6.746; walls 28° 4.871/2.320; octave 0.39–0.78 km 30.031/19.227; A_dir 0.383/0.200
+      sources − EH     slope guard: peak 4646 m · mountain-class slope p50/p90 0.383/0.522 (Corsica 0.318/0.550)
+      sources − EH     F by class: plain 34.66 % · plateau 0.33 % · hill 9.54 % · mountain 0.72 %
+      sources − EH     coast Coast { dimension: 1.020108, length_ratio: 1.0285984, aligned: 0.4418485, block_index: 5.3621764, edges: 12204 }
+      sources − EH     warp depressions: 512²: depressions 241 → 245, new 37 | 1024²: depressions 549 → 537, new 54 | 2048²: depressions 1455 → 1455, new 152 · 512²: 18 of 37 new still a lake · 1024²: 22 of 54 new still a lake · 2048²: 62 of 152 new still a lake · chain 228.3 s CPU / 35.7 s wall
+
+   ── seed 9 at 2048² against Corsica 195 m:
+      F164 (steady)    whole     12 of 19 within ×1.5 · out: slope p50 0.068/0.247; slope p90 0.314/0.501; octave 1.56–3.12 km 34.404/62.883; octave 3.12–6.25 km 46.687/100.862; octave 6.25–12.50 km 69.921/159.805; A_dir 0.321/0.206; F 0.206/0.043
+      F164 (steady)    mountain  13 of 19 within ×1.5 · out: octave 0.39–0.78 km 37.523/19.227; octave 0.78–1.56 km 66.403/43.222; S_2 − 1 0.110/0.175; S_5 − 1 0.159/0.255; A_dir 0.427/0.200; F 0.023/0.006
+      F164 (steady)    slope guard: peak 2731 m · mountain-class slope p50/p90 0.270/0.469 (Corsica 0.318/0.550)
+      F164 (steady)    F by class: plain 38.02 % · plateau 3.12 % · hill 15.02 % · mountain 2.27 %
+      F164 (steady)    coast Coast { dimension: 1.04647, length_ratio: 1.0308285, aligned: 0.4717302, block_index: 8.220655, edges: 19288 }
+      F164 (steady)    warp depressions: 512²: depressions 134 → 147, new 20 | 1024²: depressions 292 → 280, new 24 | 2048²: depressions 812 → 734, new 66 · 512²: 9 of 20 new still a lake · 1024²: 3 of 24 new still a lake · 2048²: 9 of 66 new still a lake · chain 228.8 s CPU / 35.3 s wall
+      F165 (Δh_iso)    whole     15 of 19 within ×1.5 · out: facets 13.308/6.241; walls 28° 3.578/1.547; S_2 − 1 0.114/0.172; A_dir 0.415/0.206
+      F165 (Δh_iso)    mountain  16 of 19 within ×1.5 · out: facets 18.496/6.746; walls 28° 5.177/2.320; A_dir 0.403/0.200
+      F165 (Δh_iso)    slope guard: peak 4756 m · mountain-class slope p50/p90 0.395/0.525 (Corsica 0.318/0.550)
+      F165 (Δh_iso)    F by class: plain 43.77 % · plateau 1.13 % · hill 8.13 % · mountain 0.70 %
+      F165 (Δh_iso)    coast Coast { dimension: 1.0634993, length_ratio: 1.0629333, aligned: 0.4373134, block_index: 6.7998223, edges: 22490 }
+      F165 (Δh_iso)    warp depressions: 512²: depressions 93 → 94, new 16 | 1024²: depressions 217 → 221, new 31 | 2048²: depressions 704 → 707, new 87 · 512²: 11 of 16 new still a lake · 1024²: 16 of 31 new still a lake · 2048²: 40 of 87 new still a lake · chain 215.1 s CPU / 33.3 s wall
+      sources          whole     15 of 19 within ×1.5 · out: octave 0.39–0.78 km 30.975/15.322; S_2 − 1 0.114/0.172; A_dir 0.407/0.206; F 0.073/0.043
+      sources          mountain  12 of 19 within ×1.5 · out: facets 13.475/6.746; walls 28° 3.958/2.320; octave 0.39–0.78 km 41.334/19.227; octave 0.78–1.56 km 67.106/43.222; S_5 − 1 0.166/0.255; A_dir 0.403/0.200; F 0.018/0.006
+      sources          slope guard: peak 5098 m · mountain-class slope p50/p90 0.342/0.515 (Corsica 0.318/0.550)
+      sources          F by class: plain 34.28 % · plateau 0.00 % · hill 11.98 % · mountain 1.75 %
+      sources          coast Coast { dimension: 1.0203049, length_ratio: 1.0307486, aligned: 0.59852755, block_index: 12.617964, edges: 13360 }
+      sources          warp depressions: 512²: depressions 279 → 269, new 33 | 1024²: depressions 554 → 515, new 48 | 2048²: depressions 1401 → 1364, new 111 · 512²: 14 of 33 new still a lake · 1024²: 17 of 48 new still a lake · 2048²: 34 of 111 new still a lake · chain 234.5 s CPU / 37.2 s wall
+      SUCCESS test (sources): mountain 56.0 % false · plain + plateau 4.8 % false · land lost 3.8 % true · coast degraded aligned, block index → no
+      sources − EH     whole     16 of 19 within ×1.5 · out: octave 0.39–0.78 km 28.247/15.322; A_dir 0.399/0.206; F 0.102/0.043
+      sources − EH     mountain  12 of 19 within ×1.5 · out: facets 14.243/6.746; walls 28° 4.111/2.320; octave 0.39–0.78 km 42.498/19.227; octave 0.78–1.56 km 70.414/43.222; S_5 − 1 0.168/0.255; A_dir 0.387/0.200; F 0.014/0.006
+      sources − EH     slope guard: peak 5166 m · mountain-class slope p50/p90 0.352/0.518 (Corsica 0.318/0.550)
+      sources − EH     F by class: plain 41.82 % · plateau 7.18 % · hill 12.65 % · mountain 1.37 %
+      sources − EH     coast Coast { dimension: 1.0818542, length_ratio: 1.1806451, aligned: 0.5172878, block_index: 8.370348, edges: 19830 }
+      sources − EH     warp depressions: 512²: depressions 202 → 189, new 23 | 1024²: depressions 421 → 410, new 36 | 2048²: depressions 1140 → 1108, new 111 · 512²: 10 of 23 new still a lake · 1024²: 12 of 36 new still a lake · 2048²: 44 of 111 new still a lake · chain 213.3 s CPU / 34.4 s wall
+
+   R: macro success on 0 / 4 seeds (0 of them with plateau < 1 %) · Q1 holds
+
+   seed 9's rim (sources): 630 land cells on the map border, mean 1476 m against the land's 638 m. The cause: `erosion/stream_power.rs:651` sets a cell whose D8 receiver leaves the map as its own receiver (a fixed base node, never incised), and `terrain/flow.rs:256` routes D8 across the periodic wrap, so a border cell draining outward is such a node; under a positive U it only rises (the history does not hold the sea, so border land is not reset).
+   term tile Transport: saturated at 25275 m
+   term tile DavisSuppe: saturated at 7997 m
+   term tile EquilibriumHeight: saturated at 16842 m
+   term tile Erosion: saturated at 10447 m
+   term tile Subduction: saturated at 123 m
+   term tile RiftThinning: saturated at 1 m
+   image f166_plateau_profile.png: seed 42, row 250, x 66–97 (32 cells, 50 km), 195–906 m; plateau cells orange: 195 274 386 489 543 656 834 906 800 717 646 579 492 395 445 507 551 553 511 481 454 399 350 287 241 287 354 414 438 408 333 329
+   images: f166_seeds_256.png, f166_seeds_2048.png, f166_classes_seeds.png (rows = seeds [10481999410520546993, 42, 1, 9]; columns F164 | F165 | sources), f166_terms.png (the témoin's Σ Δh per term: Transport, DavisSuppe, EquilibriumHeight, Erosion, Subduction, RiftThinning, then the datum drift; red +, blue −), f166_coast_25km.png (Corsica | F164 | sources; window (960, 384) of 2048², Corsica (384, 64)) · north up · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+
+==========  end Finding 166 . 847.8 s wall  ==========
+
+test f166_cascade ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 847.82s
+

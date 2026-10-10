@@ -21917,3 +21917,112 @@ s'en rapprocher encore, mais on va gérer déjà ce qui est prioritaire. »
 **The author's answers, verbatim**:
 1. « Un sommet qui varie avec la tectonique. Un sommet plus haut peut aussi être intéressant. »
 2. The sea-level rise: « Oui » (it will be F167).
+
+## Finding 166 — the physics level driven by C1's tectonic sources only (a read-only per-term observer of C1's loop; s_src = s − C1's erosion term; T recalibrated once and frozen): Q1 holds — the subsidence is C1's own erosion closure (100 % of the interior's negative Σ Δh); without it the continent stops drowning (0–4.5 % of the land lost) and its peaks follow the tectonics (2.7–5.4 km), but every seed stays mountainous (56–64 % on three) with no plateau and no plain, because C1 starts every continent as a uniform 1.8 km plateau that the physics level dissects; no stop rule fires; production unchanged
+
+**Status: built, measured, gated; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f166_sources/finding_166.md`.
+- Declared before any measurement: `f166_declared.md`. Predictions: `f166_predictions.md`.
+- F165 committed (`ee841a8`) with:
+  - the reviewer's decisions (the sources' drive; collisions after F166; **the width test withdrawn**, a design error
+    of the reviewer's; the warp's depressions measured only);
+  - the reviewer's errors (the width test; P6);
+  - the author's remarks and answers, verbatim.
+
+**A — C1's terms** (the inventory in the declaration, with file:line and the formulas):
+- **The classes**:
+  - tectonic: transport (continental v = 0), Davis-Suppe, subduction (consumption, arc, type change), rift thinning,
+    accretion and rift split (plate_id, age);
+  - surface: **C1's erosion closure, which thins the continental crust down to a floor of s = 0.2** (the oceanic
+    thickness);
+  - ambiguous: **the equilibrium-height sink** (s > 2.0, mass removed, a clamp), measured both ways;
+  - other: **the isostatic datum**, the sea level a percentile of the whole field.
+- **F165's history on the témoin**:
+  - the interior (20 cells: at 64² the land is almost all within 3 cells of the sea or a margin): erosion −1 205 m,
+    Davis-Suppe +163 m, **datum drift +657 m**, observed −564 m;
+  - the margin: Davis-Suppe +2 995 m, erosion −4 106 m;
+  - **Q1 holds** (100 %).
+  - **The equilibrium-height sink is 0 on every land cell** (it acts on oceanic pile-ups), yet excluding it changes the
+    land through the datum.
+- **h_iso(t₀)**: a uniform plateau, land mean 1 561–1 626 m, half the land at exactly 1 832 m (35 km crust through
+  C1's land ramp, datum → 5 650 m at S̃ = 2.0).
+
+**B — the mechanism**:
+- **The observer**: `time_loop::run_with_closures_terms` (read-only; C1 bit-identical, a permanent test; the terms
+  add up to Δs within 1e-9).
+- **The record**: `history::run_c1_sources`; with nothing excluded it is F165's record, bit for bit (a permanent
+  test).
+- **T = 5.62 Myr**, calibrated once on the témoin (peak 2 728 m), ×0.19–0.56 of C1's nominal 10–30 Ma. Frozen for the
+  four seeds.
+
+**C — the measures** (256²; Europe plain 51.6 / plateau 4.7 / hill 18.9 / mountain 24.8):
+
+| seed | sources: plain / plateau / hill / mountain | peak | land lost vs F164 | interior ≤ 0 m |
+|---|---|---|---|---|
+| témoin | 1.0 / 0.0 / 37.6 / 61.3 | 2 728 m | 0.0 % | 0.03 % |
+| 42 | 10.5 / 0.0 / 61.1 / 28.3 | 3 261 m | 4.5 % | 5.64 % |
+| 1 | 1.5 / 0.0 / 34.6 / 63.9 | 4 301 m | 0.0 % | 0.12 % |
+| 9 | 4.8 / 0.0 / 39.2 / 56.0 | 5 365 m | 3.8 % | 0.32 % |
+
+- F165's history lost 21–38 % of the land, with 4–11 % interior below 0.
+- **« Sources − EH » differs through the datum alone**:
+  - seed 9 loses 21 % of its land and gets the round's only plateau (6.1 %);
+  - the témoin's peak falls 380 m.
+- **At 2 048² against Corsica**:
+  - the mountain-class slopes are Corsica's (p50 0.33–0.38 against 0.32);
+  - **the facets (×1.6–2.5) and the 28° walls still fail in the mountain class on 4 / 4 seeds** (Q5);
+  - the coast is degraded on seed 9 only (the alignment, the block index: the kept 64² mask);
+  - the {Σ U > 0} block index is 1.3–1.8;
+  - of the warp's new depressions, 13–42 % survive to 2 048² as lakes.
+- **Seed 9's rim**: `stream_power.rs:651` (an off-map D8 receiver makes a fixed base node) with `flow.rs:256` (the
+  periodic D8). Border land is never incised and rises under U. Diagnosis only.
+
+**R**:
+- **Macro success 0 / 4**: the mountains within ×1.5 of Europe on 1 seed; plain + plateau 1–11 % against 37.5–84.5 %.
+- **The « attribution » stop: no** (Q1 holds). **No rule fires.**
+
+**The reading** (hypotheses to check):
+- **The plateau and plain deficit sits in C1's vertical mapping, not in the drive.** C1 renders normal 35 km crust at
+  ~1.8 km (Earth's freeboard puts it at a few hundred metres).
+  - With C1's erosion the land sank (F165); without it, it stays a high block the physics level dissects.
+  - Either way, no low smooth ground.
+  - This is C1's work (b), and it echoes the earlier floor diagnosis.
+- **C1's isostatic datum couples the ocean to the land**: an oceanic sink moves the continent's altitude by hundreds
+  of metres.
+- **The texture defect (facets, walls) does not depend on the drive.**
+
+**Predictions**:
+- **The reviewer's**:
+  - held: Q1, Q2, Q4 (5.62 Myr), Q5, Q7 (a 2.6 km spread, the highest 5.4 km), meta;
+  - refuted: Q3 (no plateau; mountains < 40 % on 1 / 4) and Q6 (+30 % on 2 / 4).
+- **Mine**:
+  - held: Q1, the EH sink ≈ 0 on land, Q5, Q7, the macro failure, no stop, the rim's cause, the observer's cost;
+  - refuted: h_iso(t₀) 800–1 300 m, T 1.5–4 Myr, the land lost 10–25 %, the mountains < 40 %, Q6, the EH variant
+    within 5 %, the block index ≥ 3, the warp survivors ≤ 30 %.
+
+**Cost** (CPU):
+- the observer 0.2 s;
+- the sources' physics level 10.7–14.1 s (F164's steady 3.6–13.4 s);
+- the T calibration 76 s;
+- a frozen chain 160–235 s CPU (~30 s wall).
+
+**Open, for the author** (nothing chosen):
+- (a) F167, the sea-level rise (queued, confirmed);
+- (b) C1's vertical mapping (the 35 km crust at 1.8 km) and the datum's ocean–land coupling, with the collisions and
+  the wide thickening;
+- (c) the facets and the walls in the mountain class;
+- (d) the map-border rim.
+
+**At commit (2026-10-10), decided (the reviewer's proposals, not contested by the author)**:
+- **A new order**: F167 = the thickness → altitude mapping; F168 = the sea-level rise; F169 = a heterogeneous K. The
+  reason: the sea-level rise depends on the land near zero, which the mapping will change.
+- **The mapping is corrected in the cascade only.** The production correction comes with C1's work (b), the
+  collisions.
+- **Queued**:
+  - the facets and the walls (the reviewer's hypothesis, to check: the talus threshold);
+  - the map-border rim.
+
+**The author on F166, verbatim**: « Les terrains sont maintenant complètement modifiés par rapport à ce qu'on connait
+mais semble beaucoup plus intéressant. Des plateaux apparaissent, des chaines, des vallées, des plaines. C'est de plus
+en plus propre. Mon avis est qu'il faudra bien traiter la trop grosse régularité des motifs. un K bruité autour des
+valeurs dépendant de la tectonique serait peut-être une solution? »

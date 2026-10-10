@@ -26,10 +26,13 @@ use crate::tectonics_c1::boundary_classification::{BoundaryType, classify_bounda
 use crate::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use crate::tectonics_c1::kinematics::PlateKinematics;
 use crate::tectonics_c1::production_upscale::{
-    c1_coarse_raw_altitude, c1_normalize_coarse, calibrate_to_land_fraction,
+    c1_coarse_raw_altitude, c1_normalize_coarse, c1_production_altitude_craton, calibrate_to_land_fraction,
 };
 use crate::tectonics_c1::state::C1State;
-use crate::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures_observed};
+pub use crate::tectonics_c1::time_loop::C1Term;
+use crate::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures_observed, run_with_closures_terms};
+use crate::tectonics_v2::field::Field2D;
+use std::cell::RefCell;
 
 /// C1's recorded history at its own grid (64²).
 #[derive(Clone, Debug)]
@@ -108,6 +111,125 @@ pub enum Timing {
     /// [`STEADY_PEAK_M`] -- the current level ([`super::physics_level`], the same loop with `Drive::steady`).
     Steady,
 }
+
+/// ADR Finding 166-B -- C1's history with the excluded terms taken out of `s`: the snapshots are h_src = C1's isostasy
+/// of s_src = s − Σ(excluded terms' Δs), with C1's `age`, `plate_type` and craton mask at the time.
+#[derive(Clone, Debug)]
+pub struct C1Sources {
+    /// `raw` holds h_src (raw coarse altitude) at the snapshots; the sutures and the type changes as F165.
+    pub hist: C1History,
+    /// Σ Δs per term over the run (the run's grid, row-major).
+    pub terms: Vec<(C1Term, Vec<f64>)>,
+    pub excluded: Vec<C1Term>,
+    /// s at the start and at the end (the run's).
+    pub s0: Vec<f64>,
+    pub s_final: Vec<f64>,
+    /// The craton mask (the isostasy's buoyancy).
+    pub craton: Vec<bool>,
+}
+
+/// ADR Finding 166-B1 -- run C1 (exactly; `run_with_closures_terms`) and record h_src every `every` steps, the terms in
+/// `exclude` taken out of `s`. With nothing excluded the snapshots are [`run_c1_recorded`]'s, bit for bit
+/// (`the_sources_with_every_term_are_f165s_history`).
+#[allow(clippy::too_many_arguments)]
+pub fn run_c1_sources(
+    state: &mut C1State,
+    kin: &mut PlateKinematics,
+    cfg: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    every: usize,
+    iso: &IsostasyConfig,
+    ss: &SteinSteinParams,
+    exclude: &[C1Term],
+) -> C1Sources {
+    let (nx, ny) = (state.nx(), state.ny());
+    let n = nx * ny;
+    let s0 = state.s.data().to_vec();
+    let type0: Vec<_> = state.plate_type.data().to_vec();
+    let removed = RefCell::new(vec![0f64; n]);
+    let sums = RefCell::new(C1Term::ALL.iter().map(|&t| (t, vec![0f64; n])).collect::<Vec<_>>());
+    let src_alt = |st: &C1State, removed: &[f64]| -> GridF32 {
+        if exclude.is_empty() {
+            return c1_coarse_raw_altitude(st, iso, ss);
+        }
+        let s_src = Field2D::from_vec(nx, ny, st.s.data().iter().zip(removed).map(|(s, r)| s - r).collect());
+        c1_production_altitude_craton(&s_src, &st.age, &st.plate_type, st.cratonic_mask.data(), iso, ss)
+    };
+    let mut raw = vec![src_alt(state, &removed.borrow())];
+    let mut steps = vec![0usize];
+    let mut suture = vec![false; n];
+    run_with_closures_terms(
+        state,
+        kin,
+        cfg,
+        closures,
+        |step, st, k| {
+            let b = classify_boundaries(&st.plate_id, k);
+            for (s, t) in suture.iter_mut().zip(b.boundary_type.data()) {
+                if *t == BoundaryType::Convergent {
+                    *s = true;
+                }
+            }
+            if (step + 1) % every == 0 {
+                raw.push(src_alt(st, &removed.borrow()));
+                steps.push(step + 1);
+            }
+        },
+        &mut |term, before, after| {
+            let mut sm = sums.borrow_mut();
+            let acc = &mut sm.iter_mut().find(|x| x.0 == term).unwrap().1;
+            let ex = exclude.contains(&term);
+            let mut rm = removed.borrow_mut();
+            for k in 0..n {
+                let d = after[k] - before[k];
+                acc[k] += d;
+                if ex {
+                    rm[k] += d;
+                }
+            }
+        },
+    );
+    let type_changed = state.plate_type.data().iter().zip(&type0).map(|(a, b)| a != b).collect();
+    C1Sources {
+        hist: C1History { steps, n_steps: cfg.n_steps, raw, suture, type_changed },
+        terms: sums.into_inner(),
+        excluded: exclude.to_vec(),
+        s0,
+        s_final: state.s.data().to_vec(),
+        craton: state.cratonic_mask.data().to_vec(),
+    }
+}
+
+/// ADR Finding 166-A2 -- the isostatic datum (C1's raw sea level h_sea = h_min + fraction · (p_cap − h_min) of the
+/// whole field, `isostasy.rs::compute_isostasy_inner`), recomputed for the diagnosis.
+pub fn isostatic_datum(s: &[f64], craton: &[bool], iso: &IsostasyConfig) -> f64 {
+    let b = 1.0 - iso.rho_crust as f64 / iso.rho_mantle as f64;
+    let bc = iso.craton_rho_crust.map_or(b, |r| 1.0 - r as f64 / iso.rho_mantle as f64);
+    let mut h: Vec<f64> = s.iter().zip(craton).map(|(v, c)| v * if *c { bc } else { b }).collect();
+    let h_min = h.iter().copied().fold(f64::INFINITY, f64::min);
+    h.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let cap = match iso.sea_level_mode {
+        crate::tectonics::isostasy::SeaLevelMode::PercentileCapped { cap_percentile } => {
+            h[((cap_percentile as f64) * (h.len() - 1) as f64).round() as usize]
+        }
+        _ => *h.last().unwrap(),
+    };
+    h_min + iso.sea_level_fraction as f64 * (cap - h_min)
+}
+
+/// ADR Finding 166-A2 -- a land cell's altitude (m) at thickness `s` and datum `h_sea`, by C1's land ramp
+/// (`peak · (h − h_sea) / (land_ceiling − h_sea)`, the land ceiling the fixed S̃ reference), before the smoothing.
+pub fn land_altitude_m(s: f64, craton: bool, h_sea: f64, iso: &IsostasyConfig) -> f64 {
+    let b = 1.0 - iso.rho_crust as f64 / iso.rho_mantle as f64;
+    let bc = iso.craton_rho_crust.map_or(b, |r| 1.0 - r as f64 / iso.rho_mantle as f64);
+    let lc = iso.land_ref_thickness.map_or(2.0, |r| r as f64) * b;
+    let h = s * if craton { bc } else { b };
+    iso.max_elevation_m as f64 * (h - h_sea) / (lc - h_sea).max(1e-9)
+}
+
+/// ADR Finding 166 -- **T of the sources' drive**, calibrated once on the témoin (`f166_cascade`: 7 trials, 5.623 × 10⁶ yr
+/// → 2 728 m).
+pub const T_F166_YEARS: f64 = 5.623e6;
 
 /// ADR Finding 165-C2 -- **T, the one constant calibrated on our worlds**: C1's history mapped to years, calibrated once
 /// on the témoin so its peak at 256² falls in [2 700, 3 000] m (`f165_cascade`: 9 trials, 1.155 × 10⁶ yr → 2 852 m).
@@ -245,6 +367,28 @@ mod tests {
         assert_eq!(h.steps, vec![0, 10, 20, 30, 40]);
         assert_eq!(h.raw.len(), 5);
         assert!(h.suture.iter().any(|&s| s), "some cell is convergent at some step");
+    }
+
+    /// ADR Finding 166-B4, the negative control -- with no term excluded the sources' record is F165's history bit for
+    /// bit (the snapshots), so with F165's T the drive is F165's history.
+    #[test]
+    fn the_sources_with_every_term_are_f165s_history() {
+        let (mut a, mut ka, cfg) = c1(40);
+        let h = run_c1_recorded(&mut a, &mut ka, &cfg, &C1Closures::default(), 10, &IsostasyConfig::c1_default(), &SteinSteinParams::default());
+        let (mut b, mut kb, _) = c1(40);
+        let s = run_c1_sources(&mut b, &mut kb, &cfg, &C1Closures::default(), 10, &IsostasyConfig::c1_default(), &SteinSteinParams::default(), &[]);
+        assert_eq!(h.raw.len(), s.hist.raw.len());
+        for (x, y) in h.raw.iter().zip(&s.hist.raw) {
+            assert_eq!(x.data, y.data);
+        }
+        assert_eq!(a.s.data(), b.s.data());
+        // excluding the erosion changes the record, and only where the erosion acted
+        let (mut c, mut kc, _) = c1(40);
+        let e = run_c1_sources(&mut c, &mut kc, &cfg, &C1Closures::default(), 10, &IsostasyConfig::c1_default(), &SteinSteinParams::default(), &[C1Term::Erosion]);
+        assert_eq!(c.s.data(), a.s.data(), "C1 itself is untouched");
+        assert_ne!(e.hist.raw.last().unwrap().data, h.raw.last().unwrap().data);
+        let ero = &e.terms.iter().find(|t| t.0 == C1Term::Erosion).unwrap().1;
+        assert!(ero.iter().all(|&v| v <= 1e-12), "the erosion only removes");
     }
 
     /// ADR Finding 165-C3, negative control 1 -- the « history » U ∝ the final h_iso, constant, to equilibrium, no
