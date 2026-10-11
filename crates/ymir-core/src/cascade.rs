@@ -211,6 +211,9 @@ pub struct LevelRecord {
     pub sum_talus: Vec<f32>,
     /// ADR Finding 165-C2 -- Σ of the isostatic rebound (norm); empty on a steady level.
     pub sum_rebound: Vec<f32>,
+    /// ADR Finding 171-B1 -- the cumulated erosion E_cum (m; incision + hillslope lowering, no uplift, no rebound); empty
+    /// without a rock law.
+    pub e_cum_m: Vec<f32>,
     /// The level's result (norm), the bathymetry restored.
     pub z: GridF32,
     pub steps: usize,
@@ -480,12 +483,25 @@ pub struct Drive<'a> {
     /// ADR Finding 169-C1 -- the duration of step `i` (years); `None` = `cfg.dt_yr` at every step. The linear diffusion's
     /// sub-steps follow the step's weight w: max(`cfg.diffusion_substeps`, ⌈w / 0.2⌉) (the explicit limit is 0.25).
     pub dt: Option<Box<dyn Fn(usize) -> f32 + 'a>>,
+    /// ADR Finding 171-B -- the rock law (cover on basement, the heterogeneous K); `None` = one K everywhere.
+    pub rock: Option<&'a Rock>,
 }
 
 impl<'a> Drive<'a> {
     pub fn steady(du: &'a [f32]) -> Self {
-        Self { du: Box::new(move |_| std::borrow::Cow::Borrowed(du)), hold_sea: true, eq_stop: true, rebound: None, dt: None }
+        Self { du: Box::new(move |_| std::borrow::Cow::Borrowed(du)), hold_sea: true, eq_stop: true, rebound: None, dt: None, rock: None }
     }
+}
+
+/// ADR Finding 171-B -- **the rock of a level**: a soft cover of `cover_m` (m; 0 on the cratonic shields) over a basement
+/// `rho_k` times harder. K = K_couv while the cumulated erosion E_cum < cover, K_couv / ρ_K beyond (K evaluated at the start
+/// of each step; the step that crosses the contact keeps the remaining cover at K_couv and divides the excess by ρ_K, the
+/// fraction-of-step rule at n = 1). `ln_k` (F171-C, K2) multiplies K by exp(ln_k), a field fixed to the rock.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Rock {
+    pub rho_k: f32,
+    pub cover_m: Vec<f32>,
+    pub ln_k: Option<Vec<f32>>,
 }
 
 /// F169-A1: a level's field in TERRAIN order (`o` the terrain origin at the level's resolution).
@@ -536,6 +552,8 @@ fn run_loop(
     let (mut s_up, mut s_ero, mut s_dif, mut s_tal) =
         (vec![0f32; cells], vec![0f32; cells], vec![0f32; cells], vec![0f32; cells]);
     let mut s_reb = if drive.rebound.is_some() { vec![0f32; cells] } else { Vec::new() };
+    // ADR Finding 171-B: the cumulated erosion of the rock law
+    let mut e_cum = if drive.rock.is_some() { vec![0f32; cells] } else { Vec::new() };
     let mut secs = [0f64; 4];
     let (mut ratios, mut calm, mut steps, mut equilibrium, mut talus_last) = (Vec::new(), 0usize, 0usize, false, 0f32);
     while steps < max_steps {
@@ -573,11 +591,33 @@ fn run_loop(
         // 2. erosion (the implicit stream power, one iteration, talus and diffusion off inside)
         let t = Instant::now();
         let before = z.data.clone();
+        // F171-B: the field before the erosion and the step's rebound, for E_cum
+        let z_pre: Vec<f32> = if drive.rock.is_some() { before.clone() } else { Vec::new() };
+        let mut reb_step: Vec<f32> = if drive.rock.is_some() { vec![0f32; cells] } else { Vec::new() };
         solver.random_receiver = cfg.receiver_tau.map(|tau| RandomReceiver {
             seed: receiver_seed ^ (steps as u64 + 1).wrapping_mul(0xA24B_AED4_963E_E407),
             tau,
         });
-        z = incise_with_floor_torus(&z, &solver, None, None, &mut |_, _| {}, tor);
+        // ADR Finding 171-B: K at the start of the step -- cover or basement, times the rock's heterogeneity
+        let kf: Option<Vec<f32>> = drive.rock.map(|r| {
+            (0..cells)
+                .map(|k| {
+                    let f = if e_cum[k] < r.cover_m[k] { 1.0 } else { 1.0 / r.rho_k };
+                    r.ln_k.as_ref().map_or(f, |l| f * l[k].exp())
+                })
+                .collect()
+        });
+        z = incise_with_floor_torus(&z, &solver, kf.as_deref(), None, &mut |_, _| {}, tor);
+        // the step that crosses the contact: the remaining cover at K_couv, the excess divided by ρ_K
+        if let Some(r) = drive.rock {
+            for k in 0..cells {
+                let rem = r.cover_m[k] - e_cum[k];
+                let e = (before[k] - z.data[k]) * n2m;
+                if rem > 0.0 && e > rem {
+                    z.data[k] += (e - rem) * (1.0 - 1.0 / r.rho_k) / n2m;
+                }
+            }
+        }
         for k in 0..cells {
             s_ero[k] += z.data[k] - before[k];
         }
@@ -596,6 +636,9 @@ fn run_loop(
                 let d = f * w[k];
                 z.data[k] += d;
                 s_reb[k] += d;
+                if !reb_step.is_empty() {
+                    reb_step[k] = d;
+                }
             }
         }
         secs[2] += t.elapsed().as_secs_f64();
@@ -622,6 +665,14 @@ fn run_loop(
                 z.data[k] = if drive.hold_sea { cfg.sea_level } else { before[k] };
             }
             s_dif[k] += z.data[k] - before[k];
+        }
+        // F171-B1: E_cum += the step's lowering by the erosion alone (incision + hillslope; no uplift, no rebound)
+        if !e_cum.is_empty() {
+            for k in 0..cells {
+                if land[k] {
+                    e_cum[k] += ((z_pre[k] - z.data[k] + reb_step[k]) * n2m).max(0.0);
+                }
+            }
         }
         secs[3] += t.elapsed().as_secs_f64();
         steps += 1;
@@ -658,6 +709,7 @@ fn run_loop(
         sum_diffusion: s_dif,
         sum_talus: s_tal,
         sum_rebound: s_reb,
+        e_cum_m: e_cum,
         z,
         steps,
         equilibrium,

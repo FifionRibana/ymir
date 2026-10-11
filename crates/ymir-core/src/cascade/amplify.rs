@@ -155,6 +155,49 @@ pub struct AmpConfig {
     /// frame. Every neighbour operation is periodic, the ocean is the largest periodic sea component, and every noise,
     /// tie-break and ordered sum reads the terrain's coordinates. `None` = F168 exactly.
     pub torus: Option<[usize; 2]>,
+    /// ADR Finding 171-C -- K2's heterogeneous K: every level's k times exp(ln M), ln M fixed to the rock (`None` = one k).
+    pub k_hetero: Option<KHetero>,
+}
+
+/// ADR Finding 171-C -- **the heterogeneous K**: ln M = σ_lnK · Σ_j a_j g_j, g_j a unit-variance band noise at λ_j = L / 2^j on
+/// the torus (terrain coordinates), a_j = 2^(−j) normalised so Σ a_j² = 1 over the `octaves`. Octave j is born at the first
+/// level whose 2 cells ≤ λ_j and then carried by the upsample and the warp, as the terrain.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct KHetero {
+    pub sigma: f32,
+    pub l_km: f32,
+    pub octaves: usize,
+}
+
+impl KHetero {
+    /// The declaration (`f171_declared.md`): σ_lnK 0.5, L 25 km, 7 octaves (to 0.39 km).
+    pub fn declared() -> Self {
+        Self { sigma: 0.5, l_km: 25.0, octaves: 7 }
+    }
+    fn weight(&self, j: usize) -> f32 {
+        let norm: f32 = (0..self.octaves).map(|i| 0.25f32.powi(i as i32)).sum::<f32>().sqrt();
+        0.5f32.powi(j as i32) / norm
+    }
+    /// The octaves resolved at a cell of `cell_km` (2 cells ≤ λ_j).
+    pub fn resolved(&self, cell_km: f32) -> usize {
+        (0..self.octaves).filter(|&j| self.l_km / 2f32.powi(j as i32) >= 2.0 * cell_km - 1e-6).count()
+    }
+    /// Σ σ a_j g_j over the octaves `from..to` at a level of `n` cells (terrain coordinates, `torus` at this resolution).
+    pub fn band(&self, n: usize, cell_km: f32, from: usize, to: usize, seed: u64, torus: Option<[usize; 2]>) -> Vec<f32> {
+        let mut out = vec![0f32; n * n];
+        let order = terrain_order(n, torus);
+        for j in from..to {
+            let lam = self.l_km / 2f32.powi(j as i32);
+            let g = noise01_t(n, cell_km, lam, 1, seed, &format!("cascade_lnk_{j}"), torus);
+            let mean = order.iter().map(|&k| g[k] as f64).sum::<f64>() / (n * n) as f64;
+            let sd = (order.iter().map(|&k| (g[k] as f64 - mean).powi(2)).sum::<f64>() / (n * n) as f64).sqrt().max(1e-12);
+            let w = self.sigma * self.weight(j);
+            for k in 0..n * n {
+                out[k] += w * ((g[k] as f64 - mean) / sd) as f32;
+            }
+        }
+        out
+    }
 }
 
 /// ADR Finding 164-D1 -- where the warp acts: once, on the physics level's output (at the first amplification level),
@@ -222,6 +265,7 @@ impl AmpConfig {
             warp: None,
             // ADR Finding 169 (at commit) -- the torus is the cascade's default; the input in C1's own frame
             torus: Some([0, 0]),
+            k_hetero: None,
         }
     }
     /// N1's k at a level of `n` cells.
@@ -310,6 +354,8 @@ pub struct AmpLevel {
     pub smax_bind: (u64, u64),
     /// F169-A1: the torus origin at this level's resolution (`None` = the window).
     pub torus: Option<[usize; 2]>,
+    /// F171-C: ln M at this level (K2), fixed to the rock.
+    pub ln_k: Option<Vec<f32>>,
 }
 
 impl AmpLevel {
@@ -770,7 +816,7 @@ impl AmpLevel {
         prev_d5: Option<&[bool]>,
         prev2_work: Option<GridF32>,
     ) -> Self {
-        Self::upscale_warped(prev, cfg, phys_up, peak_m, prev_d5, prev2_work, None)
+        Self::upscale_warped(prev, cfg, phys_up, peak_m, prev_d5, prev2_work, None, None)
     }
 
     /// [`Self::upscale_full`] with F164's warp at this level (`None` = no warp): the upscaled field and the carried
@@ -785,6 +831,7 @@ impl AmpLevel {
         prev_d5: Option<&[bool]>,
         prev2_work: Option<GridF32>,
         warp: Option<&Warp>,
+        prev_ln_k: Option<&[f32]>,
     ) -> Self {
         let t = Instant::now();
         let mut up = super::upsample2(prev);
@@ -793,6 +840,7 @@ impl AmpLevel {
         let per = torus.is_some();
         let mut d5_up = prev_d5.map(|m| super::measure::upsample_mask2(m, n / 2));
         let (mut pre_warp, mut post_warp, mut warp_jmin, mut warp_jlow) = (None, None, f32::NAN, f32::NAN);
+        let mut wd: Option<(Vec<f32>, Vec<f32>)> = None;
         if let Some(w) = warp {
             let (dx, dy) = warp_field_t(n, cfg.cell_km(n), w, cfg.seed, torus);
             (warp_jmin, warp_jlow) = jacobian(&dx, &dy, n);
@@ -804,7 +852,26 @@ impl AmpLevel {
             d5_up = d5w;
             pre_warp = Some(std::mem::replace(&mut up, warped));
             post_warp = Some(up.clone());
+            wd = Some((dx, dy));
         }
+        // F171-C: ln M carried by the same upsample and warp as the terrain, plus the octaves born at this level
+        let ln_k: Option<Vec<f32>> = cfg.k_hetero.map(|kh| {
+            let mut l = match prev_ln_k {
+                Some(p) => super::upsample2(&GridF32 { width: n / 2, height: n / 2, data: p.to_vec() }),
+                None => GridF32::new(n, n, 0.0),
+            };
+            if let Some((dx, dy)) = &wd {
+                l = if per { warp_grid_t(&l, dx, dy) } else { warp_grid(&l, dx, dy) };
+            }
+            let (from, to) = (kh.resolved(cfg.cell_km(n / 2)), kh.resolved(cfg.cell_km(n)));
+            if to > from {
+                let b = kh.band(n, cfg.cell_km(n), from, to, cfg.seed, torus);
+                for k in 0..n * n {
+                    l.data[k] += b[k];
+                }
+            }
+            l.data
+        });
         let ocean = ocean_mask_t(&up, torus);
         let mut d5 = d5_up.unwrap_or_else(|| vec![false; n * n]);
         for k in 0..n * n {
@@ -862,6 +929,10 @@ impl AmpLevel {
                 f.iter().map(|&v| (1.0 - (cfg.rho_mean + cfg.rho_amp * (2.0 * v - 1.0))) / (1.0 - cfg.rho_mean)).collect()
             }
             _ => vec![1.0; n * n],
+        };
+        let kf: Vec<f32> = match &ln_k {
+            Some(l) => kf.iter().zip(l).map(|(f, v)| f * v.exp()).collect(),
+            None => kf,
         };
         let nu = noise01_t(n, cell_km, cfg.talus_wavelength_km, cfg.talus_octaves, cfg.seed, "cascade_talus", torus);
         // F161-D2: the repose slope carried to the cell (a self-affine scaling, PROXY), F160's constant otherwise
@@ -932,6 +1003,7 @@ impl AmpLevel {
             secs: [t.elapsed().as_secs_f64(), 0.0, 0.0, 0.0],
             smax_bind: (0, 0),
             torus,
+            ln_k,
         }
     }
 
@@ -1023,7 +1095,7 @@ impl AmpLevel {
                     .map(|(v, o)| if *o { 0.5 } else { v / n2m + 0.5 })
                     .collect(),
             };
-            let kfield = cfg.n1_rho.is_some().then_some(self.kf.as_slice());
+            let kfield = (cfg.n1_rho.is_some() || cfg.k_hetero.is_some()).then_some(self.kf.as_slice());
             let out = incise_with_floor_torus(&zn, &sp, kfield, None, &mut |_, _| {}, self.torus);
             for k in 0..n * n {
                 if self.ocean[k] {
@@ -1256,13 +1328,20 @@ pub struct Chain {
     pub levels: Vec<AmpLevel>,
     /// F161-D7: the physics level's D5 cells (empty = none).
     pub d5_phys: Vec<bool>,
+    /// F171-C: ln M at the physics level (K2), carried to the amplification levels.
+    pub ln_k_phys: Option<Vec<f32>>,
 }
 
 impl Chain {
     pub fn new(physics_m: GridF32, cfg: AmpConfig) -> Self {
         let ocean = ocean_mask_t(&physics_m, torus_at(cfg.torus, physics_m.width));
         let peak_m = physics_m.data.iter().zip(&ocean).filter(|(_, o)| !**o).map(|(v, _)| *v).fold(f32::MIN, f32::max);
-        Self { cfg, physics_m, peak_m, levels: Vec::new(), d5_phys: Vec::new() }
+        Self { cfg, physics_m, peak_m, levels: Vec::new(), d5_phys: Vec::new(), ln_k_phys: None }
+    }
+    /// F171-C: with the physics level's ln M (K2).
+    pub fn with_ln_k(mut self, ln_k: Vec<f32>) -> Self {
+        self.ln_k_phys = Some(ln_k);
+        self
     }
     /// With the physics level's D5 mask (F161-D7).
     pub fn with_d5(mut self, d5: Vec<bool>) -> Self {
@@ -1307,7 +1386,11 @@ impl Chain {
         });
         // F164-D1: W-phys warps the first amplification level only (the physics level's output), W-tous every level
         let warp = self.cfg.warp.filter(|w| w.place == WarpPlace::All || self.levels.is_empty());
-        let lvl = AmpLevel::upscale_warped(&prev, &self.cfg, phys.as_ref(), self.peak_m, Some(&d5), prev2, warp.as_ref());
+        let prev_ln: Option<Vec<f32>> = match self.levels.last() {
+            Some(l) => l.ln_k.clone(),
+            None => self.ln_k_phys.clone(),
+        };
+        let lvl = AmpLevel::upscale_warped(&prev, &self.cfg, phys.as_ref(), self.peak_m, Some(&d5), prev2, warp.as_ref(), prev_ln.as_deref());
         self.levels.push(lvl);
         self.levels.last_mut().unwrap()
     }

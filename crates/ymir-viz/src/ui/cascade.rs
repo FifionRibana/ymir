@@ -27,16 +27,16 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use egui::Color32 as C;
-use ymir_core::cascade::amplify::{AmpConfig, AmpLevel, Budget, Chain, Variant, Warp, WarpPlace};
+use ymir_core::cascade::amplify::{AmpConfig, AmpLevel, Budget, Chain, KHetero, Variant, Warp, WarpPlace};
 use ymir_core::cascade::history::{
-    Airy, C1Term, HistoryRun, Mapping, T_F165_YEARS, T_F166_YEARS, Timing, isostatic_datum, land_altitude_m, physics_history,
-    run_c1_sources_mapped,
+    Airy, C1Term, HistoryRun, Mapping, T_F165_YEARS, T_F166_YEARS, Timing, isostatic_datum, land_altitude_m,
+    physics_history_rock, run_c1_sources_mapped,
 };
 use ymir_core::cascade::hydro::{Hydro, draw, hydrology};
 use ymir_core::cascade::physio::{MOUNTAIN, classify};
-use ymir_core::cascade::profile::{C1Profile, select_continent_plates};
+use ymir_core::cascade::profile::{C1Profile, k_range, select_continent_default, select_continent_plates};
 use ymir_core::cascade::{
-    CascadeConfig, CascadeProgress, LevelRecord, PeakCalibration, Rebound, SubStep, diff_rgba, physics_level, roll,
+    CascadeConfig, CascadeProgress, LevelRecord, PeakCalibration, Rebound, Rock, SubStep, diff_rgba, physics_level, roll,
     shade_m_rgba,
 };
 use ymir_core::grid::GridF32;
@@ -198,6 +198,10 @@ pub struct CascadeUi {
     profile: C1Profile,
     /// F169-A4: the selected continent instead of `profile`.
     select: bool,
+    /// F171-A2: the plate count of the selection (16 = the default with its fallback to 20 then 24).
+    plates: usize,
+    /// F171-B/C: the rock (0 = K0 one K, 1 = K1 cover on basement, 2 = K2 with the heterogeneous K).
+    rock: u8,
     /// F169-A1: the torus cascade.
     torus: bool,
     /// F169-C: the continent's age (Myr; ≤ T = linear time).
@@ -264,6 +268,8 @@ impl Default for CascadeUi {
             airy: false,
             profile: C1Profile::Production,
             select: false,
+            plates: 16,
+            rock: 0,
             // ADR Finding 169 (at commit) -- the torus is the cascade's default
             torus: true,
             age_ma: 5.62,
@@ -326,7 +332,7 @@ pub fn cascade_history(
     sources: bool,
     airy: bool,
     profile: C1Profile,
-) -> (Vec<GridF32>, Vec<(String, Vec<f32>)>, [usize; 2]) {
+) -> (Vec<GridF32>, Vec<(String, Vec<f32>)>, [usize; 2], Vec<bool>) {
     // F168-B4: the C1 profile (production, or the continent L1 / L2 initial fraction)
     let spec = C1RunSpec { seed, init_params: profile.init_params(), ..C1RunSpec::default() };
     let run = C1TimeLoopConfig {
@@ -404,7 +410,10 @@ pub fn cascade_history(
         })
         .collect();
     terms.push(("Âge d'épaississement".to_string(), rolled(&age)));
-    (snaps, terms, off)
+    // F171-B: the cratonic shields at t₀ (bare basement), rolled like the snapshots
+    let sh0 = profile.init_state(spec.grid_size, seed).cratonic_mask.data().to_vec();
+    let shields = (0..n * n).map(|k| sh0[((k / n + off[1]) % n) * n + (k % n + off[0]) % n]).collect();
+    (snaps, terms, off, shields)
 }
 
 fn n2m() -> f32 {
@@ -434,7 +443,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
             // F161: N1 by default, as the window
             let (mut variant, mut scale, mut boost) = (Variant::N1, 1.0f32, 1.0f32);
             // F162: the talus at a quarter from 1 024² by default (decided at F161's commit); ρ, π, R4 as ticked
-            let amp_cfg = |v: Variant, f: f32, b: f32, r: &Remedies, torus: Option<[usize; 2]>| AmpConfig {
+            let amp_cfg = |v: Variant, f: f32, b: f32, r: &Remedies, torus: Option<[usize; 2]>, kh: Option<KHetero>| AmpConfig {
                 k_boost: b,
                 talus_fine_scale: 0.25,
                 n1_rho: r.rho,
@@ -442,13 +451,17 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                 n1_recal_depth: if r.r4 { 2 } else { 1 },
                 warp: r.warp,
                 torus,
+                k_hetero: kh,
                 ..AmpConfig::declared(seed, v, f)
             };
+            // F171-C: the heterogeneous K of the current physics level, and its ln M carried to the chain
+            let mut k_het: Option<KHetero> = None;
+            let mut ln_k_phys: Option<Vec<f32>> = None;
             // F169-A1: the torus origin of the current physics level (None = the window)
             let mut torus_origin: Option<[usize; 2]> = None;
             let mut remedies = Remedies::default();
             let mut chain: Option<Chain> = None;
-            let mut history: Option<((bool, bool, C1Profile, bool), Vec<GridF32>, [usize; 2])> = None;
+            let mut history: Option<((bool, bool, C1Profile, bool, usize), Vec<GridF32>, [usize; 2], Vec<bool>)> = None;
             let send_level = |etx: &Sender<Evt>, ch: &Chain, i: usize| {
                 let l = &ch.levels[i];
                 let _ = etx.send(Evt::Level(i, shown(l.result()), Arc::new(l.clone())));
@@ -479,19 +492,34 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                         // F165-C4: driven by C1's history (recorded on demand, the same C1 run as the coarse field)
                         let result = if o.history > 0 {
                             let sources = o.history == 2;
-                            if history.as_ref().is_none_or(|h| h.0 != (sources, o.airy, o.profile, o.select)) {
-                                // F169-A4: the selected continent (C1 run per candidate), L2 when none qualifies
+                            if history.as_ref().is_none_or(|h| h.0 != (sources, o.airy, o.profile, o.select, o.plates)) {
+                                // F171-A: the selected continent (16 plates falling back to 20 then 24, or the slider's
+                                // count alone), L2 when none qualifies
                                 let profile = if o.select {
-                                    let _ = etx.send(Evt::Progress("sélection des plaques continentales (16 plaques, ~200 essais de C1)".into(), 0.0));
-                                    // F170-A: 16 plates, k = 6 … 12, the BFS and the compact families, r* ≥ 1
-                                    let s = select_continent_plates(seed, 16, &(6..=12).collect::<Vec<_>>(), 1);
+                                    let _ = etx.send(Evt::Progress(format!("sélection des plaques continentales ({} plaques)", o.plates), 0.0));
+                                    let (s, n_used) = if o.plates == 16 {
+                                        let (np, mut tried) = select_continent_default(seed);
+                                        (tried.pop().unwrap().1, np)
+                                    } else {
+                                        let s = select_continent_plates(seed, o.plates, &k_range(o.plates), 1);
+                                        let np = s.chosen.map(|_| o.plates);
+                                        (s, np)
+                                    };
+                                    let msg = match (s.chosen, n_used) {
+                                        (Some(i), Some(np)) => {
+                                            let c = &s.candidates[i];
+                                            format!("sélection : {np} plaques, k {} ({}), terres {:.1} %, r* {}", c.k, if c.compact { "compacte" } else { "BFS" }, 100.0 * c.land, c.circ.sea_r.unwrap_or(0))
+                                        }
+                                        _ => format!("sélection : aucun candidat à {} plaques → continent L2", o.plates),
+                                    };
+                                    let _ = etx.send(Evt::Progress(msg, 1.0));
                                     s.chosen.map(|i| s.candidates[i].profile()).unwrap_or(C1Profile::L2)
                                 } else {
                                     o.profile
                                 };
-                                let (s, terms, off) = cascade_history(seed, offset_cells, sources, o.airy, profile);
+                                let (s, terms, off, shields) = cascade_history(seed, offset_cells, sources, o.airy, profile);
                                 let _ = etx.send(Evt::Terms(terms));
-                                history = Some(((sources, o.airy, o.profile, o.select), s, off));
+                                history = Some(((sources, o.airy, o.profile, o.select, o.plates), s, off, shields));
                             }
                             torus_origin = o.torus.then(|| history.as_ref().unwrap().2);
                             ccfg.torus = torus_origin;
@@ -501,7 +529,18 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                             let age = (o.age_ma as f64 * 1.0e6).max(t_years);
                             let age_years = (age > t_years * 1.0001).then_some(age);
                             let run = HistoryRun { t_years, steps: 300, rebound: Some(Rebound::declared()), timing: Timing::History, age_years };
-                            physics_history(&snaps, n, &ccfg, &run, &mut prog, &cancel).map(|l| {
+                            // F171-B/C: the rock law (K1 cover on basement, K2 its heterogeneous K)
+                            k_het = (o.rock == 2).then(KHetero::declared);
+                            ln_k_phys = None;
+                            let rock = (o.rock > 0).then(|| {
+                                let sh = &history.as_ref().unwrap().3;
+                                let f = n / 64;
+                                let cover = (0..n * n).map(|k| if sh[(k / n / f) * 64 + (k % n) / f] { 0.0 } else { 1500.0 }).collect();
+                                let ln_k = k_het.map(|kh| kh.band(n, ccfg.cell_km(n), 0, kh.resolved(ccfg.cell_km(n)), seed, ymir_core::cascade::amplify::torus_at(torus_origin, n)));
+                                ln_k_phys = ln_k.clone();
+                                Rock { rho_k: 10.0, cover_m: cover, ln_k }
+                            });
+                            physics_history_rock(&snaps, n, &ccfg, &run, rock.as_ref(), &mut prog, &cancel).map(|l| {
                                 let shown_snaps: Vec<Shown> = l.snapshots.iter().map(|g| shown(to_m(g))).collect();
                                 let _ = etx.send(Evt::Snapshots(shown_snaps));
                                 let cal = PeakCalibration {
@@ -520,11 +559,17 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                             })
                         } else {
                             ccfg.torus = torus_origin;
+                            k_het = None;
+                            ln_k_phys = None;
                             physics_level(&coarse, n, &ccfg, PEAK_TARGET_M, cap, &mut prog, &cancel)
                         };
                         if let Some((rec, cal)) = result {
                             let pm = to_m(&rec.z);
-                            chain = Some(Chain::new(pm.clone(), amp_cfg(variant, scale, boost, &remedies, torus_origin)));
+                            let mut ch = Chain::new(pm.clone(), amp_cfg(variant, scale, boost, &remedies, torus_origin, k_het));
+                            if let Some(l) = ln_k_phys.clone() {
+                                ch = ch.with_ln_k(l);
+                            }
+                            chain = Some(ch);
                             let _ = etx.send(Evt::Truncate(0));
                             let _ = etx.send(Evt::Physics(shown(pm), Arc::new(rec), cal));
                         }
@@ -533,7 +578,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                         (variant, scale, boost) = (v, f, b);
                         remedies = r;
                         if let Some(ch) = chain.as_mut() {
-                            ch.cfg = amp_cfg(v, f, b, &remedies, torus_origin);
+                            ch.cfg = amp_cfg(v, f, b, &remedies, torus_origin, k_het);
                             ch.levels.clear();
                             let _ = etx.send(Evt::Truncate(0));
                         }
@@ -832,11 +877,20 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
             }
         }
         if ui
-            .selectable_label(cu.select, "sélection (F170)")
-            .on_hover_text("F170-A : 16 plaques ; parmi les groupes de k = 6 à 12 plaques continentales (familles BFS et compacte, chaque plaque de départ), celui dont les terres finales font 50–62 % et dont on peut faire le tour par la mer avec r* ≥ 1 (≥ 19 km de mer), avec la plus large mer ; sinon continent L2 (le témoin n'en a pas au F170 ; 42, 1 et 9 oui). Environ 50 s de calcul")
+            .selectable_label(cu.select, "sélection")
+            .on_hover_text("F170-A / F171-A : parmi les groupes de plaques continentales (familles BFS et compacte, chaque plaque de départ, k de 0,35 à 0,75 × le nombre de plaques), celui dont les terres finales font 50–62 % et dont on peut faire le tour par la mer avec r* ≥ 1 (≥ 19 km de mer), avec la plus large mer ; sinon continent L2. À 16 plaques (le défaut), repli à 20 puis 24. Le résultat s'affiche dans la barre de progression. Environ 1 min de calcul")
             .clicked()
         {
             cu.select = true;
+        }
+        ui.add_enabled(cu.select, egui::Slider::new(&mut cu.plates, 8..=24).text("Plaques")).on_hover_text(
+            "F171-A2 : le nombre de plaques de Voronoï de la sélection. 16 = le défaut, avec repli à 20 puis 24 ; une autre valeur sélectionne à ce nombre seul et affiche si un candidat se qualifie",
+        );
+        ui.label(small("Roche :".into())).on_hover_text(
+            "F171-B/C : K0 = un K unique (F170) ; K1 = une couverture tendre de 1,5 km sur un socle 10 × plus dur (boucliers à nu dès t₀ ; niveau de physique seulement) ; K2 = K1 × un K hétérogène fixé à la roche (σ_lnK 0,5, fBm de 25 km à 0,39 km), aussi aux niveaux d'amplification",
+        );
+        for (name, r) in [("K0", 0u8), ("K1", 1), ("K2", 2)] {
+            ui.selectable_value(&mut cu.rock, r, name);
         }
         ui.separator();
         ui.checkbox(&mut cu.torus, "tore (F169)").on_hover_text(
@@ -1365,12 +1419,15 @@ struct PhysOpts {
     select: bool,
     torus: bool,
     age_ma: f32,
+    /// F171: the selection's plate count and the rock (0 K0, 1 K1, 2 K2).
+    plates: usize,
+    rock: u8,
 }
 
 impl Default for PhysOpts {
     /// P0, F159–F162's level.
     fn default() -> Self {
-        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62 }
+        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62, plates: 16, rock: 0 }
     }
 }
 
@@ -1385,6 +1442,8 @@ fn phys_opts(cu: &CascadeUi) -> PhysOpts {
         select: cu.select,
         torus: cu.torus,
         age_ma: cu.age_ma,
+        plates: cu.plates,
+        rock: cu.rock,
     }
 }
 

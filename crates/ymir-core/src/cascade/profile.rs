@@ -156,6 +156,30 @@ pub fn select_continent(seed: u64) -> Selection {
     Selection { candidates, chosen, runs }
 }
 
+/// ADR Finding 171-A1 -- the continent profile's plate counts: 16 by default, then the fallbacks.
+pub const PLATES_FALLBACK: [usize; 3] = [16, 20, 24];
+
+/// F170-A1: the continental counts tried at `plates`: ⌈0.35 N⌉ … ⌊0.75 N⌋.
+pub fn k_range(plates: usize) -> Vec<usize> {
+    let (lo, hi) = ((0.35 * plates as f64).ceil() as usize, (0.75 * plates as f64).floor() as usize);
+    (lo..=hi).collect()
+}
+
+/// ADR Finding 171-A1 -- **the default selection**: 16 plates, then 20, then 24 if nothing qualifies (r* ≥ 1). Returns the
+/// retained plate count (`None` when even 24 fails) and every selection tried.
+pub fn select_continent_default(seed: u64) -> (Option<usize>, Vec<(usize, Selection)>) {
+    let mut tried = Vec::new();
+    for &n in &PLATES_FALLBACK {
+        let s = select_continent_plates(seed, n, &k_range(n), 1);
+        let ok = s.chosen.is_some();
+        tried.push((n, s));
+        if ok {
+            return (Some(n), tried);
+        }
+    }
+    (None, tried)
+}
+
 /// The end land (64², h_src > 0 under the Airy sources' record) and its circumnavigation for one C1 initial state.
 fn end_land(mut st: C1State) -> (f32, Circumnavigation) {
     let cfg = c1_run_config();

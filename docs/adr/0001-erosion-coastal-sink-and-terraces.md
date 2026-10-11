@@ -22447,3 +22447,100 @@ r*):
 - **Noted**: the old profile brings the coast closer to Corsica (dimension up to 1.07, Corsica 1.12) and the confluence angles
   too (σ_θ 28–33°, Corsica 27–30°).
 - **The default plate count and the order of the next findings** depend on the author's answer. The F171 prompt will follow.
+
+**The author's answers after F170, verbatim**: « oui et oui ».
+1. The heterogeneous K moves forward to F171; the sea-level rise moves to F172.
+2. The continent profile takes 16 plates by default, falling back to 20 then 24 if the seed allows no continent that can be
+   sailed around. The plate count also becomes a slider.
+
+The author's earlier remark, recalled: « un K bruité autour des valeurs dépendant de la tectonique ». This is the K2 variant.
+
+## Finding 171 — a rock that depends on depth: a 1.5 km soft cover on a basement 10× harder (K1) removes the old profile's peneplain on 4 / 4 seeds (median 132–423 m against 3–95 m; basement plains at 123–260 m) and makes the mountain share decrease with A gradually; but the macro success is 1 / 4 (seed 42), the old mountains spreading 6.5–37 % with the tectonics; the heterogeneous K (K2) lowers R2_g but does not reach Corsica's confluence spread; the témoin qualifies at 20 plates; production unchanged
+
+**Status: built, measured, gated; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f171_rock/finding_171.md`.
+- Declared before any measurement: `f171_declared.md`. Predictions: `f171_predictions.md`.
+- F170 committed (`f21c5c2`); the author's « oui et oui » added under it.
+
+**A — the plates**: `select_continent_default` (16 → 20 → 24).
+- The témoin qualifies at **20** plates (compact k 9, 51.5 %, r* 2; 145 s CPU).
+- 42, 1 and 9 stay at 16.
+- **The viz**: a slider « Plaques » (8–24) and a selector « Roche : K0 / K1 / K2 ».
+
+**B, C — the rock**:
+- **K1** (`cascade::Rock`, `physics_history_rock`): K_couv until E_cum ≥ d_c, then K_couv / ρ_K.
+  - d_c = 0 on the shields; K is evaluated at the start of each step; the crossing step uses the fraction-of-step rule.
+  - ρ_K = 10 (Stock & Montgomery 1999, p. 4983 and Table 2 p. 4986); d_c = 1.5 km (a design value). The physics level only.
+- **K2** (`amplify::KHetero`): × exp(ln M), an fBm of 25–0.39 km with σ_lnK = 0.5 (Stock & Montgomery's within-lithology
+  spreads). It is fixed to the rock (each octave born at its level, then carried by the upsample and the warp) and reaches
+  every amplification level.
+- **The negative controls** (permanent): ρ_K = 1 is F170 bit for bit; σ_lnK = 0 is K1 bit for bit.
+
+**D** (Europe: mountain 24.8 %, median 195 m):
+
+| seed | mountain K1, B0 → 20 → 100 → 300 Myr | old K1: plain + plateau / median / peak | old K2: mountain |
+|---|---|---|---|
+| témoin (20 plates) | 81 → 76 → 63 → **37.0** % | 25 % / 423 m / 5.2 km | 40.5 % |
+| 42 | 68 → 60 → 38 → **20.3** % | 56 % / 172 m / 3.9 km | 21.0 % |
+| 1 | 60 → 59 → 32 → **6.5** % | 50 % / 132 m / 1.8 km | 9.0 % |
+| 9 | 76 → 68 → 39 → **13.9** % | 48 % / 190 m / 4.3 km | 21.3 % |
+
+- **The cover goes fast**: 34–47 % left at B0, 1–2.5 % on the old profile (basement 88–91 %, shields 7.5–10.5 %).
+- **The peaks**: K1 raises them at B0 and young to 4.8–6.4 km (F170: 1.0–3.7 km), never above 7 km.
+- **The slope guard** holds on every K1 / K2 world. **The facets and walls** fail in the mountain class at B0 and young on 4 / 4.
+- **The lithological knickpoints** (256², Strahler ≥ 3): 31–78 at B0 and young (median 30–315 m), 5–13 intermediate, 0–8 old.
+- **K2 against K1**: R2_g at 391 m falls on 15 / 16 pairs; σ_θ moves −0.1 to +1.2° (23–26° against Corsica's 30°); the classes
+  move by up to 9.9 points.
+- **The coast** (old): K1 is ≈ 1.0 / 0.95–1.0. On seeds 1 and 9 it is « degraded » against K0 old's drowned-peneplain coast
+  (1.06–1.07 / 1.10–1.18).
+- **The sensitivity** (the témoin, old): ρ_K dominates (3 / 10 / 30: mountains 27 / 37 / 58 %, median 183 / 423 / 649 m). At
+  ρ_K = 3 the témoin passes; ρ_K is not chosen.
+- **Cost** (idle): 434–490 s CPU per world, K0 = K1 = K2.
+
+**R**:
+- macro success 1 / 4 (K1 and K2: seed 42);
+- the peneplain stop 0 / 4; the off-scale stop 0 / 4;
+- no stop fires.
+
+**The reading** (hypotheses to check):
+- The depth-dependent rock gives the old continent Europe's median and basement plains.
+- The cover is thin against the model's erosion, so the basement carries the relief at every age (high young peaks, walls).
+- The old mountains' spread is the tectonics'.
+- The coast clause compared to a flooded reference; F172's sea-level rise tests the coast.
+
+**Predictions**:
+- **The reviewer's**:
+  - held: X1, X2, X3, X4's first clause, X5, the meta;
+  - refuted: X4's second clause, X6 (σ_θ), X7.
+- **Mine**:
+  - held: X1, the stops not firing, no macro success, ρ_K 30, σ ×2, the costs, the meta;
+  - refuted: X2, X3's first clause, X5, X6, X7, the rock shares, d_c's sensitivity.
+
+**Open, for the author** (nothing chosen):
+- (a) K1 / K2 as the continent profile's rock;
+- (b) the old mountains' spread and ρ_K's sensitivity (no calibration);
+- (c) the coast clause's reference before F172;
+- (d) the walls the basement brings.
+
+**At commit (2026-10-11), decided (the reviewer's proposals, not contested by the author)**:
+- **(a)** The continent profile's rock becomes **K2** (K1 + the heterogeneity, σ_lnK = 0.5), with 16 plates and the fallback to
+  20 then 24.
+- **(b) A change of criterion, recorded as such**: the seeds are no longer judged one by one against Europe.
+  - A mechanism is judged on its own effect, which must appear on nearly every seed.
+  - The macro layout is judged on a **distribution** of seeds: the share of interesting seeds, the variety.
+  - The age A is the author's slider. Its default is **provisional**, to be set when the work items are finished.
+  - ρ_K stays at 10.
+- **(c)** From F172, the coast is judged against Corsica in absolute value.
+- **(d)** The walls, the facets and the coastal rampart are measured at F172 (its parts A and D).
+
+**The author's view of F171, verbatim**: « Assez intéressant. Donc maintenant j'ai un moyen de régler l'age. Le K1/K2 sur le
+crop 25km est très intéressant. Les montagnes semble réalistes et irégulières. Sur la 2eme ligne un peu moins. Donc à B0 ça
+va, en old un peu moins. »
+
+**The author's position on the seeds, verbatim**: « Age par défaut? Je ne sais pas. Il bougera certainement lorsque tous les
+chantiers seront terminés. Ensuite, toutes les seeds ne seront pas intéressantes. C'est ce qu'il faut voir et on le sait.
+Car toutes les seeds ne vont pas donner des structures convergentes aux bordures systématiquement. C'est bien évidemment le
+"jeu" ici. Il faut trouver des seeds intéressantes. Elles allient à la fois forme des plaques, nombre de plaques de terres,
+direction et vitesse de convergence / divergence / rift / etc... C'est multifactoriel et donc c'est pour ça que les seeds 1
+à 9 peuvent ne pas forcément donner un résultat intéressant (typiquement continent avec mur, fini avec quasi que des
+plaines, etc). »

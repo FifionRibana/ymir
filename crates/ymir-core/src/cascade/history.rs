@@ -379,6 +379,19 @@ pub fn physics_history(
     progress: &mut dyn FnMut(CascadeProgress),
     cancel: &dyn Fn() -> bool,
 ) -> Option<HistoryLevel> {
+    physics_history_rock(snaps, n, cfg, run, None, progress, cancel)
+}
+
+/// ADR Finding 171-B/C -- [`physics_history`] with a rock law at the level (`None` = [`physics_history`] exactly).
+pub fn physics_history_rock(
+    snaps: &[GridF32],
+    n: usize,
+    cfg: &CascadeConfig,
+    run: &HistoryRun,
+    rock: Option<&super::Rock>,
+    progress: &mut dyn FnMut(CascadeProgress),
+    cancel: &dyn Fn() -> bool,
+) -> Option<HistoryLevel> {
     let n2m = cfg.norm_to_m();
     let up: Vec<GridF32> = snaps.iter().map(|s| upsample_to(s, n)).collect();
     if run.timing == Timing::Steady {
@@ -442,6 +455,7 @@ pub fn physics_history(
             eq_stop: false,
             rebound: run.rebound,
             dt: Some(Box::new(move |i| d[i.min(steps - 1)] as f32)),
+            rock,
         };
         let uplift = GridF32::new(n, n, 0.0);
         let rec = run_loop(z0.clone(), uplift, &cfg_t, n, run.steps, Some(0), &drive, progress, cancel)?;
@@ -463,6 +477,7 @@ pub fn physics_history(
         eq_stop: false,
         rebound: run.rebound,
         dt: None,
+        rock,
     };
     let uplift = GridF32::new(n, n, 0.0);
     let rec = run_loop(z0.clone(), uplift, &cfg_t, n, run.steps, Some(0), &drive, progress, cancel)?;
@@ -686,6 +701,45 @@ mod f169_tests {
         assert!((d.iter().sum::<f64>() / 3.0e8 - 1.0).abs() < 1e-9 && (d[299] - 5.623e6 / 300.0).abs() < 1e-6, "r {r}");
         assert!((r - 1.019306).abs() < 1e-5, "r {r}");
         assert_eq!(step_durations(5.623e6, 5.623e6, 300).1, 1.0);
+    }
+
+    /// ADR Finding 171-B4 and C4, the negative controls (permanent): a rock law with ρ_K = 1 is F170 bit for bit, and a
+    /// heterogeneous K of σ_lnK = 0 is K1 bit for bit, at the physics level and at an amplification level; with ρ_K = 10
+    /// the cover's exhaustion changes the field.
+    #[test]
+    fn the_rock_law_reduces_to_f170_and_k1_bit_for_bit() {
+        use crate::cascade::Rock;
+        use crate::cascade::amplify::KHetero;
+        let base = snaps();
+        let run = HistoryRun { t_years: 2.0e6, steps: 30, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: Some(2.0e7) };
+        let c = cfg([0, 0]);
+        let ref_ = physics_history(&base, 128, &c, &run, &mut |_| {}, &|| false).unwrap();
+        let cover = vec![50.0f32; 128 * 128];
+        let r1 = Rock { rho_k: 1.0, cover_m: cover.clone(), ln_k: None };
+        let a = physics_history_rock(&base, 128, &c, &run, Some(&r1), &mut |_| {}, &|| false).unwrap();
+        assert_eq!(a.rec.z.data, ref_.rec.z.data, "rho_k = 1");
+        let r10 = Rock { rho_k: 10.0, cover_m: cover.clone(), ln_k: None };
+        let b = physics_history_rock(&base, 128, &c, &run, Some(&r10), &mut |_| {}, &|| false).unwrap();
+        assert_ne!(b.rec.z.data, ref_.rec.z.data, "rho_k = 10 changes the field");
+        assert!(b.rec.e_cum_m.iter().any(|&e| e > 50.0), "the cover is exhausted somewhere");
+        let k0 = KHetero { sigma: 0.0, ..KHetero::declared() };
+        let r10z = Rock { ln_k: Some(k0.band(128, 400.0 / 128.0, 0, k0.resolved(400.0 / 128.0), 11, Some([0, 0]))), ..r10.clone() };
+        let bz = physics_history_rock(&base, 128, &c, &run, Some(&r10z), &mut |_| {}, &|| false).unwrap();
+        assert_eq!(bz.rec.z.data, b.rec.z.data, "sigma = 0 at the physics level");
+        // the amplification level: σ = 0 is the one-k chain
+        let n2m = c.norm_to_m();
+        let zm = GridF32 { width: 128, height: 128, data: b.rec.z.data.iter().map(|v| (v - 0.5) * n2m).collect() };
+        let amp = |kh: Option<KHetero>| AmpConfig { budget_scale: 0.01, n1_recal_depth: 2, warp: Some(Warp { amp: 0.5, corr: 4.0, place: WarpPlace::All }), torus: Some([0, 0]), k_hetero: kh, ..AmpConfig::declared(11, Variant::N1, 1.0) };
+        let one = Chain::new(zm.clone(), amp(None)).next_level(&|| false).unwrap().result();
+        let mut ch = Chain::new(zm.clone(), amp(Some(k0))).with_ln_k(vec![0.0; 128 * 128]);
+        let zero = ch.next_level(&|| false).unwrap().result();
+        assert_eq!(one.data, zero.data, "sigma = 0 at the amplification level");
+        let mut ch = Chain::new(zm, amp(Some(KHetero::declared()))).with_ln_k(KHetero::declared().band(128, 400.0 / 128.0, 0, 3, 11, Some([0, 0])));
+        let het = ch.next_level(&|| false).unwrap();
+        assert_ne!(one.data, het.result().data, "sigma = 0.5 changes the level");
+        let l = het.ln_k.as_ref().unwrap();
+        let sd = (l.iter().map(|v| (*v as f64).powi(2)).sum::<f64>() / l.len() as f64).sqrt();
+        assert!(sd > 0.3 && sd < 0.6, "ln M's spread {sd}");
     }
 
     /// F169-A1: the torus noise follows the terrain (an origin rolls it exactly) and wraps (no seam).

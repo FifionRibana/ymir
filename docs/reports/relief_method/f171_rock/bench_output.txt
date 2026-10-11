@@ -1,0 +1,453 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.20s
+     Running tests\f171_cascade.rs (target_f171b\release\deps\f171_cascade-43559b8df4937ecb.exe)
+running 1 test
+==========  Finding 171 . a rock that depends on depth (K1), the heterogeneous K (K2)  ==========
+   Europe                     plain  51.6 % · plateau   4.7 % · hill  18.9 % · mountain  24.8 % · land 5260525 km² · deciles 40/81/117/153/195/262/383/580/889
+   Corse 195 m: mountain slope p50/p90 0.318/0.550 · coast Coast { dimension: 1.122932, length_ratio: 1.370949, aligned: 0.27188444, block_index: 0.78062284, edges: 5780 } · 391 m: CV_λ 0.609 · CV_L 0.869 · σ_θ 29.9° · R2_g 0.477
+   A1 — the default selection (16 plates, then 20, then 24; 50–62 % land, r* ≥ 1):
+test f171_rock has been running for over 60 seconds
+      seed 10481999410520546993 N 16: 224 candidates (203 distinct runs) · best r* in range Some(0) · none qualifies
+      seed 10481999410520546993 N 20: 360 candidates (346 distinct runs) · best r* in range Some(2) · CHOSEN k 9 compact start 0 land 51.5 % r* 2
+      seed 10481999410520546993: retained N Some(20) · the selection's cost 147.1 s wall / 145.4 s CPU
+      seed 42 N 16: 224 candidates (196 distinct runs) · best r* in range Some(2) · CHOSEN k 7 compact start 3 land 51.3 % r* 2
+      seed 42: retained N Some(16) · the selection's cost 46.0 s wall / 45.3 s CPU
+      seed 1 N 16: 224 candidates (215 distinct runs) · best r* in range Some(1) · CHOSEN k 10 BFS start 6 land 50.4 % r* 1
+      seed 1: retained N Some(16) · the selection's cost 53.4 s wall / 52.9 s CPU
+      seed 9 N 16: 224 candidates (206 distinct runs) · best r* in range Some(3) · CHOSEN k 7 compact start 15 land 51.2 % r* 3
+      seed 9: retained N Some(16) · the selection's cost 52.8 s wall / 52.2 s CPU
+   ══ seed 10481999410520546993 (Selected { plates: 20, k: 9, start: 0, compact: true }, N 20) ══
+      land 64² 51.5 % · circumnavigable (main 2104 cells) · r* 2 → sea loop ≥ 31.2 km
+   ── seed 10481999410520546993 K0 old:
+   K0 old classes             plain  55.0 % · plateau   0.2 % · hill  26.4 % · mountain  18.4 % · land 85024 km² · deciles 9/19/37/63/95/139/206/319/512
+      peaks 256² 1720 m · 2048² 2009 m · the rock at the surface: cover 89.6 % · basement 0.0 % · shield 10.4 % · plains on the basement 0 cells, altitude -0 m · knickpoints 2 (median height 35 m) · lakes 23 / 1443 km² · E_cum p50 / p90 NaN / NaN m
+      2048² whole: 11 of 19 within ×1.5 · out: slope p50 0.044/0.247; slope p90 0.292/0.501; octave 0.78–1.56 km 22.530/34.443; octave 1.56–3.12 km 25.727/62.883; octave 3.12–6.25 km 29.739/100.862; octave 6.25–12.50 km 43.114/159.805; A_dir 0.333/0.206; F 0.255/0.043
+      2048² mountain: 13 of 19 within ×1.5 · out: octave 3.12–6.25 km 69.526/126.569; octave 6.25–12.50 km 100.794/200.536; S_2 − 1 0.102/0.175; S_5 − 1 0.147/0.255; A_dir 0.454/0.200; F 0.020/0.006
+      slope guard: mountain-class slope p50/p90 0.271/0.463 (Corsica 0.318/0.550) → ok
+      F by class: plain 39.12 % · plateau 7.07 % · hill 12.89 % · mountain 1.96 %
+      regularity: 391 m: CV_λ 0.565 · CV_L 0.809 · σ_θ 26.1° · R2_g 0.538 | 195 m: σ_θ 26.0° · R2_g 0.431 | Hovius A ≥ 10: R 2.06 (280 basins) · A ≥ 25: R 2.02 (97 basins)
+      coast (torus) Coast { dimension: 1.0013136, length_ratio: 0.97077465, aligned: 0.31039712, block_index: 1.1960508, edges: 12762 } · cost 469 s CPU per world (physics 27 s, chain 441 s)
+   ── seed 10481999410520546993 K0 B0:
+   K0 B0 classes              plain   0.4 % · plateau   0.5 % · hill  18.8 % · mountain  80.2 % · land 85518 km² · deciles 174/311/457/605/755/918/1111/1366/1722
+      peaks 256² 3920 m · 2048² 4090 m · the rock at the surface: cover 89.6 % · basement 0.0 % · shield 10.4 % · plains on the basement 0 cells, altitude -0 m · knickpoints 1 (median height 534 m) · lakes 4 / 889 km² · E_cum p50 / p90 NaN / NaN m
+      2048² whole: 13 of 19 within ×1.5 · out: facets 11.729/6.241; walls 28° 2.759/1.547; S_2 − 1 0.098/0.172; S_5 − 1 0.139/0.239; S_10 − 1 0.183/0.282; A_dir 0.512/0.206
+      2048² mountain: 13 of 19 within ×1.5 · out: facets 13.701/6.746; octave 6.25–12.50 km 128.596/200.536; S_2 − 1 0.107/0.175; S_5 − 1 0.153/0.255; A_dir 0.491/0.200; F 0.018/0.006
+      slope guard: mountain-class slope p50/p90 0.316/0.503 (Corsica 0.318/0.550) → ok
+      F by class: plain 20.86 % · plateau 8.92 % · hill 7.37 % · mountain 1.75 %
+      regularity: 391 m: CV_λ 0.731 · CV_L 1.195 · σ_θ 23.3° · R2_g 0.738 | 195 m: σ_θ 23.3° · R2_g 0.512 | Hovius A ≥ 10: R 3.46 (573 basins) · A ≥ 25: R 2.99 (297 basins)
+      coast (torus) Coast { dimension: 0.9933615, length_ratio: 0.9325, aligned: 0.29181987, block_index: 0.77470356, edges: 12144 } · cost 465 s CPU per world (physics 26 s, chain 438 s)
+   ── seed 10481999410520546993 K0 young 20 Myr:
+   K0 young 20 Myr classes    plain  20.4 % · plateau   6.0 % · hill  39.1 % · mountain  34.5 % · land 85916 km² · deciles 48/89/133/181/246/348/501/672/865
+      peaks 256² 2709 m · 2048² 2845 m · the rock at the surface: cover 89.5 % · basement 0.0 % · shield 10.5 % · plains on the basement 0 cells, altitude -0 m · knickpoints 2 (median height 319 m) · lakes 10 / 1592 km² · E_cum p50 / p90 NaN / NaN m
+      2048² whole: 13 of 19 within ×1.5 · out: slope p50 0.105/0.247; octave 1.56–3.12 km 35.350/62.883; octave 3.12–6.25 km 43.748/100.862; octave 6.25–12.50 km 60.668/159.805; A_dir 0.442/0.206; F 0.138/0.043
+      2048² mountain: 13 of 19 within ×1.5 · out: octave 3.12–6.25 km 74.631/126.569; octave 6.25–12.50 km 103.495/200.536; S_2 − 1 0.105/0.175; S_5 − 1 0.154/0.255; A_dir 0.473/0.200; F 0.022/0.006
+      slope guard: mountain-class slope p50/p90 0.273/0.474 (Corsica 0.318/0.550) → ok
+      F by class: plain 32.68 % · plateau 11.47 % · hill 14.48 % · mountain 2.24 %
+      regularity: 391 m: CV_λ 0.632 · CV_L 0.936 · σ_θ 23.9° · R2_g 0.652 | 195 m: σ_θ 23.4° · R2_g 0.478 | Hovius A ≥ 10: R 2.36 (446 basins) · A ≥ 25: R 2.24 (188 basins)
+      coast (torus) Coast { dimension: 0.9944483, length_ratio: 0.94833815, aligned: 0.29485983, block_index: 1.026147, edges: 12162 } · cost 475 s CPU per world (physics 27 s, chain 448 s)
+   ── seed 10481999410520546993 K0 intermediate 100 Myr:
+   K0 intermediate 100 Myr classes plain  50.2 % · plateau   0.5 % · hill  28.4 % · mountain  21.0 % · land 85405 km² · deciles 12/26/47/79/122/180/258/376/613
+      peaks 256² 1914 m · 2048² 2269 m · the rock at the surface: cover 89.6 % · basement 0.0 % · shield 10.4 % · plains on the basement 0 cells, altitude -0 m · knickpoints 2 (median height 38 m) · lakes 17 / 576 km² · E_cum p50 / p90 NaN / NaN m
+      2048² whole: 12 of 19 within ×1.5 · out: slope p50 0.054/0.247; slope p90 0.317/0.501; octave 1.56–3.12 km 27.894/62.883; octave 3.12–6.25 km 33.130/100.862; octave 6.25–12.50 km 47.859/159.805; A_dir 0.346/0.206; F 0.235/0.043
+      2048² mountain: 13 of 19 within ×1.5 · out: octave 3.12–6.25 km 72.505/126.569; octave 6.25–12.50 km 104.739/200.536; S_2 − 1 0.107/0.175; S_5 − 1 0.151/0.255; A_dir 0.461/0.200; F 0.020/0.006
+      slope guard: mountain-class slope p50/p90 0.278/0.470 (Corsica 0.318/0.550) → ok
+      F by class: plain 38.10 % · plateau 7.13 % · hill 13.08 % · mountain 1.99 %
+      regularity: 391 m: CV_λ 0.562 · CV_L 0.834 · σ_θ 26.0° · R2_g 0.572 | 195 m: σ_θ 25.9° · R2_g 0.429 | Hovius A ≥ 10: R 2.16 (296 basins) · A ≥ 25: R 2.17 (121 basins)
+      coast (torus) Coast { dimension: 0.9950941, length_ratio: 0.95756394, aligned: 0.32482153, block_index: 1.0996475, edges: 12484 } · cost 480 s CPU per world (physics 26 s, chain 453 s)
+   ── seed 10481999410520546993 K1 B0:
+   K1 B0 classes              plain   0.2 % · plateau   5.3 % · hill  13.1 % · mountain  81.3 % · land 82769 km² · deciles 252/454/693/983/1237/1673/2224/3051/3920
+      peaks 256² 5946 m · 2048² 6318 m · the rock at the surface: cover 33.8 % · basement 55.8 % · shield 10.4 % · plains on the basement 0 cells, altitude -0 m · knickpoints 54 (median height 184 m) · lakes 26 / 1516 km² · E_cum p50 / p90 1549 / 3105 m
+      2048² whole: 11 of 19 within ×1.5 · out: facets 17.814/6.241; walls 28° 5.407/1.547; CV_L 1.537/0.915; S_2 − 1 0.061/0.172; S_5 − 1 0.090/0.239; S_10 − 1 0.125/0.282; A_dir 0.589/0.206; F 0.094/0.043
+      2048² mountain: 11 of 19 within ×1.5 · out: facets 20.149/6.746; walls 28° 6.493/2.320; CV_L 1.581/0.825; S_2 − 1 0.073/0.175; S_5 − 1 0.106/0.255; S_10 − 1 0.148/0.289; A_dir 0.531/0.200; F 0.053/0.006
+      slope guard: mountain-class slope p50/p90 0.404/0.536 (Corsica 0.318/0.550) → ok
+      F by class: plain 24.91 % · plateau 22.52 % · hill 31.78 % · mountain 5.26 %
+      regularity: 391 m: CV_λ 0.864 · CV_L 1.690 · σ_θ 25.0° · R2_g 0.899 | 195 m: σ_θ 25.8° · R2_g 0.669 | Hovius A ≥ 10: R 8.70 (722 basins) · A ≥ 25: R 5.60 (358 basins)
+      coast (torus) Coast { dimension: 0.98001933, length_ratio: 0.892507, aligned: 0.31411695, block_index: 0.83169657, edges: 11812 } · cost 437 s CPU per world (physics 24 s, chain 412 s)
+   ── seed 10481999410520546993 K1 young 20 Myr:
+   K1 young 20 Myr classes    plain   9.2 % · plateau   6.1 % · hill   9.1 % · mountain  75.6 % · land 83225 km² · deciles 384/445/592/769/1030/1376/1792/2194/2752
+      peaks 256² 5400 m · 2048² 5704 m · the rock at the surface: cover 16.2 % · basement 73.4 % · shield 10.4 % · plains on the basement 1073 cells, altitude 440 m · knickpoints 57 (median height 82 m) · lakes 17 / 4275 km² · E_cum p50 / p90 2001 / 4663 m
+      2048² whole: 11 of 19 within ×1.5 · out: facets 16.363/6.241; walls 28° 4.553/1.547; CV_L 2.015/0.915; S_2 − 1 0.047/0.172; S_5 − 1 0.066/0.239; S_10 − 1 0.089/0.282; A_dir 0.619/0.206; F 0.091/0.043
+      2048² mountain: 10 of 19 within ×1.5 · out: facets 20.321/6.746; walls 28° 5.945/2.320; octave 6.25–12.50 km 125.043/200.536; CV_L 2.131/0.825; S_2 − 1 0.087/0.175; S_5 − 1 0.125/0.255; S_10 − 1 0.173/0.289; A_dir 0.498/0.200; F 0.035/0.006
+      slope guard: mountain-class slope p50/p90 0.400/0.526 (Corsica 0.318/0.550) → ok
+      F by class: plain 37.33 % · plateau 26.56 % · hill 16.62 % · mountain 3.51 %
+      regularity: 391 m: CV_λ 0.809 · CV_L 2.169 · σ_θ 24.4° · R2_g 0.910 | 195 m: σ_θ 24.7° · R2_g 0.613 | Hovius A ≥ 10: R 6.39 (763 basins) · A ≥ 25: R 5.21 (410 basins)
+      coast (torus) Coast { dimension: 0.98503965, length_ratio: 0.90353644, aligned: 0.30758807, block_index: 0.77265185, edges: 12052 } · cost 471 s CPU per world (physics 27 s, chain 444 s)
+   ── seed 10481999410520546993 K1 intermediate 100 Myr:
+   K1 intermediate 100 Myr classes plain   2.1 % · plateau  17.0 % · hill  18.3 % · mountain  62.6 % · land 83367 km² · deciles 152/328/482/585/686/783/929/1199/1674
+      peaks 256² 5791 m · 2048² 5706 m · the rock at the surface: cover 2.2 % · basement 87.3 % · shield 10.5 % · plains on the basement 672 cells, altitude 288 m · knickpoints 9 (median height 86 m) · lakes 20 / 8042 km² · E_cum p50 / p90 3070 / 6631 m
+      2048² whole: 9 of 19 within ×1.5 · out: facets 10.196/6.241; walls 28° 2.494/1.547; octave 3.12–6.25 km 66.437/100.862; octave 6.25–12.50 km 74.073/159.805; CV_L 1.488/0.915; S_2 − 1 0.083/0.172; S_5 − 1 0.116/0.239; S_10 − 1 0.156/0.282; A_dir 0.548/0.206; F 0.110/0.043
+      2048² mountain: 9 of 19 within ×1.5 · out: facets 14.426/6.746; walls 28° 3.941/2.320; octave 3.12–6.25 km 84.257/126.569; octave 6.25–12.50 km 93.941/200.536; CV_L 1.485/0.825; S_2 − 1 0.092/0.175; S_5 − 1 0.127/0.255; S_10 − 1 0.173/0.289; A_dir 0.522/0.200; F 0.053/0.006
+      slope guard: mountain-class slope p50/p90 0.326/0.510 (Corsica 0.318/0.550) → ok
+      F by class: plain 41.36 % · plateau 23.00 % · hill 15.80 % · mountain 5.28 %
+      regularity: 391 m: CV_λ 0.906 · CV_L 1.559 · σ_θ 23.5° · R2_g 0.864 | 195 m: σ_θ 23.7° · R2_g 0.545 | Hovius A ≥ 10: R 4.62 (766 basins) · A ≥ 25: R 3.64 (412 basins)
+      coast (torus) Coast { dimension: 1.0061165, length_ratio: 0.9437352, aligned: 0.3109064, block_index: 0.76981133, edges: 14840 } · cost 463 s CPU per world (physics 24 s, chain 438 s)
+   ── seed 10481999410520546993 K1 old 300 Myr:
+   K1 old 300 Myr classes     plain  16.4 % · plateau   9.0 % · hill  37.6 % · mountain  37.0 % · land 83181 km² · deciles 74/163/251/346/423/480/567/811/1348
+      peaks 256² 5477 m · 2048² 5242 m · the rock at the surface: cover 1.2 % · basement 88.4 % · shield 10.4 % · plains on the basement 5443 cells, altitude 260 m · knickpoints 3 (median height 19 m) · lakes 22 / 3381 km² · E_cum p50 / p90 3774 / 7050 m
+      2048² whole: 13 of 19 within ×1.5 · out: slope p50 0.132/0.247; octave 3.12–6.25 km 55.997/100.862; octave 6.25–12.50 km 65.291/159.805; S_2 − 1 0.110/0.172; A_dir 0.432/0.206; F 0.132/0.043
+      2048² mountain: 11 of 19 within ×1.5 · out: facets 15.463/6.746; walls 28° 4.613/2.320; octave 6.25–12.50 km 107.854/200.536; S_2 − 1 0.109/0.175; S_5 − 1 0.147/0.255; S_10 − 1 0.191/0.289; A_dir 0.406/0.200; F 0.015/0.006
+      slope guard: mountain-class slope p50/p90 0.366/0.516 (Corsica 0.318/0.550) → ok
+      F by class: plain 31.08 % · plateau 12.36 % · hill 16.48 % · mountain 1.52 %
+      regularity: 391 m: CV_λ 0.693 · CV_L 1.187 · σ_θ 24.2° · R2_g 0.779 | 195 m: σ_θ 23.7° · R2_g 0.481 | Hovius A ≥ 10: R 2.91 (512 basins) · A ≥ 25: R 2.99 (262 basins)
+      coast (torus) Coast { dimension: 1.0108767, length_ratio: 0.95422536, aligned: 0.2967793, block_index: 0.76627535, edges: 14992 } · cost 472 s CPU per world (physics 26 s, chain 445 s)
+   ── seed 10481999410520546993 K2 B0:
+   K2 B0 classes              plain   1.0 % · plateau   4.9 % · hill  12.3 % · mountain  81.8 % · land 82839 km² · deciles 245/466/718/1057/1255/1635/2181/2961/3864
+      peaks 256² 6065 m · 2048² 6442 m · the rock at the surface: cover 36.6 % · basement 52.9 % · shield 10.4 % · plains on the basement 2 cells, altitude 91 m · knickpoints 62 (median height 219 m) · lakes 15 / 2913 km² · E_cum p50 / p90 1548 / 3264 m
+      2048² whole: 11 of 19 within ×1.5 · out: facets 17.626/6.241; walls 28° 5.317/1.547; CV_L 1.907/0.915; S_2 − 1 0.048/0.172; S_5 − 1 0.069/0.239; S_10 − 1 0.094/0.282; A_dir 0.571/0.206; F 0.086/0.043
+      2048² mountain: 11 of 19 within ×1.5 · out: facets 20.017/6.746; walls 28° 6.330/2.320; CV_L 1.973/0.825; S_2 − 1 0.060/0.175; S_5 − 1 0.087/0.255; S_10 − 1 0.119/0.289; A_dir 0.511/0.200; F 0.039/0.006
+      slope guard: mountain-class slope p50/p90 0.400/0.535 (Corsica 0.318/0.550) → ok
+      F by class: plain 47.88 % · plateau 21.78 % · hill 33.96 % · mountain 3.90 %
+      regularity: 391 m: CV_λ 0.887 · CV_L 1.972 · σ_θ 25.6° · R2_g 0.882 | 195 m: σ_θ 25.5° · R2_g 0.661 | Hovius A ≥ 10: R 65.28 (742 basins) · A ≥ 25: R 8.07 (327 basins)
+      coast (torus) Coast { dimension: 0.982824, length_ratio: 0.9013617, aligned: 0.2720936, block_index: 0.83106405, edges: 11898 } · cost 453 s CPU per world (physics 23 s, chain 429 s)
+   ── seed 10481999410520546993 K2 young 20 Myr:
+   K2 young 20 Myr classes    plain   7.2 % · plateau   7.3 % · hill  10.3 % · mountain  75.3 % · land 83340 km² · deciles 363/465/587/754/978/1272/1695/2174/2806
+      peaks 256² 5628 m · 2048² 6062 m · the rock at the surface: cover 16.0 % · basement 73.6 % · shield 10.4 % · plains on the basement 589 cells, altitude 462 m · knickpoints 44 (median height 104 m) · lakes 23 / 5247 km² · E_cum p50 / p90 2026 / 4764 m
+      2048² whole: 11 of 19 within ×1.5 · out: facets 14.690/6.241; walls 28° 4.366/1.547; CV_L 1.489/0.915; S_2 − 1 0.085/0.172; S_5 − 1 0.122/0.239; S_10 − 1 0.165/0.282; A_dir 0.531/0.206; F 0.098/0.043
+      2048² mountain: 11 of 19 within ×1.5 · out: facets 18.590/6.746; walls 28° 5.712/2.320; octave 6.25–12.50 km 129.003/200.536; CV_L 1.478/0.825; S_2 − 1 0.107/0.175; S_5 − 1 0.148/0.255; A_dir 0.417/0.200; F 0.026/0.006
+      slope guard: mountain-class slope p50/p90 0.400/0.525 (Corsica 0.318/0.550) → ok
+      F by class: plain 52.12 % · plateau 32.92 % · hill 18.12 % · mountain 2.59 %
+      regularity: 391 m: CV_λ 0.779 · CV_L 1.542 · σ_θ 24.5° · R2_g 0.866 | 195 m: σ_θ 24.1° · R2_g 0.586 | Hovius A ≥ 10: R 4.38 (785 basins) · A ≥ 25: R 3.93 (438 basins)
+      coast (torus) Coast { dimension: 0.9850965, length_ratio: 0.9040616, aligned: 0.29805365, block_index: 0.7875855, edges: 11986 } · cost 466 s CPU per world (physics 26 s, chain 440 s)
+   ── seed 10481999410520546993 K2 intermediate 100 Myr:
+   K2 intermediate 100 Myr classes plain   4.0 % · plateau  10.0 % · hill  23.1 % · mountain  62.9 % · land 83491 km² · deciles 122/267/408/511/638/764/907/1202/1769
+      peaks 256² 6009 m · 2048² 5830 m · the rock at the surface: cover 3.2 % · basement 86.4 % · shield 10.5 % · plains on the basement 1255 cells, altitude 246 m · knickpoints 10 (median height 69 m) · lakes 24 / 4138 km² · E_cum p50 / p90 3119 / 6612 m
+      2048² whole: 12 of 19 within ×1.5 · out: facets 10.037/6.241; walls 28° 2.387/1.547; octave 6.25–12.50 km 74.676/159.805; S_2 − 1 0.100/0.172; S_5 − 1 0.142/0.239; A_dir 0.457/0.206; F 0.093/0.043
+      2048² mountain: 10 of 19 within ×1.5 · out: facets 14.240/6.746; walls 28° 3.744/2.320; octave 6.25–12.50 km 94.380/200.536; CV_L 1.324/0.825; S_2 − 1 0.100/0.175; S_5 − 1 0.138/0.255; S_10 − 1 0.187/0.289; A_dir 0.444/0.200; F 0.039/0.006
+      slope guard: mountain-class slope p50/p90 0.332/0.508 (Corsica 0.318/0.550) → ok
+      F by class: plain 30.95 % · plateau 16.12 % · hill 17.05 % · mountain 3.86 %
+      regularity: 391 m: CV_λ 0.779 · CV_L 1.321 · σ_θ 24.7° · R2_g 0.820 | 195 m: σ_θ 25.3° · R2_g 0.538 | Hovius A ≥ 10: R 3.91 (783 basins) · A ≥ 25: R 3.58 (408 basins)
+      coast (torus) Coast { dimension: 0.99944687, length_ratio: 0.94249314, aligned: 0.32067984, block_index: 0.8381073, edges: 12638 } · cost 465 s CPU per world (physics 26 s, chain 439 s)
+   ── seed 10481999410520546993 K2 old 300 Myr:
+   K2 old 300 Myr classes     plain  17.2 % · plateau   5.4 % · hill  36.8 % · mountain  40.5 % · land 83213 km² · deciles 61/125/187/262/348/443/569/800/1409
+      peaks 256² 5779 m · 2048² 5602 m · the rock at the surface: cover 1.3 % · basement 88.2 % · shield 10.5 % · plains on the basement 5367 cells, altitude 151 m · knickpoints 1 (median height 29 m) · lakes 30 / 4028 km² · E_cum p50 / p90 3833 / 7078 m
+      2048² whole: 12 of 19 within ×1.5 · out: slope p50 0.132/0.247; octave 3.12–6.25 km 56.112/100.862; octave 6.25–12.50 km 64.731/159.805; S_2 − 1 0.106/0.172; S_5 − 1 0.156/0.239; A_dir 0.456/0.206; F 0.127/0.043
+      2048² mountain: 12 of 19 within ×1.5 · out: facets 14.347/6.746; walls 28° 3.972/2.320; octave 6.25–12.50 km 102.163/200.536; S_2 − 1 0.103/0.175; S_5 − 1 0.145/0.255; A_dir 0.410/0.200; F 0.019/0.006
+      slope guard: mountain-class slope p50/p90 0.338/0.510 (Corsica 0.318/0.550) → ok
+      F by class: plain 30.22 % · plateau 12.01 % · hill 16.08 % · mountain 1.89 %
+      regularity: 391 m: CV_λ 0.766 · CV_L 1.241 · σ_θ 24.4° · R2_g 0.777 | 195 m: σ_θ 23.7° · R2_g 0.501 | Hovius A ≥ 10: R 2.97 (550 basins) · A ≥ 25: R 3.04 (286 basins)
+      coast (torus) Coast { dimension: 1.0075696, length_ratio: 0.94630283, aligned: 0.3015428, block_index: 0.8169392, edges: 14924 } · cost 486 s CPU per world (physics 25 s, chain 460 s)
+   ── seed 10481999410520546993 K1 old ρ_K 3:
+   K1 old ρ_K 3 classes       plain  51.5 % · plateau   0.6 % · hill  21.2 % · mountain  26.8 % · land 84131 km² · deciles 17/36/65/118/183/243/340/503/882
+      peaks 256² 3491 m · 2048² 3335 m · the rock at the surface: cover 1.4 % · basement 88.1 % · shield 10.5 % · plains on the basement 16485 cells, altitude 100 m · knickpoints 2 (median height 403 m) · lakes 30 / 2000 km² · E_cum p50 / p90 4574 / 7583 m
+      2048² whole: 13 of 19 within ×1.5 · out: slope p50 0.062/0.247; octave 1.56–3.12 km 37.745/62.883; octave 3.12–6.25 km 43.622/100.862; octave 6.25–12.50 km 62.038/159.805; A_dir 0.358/0.206; F 0.217/0.043
+      2048² mountain: 14 of 19 within ×1.5 · out: facets 13.548/6.746; octave 6.25–12.50 km 120.319/200.536; S_5 − 1 0.161/0.255; A_dir 0.428/0.200; F 0.016/0.006
+      slope guard: mountain-class slope p50/p90 0.342/0.504 (Corsica 0.318/0.550) → ok
+      F by class: plain 35.89 % · plateau 4.44 % · hill 11.44 % · mountain 1.64 %
+      regularity: 391 m: CV_λ 0.597 · CV_L 0.874 · σ_θ 26.1° · R2_g 0.634 | 195 m: σ_θ 25.5° · R2_g 0.441 | Hovius A ≥ 10: R 2.59 (351 basins) · A ≥ 25: R 2.45 (143 basins)
+      coast (torus) Coast { dimension: 1.0062572, length_ratio: 0.974537, aligned: 0.31748077, block_index: 0.9240427, edges: 12744 } · cost 484 s CPU per world (physics 26 s, chain 458 s)
+   ── seed 10481999410520546993 K1 old ρ_K 30:
+   K1 old ρ_K 30 classes      plain   6.3 % · plateau  16.2 % · hill  19.4 % · mountain  58.1 % · land 82046 km² · deciles 182/330/446/552/649/776/952/1260/1742
+      peaks 256² 5763 m · 2048² 5894 m · the rock at the surface: cover 3.0 % · basement 86.4 % · shield 10.5 % · plains on the basement 2024 cells, altitude 335 m · knickpoints 8 (median height 50 m) · lakes 18 / 10598 km² · E_cum p50 / p90 2805 / 6261 m
+      2048² whole: 10 of 19 within ×1.5 · out: facets 10.584/6.241; walls 28° 2.679/1.547; octave 6.25–12.50 km 66.709/159.805; CV_L 1.493/0.915; S_2 − 1 0.081/0.172; S_5 − 1 0.109/0.239; S_10 − 1 0.143/0.282; A_dir 0.549/0.206; F 0.108/0.043
+      2048² mountain: 10 of 19 within ×1.5 · out: facets 15.810/6.746; walls 28° 4.522/2.320; octave 6.25–12.50 km 87.933/200.536; CV_L 1.589/0.825; S_2 − 1 0.102/0.175; S_5 − 1 0.131/0.255; S_10 − 1 0.171/0.289; A_dir 0.445/0.200; F 0.027/0.006
+      slope guard: mountain-class slope p50/p90 0.366/0.515 (Corsica 0.318/0.550) → ok
+      F by class: plain 41.25 % · plateau 16.12 % · hill 20.47 % · mountain 2.70 %
+      regularity: 391 m: CV_λ 0.862 · CV_L 1.551 · σ_θ 24.0° · R2_g 0.888 | 195 m: σ_θ 24.3° · R2_g 0.565 | Hovius A ≥ 10: R 4.11 (691 basins) · A ≥ 25: R 3.92 (453 basins)
+      coast (torus) Coast { dimension: 0.99567854, length_ratio: 0.9144737, aligned: 0.3073886, block_index: 0.8405253, edges: 14924 } · cost 476 s CPU per world (physics 27 s, chain 449 s)
+   ── seed 10481999410520546993 K1 old d_c 750 m:
+   K1 old d_c 750 m classes   plain  18.0 % · plateau  10.7 % · hill  33.3 % · mountain  38.1 % · land 83359 km² · deciles 78/178/272/362/432/496/587/826/1356
+      peaks 256² 5763 m · 2048² 5421 m · the rock at the surface: cover 0.7 % · basement 88.9 % · shield 10.4 % · plains on the basement 5826 cells, altitude 253 m · knickpoints 1 (median height 866 m) · lakes 27 / 6265 km² · E_cum p50 / p90 3681 / 6995 m
+      2048² whole: 12 of 19 within ×1.5 · out: slope p50 0.134/0.247; octave 3.12–6.25 km 56.579/100.862; octave 6.25–12.50 km 65.969/159.805; S_2 − 1 0.109/0.172; S_5 − 1 0.156/0.239; A_dir 0.431/0.206; F 0.125/0.043
+      2048² mountain: 12 of 19 within ×1.5 · out: facets 14.966/6.746; walls 28° 4.451/2.320; octave 6.25–12.50 km 107.296/200.536; S_2 − 1 0.109/0.175; S_5 − 1 0.146/0.255; A_dir 0.428/0.200; F 0.016/0.006
+      slope guard: mountain-class slope p50/p90 0.363/0.514 (Corsica 0.318/0.550) → ok
+      F by class: plain 29.66 % · plateau 12.74 % · hill 15.14 % · mountain 1.60 %
+      regularity: 391 m: CV_λ 0.675 · CV_L 1.096 · σ_θ 24.1° · R2_g 0.800 | 195 m: σ_θ 23.8° · R2_g 0.472 | Hovius A ≥ 10: R 3.06 (530 basins) · A ≥ 25: R 2.99 (266 basins)
+      coast (torus) Coast { dimension: 1.001034, length_ratio: 0.94863695, aligned: 0.30710217, block_index: 0.79239017, edges: 13246 } · cost 471 s CPU per world (physics 24 s, chain 446 s)
+   ── seed 10481999410520546993 K1 old d_c 3000 m:
+   K1 old d_c 3000 m classes  plain  33.7 % · plateau   3.7 % · hill  31.4 % · mountain  31.2 % · land 83452 km² · deciles 59/128/191/235/278/357/462/762/1218
+      peaks 256² 4828 m · 2048² 4915 m · the rock at the surface: cover 17.8 % · basement 71.9 % · shield 10.3 % · plains on the basement 7301 cells, altitude 194 m · knickpoints 37 (median height 43 m) · lakes 34 / 4658 km² · E_cum p50 / p90 4053 / 7202 m
+      2048² whole: 14 of 19 within ×1.5 · out: slope p50 0.093/0.247; octave 3.12–6.25 km 50.643/100.862; octave 6.25–12.50 km 60.372/159.805; A_dir 0.449/0.206; F 0.174/0.043
+      2048² mountain: 12 of 19 within ×1.5 · out: facets 16.414/6.746; walls 28° 4.614/2.320; octave 6.25–12.50 km 108.433/200.536; S_2 − 1 0.110/0.175; S_5 − 1 0.154/0.255; A_dir 0.430/0.200; F 0.015/0.006
+      slope guard: mountain-class slope p50/p90 0.371/0.515 (Corsica 0.318/0.550) → ok
+      F by class: plain 33.89 % · plateau 9.35 % · hill 15.78 % · mountain 1.52 %
+      regularity: 391 m: CV_λ 0.713 · CV_L 1.210 · σ_θ 24.8° · R2_g 0.791 | 195 m: σ_θ 24.6° · R2_g 0.497 | Hovius A ≥ 10: R 3.15 (411 basins) · A ≥ 25: R 3.19 (211 basins)
+      coast (torus) Coast { dimension: 1.0040226, length_ratio: 0.9675141, aligned: 0.30464068, block_index: 0.8838527, edges: 12708 } · cost 482 s CPU per world (physics 24 s, chain 457 s)
+   ── seed 10481999410520546993 K2 old σ 0.25:
+   K2 old σ 0.25 classes      plain  16.0 % · plateau   7.1 % · hill  38.4 % · mountain  38.5 % · land 83210 km² · deciles 69/150/232/318/395/469/561/796/1379
+      peaks 256² 5604 m · 2048² 5432 m · the rock at the surface: cover 1.2 % · basement 88.4 % · shield 10.4 % · plains on the basement 5224 cells, altitude 226 m · knickpoints 2 (median height 11 m) · lakes 31 / 1973 km² · E_cum p50 / p90 3795 / 7062 m
+      2048² whole: 11 of 19 within ×1.5 · out: slope p50 0.127/0.247; octave 3.12–6.25 km 55.241/100.862; octave 6.25–12.50 km 64.732/159.805; CV_L 1.478/0.915; S_2 − 1 0.105/0.172; S_5 − 1 0.155/0.239; A_dir 0.461/0.206; F 0.143/0.043
+      2048² mountain: 12 of 19 within ×1.5 · out: facets 14.871/6.746; walls 28° 4.338/2.320; octave 6.25–12.50 km 104.733/200.536; S_2 − 1 0.106/0.175; S_5 − 1 0.147/0.255; A_dir 0.407/0.200; F 0.019/0.006
+      slope guard: mountain-class slope p50/p90 0.353/0.513 (Corsica 0.318/0.550) → ok
+      F by class: plain 30.58 % · plateau 13.52 % · hill 19.73 % · mountain 1.94 %
+      regularity: 391 m: CV_λ 0.801 · CV_L 1.395 · σ_θ 24.8° · R2_g 0.804 | 195 m: σ_θ 24.0° · R2_g 0.512 | Hovius A ≥ 10: R 3.08 (540 basins) · A ≥ 25: R 3.10 (277 basins)
+      coast (torus) Coast { dimension: 1.0106387, length_ratio: 0.9551887, aligned: 0.30389562, block_index: 0.7693544, edges: 14932 } · cost 483 s CPU per world (physics 25 s, chain 458 s)
+   ── seed 10481999410520546993 K2 old σ 1:
+   K2 old σ 1 classes         plain  17.0 % · plateau   3.8 % · hill  36.7 % · mountain  42.5 % · land 83289 km² · deciles 36/81/143/219/307/435/582/852/1410
+      peaks 256² 5992 m · 2048² 5896 m · the rock at the surface: cover 2.2 % · basement 87.4 % · shield 10.4 % · plains on the basement 5342 cells, altitude 83 m · knickpoints 1 (median height 232 m) · lakes 30 / 1667 km² · E_cum p50 / p90 3815 / 7072 m
+      2048² whole: 14 of 19 within ×1.5 · out: slope p50 0.138/0.247; octave 3.12–6.25 km 55.149/100.862; octave 6.25–12.50 km 65.981/159.805; A_dir 0.385/0.206; F 0.115/0.043
+      2048² mountain: 13 of 19 within ×1.5 · out: facets 13.152/6.746; octave 6.25–12.50 km 101.478/200.536; S_2 − 1 0.104/0.175; S_5 − 1 0.149/0.255; A_dir 0.378/0.200; F 0.033/0.006
+      slope guard: mountain-class slope p50/p90 0.315/0.505 (Corsica 0.318/0.550) → ok
+      F by class: plain 27.70 % · plateau 13.27 % · hill 12.87 % · mountain 3.29 %
+      regularity: 391 m: CV_λ 0.733 · CV_L 1.097 · σ_θ 25.4° · R2_g 0.751 | 195 m: σ_θ 25.5° · R2_g 0.508 | Hovius A ≥ 10: R 3.17 (634 basins) · A ≥ 25: R 3.18 (292 basins)
+      coast (torus) Coast { dimension: 1.002427, length_ratio: 0.95316756, aligned: 0.29867774, block_index: 0.85851246, edges: 12934 } · cost 477 s CPU per world (physics 24 s, chain 453 s)
+   seed 10481999410520546993 K1: the mountain share against A: B0 81.3 % · young 20 Myr 75.6 % · intermediate 100 Myr 62.6 % · old 300 Myr 37.0 %
+   seed 10481999410520546993 K2: the mountain share against A: B0 81.8 % · young 20 Myr 75.3 % · intermediate 100 Myr 62.9 % · old 300 Myr 40.5 %
+   seed 10481999410520546993 SUCCESS test (K1 old): mountain 37.0 % true · plain + plateau 25.4 % false · median 423 m false · circumnavigable r* ≥ 1 true · coast degraded vs K0 old none → no
+   seed 10481999410520546993 SUCCESS test (K2 old): mountain 40.5 % false · plain + plateau 22.7 % false · median 348 m true · circumnavigable r* ≥ 1 true · coast degraded vs K0 old none → no
+   ══ seed 42 (Selected { plates: 16, k: 7, start: 3, compact: true }, N 16) ══
+      land 64² 51.3 % · circumnavigable (main 2101 cells) · r* 2 → sea loop ≥ 31.2 km
+   ── seed 42 K0 old:
+   K0 old classes             plain  76.0 % · plateau   0.0 % · hill  17.8 % · mountain   6.2 % · land 82729 km² · deciles 9/20/30/40/50/61/77/103/190
+      peaks 256² 2928 m · 2048² 2695 m · the rock at the surface: cover 91.1 % · basement 0.0 % · shield 8.9 % · plains on the basement 0 cells, altitude -0 m · knickpoints 1 (median height 25 m) · lakes 13 / 427 km² · E_cum p50 / p90 NaN / NaN m
+      2048² whole: 10 of 19 within ×1.5 · out: slope p50 0.023/0.247; slope p90 0.147/0.501; octave 0.39–0.78 km 7.264/15.322; octave 0.78–1.56 km 15.419/34.443; octave 1.56–3.12 km 17.456/62.883; octave 3.12–6.25 km 20.605/100.862; octave 6.25–12.50 km 35.897/159.805; A_dir 0.336/0.206; F 0.361/0.043
+      2048² mountain: 14 of 19 within ×1.5 · out: facets 10.744/6.746; octave 0.39–0.78 km 29.133/19.227; octave 3.12–6.25 km 82.638/126.569; A_dir 0.443/0.200; F 0.010/0.006
+      slope guard: mountain-class slope p50/p90 0.326/0.488 (Corsica 0.318/0.550) → ok
+      F by class: plain 43.57 % · plateau 0.00 % · hill 15.31 % · mountain 1.01 %
+      regularity: 391 m: CV_λ 0.624 · CV_L 1.017 · σ_θ 28.3° · R2_g 0.742 | 195 m: σ_θ 28.4° · R2_g 0.470 | Hovius A ≥ 10: R 1.97 (112 basins) · A ≥ 25: R 1.87 (21 basins)
+      coast (torus) Coast { dimension: 0.9940322, length_ratio: 0.9465981, aligned: 0.31072065, block_index: 0.9584987, edges: 11084 } · cost 490 s CPU per world (physics 25 s, chain 464 s)
+   ── seed 42 K1 B0:
+   K1 B0 classes              plain   1.9 % · plateau   2.2 % · hill  27.9 % · mountain  68.0 % · land 82468 km² · deciles 118/218/324/491/682/1019/1529/2340/3400
+      peaks 256² 6010 m · 2048² 6416 m · the rock at the surface: cover 46.1 % · basement 44.9 % · shield 9.0 % · plains on the basement 0 cells, altitude -0 m · knickpoints 49 (median height 313 m) · lakes 11 / 1050 km² · E_cum p50 / p90 1402 / 2717 m
+      2048² whole: 12 of 19 within ×1.5 · out: facets 14.394/6.241; walls 28° 4.393/1.547; S_2 − 1 0.092/0.172; S_5 − 1 0.135/0.239; S_10 − 1 0.187/0.282; A_dir 0.494/0.206; F 0.081/0.043
+      2048² mountain: 12 of 19 within ×1.5 · out: facets 19.164/6.746; walls 28° 6.328/2.320; S_2 − 1 0.101/0.175; S_5 − 1 0.139/0.255; S_10 − 1 0.189/0.289; A_dir 0.403/0.200; F 0.016/0.006
+      slope guard: mountain-class slope p50/p90 0.419/0.532 (Corsica 0.318/0.550) → ok
+      F by class: plain 30.78 % · plateau 10.82 % · hill 22.85 % · mountain 1.59 %
+      regularity: 391 m: CV_λ 0.782 · CV_L 1.219 · σ_θ 25.2° · R2_g 0.805 | 195 m: σ_θ 24.8° · R2_g 0.519 | Hovius A ≥ 10: R 3.46 (753 basins) · A ≥ 25: R 3.23 (371 basins)
+      coast (torus) Coast { dimension: 0.9786062, length_ratio: 0.90007716, aligned: 0.313667, block_index: 0.922216, edges: 10722 } · cost 468 s CPU per world (physics 25 s, chain 442 s)
+   ── seed 42 K1 young 20 Myr:
+   K1 young 20 Myr classes    plain  20.4 % · plateau   1.2 % · hill  18.2 % · mountain  60.2 % · land 82759 km² · deciles 79/220/361/420/537/782/1120/1576/2354
+      peaks 256² 4747 m · 2048² 5225 m · the rock at the surface: cover 17.8 % · basement 73.3 % · shield 9.0 % · plains on the basement 3267 cells, altitude 257 m · knickpoints 64 (median height 30 m) · lakes 14 / 1553 km² · E_cum p50 / p90 1804 / 4217 m
+      2048² whole: 11 of 19 within ×1.5 · out: facets 12.087/6.241; walls 28° 3.350/1.547; octave 6.25–12.50 km 97.527/159.805; CV_L 1.478/0.915; S_2 − 1 0.106/0.172; S_5 − 1 0.153/0.239; A_dir 0.444/0.206; F 0.136/0.043
+      2048² mountain: 10 of 19 within ×1.5 · out: facets 18.894/6.746; walls 28° 5.510/2.320; octave 6.25–12.50 km 125.878/200.536; CV_L 1.321/0.825; S_2 − 1 0.107/0.175; S_5 − 1 0.144/0.255; S_10 − 1 0.184/0.289; A_dir 0.420/0.200; F 0.022/0.006
+      slope guard: mountain-class slope p50/p90 0.403/0.523 (Corsica 0.318/0.550) → ok
+      F by class: plain 42.01 % · plateau 15.65 % · hill 20.08 % · mountain 2.17 %
+      regularity: 391 m: CV_λ 0.740 · CV_L 1.436 · σ_θ 25.2° · R2_g 0.812 | 195 m: σ_θ 24.1° · R2_g 0.516 | Hovius A ≥ 10: R 3.68 (673 basins) · A ≥ 25: R 3.44 (345 basins)
+      coast (torus) Coast { dimension: 0.97361696, length_ratio: 0.88266873, aligned: 0.30832988, block_index: 0.8814443, edges: 10746 } · cost 471 s CPU per world (physics 25 s, chain 446 s)
+   ── seed 42 K1 intermediate 100 Myr:
+   K1 intermediate 100 Myr classes plain  13.7 % · plateau  10.0 % · hill  38.0 % · mountain  38.2 % · land 82795 km² · deciles 68/146/217/296/383/472/565/678/1083
+      peaks 256² 4056 m · 2048² 4378 m · the rock at the surface: cover 4.1 % · basement 86.9 % · shield 9.0 % · plains on the basement 3923 cells, altitude 138 m · knickpoints 13 (median height 29 m) · lakes 25 / 2332 km² · E_cum p50 / p90 2704 / 6099 m
+      2048² whole: 12 of 19 within ×1.5 · out: slope p50 0.125/0.247; octave 3.12–6.25 km 49.928/100.862; octave 6.25–12.50 km 69.405/159.805; S_2 − 1 0.104/0.172; S_5 − 1 0.152/0.239; A_dir 0.445/0.206; F 0.142/0.043
+      2048² mountain: 11 of 19 within ×1.5 · out: facets 12.250/6.746; octave 3.12–6.25 km 80.934/126.569; octave 6.25–12.50 km 112.507/200.536; S_2 − 1 0.104/0.175; S_5 − 1 0.143/0.255; S_10 − 1 0.192/0.289; A_dir 0.412/0.200; F 0.027/0.006
+      slope guard: mountain-class slope p50/p90 0.320/0.504 (Corsica 0.318/0.550) → ok
+      F by class: plain 28.18 % · plateau 10.76 % · hill 21.19 % · mountain 2.70 %
+      regularity: 391 m: CV_λ 0.756 · CV_L 1.245 · σ_θ 24.0° · R2_g 0.848 | 195 m: σ_θ 23.6° · R2_g 0.517 | Hovius A ≥ 10: R 3.19 (559 basins) · A ≥ 25: R 3.08 (261 basins)
+      coast (torus) Coast { dimension: 0.98823905, length_ratio: 0.9323576, aligned: 0.324185, block_index: 0.9353306, edges: 10948 } · cost 466 s CPU per world (physics 25 s, chain 440 s)
+   ── seed 42 K1 old 300 Myr:
+   K1 old 300 Myr classes     plain  55.9 % · plateau   0.5 % · hill  23.3 % · mountain  20.3 % · land 82458 km² · deciles 29/66/102/136/172/213/271/382/735
+      peaks 256² 3932 m · 2048² 3911 m · the rock at the surface: cover 2.5 % · basement 88.5 % · shield 9.0 % · plains on the basement 16504 cells, altitude 126 m · knickpoints 8 (median height 3 m) · lakes 23 / 1997 km² · E_cum p50 / p90 3218 / 6565 m
+      2048² whole: 13 of 19 within ×1.5 · out: slope p50 0.060/0.247; octave 1.56–3.12 km 36.253/62.883; octave 3.12–6.25 km 39.171/100.862; octave 6.25–12.50 km 63.253/159.805; A_dir 0.393/0.206; F 0.223/0.043
+      2048² mountain: 12 of 19 within ×1.5 · out: facets 16.104/6.746; walls 28° 4.491/2.320; S_2 − 1 0.104/0.175; S_5 − 1 0.141/0.255; S_10 − 1 0.189/0.289; A_dir 0.400/0.200; F 0.010/0.006
+      slope guard: mountain-class slope p50/p90 0.376/0.515 (Corsica 0.318/0.550) → ok
+      F by class: plain 32.88 % · plateau 6.93 % · hill 14.54 % · mountain 0.97 %
+      regularity: 391 m: CV_λ 0.705 · CV_L 1.209 · σ_θ 25.9° · R2_g 0.816 | 195 m: σ_θ 25.5° · R2_g 0.516 | Hovius A ≥ 10: R 3.05 (340 basins) · A ≥ 25: R 2.98 (142 basins)
+      coast (torus) Coast { dimension: 0.99871385, length_ratio: 0.9608151, aligned: 0.29916528, block_index: 0.8594221, edges: 11282 } · cost 475 s CPU per world (physics 25 s, chain 450 s)
+   ── seed 42 K2 B0:
+   K2 B0 classes              plain   5.4 % · plateau   0.7 % · hill  26.3 % · mountain  67.6 % · land 82490 km² · deciles 96/179/293/449/662/995/1510/2310/3397
+      peaks 256² 6135 m · 2048² 6544 m · the rock at the surface: cover 46.7 % · basement 44.3 % · shield 9.0 % · plains on the basement 23 cells, altitude 159 m · knickpoints 46 (median height 182 m) · lakes 14 / 1714 km² · E_cum p50 / p90 1423 / 2803 m
+      2048² whole: 13 of 19 within ×1.5 · out: facets 14.354/6.241; walls 28° 4.299/1.547; S_2 − 1 0.101/0.172; S_5 − 1 0.147/0.239; A_dir 0.439/0.206; F 0.088/0.043
+      2048² mountain: 12 of 19 within ×1.5 · out: facets 19.659/6.746; walls 28° 6.217/2.320; S_2 − 1 0.103/0.175; S_5 − 1 0.141/0.255; S_10 − 1 0.188/0.289; A_dir 0.370/0.200; F 0.012/0.006
+      slope guard: mountain-class slope p50/p90 0.420/0.532 (Corsica 0.318/0.550) → ok
+      F by class: plain 34.40 % · plateau 5.61 % · hill 24.09 % · mountain 1.15 %
+      regularity: 391 m: CV_λ 0.827 · CV_L 1.157 · σ_θ 25.2° · R2_g 0.792 | 195 m: σ_θ 24.7° · R2_g 0.549 | Hovius A ≥ 10: R 3.48 (781 basins) · A ≥ 25: R 3.17 (343 basins)
+      coast (torus) Coast { dimension: 0.97456753, length_ratio: 0.88634616, aligned: 0.29881856, block_index: 0.99849623, edges: 10640 } · cost 455 s CPU per world (physics 26 s, chain 429 s)
+   ── seed 42 K2 young 20 Myr:
+   K2 young 20 Myr classes    plain  19.8 % · plateau   2.2 % · hill  18.9 % · mountain  59.0 % · land 82729 km² · deciles 66/215/354/414/522/734/1084/1552/2386
+      peaks 256² 5190 m · 2048² 5586 m · the rock at the surface: cover 17.8 % · basement 73.2 % · shield 9.0 % · plains on the basement 3281 cells, altitude 256 m · knickpoints 63 (median height 39 m) · lakes 17 / 1028 km² · E_cum p50 / p90 1776 / 4264 m
+      2048² whole: 11 of 19 within ×1.5 · out: facets 11.655/6.241; walls 28° 3.230/1.547; octave 6.25–12.50 km 97.427/159.805; CV_L 1.384/0.915; S_2 − 1 0.108/0.172; S_5 − 1 0.157/0.239; A_dir 0.434/0.206; F 0.132/0.043
+      2048² mountain: 11 of 19 within ×1.5 · out: facets 18.510/6.746; walls 28° 5.411/2.320; octave 6.25–12.50 km 127.049/200.536; S_2 − 1 0.107/0.175; S_5 − 1 0.144/0.255; S_10 − 1 0.191/0.289; A_dir 0.390/0.200; F 0.023/0.006
+      slope guard: mountain-class slope p50/p90 0.399/0.522 (Corsica 0.318/0.550) → ok
+      F by class: plain 40.18 % · plateau 16.07 % · hill 19.23 % · mountain 2.30 %
+      regularity: 391 m: CV_λ 0.765 · CV_L 1.332 · σ_θ 25.0° · R2_g 0.832 | 195 m: σ_θ 24.5° · R2_g 0.524 | Hovius A ≥ 10: R 3.58 (655 basins) · A ≥ 25: R 3.32 (322 basins)
+      coast (torus) Coast { dimension: 0.97681564, length_ratio: 0.89192307, aligned: 0.31198776, block_index: 0.93890435, edges: 10770 } · cost 466 s CPU per world (physics 24 s, chain 442 s)
+   ── seed 42 K2 intermediate 100 Myr:
+   K2 intermediate 100 Myr classes plain  14.1 % · plateau   4.8 % · hill  36.6 % · mountain  44.5 % · land 82771 km² · deciles 56/118/184/265/352/449/569/718/1144
+      peaks 256² 4208 m · 2048² 4654 m · the rock at the surface: cover 4.1 % · basement 87.0 % · shield 9.0 % · plains on the basement 4079 cells, altitude 92 m · knickpoints 19 (median height 50 m) · lakes 17 / 2000 km² · E_cum p50 / p90 2667 / 6032 m
+      2048² whole: 13 of 19 within ×1.5 · out: slope p50 0.138/0.247; octave 3.12–6.25 km 52.029/100.862; octave 6.25–12.50 km 72.290/159.805; S_2 − 1 0.110/0.172; A_dir 0.423/0.206; F 0.121/0.043
+      2048² mountain: 12 of 19 within ×1.5 · out: facets 11.430/6.746; octave 3.12–6.25 km 78.195/126.569; octave 6.25–12.50 km 108.645/200.536; S_2 − 1 0.097/0.175; S_5 − 1 0.136/0.255; A_dir 0.408/0.200; F 0.022/0.006
+      slope guard: mountain-class slope p50/p90 0.303/0.498 (Corsica 0.318/0.550) → ok
+      F by class: plain 30.11 % · plateau 9.33 % · hill 17.27 % · mountain 2.17 %
+      regularity: 391 m: CV_λ 0.733 · CV_L 1.184 · σ_θ 24.6° · R2_g 0.783 | 195 m: σ_θ 24.0° · R2_g 0.496 | Hovius A ≥ 10: R 2.90 (664 basins) · A ≥ 25: R 2.81 (321 basins)
+      coast (torus) Coast { dimension: 0.98677844, length_ratio: 0.931388, aligned: 0.32125565, block_index: 0.923923, edges: 10910 } · cost 467 s CPU per world (physics 23 s, chain 444 s)
+   ── seed 42 K2 old 300 Myr:
+   K2 old 300 Myr classes     plain  49.8 % · plateau   0.8 % · hill  28.4 % · mountain  21.0 % · land 82302 km² · deciles 24/52/83/116/155/203/264/379/765
+      peaks 256² 3830 m · 2048² 4211 m · the rock at the surface: cover 2.5 % · basement 88.5 % · shield 9.0 % · plains on the basement 14857 cells, altitude 97 m · knickpoints 4 (median height 1 m) · lakes 18 / 1394 km² · E_cum p50 / p90 3206 / 6532 m
+      2048² whole: 13 of 19 within ×1.5 · out: slope p50 0.063/0.247; octave 1.56–3.12 km 37.105/62.883; octave 3.12–6.25 km 40.955/100.862; octave 6.25–12.50 km 65.266/159.805; A_dir 0.381/0.206; F 0.203/0.043
+      2048² mountain: 12 of 19 within ×1.5 · out: facets 15.938/6.746; walls 28° 4.237/2.320; S_2 − 1 0.101/0.175; S_5 − 1 0.137/0.255; S_10 − 1 0.174/0.289; A_dir 0.387/0.200; F 0.010/0.006
+      slope guard: mountain-class slope p50/p90 0.368/0.513 (Corsica 0.318/0.550) → ok
+      F by class: plain 31.70 % · plateau 6.65 % · hill 13.98 % · mountain 1.02 %
+      regularity: 391 m: CV_λ 0.673 · CV_L 1.059 · σ_θ 25.9° · R2_g 0.783 | 195 m: σ_θ 26.1° · R2_g 0.487 | Hovius A ≥ 10: R 2.86 (342 basins) · A ≥ 25: R 2.80 (146 basins)
+      coast (torus) Coast { dimension: 0.99728, length_ratio: 0.9566406, aligned: 0.2890615, block_index: 0.90522933, edges: 11206 } · cost 474 s CPU per world (physics 24 s, chain 450 s)
+   seed 42 K1: the mountain share against A: B0 68.0 % · young 20 Myr 60.2 % · intermediate 100 Myr 38.2 % · old 300 Myr 20.3 %
+   seed 42 K2: the mountain share against A: B0 67.6 % · young 20 Myr 59.0 % · intermediate 100 Myr 44.5 % · old 300 Myr 21.0 %
+   seed 42 SUCCESS test (K1 old): mountain 20.3 % true · plain + plateau 56.4 % true · median 172 m true · circumnavigable r* ≥ 1 true · coast degraded vs K0 old none → SUCCESS
+   seed 42 SUCCESS test (K2 old): mountain 21.0 % true · plain + plateau 50.6 % true · median 155 m true · circumnavigable r* ≥ 1 true · coast degraded vs K0 old none → SUCCESS
+   ══ seed 1 (Selected { plates: 16, k: 10, start: 6, compact: false }, N 16) ══
+      land 64² 50.4 % · circumnavigable (main 2065 cells) · r* 1 → sea loop ≥ 18.8 km
+   ── seed 1 K0 old:
+   K0 old classes             plain  96.6 % · plateau   0.0 % · hill   3.1 % · mountain   0.3 % · land 73909 km² · deciles 1/1/2/2/3/4/5/6/9
+      peaks 256² 592 m · 2048² 761 m · the rock at the surface: cover 92.0 % · basement 0.0 % · shield 8.0 % · plains on the basement 0 cells, altitude -0 m · knickpoints 0 (median height NaN m) · lakes 1 / 10 km² · E_cum p50 / p90 NaN / NaN m
+      2048² whole: 8 of 19 within ×1.5 · out: slope p50 0.006/0.247; slope p90 0.015/0.501; octave 0.39–0.78 km 1.667/15.322; octave 0.78–1.56 km 2.764/34.443; octave 1.56–3.12 km 2.655/62.883; octave 3.12–6.25 km 3.374/100.862; octave 6.25–12.50 km 10.136/159.805; S_2 − 1 0.275/0.172; S_5 − 1 0.441/0.239; S_10 − 1 0.573/0.282; F 0.451/0.043
+      2048² mountain: 5 of 19 within ×1.5 · out: facets 19.135/6.746; slope p50 0.128/0.318; slope p90 0.335/0.550; octave 0.39–0.78 km 31.843/19.227; octave 1.56–3.12 km 50.721/78.910; octave 3.12–6.25 km 64.462/126.569; CV_L 0.285/0.825; σ_θ 0.000/26.792; R2_g 0.906/0.472; S_2 − 1 NaN/0.175; S_5 − 1 NaN/0.255; S_10 − 1 NaN/0.289; A_dir NaN/0.200; F 0.084/0.006
+      slope guard: mountain-class slope p50/p90 0.128/0.335 (Corsica 0.318/0.550) → FAILS
+      F by class: plain 44.19 % · plateau 0.00 % · hill 26.39 % · mountain 8.38 %
+      regularity: 391 m: CV_λ 1.128 · CV_L 0.850 · σ_θ 32.7° · R2_g 0.494 | 195 m: σ_θ 34.6° · R2_g 0.425 | Hovius A ≥ 10: R NaN (0 basins) · A ≥ 25: R NaN (0 basins)
+      coast (torus) Coast { dimension: 1.0560557, length_ratio: 1.0959507, aligned: 0.33617803, block_index: 1.175219, edges: 25568 } · cost 474 s CPU per world (physics 24 s, chain 450 s)
+   ── seed 1 K1 B0:
+   K1 B0 classes              plain   2.5 % · plateau   2.9 % · hill  34.9 % · mountain  59.7 % · land 80718 km² · deciles 83/160/240/367/606/921/1412/2286/3352
+      peaks 256² 4721 m · 2048² 5179 m · the rock at the surface: cover 45.1 % · basement 46.9 % · shield 8.0 % · plains on the basement 0 cells, altitude -0 m · knickpoints 31 (median height 246 m) · lakes 5 / 2336 km² · E_cum p50 / p90 1464 / 3131 m
+      2048² whole: 13 of 19 within ×1.5 · out: facets 15.016/6.241; walls 28° 5.148/1.547; S_2 − 1 0.092/0.172; S_5 − 1 0.137/0.239; A_dir 0.476/0.206; F 0.096/0.043
+      2048² mountain: 12 of 19 within ×1.5 · out: facets 22.548/6.746; walls 28° 8.380/2.320; S_2 − 1 0.094/0.175; S_5 − 1 0.129/0.255; S_10 − 1 0.185/0.289; A_dir 0.389/0.200; F 0.011/0.006
+      slope guard: mountain-class slope p50/p90 0.453/0.543 (Corsica 0.318/0.550) → ok
+      F by class: plain 30.51 % · plateau 22.74 % · hill 22.55 % · mountain 1.08 %
+      regularity: 391 m: CV_λ 0.831 · CV_L 1.269 · σ_θ 25.0° · R2_g 0.792 | 195 m: σ_θ 24.5° · R2_g 0.570 | Hovius A ≥ 10: R 3.86 (895 basins) · A ≥ 25: R 3.72 (414 basins)
+      coast (torus) Coast { dimension: 0.9790714, length_ratio: 0.90149623, aligned: 0.29082662, block_index: 0.8394768, edges: 13456 } · cost 465 s CPU per world (physics 24 s, chain 441 s)
+   ── seed 1 K1 young 20 Myr:
+   K1 young 20 Myr classes    plain  17.1 % · plateau   0.1 % · hill  24.2 % · mountain  58.6 % · land 80073 km² · deciles 135/215/282/337/451/661/967/1416/2186
+      peaks 256² 4368 m · 2048² 4833 m · the rock at the surface: cover 16.9 % · basement 75.1 % · shield 8.0 % · plains on the basement 3364 cells, altitude 245 m · knickpoints 78 (median height 46 m) · lakes 5 / 3115 km² · E_cum p50 / p90 1828 / 4592 m
+      2048² whole: 12 of 19 within ×1.5 · out: facets 12.067/6.241; walls 28° 3.543/1.547; octave 6.25–12.50 km 94.153/159.805; S_2 − 1 0.108/0.172; S_5 − 1 0.158/0.239; A_dir 0.441/0.206; F 0.086/0.043
+      2048² mountain: 11 of 19 within ×1.5 · out: facets 19.123/6.746; walls 28° 5.931/2.320; octave 6.25–12.50 km 122.849/200.536; S_2 − 1 0.099/0.175; S_5 − 1 0.128/0.255; S_10 − 1 0.175/0.289; A_dir 0.428/0.200; F 0.014/0.006
+      slope guard: mountain-class slope p50/p90 0.409/0.526 (Corsica 0.318/0.550) → ok
+      F by class: plain 27.66 % · plateau 2.76 % · hill 13.33 % · mountain 1.40 %
+      regularity: 391 m: CV_λ 0.696 · CV_L 1.203 · σ_θ 25.3° · R2_g 0.804 | 195 m: σ_θ 24.5° · R2_g 0.494 | Hovius A ≥ 10: R 3.64 (868 basins) · A ≥ 25: R 3.70 (394 basins)
+      coast (torus) Coast { dimension: 0.97941166, length_ratio: 0.9067141, aligned: 0.30020314, block_index: 0.874651, edges: 13610 } · cost 475 s CPU per world (physics 25 s, chain 450 s)
+   ── seed 1 K1 intermediate 100 Myr:
+   K1 intermediate 100 Myr classes plain  15.3 % · plateau   4.9 % · hill  48.1 % · mountain  31.7 % · land 78584 km² · deciles 54/116/182/254/337/406/458/548/722
+      peaks 256² 2276 m · 2048² 2660 m · the rock at the surface: cover 4.2 % · basement 88.4 % · shield 7.4 % · plains on the basement 4114 cells, altitude 328 m · knickpoints 11 (median height 21 m) · lakes 6 / 2500 km² · E_cum p50 / p90 2530 / 6572 m
+      2048² whole: 11 of 19 within ×1.5 · out: slope p50 0.131/0.247; octave 1.56–3.12 km 41.624/62.883; octave 3.12–6.25 km 39.173/100.862; octave 6.25–12.50 km 40.676/159.805; S_2 − 1 0.106/0.172; S_5 − 1 0.151/0.239; A_dir 0.423/0.206; F 0.115/0.043
+      2048² mountain: 13 of 19 within ×1.5 · out: octave 3.12–6.25 km 69.804/126.569; octave 6.25–12.50 km 72.483/200.536; S_2 − 1 0.103/0.175; S_5 − 1 0.130/0.255; A_dir 0.443/0.200; F 0.017/0.006
+      slope guard: mountain-class slope p50/p90 0.308/0.483 (Corsica 0.318/0.550) → ok
+      F by class: plain 26.50 % · plateau 12.27 % · hill 12.52 % · mountain 1.71 %
+      regularity: 391 m: CV_λ 0.578 · CV_L 1.071 · σ_θ 23.2° · R2_g 0.797 | 195 m: σ_θ 23.4° · R2_g 0.471 | Hovius A ≥ 10: R 2.63 (619 basins) · A ≥ 25: R 2.60 (279 basins)
+      coast (torus) Coast { dimension: 0.99642175, length_ratio: 0.9559879, aligned: 0.321113, block_index: 1.0154271, edges: 15946 } · cost 466 s CPU per world (physics 23 s, chain 443 s)
+   ── seed 1 K1 old 300 Myr:
+   K1 old 300 Myr classes     plain  49.9 % · plateau   0.2 % · hill  43.4 % · mountain   6.5 % · land 77209 km² · deciles 23/46/73/101/132/169/213/273/349
+      peaks 256² 1494 m · 2048² 1816 m · the rock at the surface: cover 2.5 % · basement 90.0 % · shield 7.5 % · plains on the basement 13716 cells, altitude 123 m · knickpoints 0 (median height NaN m) · lakes 1 / 63 km² · E_cum p50 / p90 2866 / 6964 m
+      2048² whole: 11 of 19 within ×1.5 · out: slope p50 0.067/0.247; slope p90 0.235/0.501; octave 0.78–1.56 km 19.788/34.443; octave 1.56–3.12 km 21.953/62.883; octave 3.12–6.25 km 20.300/100.862; octave 6.25–12.50 km 26.333/159.805; A_dir 0.370/0.206; F 0.211/0.043
+      2048² mountain: 11 of 19 within ×1.5 · out: octave 0.39–0.78 km 44.684/19.227; octave 0.78–1.56 km 78.228/43.222; octave 3.12–6.25 km 80.250/126.569; octave 6.25–12.50 km 104.100/200.536; S_2 − 1 0.081/0.175; S_5 − 1 0.121/0.255; A_dir 0.524/0.200; F 0.025/0.006
+      slope guard: mountain-class slope p50/p90 0.270/0.451 (Corsica 0.318/0.550) → ok
+      F by class: plain 28.72 % · plateau 4.75 % · hill 13.78 % · mountain 2.47 %
+      regularity: 391 m: CV_λ 0.549 · CV_L 0.989 · σ_θ 23.5° · R2_g 0.741 | 195 m: σ_θ 23.2° · R2_g 0.432 | Hovius A ≥ 10: R 2.28 (157 basins) · A ≥ 25: R 2.54 (25 basins)
+      coast (torus) Coast { dimension: 1.0076638, length_ratio: 0.96473736, aligned: 0.30964103, block_index: 1.1151356, edges: 18222 } · cost 479 s CPU per world (physics 24 s, chain 454 s)
+   ── seed 1 K2 B0:
+   K2 B0 classes              plain   6.0 % · plateau   1.6 % · hill  30.1 % · mountain  62.4 % · land 80793 km² · deciles 70/155/239/389/606/906/1374/2245/3300
+      peaks 256² 4962 m · 2048² 5450 m · the rock at the surface: cover 47.2 % · basement 44.7 % · shield 8.0 % · plains on the basement 13 cells, altitude 59 m · knickpoints 31 (median height 150 m) · lakes 8 / 2021 km² · E_cum p50 / p90 1424 / 3216 m
+      2048² whole: 13 of 19 within ×1.5 · out: facets 14.240/6.241; walls 28° 5.011/1.547; S_2 − 1 0.105/0.172; S_5 − 1 0.155/0.239; A_dir 0.424/0.206; F 0.074/0.043
+      2048² mountain: 13 of 19 within ×1.5 · out: facets 21.574/6.746; walls 28° 7.779/2.320; S_2 − 1 0.096/0.175; S_5 − 1 0.135/0.255; A_dir 0.365/0.200; F 0.009/0.006
+      slope guard: mountain-class slope p50/p90 0.444/0.541 (Corsica 0.318/0.550) → ok
+      F by class: plain 36.82 % · plateau 22.62 % · hill 15.11 % · mountain 0.87 %
+      regularity: 391 m: CV_λ 0.812 · CV_L 1.180 · σ_θ 25.4° · R2_g 0.764 | 195 m: σ_θ 24.6° · R2_g 0.533 | Hovius A ≥ 10: R 3.66 (880 basins) · A ≥ 25: R 3.48 (393 basins)
+      coast (torus) Coast { dimension: 0.97853404, length_ratio: 0.9021402, aligned: 0.30253637, block_index: 0.7850134, edges: 13452 } · cost 478 s CPU per world (physics 26 s, chain 452 s)
+   ── seed 1 K2 young 20 Myr:
+   K2 young 20 Myr classes    plain  16.8 % · plateau   0.1 % · hill  26.2 % · mountain  56.8 % · land 80137 km² · deciles 111/199/261/319/425/620/933/1378/2172
+      peaks 256² 4588 m · 2048² 5032 m · the rock at the surface: cover 16.0 % · basement 76.0 % · shield 8.0 % · plains on the basement 3673 cells, altitude 226 m · knickpoints 61 (median height 33 m) · lakes 7 / 2629 km² · E_cum p50 / p90 1791 / 4728 m
+      2048² whole: 13 of 19 within ×1.5 · out: facets 11.630/6.241; walls 28° 3.354/1.547; octave 6.25–12.50 km 95.941/159.805; S_2 − 1 0.109/0.172; A_dir 0.415/0.206; F 0.087/0.043
+      2048² mountain: 11 of 19 within ×1.5 · out: facets 18.871/6.746; walls 28° 5.766/2.320; octave 6.25–12.50 km 127.215/200.536; S_2 − 1 0.098/0.175; S_5 − 1 0.128/0.255; S_10 − 1 0.178/0.289; A_dir 0.405/0.200; F 0.015/0.006
+      slope guard: mountain-class slope p50/p90 0.408/0.525 (Corsica 0.318/0.550) → ok
+      F by class: plain 26.72 % · plateau 10.20 % · hill 13.30 % · mountain 1.50 %
+      regularity: 391 m: CV_λ 0.728 · CV_L 1.164 · σ_θ 25.3° · R2_g 0.730 | 195 m: σ_θ 24.3° · R2_g 0.491 | Hovius A ≥ 10: R 3.60 (906 basins) · A ≥ 25: R 3.49 (396 basins)
+      coast (torus) Coast { dimension: 0.9873265, length_ratio: 0.9270342, aligned: 0.3111273, block_index: 0.77536935, edges: 14486 } · cost 467 s CPU per world (physics 25 s, chain 442 s)
+   ── seed 1 K2 intermediate 100 Myr:
+   K2 intermediate 100 Myr classes plain  14.1 % · plateau   2.2 % · hill  51.3 % · mountain  32.4 % · land 78840 km² · deciles 50/104/161/220/282/360/422/516/744
+      peaks 256² 2703 m · 2048² 3031 m · the rock at the surface: cover 4.1 % · basement 88.5 % · shield 7.4 % · plains on the basement 3879 cells, altitude 228 m · knickpoints 10 (median height 20 m) · lakes 6 / 2290 km² · E_cum p50 / p90 2517 / 6587 m
+      2048² whole: 13 of 19 within ×1.5 · out: slope p50 0.136/0.247; octave 3.12–6.25 km 40.637/100.862; octave 6.25–12.50 km 44.598/159.805; S_2 − 1 0.114/0.172; A_dir 0.398/0.206; F 0.102/0.043
+      2048² mountain: 12 of 19 within ×1.5 · out: octave 3.12–6.25 km 71.660/126.569; octave 6.25–12.50 km 78.644/200.536; S_2 − 1 0.095/0.175; S_5 − 1 0.126/0.255; S_10 − 1 0.170/0.289; A_dir 0.447/0.200; F 0.017/0.006
+      slope guard: mountain-class slope p50/p90 0.310/0.486 (Corsica 0.318/0.550) → ok
+      F by class: plain 24.64 % · plateau 11.14 % · hill 10.95 % · mountain 1.72 %
+      regularity: 391 m: CV_λ 0.574 · CV_L 0.983 · σ_θ 23.5° · R2_g 0.642 | 195 m: σ_θ 22.9° · R2_g 0.430 | Hovius A ≥ 10: R 2.77 (677 basins) · A ≥ 25: R 2.75 (225 basins)
+      coast (torus) Coast { dimension: 0.99443555, length_ratio: 0.9452784, aligned: 0.31959164, block_index: 1.0645362, edges: 16022 } · cost 483 s CPU per world (physics 25 s, chain 458 s)
+   ── seed 1 K2 old 300 Myr:
+   K2 old 300 Myr classes     plain  48.5 % · plateau   0.1 % · hill  42.4 % · mountain   9.0 % · land 77329 km² · deciles 19/38/58/81/108/140/185/249/351
+      peaks 256² 1642 m · 2048² 1971 m · the rock at the surface: cover 1.3 % · basement 91.1 % · shield 7.5 % · plains on the basement 13351 cells, altitude 97 m · knickpoints 0 (median height NaN m) · lakes 3 / 496 km² · E_cum p50 / p90 2911 / 6990 m
+      2048² whole: 11 of 19 within ×1.5 · out: slope p50 0.064/0.247; slope p90 0.229/0.501; octave 0.78–1.56 km 18.569/34.443; octave 1.56–3.12 km 25.380/62.883; octave 3.12–6.25 km 21.528/100.862; octave 6.25–12.50 km 28.181/159.805; A_dir 0.360/0.206; F 0.205/0.043
+      2048² mountain: 11 of 19 within ×1.5 · out: octave 0.39–0.78 km 34.760/19.227; octave 3.12–6.25 km 72.206/126.569; octave 6.25–12.50 km 94.519/200.536; S_2 − 1 0.076/0.175; S_5 − 1 0.096/0.255; S_10 − 1 0.118/0.289; A_dir 0.503/0.200; F 0.025/0.006
+      slope guard: mountain-class slope p50/p90 0.261/0.453 (Corsica 0.318/0.550) → ok
+      F by class: plain 28.15 % · plateau 6.30 % · hill 13.97 % · mountain 2.51 %
+      regularity: 391 m: CV_λ 0.564 · CV_L 0.966 · σ_θ 24.4° · R2_g 0.654 | 195 m: σ_θ 23.8° · R2_g 0.418 | Hovius A ≥ 10: R 2.81 (210 basins) · A ≥ 25: R 3.09 (48 basins)
+      coast (torus) Coast { dimension: 1.0013525, length_ratio: 0.9555921, aligned: 0.308223, block_index: 1.1786284, edges: 20064 } · cost 455 s CPU per world (physics 25 s, chain 430 s)
+   seed 1 K1: the mountain share against A: B0 59.7 % · young 20 Myr 58.6 % · intermediate 100 Myr 31.7 % · old 300 Myr 6.5 %
+   seed 1 K2: the mountain share against A: B0 62.4 % · young 20 Myr 56.8 % · intermediate 100 Myr 32.4 % · old 300 Myr 9.0 %
+   seed 1 SUCCESS test (K1 old): mountain 6.5 % false · plain + plateau 50.1 % true · median 132 m true · circumnavigable r* ≥ 1 true · coast degraded vs K0 old length ratio → no
+   seed 1 SUCCESS test (K2 old): mountain 9.0 % false · plain + plateau 48.6 % true · median 108 m true · circumnavigable r* ≥ 1 true · coast degraded vs K0 old length ratio → no
+   ══ seed 9 (Selected { plates: 16, k: 7, start: 15, compact: true }, N 16) ══
+      land 64² 51.2 % · circumnavigable (main 2099 cells) · r* 3 → sea loop ≥ 43.8 km
+   ── seed 9 K0 old:
+   K0 old classes             plain  91.4 % · plateau   0.0 % · hill   6.2 % · mountain   2.4 % · land 75024 km² · deciles 1/2/3/6/9/14/22/35/64
+      peaks 256² 1251 m · 2048² 1504 m · the rock at the surface: cover 90.8 % · basement 0.0 % · shield 9.2 % · plains on the basement 0 cells, altitude -0 m · knickpoints 2 (median height 0 m) · lakes 2 / 476 km² · E_cum p50 / p90 NaN / NaN m
+      2048² whole: 8 of 19 within ×1.5 · out: slope p50 0.009/0.247; slope p90 0.037/0.501; octave 0.39–0.78 km 3.981/15.322; octave 0.78–1.56 km 8.447/34.443; octave 1.56–3.12 km 9.806/62.883; octave 3.12–6.25 km 11.062/100.862; octave 6.25–12.50 km 20.142/159.805; S_2 − 1 0.259/0.172; S_5 − 1 0.402/0.239; S_10 − 1 0.507/0.282; F 0.433/0.043
+      2048² mountain: 15 of 19 within ×1.5 · out: octave 3.12–6.25 km 72.046/126.569; octave 6.25–12.50 km 131.177/200.536; S_10 − 1 NaN/0.289; F 0.012/0.006
+      slope guard: mountain-class slope p50/p90 0.276/0.468 (Corsica 0.318/0.550) → ok
+      F by class: plain 45.13 % · plateau 0.00 % · hill 12.91 % · mountain 1.16 %
+      regularity: 391 m: CV_λ 0.680 · CV_L 0.861 · σ_θ 31.1° · R2_g 0.543 | 195 m: σ_θ 33.0° · R2_g 0.431 | Hovius A ≥ 10: R 2.34 (31 basins) · A ≥ 25: R 1.92 (4 basins)
+      coast (torus) Coast { dimension: 1.0719405, length_ratio: 1.1824284, aligned: 0.3397413, block_index: 1.0393283, edges: 18104 } · cost 447 s CPU per world (physics 26 s, chain 421 s)
+   ── seed 9 K1 B0:
+   K1 B0 classes              plain   1.8 % · plateau   1.6 % · hill  20.4 % · mountain  76.2 % · land 82415 km² · deciles 139/311/437/619/855/1167/1631/2189/3102
+      peaks 256² 4796 m · 2048² 5373 m · the rock at the surface: cover 36.0 % · basement 54.8 % · shield 9.2 % · plains on the basement 0 cells, altitude -0 m · knickpoints 55 (median height 315 m) · lakes 8 / 4138 km² · E_cum p50 / p90 1525 / 2870 m
+      2048² whole: 14 of 19 within ×1.5 · out: facets 15.496/6.241; walls 28° 5.051/1.547; S_2 − 1 0.108/0.172; S_5 − 1 0.155/0.239; A_dir 0.399/0.206
+      2048² mountain: 13 of 19 within ×1.5 · out: facets 19.462/6.746; walls 28° 6.451/2.320; S_2 − 1 0.107/0.175; S_5 − 1 0.147/0.255; A_dir 0.386/0.200; F 0.015/0.006
+      slope guard: mountain-class slope p50/p90 0.422/0.531 (Corsica 0.318/0.550) → ok
+      F by class: plain 35.71 % · plateau 4.12 % · hill 14.69 % · mountain 1.47 %
+      regularity: 391 m: CV_λ 0.762 · CV_L 1.003 · σ_θ 25.5° · R2_g 0.723 | 195 m: σ_θ 24.8° · R2_g 0.494 | Hovius A ≥ 10: R 3.44 (816 basins) · A ≥ 25: R 3.21 (394 basins)
+      coast (torus) Coast { dimension: 0.9866396, length_ratio: 0.92452186, aligned: 0.2982402, block_index: 0.77230865, edges: 12596 } · cost 454 s CPU per world (physics 28 s, chain 425 s)
+   ── seed 9 K1 young 20 Myr:
+   K1 young 20 Myr classes    plain   6.1 % · plateau   3.8 % · hill  22.2 % · mountain  67.9 % · land 82429 km² · deciles 150/269/410/521/678/897/1192/1570/2113
+      peaks 256² 4699 m · 2048² 5185 m · the rock at the surface: cover 9.6 % · basement 81.2 % · shield 9.2 % · plains on the basement 858 cells, altitude 332 m · knickpoints 68 (median height 52 m) · lakes 9 / 627 km² · E_cum p50 / p90 1974 / 4302 m
+      2048² whole: 12 of 19 within ×1.5 · out: facets 13.279/6.241; walls 28° 3.570/1.547; octave 6.25–12.50 km 92.140/159.805; S_2 − 1 0.110/0.172; S_5 − 1 0.158/0.239; A_dir 0.424/0.206; F 0.072/0.043
+      2048² mountain: 11 of 19 within ×1.5 · out: facets 18.584/6.746; walls 28° 5.214/2.320; octave 6.25–12.50 km 112.034/200.536; S_2 − 1 0.107/0.175; S_5 − 1 0.142/0.255; S_10 − 1 0.181/0.289; A_dir 0.418/0.200; F 0.015/0.006
+      slope guard: mountain-class slope p50/p90 0.399/0.520 (Corsica 0.318/0.550) → ok
+      F by class: plain 39.32 % · plateau 17.32 % · hill 14.41 % · mountain 1.51 %
+      regularity: 391 m: CV_λ 0.696 · CV_L 1.030 · σ_θ 24.2° · R2_g 0.803 | 195 m: σ_θ 24.2° · R2_g 0.488 | Hovius A ≥ 10: R 3.32 (901 basins) · A ≥ 25: R 3.28 (442 basins)
+      coast (torus) Coast { dimension: 0.9874593, length_ratio: 0.93423766, aligned: 0.31313482, block_index: 0.84237075, edges: 12688 } · cost 463 s CPU per world (physics 26 s, chain 438 s)
+   ── seed 9 K1 intermediate 100 Myr:
+   K1 intermediate 100 Myr classes plain   7.4 % · plateau  12.6 % · hill  41.3 % · mountain  38.7 % · land 82129 km² · deciles 71/155/244/325/411/503/607/738/983
+      peaks 256² 4254 m · 2048² 4781 m · the rock at the surface: cover 2.1 % · basement 88.7 % · shield 9.2 % · plains on the basement 2107 cells, altitude 184 m · knickpoints 5 (median height 20 m) · lakes 12 / 1655 km² · E_cum p50 / p90 2943 / 6209 m
+      2048² whole: 12 of 19 within ×1.5 · out: slope p50 0.144/0.247; octave 3.12–6.25 km 42.563/100.862; octave 6.25–12.50 km 49.312/159.805; S_2 − 1 0.104/0.172; S_5 − 1 0.151/0.239; A_dir 0.430/0.206; F 0.101/0.043
+      2048² mountain: 12 of 19 within ×1.5 · out: octave 3.12–6.25 km 68.709/126.569; octave 6.25–12.50 km 79.605/200.536; S_2 − 1 0.101/0.175; S_5 − 1 0.136/0.255; S_10 − 1 0.174/0.289; A_dir 0.453/0.200; F 0.031/0.006
+      slope guard: mountain-class slope p50/p90 0.284/0.481 (Corsica 0.318/0.550) → ok
+      F by class: plain 27.43 % · plateau 10.97 % · hill 12.51 % · mountain 3.06 %
+      regularity: 391 m: CV_λ 0.638 · CV_L 1.035 · σ_θ 23.6° · R2_g 0.824 | 195 m: σ_θ 23.3° · R2_g 0.459 | Hovius A ≥ 10: R 3.14 (639 basins) · A ≥ 25: R 3.06 (276 basins)
+      coast (torus) Coast { dimension: 0.99988925, length_ratio: 0.96875, aligned: 0.31093708, block_index: 0.84573895, edges: 12978 } · cost 469 s CPU per world (physics 25 s, chain 444 s)
+   ── seed 9 K1 old 300 Myr:
+   K1 old 300 Myr classes     plain  44.8 % · plateau   2.9 % · hill  38.3 % · mountain  13.9 % · land 81707 km² · deciles 28/62/99/140/190/250/317/396/523
+      peaks 256² 3731 m · 2048² 4308 m · the rock at the surface: cover 1.6 % · basement 89.1 % · shield 9.3 % · plains on the basement 13389 cells, altitude 126 m · knickpoints 0 (median height NaN m) · lakes 8 / 481 km² · E_cum p50 / p90 3509 / 6541 m
+      2048² whole: 11 of 19 within ×1.5 · out: slope p50 0.072/0.247; slope p90 0.287/0.501; octave 0.78–1.56 km 22.418/34.443; octave 1.56–3.12 km 28.411/62.883; octave 3.12–6.25 km 29.420/100.862; octave 6.25–12.50 km 39.011/159.805; A_dir 0.404/0.206; F 0.194/0.043
+      2048² mountain: 12 of 19 within ×1.5 · out: octave 0.39–0.78 km 31.941/19.227; octave 3.12–6.25 km 79.366/126.569; octave 6.25–12.50 km 105.237/200.536; S_2 − 1 0.105/0.175; S_5 − 1 0.145/0.255; A_dir 0.423/0.200; F 0.021/0.006
+      slope guard: mountain-class slope p50/p90 0.299/0.494 (Corsica 0.318/0.550) → ok
+      F by class: plain 27.36 % · plateau 7.14 % · hill 15.61 % · mountain 2.05 %
+      regularity: 391 m: CV_λ 0.648 · CV_L 1.131 · σ_θ 24.3° · R2_g 0.817 | 195 m: σ_θ 24.1° · R2_g 0.447 | Hovius A ≥ 10: R 2.63 (279 basins) · A ≥ 25: R 2.66 (92 basins)
+      coast (torus) Coast { dimension: 1.0097178, length_ratio: 0.99776787, aligned: 0.30161563, block_index: 0.828118, edges: 13486 } · cost 471 s CPU per world (physics 24 s, chain 447 s)
+   ── seed 9 K2 B0:
+   K2 B0 classes              plain   2.3 % · plateau   0.4 % · hill  21.0 % · mountain  76.3 % · land 82463 km² · deciles 106/266/413/595/823/1165/1619/2202/3091
+      peaks 256² 5124 m · 2048² 5471 m · the rock at the surface: cover 35.7 % · basement 55.1 % · shield 9.2 % · plains on the basement 10 cells, altitude 221 m · knickpoints 67 (median height 179 m) · lakes 8 / 593 km² · E_cum p50 / p90 1524 / 3013 m
+      2048² whole: 16 of 19 within ×1.5 · out: facets 15.319/6.241; walls 28° 4.944/1.547; A_dir 0.384/0.206
+      2048² mountain: 14 of 19 within ×1.5 · out: facets 19.705/6.746; walls 28° 6.345/2.320; S_2 − 1 0.108/0.175; S_5 − 1 0.148/0.255; A_dir 0.370/0.200
+      slope guard: mountain-class slope p50/p90 0.422/0.531 (Corsica 0.318/0.550) → ok
+      F by class: plain 31.40 % · plateau 3.09 % · hill 10.44 % · mountain 0.81 %
+      regularity: 391 m: CV_λ 0.755 · CV_L 0.963 · σ_θ 25.4° · R2_g 0.687 | 195 m: σ_θ 24.7° · R2_g 0.476 | Hovius A ≥ 10: R 3.28 (836 basins) · A ≥ 25: R 3.13 (379 basins)
+      coast (torus) Coast { dimension: 0.9868428, length_ratio: 0.92127734, aligned: 0.30380008, block_index: 0.7139442, edges: 12550 } · cost 437 s CPU per world (physics 23 s, chain 413 s)
+   ── seed 9 K2 young 20 Myr:
+   K2 young 20 Myr classes    plain   6.4 % · plateau   3.4 % · hill  23.4 % · mountain  66.7 % · land 82410 km² · deciles 127/247/382/485/624/849/1154/1562/2178
+      peaks 256² 4689 m · 2048² 5205 m · the rock at the surface: cover 10.0 % · basement 80.8 % · shield 9.2 % · plains on the basement 910 cells, altitude 311 m · knickpoints 79 (median height 35 m) · lakes 15 / 1262 km² · E_cum p50 / p90 1951 / 4524 m
+      2048² whole: 12 of 19 within ×1.5 · out: facets 12.599/6.241; walls 28° 3.374/1.547; octave 6.25–12.50 km 91.369/159.805; S_2 − 1 0.110/0.172; S_5 − 1 0.158/0.239; A_dir 0.414/0.206; F 0.074/0.043
+      2048² mountain: 11 of 19 within ×1.5 · out: facets 18.058/6.746; walls 28° 5.006/2.320; octave 6.25–12.50 km 112.059/200.536; S_2 − 1 0.103/0.175; S_5 − 1 0.139/0.255; S_10 − 1 0.180/0.289; A_dir 0.403/0.200; F 0.019/0.006
+      slope guard: mountain-class slope p50/p90 0.389/0.519 (Corsica 0.318/0.550) → ok
+      F by class: plain 35.66 % · plateau 22.18 % · hill 13.41 % · mountain 1.86 %
+      regularity: 391 m: CV_λ 0.760 · CV_L 1.098 · σ_θ 24.8° · R2_g 0.773 | 195 m: σ_θ 24.1° · R2_g 0.502 | Hovius A ≥ 10: R 3.54 (835 basins) · A ≥ 25: R 3.43 (400 basins)
+      coast (torus) Coast { dimension: 0.98913425, length_ratio: 0.94232094, aligned: 0.31379575, block_index: 0.8410482, edges: 12746 } · cost 434 s CPU per world (physics 20 s, chain 414 s)
+   ── seed 9 K2 intermediate 100 Myr:
+   K2 intermediate 100 Myr classes plain  10.4 % · plateau   9.4 % · hill  36.2 % · mountain  44.1 % · land 82173 km² · deciles 51/120/211/309/420/511/597/743/1011
+      peaks 256² 4294 m · 2048² 4939 m · the rock at the surface: cover 2.2 % · basement 88.6 % · shield 9.2 % · plains on the basement 3130 cells, altitude 121 m · knickpoints 3 (median height 53 m) · lakes 10 / 1035 km² · E_cum p50 / p90 2953 / 6255 m
+      2048² whole: 12 of 19 within ×1.5 · out: slope p50 0.141/0.247; octave 3.12–6.25 km 45.282/100.862; octave 6.25–12.50 km 50.097/159.805; S_2 − 1 0.107/0.172; S_5 − 1 0.156/0.239; A_dir 0.433/0.206; F 0.105/0.043
+      2048² mountain: 12 of 19 within ×1.5 · out: octave 3.12–6.25 km 68.489/126.569; octave 6.25–12.50 km 75.773/200.536; S_2 − 1 0.096/0.175; S_5 − 1 0.135/0.255; S_10 − 1 0.186/0.289; A_dir 0.443/0.200; F 0.031/0.006
+      slope guard: mountain-class slope p50/p90 0.275/0.483 (Corsica 0.318/0.550) → ok
+      F by class: plain 26.99 % · plateau 14.07 % · hill 12.82 % · mountain 3.11 %
+      regularity: 391 m: CV_λ 0.708 · CV_L 1.067 · σ_θ 23.5° · R2_g 0.800 | 195 m: σ_θ 23.6° · R2_g 0.489 | Hovius A ≥ 10: R 3.25 (687 basins) · A ≥ 25: R 2.94 (279 basins)
+      coast (torus) Coast { dimension: 0.99841106, length_ratio: 0.9751736, aligned: 0.30396, block_index: 0.8676629, edges: 12982 } · cost 437 s CPU per world (physics 22 s, chain 415 s)
+   ── seed 9 K2 old 300 Myr:
+   K2 old 300 Myr classes     plain  34.9 % · plateau   2.7 % · hill  41.1 % · mountain  21.3 % · land 81731 km² · deciles 23/51/87/124/179/245/318/417/592
+      peaks 256² 3810 m · 2048² 4343 m · the rock at the surface: cover 1.6 % · basement 89.1 % · shield 9.3 % · plains on the basement 10832 cells, altitude 75 m · knickpoints 0 (median height NaN m) · lakes 5 / 212 km² · E_cum p50 / p90 3505 / 6565 m
+      2048² whole: 11 of 19 within ×1.5 · out: slope p50 0.077/0.247; slope p90 0.302/0.501; octave 0.78–1.56 km 22.720/34.443; octave 1.56–3.12 km 31.809/62.883; octave 3.12–6.25 km 30.705/100.862; octave 6.25–12.50 km 38.902/159.805; A_dir 0.388/0.206; F 0.183/0.043
+      2048² mountain: 12 of 19 within ×1.5 · out: octave 3.12–6.25 km 66.855/126.569; octave 6.25–12.50 km 84.703/200.536; S_2 − 1 0.090/0.175; S_5 − 1 0.125/0.255; S_10 − 1 0.178/0.289; A_dir 0.393/0.200; F 0.030/0.006
+      slope guard: mountain-class slope p50/p90 0.250/0.471 (Corsica 0.318/0.550) → ok
+      F by class: plain 30.78 % · plateau 8.66 % · hill 14.88 % · mountain 3.00 %
+      regularity: 391 m: CV_λ 0.654 · CV_L 1.075 · σ_θ 24.5° · R2_g 0.780 | 195 m: σ_θ 24.2° · R2_g 0.455 | Hovius A ≥ 10: R 2.78 (413 basins) · A ≥ 25: R 2.92 (166 basins)
+      coast (torus) Coast { dimension: 1.0128628, length_ratio: 1.0117403, aligned: 0.29777646, block_index: 0.8189349, edges: 13520 } · cost 454 s CPU per world (physics 21 s, chain 433 s)
+   seed 9 K1: the mountain share against A: B0 76.2 % · young 20 Myr 67.9 % · intermediate 100 Myr 38.7 % · old 300 Myr 13.9 %
+   seed 9 K2: the mountain share against A: B0 76.3 % · young 20 Myr 66.7 % · intermediate 100 Myr 44.1 % · old 300 Myr 21.3 %
+   seed 9 SUCCESS test (K1 old): mountain 13.9 % false · plain + plateau 47.8 % true · median 190 m true · circumnavigable r* ≥ 1 true · coast degraded vs K0 old length ratio → no
+   seed 9 SUCCESS test (K2 old): mountain 21.3 % true · plain + plateau 37.6 % true · median 179 m true · circumnavigable r* ≥ 1 true · coast degraded vs K0 old length ratio → no
+   R: selected 4 / 4 · macro success (old) K1 1 / 4 · K2 1 / 4 (need 3) · peneplain (old K1 median < 50 m) 0 / 4 · off-scale peaks or slope guard failing (K1 B0 / young) 0 / 4 → no success, no stop condition met as written
+   river profile: seed 10481999410520546993 K1 intermediate, through the knickpoint at cell (64, 44) of height 1101 m; 29 cells from 40 upstream to the sea (grey all, ochre cover, red basement)
+   images: f171_seeds_256.png and f171_classes_seeds.png (rows = the selected seeds; columns ["K0 old", "K1 old 300 Myr", "K2 old 300 Myr", "K1 B0", "K1 young 20 Myr", "K1 intermediate 100 Myr"]), f171_old_2048.png (K0 | K1 | K2 old), f171_rock.png (K1 young | intermediate | old: ochre cover, red basement, grey shield, dark sea), f171_river_contact.png, f171_crops_25km.png (rows B0, old; Corsica | K1 | K2; the first seed) · north up, the display offset at the end · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+==========  end Finding 171 . 4369.4 s wall  ==========
+test f171_rock ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4369.39s
