@@ -343,7 +343,7 @@ fn f165_cascade() {
     let s0 = &seeds[0];
     let mut trials: Vec<(f64, f32)> = Vec::new();
     let peak_at = |t: f64, trials: &mut Vec<(f64, f32)>| -> f32 {
-        let (p, _) = history_phys("T trial", s0, &base(s0.seed), &HistoryRun { t_years: t, steps: N_PHYS, rebound: Some(rb), timing: Timing::History, age_years: None });
+        let (p, _) = history_phys("T trial", s0, &base(s0.seed), &HistoryRun { t_years: t, steps: N_PHYS, rebound: Some(rb), timing: Timing::History, age_years: None, sea_low: None });
         let pk = peak_m(&p.zm);
         trials.push((t, pk));
         eprintln!("      T trial {:.3e} yr → peak {:.0} m", t, pk);
@@ -395,7 +395,7 @@ fn f165_cascade() {
         let t = Instant::now();
         let (rec, cal) = physics_level(s.snaps.last().unwrap(), 256, &cfg, 2850.0, 300, &mut |_| {}, &|| false).unwrap();
         let f164 = phys_of("F164 (steady)", to_m(&rec.z, k), cal.lifted_mask.clone(), t.elapsed().as_secs_f64(), None);
-        let run = |rebound: Option<Rebound>, timing: Timing| HistoryRun { t_years: t_cal, steps: N_PHYS, rebound, timing, age_years: None };
+        let run = |rebound: Option<Rebound>, timing: Timing| HistoryRun { t_years: t_cal, steps: N_PHYS, rebound, timing, age_years: None, sea_low: None };
         let (hist, hl) = history_phys("history", s, &cfg, &run(Some(rb), Timing::History));
         let (c2, _) = history_phys("control 2 (no rebound)", s, &cfg, &run(None, Timing::History));
         let (c3, _) = history_phys("control 3 (late 10 %)", s, &cfg, &run(Some(rb), Timing::Late10));

@@ -22544,3 +22544,96 @@ Car toutes les seeds ne vont pas donner des structures convergentes aux bordures
 direction et vitesse de convergence / divergence / rift / etc... C'est multifactoriel et donc c'est pour ça que les seeds 1
 à 9 peuvent ne pas forcément donner un résultat intéressant (typiquement continent avec mur, fini avec quasi que des
 plaines, etc). »
+
+## Finding 172 — the sea-level rise (Δ 134 m over the last 2.58 Myr; Lambeck et al. 2014, ICS) is a mechanism that over-works: on 16 / 16 worlds the coast's dimension rises by 0.07–0.39 and its length ratio by 0.2–2.0, past Corsica on 15 (the lowlands graded below 0 m drown into dendritic fringes; no deposition) — the success rule fails; the « coastal rampart » is a ring of basement walls (×3–5 near the coast, ×10 on the basement than on the cover), not a ring of mountains; the screening of 33 seeds finds a continent on all of them and Europe's three bands on 15 % (5 seeds, at the old age); production unchanged
+
+**Status: built, measured, gated; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f172_sea_level/finding_172.md`.
+- Declared before any measurement: `f172_declared.md`. Predictions: `f172_predictions.md`. The catalogue: `catalogue.tsv`,
+  `images/f172_catalogue.png`.
+- F171 committed (`3c0b653`) with its decisions (a)–(d) and the author's words.
+
+**The constants** (`docs/refs/REFERENCES.md`):
+- **Δ = 134 m**: Lambeck et al. 2014, PNAS 111(43), 15296–15303, read on PMC (the PNAS site refused: HTTP 403). « a slow fall to
+  −134 m from 29 to 21 ka BP »; « greater than the frequently cited −125 m ». The article prevails over the brief's 120–130 m.
+- **T_q = 2.58 Myr**: ICS, the GSSP list (the Gelasian).
+
+**B — the mechanism**:
+- **The physics level**: the base level is −Δ during the history's last T_q (`HistoryRun::sea_low`, `Drive::sea`).
+- **The chain**: it runs on the field raised by Δ.
+- **At the end**: the sea at 0 m (the largest periodic sea component).
+- **No deposition.**
+- **The negative control** (permanent): Δ = 0 is F171's K2 bit for bit.
+- **The viz**: « Remontée de la mer », « vue bas niveau ».
+
+**A — the diagnostics** (F171's K2):
+- **The perimeter** is 68–88 % no plate boundary, yet Σ Δs_DS peaks at the coast and halves every 1–2 cells inland.
+- **The mountain share** of the 20 km coastal band is 68–95 % at B0 / young, but the interior is mountainous too: the declared
+  rampart index (R ≥ 2) fires on no world.
+- **The walls (> 28°)** at B0:
+  - 19–26 % within 10 km of the coast, against 5–6 % beyond 20 km;
+  - 12–18 % on the basement and shields, against ≈ 1 % on the cover;
+  - the facets double near the coast;
+  - the contrast fades at the old age.
+
+**C — the effect** (K2; 4 seeds × 4 ages):
+- **The coast after the rise**: dimension 1.05–1.39, length ratio 1.11–3.01, aligned 0.34–0.36. Inside the declared bands: the
+  témoin's young only.
+- **The land lost** 0.7–18 %; the classes move up to 9 points.
+- **The drowned « valleys »** (≥ 2 km): 1–8 per world, up to 251 km long. They are flooded lowlands more than rias.
+  Spearman(length, area) is −0.5 to 1.0.
+- **The 0 to −134 m zone**: median 0.4–9.3 km (drowned land; no marine shelf under Airy).
+- **Sensitivity Δ = 60 m** (the témoin, old): 1.27 / 2.13, still past Corsica.
+- **The slope guard** holds; σ_θ 23.7–26.0°.
+- **Cost**: the rise adds 0–10 % CPU; the last two seeds ran at ~1 050 s for both variants (the machine's state; F171's same
+  worlds were 455–479 s).
+
+**D — the screening** (33 seeds, physics 256², K2, the rise):
+- **A continent on 33 / 33** (16 plates 25, 20 plates 7, 24 plates 1; compact 22, BFS 11).
+- **Young**: mountains 70.7 % in median (60.6–80.3), median land 707 m.
+- **Old**: mountains 28.9 % (11.0–51.1), plain + plateau 26.1 % (11.6–50.8), median land 222 m (93–476).
+- **Europe's three bands**: **15 %** (seeds 8, 18, 19, 23, 29, old). The limiting clause is the plains.
+- **The rampart** (the declared index): 0 %. Spearman(convergent perimeter, R): −0.08 young, 0.17 old.
+- **Cost**: 136 s CPU per seed, the selection 57 %.
+
+**R**:
+- the rise's success: not met (1 world closer, 0 seeds with 2 ages, the classes up to 9 points);
+- no effect: no;
+- the screening's bias flag: no.
+
+**The reading** (hypotheses to check):
+- The rise over-works without deposition: the lowstand grades the lowlands below 0 m and they all drown.
+- The rampart is the margin's Davis-Suppe wedge exposed as hard basement and cut into walls: a C1 (b) item (the wedge along
+  passive margins).
+- The screening reads Europe on 15 % of the seeds at the old age.
+
+**Predictions**:
+- **The reviewer's**:
+  - held: Y1, Y2's > 10 km, Y4 (but drowned land), the meta;
+  - refuted: Y2's large rivers (mixed), Y3, Y5, Y6, Y7.
+- **Mine**:
+  - held: Y5 refuted, no bias flag, A3, the meta;
+  - refuted: Y1's ranges, the success, Y3, Y4's range, Y6's side, Y7, the seeds without a continent, the selection's cost share,
+    the rise's cost.
+
+**Open, for the author** (nothing chosen):
+- (a) the rise in the profile: deposition first, a mean level, or a shorter T_q (choices, not calibrations);
+- (b) the rampart as a C1 (b) item;
+- (c) the catalogue (5 Europe-like seeds);
+- (d) a wall-based rampart index.
+
+**At commit (2026-10-12), decided (the reviewer's proposals, not contested by the author)**:
+- **The reviewer's errors, recorded**:
+  1. A constant lowstand at −134 m during 2.58 Myr, whereas the Quaternary sea level oscillates and touches its minimum only
+     briefly.
+  2. The lowstand applied to the amplification levels, which have no duration.
+  3. The hypothesis « rampart = a convergent perimeter », refuted: 68–88 % of the coast is no plate boundary; Spearman −0.08 /
+     0.17.
+- **(a)** The mechanism is kept, with its forcing corrected at F173.
+- **(b)** The rampart goes to C1 (b), after F173's part C diagnosis.
+- **(c)** No catalogue browser. The seeds 8, 18, 19, 23 and 29 become the measurement panel. The old témoin serves only the
+  bit-for-bit negative controls.
+- **(d)** A rampart index based on the walls.
+
+**The author's decision, verbatim**: « non pas besoin d'un navigateur de graines. Juste utiliser ces graines comme témoin pour
+la suite. J'ai rajouté spratt2016.pdf dans docs/refs. »

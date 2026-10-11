@@ -21,6 +21,8 @@ The PDFs marked **committed** carry an open licence (CC BY 4.0) and are in the r
 | — | Baldwin, J. A., Whipple, K. X., Tucker, G. E. (2003). Implications of the shear stress river incision model for the timescale of postorogenic decay of topography. JGR 108(B3), 2158. doi:10.1029/2001JB000550 | no (no open copy found; abstract only) |
 | `kwang2017.pdf` | Kwang, J. S., Parker, G. (2017). Landscape evolution models using the stream power incision model show unrealistic behavior when m/n equals 0.5. Earth Surface Dynamics 5, 807–820. | committed earlier |
 | `pelletier2010.pdf` | Pelletier, J. D. (2010). Minimizing the grid-resolution dependence of flow-routing algorithms for geomorphic applications. Geomorphology 122, 91–98. | committed earlier |
+| — | Lambeck, K., Rouby, H., Purcell, A., Sun, Y., Sambridge, M. (2014). Sea level and global ice volumes from the Last Glacial Maximum to the Holocene. PNAS 111(43), 15296–15303. doi:10.1073/pnas.1411762111. Read on PubMed Central (PMC4217469) for F172 (the PNAS site refused the fetch); the abstract: « a slow fall to −134 m from 29 to 21 ka BP » | no (read online) |
+| — | International Commission on Stratigraphy, the GSSP list (stratigraphy.org/gssps, read 2026-10-11): the Gelasian GSSP, Monte San Nicola, 2.58 Ma, ratified in 2009 as the base of the Pleistocene and the Quaternary (F172's T_q) | no (read online) |
 
 ## Data (F161 onward)
 

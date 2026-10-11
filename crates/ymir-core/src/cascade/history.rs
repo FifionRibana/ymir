@@ -335,6 +335,33 @@ pub struct HistoryRun {
     /// ADR Finding 169-C1 -- the continent's age A (years): C1's step k lasts d_N · r^(N−k), d_N = T/N, r solved so the
     /// steps sum to A (r = 1 exactly at A = T). `None` = linear time (F165–F168).
     pub age_years: Option<f64>,
+    /// ADR Finding 172-B1 -- the lowstand: the base level at −Δ during the history's last T_q. `None` = the sea at 0.
+    pub sea_low: Option<SeaLow>,
+}
+
+/// ADR Finding 172-B -- **the Quaternary lowstand**: the base level −`delta_m` during the last `t_q_years` of the history.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SeaLow {
+    pub delta_m: f64,
+    pub t_q_years: f64,
+}
+
+impl SeaLow {
+    /// The declaration (`f172_declared.md`): Δ = 134 m (Lambeck et al. 2014, PNAS 111, 15296: « a slow fall to −134 m from
+    /// 29 to 21 ka BP »), T_q = 2.58 Myr (the base of the Quaternary, ICS).
+    pub fn declared() -> Self {
+        Self { delta_m: 134.0, t_q_years: 2.58e6 }
+    }
+    /// Per step: is it in the lowstand (its remaining time, the sum of the later steps' durations, ≤ T_q)?
+    pub fn steps_low(&self, durations: &[f64]) -> Vec<bool> {
+        let mut rem = 0.0;
+        let mut out = vec![false; durations.len()];
+        for i in (0..durations.len()).rev() {
+            rem += durations[i];
+            out[i] = rem <= self.t_q_years;
+        }
+        out
+    }
 }
 
 /// ADR Finding 169-C1 -- the durations (years) of `steps` C1 steps whose last lasts `t_years / steps` and which sum to
@@ -435,9 +462,18 @@ pub fn physics_history_rock(
     let zeros = vec![0f32; n * n];
     let steps = run.steps;
     let timing = run.timing;
+    // ADR Finding 172-B1: the lowstand's base level per step (norm)
+    let sea_fn = |durations: &[f64]| -> Option<Box<dyn Fn(usize) -> f32>> {
+        run.sea_low.map(|sl| {
+            let low = sl.steps_low(durations);
+            let (hi_s, lo_s) = (cfg.sea_level, cfg.sea_level - (sl.delta_m as f32) / n2m);
+            Box::new(move |i: usize| if low[i.min(low.len() - 1)] { lo_s } else { hi_s }) as Box<dyn Fn(usize) -> f32>
+        })
+    };
     // ADR Finding 169-C1: the continent's age -- each step its own duration, the interval's Δh spread in proportion
     if let (Some(age), Timing::History) = (run.age_years, timing) {
         let (d, _) = step_durations(run.t_years, age, steps);
+        let sea = sea_fn(&d);
         let interval = move |i: usize| ((i * intervals) / steps).min(intervals - 1);
         let mut dsum = vec![0f64; intervals];
         for (i, di) in d.iter().enumerate() {
@@ -456,6 +492,7 @@ pub fn physics_history_rock(
             rebound: run.rebound,
             dt: Some(Box::new(move |i| d[i.min(steps - 1)] as f32)),
             rock,
+            sea,
         };
         let uplift = GridF32::new(n, n, 0.0);
         let rec = run_loop(z0.clone(), uplift, &cfg_t, n, run.steps, Some(0), &drive, progress, cancel)?;
@@ -478,6 +515,7 @@ pub fn physics_history_rock(
         rebound: run.rebound,
         dt: None,
         rock,
+        sea: sea_fn(&vec![run.t_years / steps as f64; steps]),
     };
     let uplift = GridF32::new(n, n, 0.0);
     let rec = run_loop(z0.clone(), uplift, &cfg_t, n, run.steps, Some(0), &drive, progress, cancel)?;
@@ -578,7 +616,7 @@ mod tests {
         let h = run_c1_recorded(&mut s, &mut k, &cfg, &C1Closures::default(), 10, &IsostasyConfig::c1_default(), &SteinSteinParams::default());
         let snaps = h.normalized(None);
         let c = CascadeConfig { mfd_exponent: Some(6.0), roughness_m: 40.0, seed: 7, ..CascadeConfig::declared(5000.0) };
-        let a = physics_history(&snaps, 128, &c, &HistoryRun { t_years: 0.0, steps: 120, rebound: None, timing: Timing::Steady, age_years: None }, &mut |_| {}, &|| false).unwrap();
+        let a = physics_history(&snaps, 128, &c, &HistoryRun { t_years: 0.0, steps: 120, rebound: None, timing: Timing::Steady, age_years: None, sea_low: None }, &mut |_| {}, &|| false).unwrap();
         let (b, _) = super::super::physics_level(snaps.last().unwrap(), 128, &c, STEADY_PEAK_M, 120, &mut |_| {}, &|| false).unwrap();
         assert_eq!(a.rec.z.data, b.z.data);
         assert_eq!(a.rec.steps, b.steps);
@@ -598,14 +636,14 @@ mod tests {
             b.data.iter().zip(&a.data).map(|(x, y)| x - y).collect()
         };
         for timing in [Timing::History, Timing::Late10] {
-            let run = HistoryRun { t_years: 2.0e6, steps: 40, rebound: None, timing, age_years: None };
+            let run = HistoryRun { t_years: 2.0e6, steps: 40, rebound: None, timing, age_years: None, sea_low: None };
             let l = physics_history(&snaps, n, &c, &run, &mut |_| {}, &|| false).unwrap();
             assert_eq!(l.rec.steps, 40);
             let err = l.rec.sum_uplift.iter().zip(&want).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
             assert!(err < 1e-4, "{timing:?}: Σ uplift off by {err}");
         }
-        let a = physics_history(&snaps, n, &c, &HistoryRun { t_years: 2.0e6, steps: 40, rebound: None, timing: Timing::History, age_years: None }, &mut |_| {}, &|| false).unwrap();
-        let b = physics_history(&snaps, n, &c, &HistoryRun { t_years: 2.0e6, steps: 40, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: None }, &mut |_| {}, &|| false).unwrap();
+        let a = physics_history(&snaps, n, &c, &HistoryRun { t_years: 2.0e6, steps: 40, rebound: None, timing: Timing::History, age_years: None, sea_low: None }, &mut |_| {}, &|| false).unwrap();
+        let b = physics_history(&snaps, n, &c, &HistoryRun { t_years: 2.0e6, steps: 40, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: None, sea_low: None }, &mut |_| {}, &|| false).unwrap();
         let mean = |r: &LevelRecord| r.z.data.iter().map(|&v| v as f64).sum::<f64>();
         assert!(mean(&b.rec) > mean(&a.rec), "the rebound lifts");
         // the filter passes the mean (Ĝ(0) = 1): Σ rebound = (ρc / ρm) · Σ erosion
@@ -656,7 +694,7 @@ mod f169_tests {
     }
 
     fn run(snaps: &[GridF32], origin: [usize; 2], age: Option<f64>) -> (GridF32, GridF32) {
-        let run = HistoryRun { t_years: 2.0e6, steps: 30, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: age };
+        let run = HistoryRun { t_years: 2.0e6, steps: 30, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: age, sea_low: None };
         let l = physics_history(snaps, 128, &cfg(origin), &run, &mut |_| {}, &|| false).unwrap();
         let n2m = cfg(origin).norm_to_m();
         let zm = GridF32 { width: 128, height: 128, data: l.rec.z.data.iter().map(|v| (v - 0.5) * n2m).collect() };
@@ -711,7 +749,7 @@ mod f169_tests {
         use crate::cascade::Rock;
         use crate::cascade::amplify::KHetero;
         let base = snaps();
-        let run = HistoryRun { t_years: 2.0e6, steps: 30, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: Some(2.0e7) };
+        let run = HistoryRun { t_years: 2.0e6, steps: 30, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: Some(2.0e7), sea_low: None };
         let c = cfg([0, 0]);
         let ref_ = physics_history(&base, 128, &c, &run, &mut |_| {}, &|| false).unwrap();
         let cover = vec![50.0f32; 128 * 128];
@@ -740,6 +778,29 @@ mod f169_tests {
         let l = het.ln_k.as_ref().unwrap();
         let sd = (l.iter().map(|v| (*v as f64).powi(2)).sum::<f64>() / l.len() as f64).sqrt();
         assert!(sd > 0.3 && sd < 0.6, "ln M's spread {sd}");
+    }
+
+    /// ADR Finding 172-B3, the negative control (permanent): a lowstand of Δ = 0 is F171's K2 bit for bit; Δ = 134 m
+    /// changes the field; the lowstand covers the steps whose remaining time is ≤ T_q.
+    #[test]
+    fn the_lowstand_at_zero_is_f171_bit_for_bit() {
+        use crate::cascade::Rock;
+        use crate::cascade::amplify::KHetero;
+        let base = snaps();
+        let c = cfg([0, 0]);
+        let kh = KHetero::declared();
+        let rock = Rock { rho_k: 10.0, cover_m: vec![80.0; 128 * 128], ln_k: Some(kh.band(128, 400.0 / 128.0, 0, kh.resolved(400.0 / 128.0), 11, Some([0, 0]))) };
+        for age in [None, Some(2.0e7)] {
+            let run = |sl: Option<SeaLow>| HistoryRun { t_years: 2.0e6, steps: 30, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: age, sea_low: sl };
+            let a = physics_history_rock(&base, 128, &c, &run(None), Some(&rock), &mut |_| {}, &|| false).unwrap();
+            let z = physics_history_rock(&base, 128, &c, &run(Some(SeaLow { delta_m: 0.0, t_q_years: 1.0e6 })), Some(&rock), &mut |_| {}, &|| false).unwrap();
+            assert_eq!(a.rec.z.data, z.rec.z.data, "delta = 0, age {age:?}");
+            let l = physics_history_rock(&base, 128, &c, &run(Some(SeaLow { delta_m: 134.0, t_q_years: 1.0e6 })), Some(&rock), &mut |_| {}, &|| false).unwrap();
+            assert_ne!(a.rec.z.data, l.rec.z.data, "delta = 134 m changes the field");
+        }
+        let low = SeaLow { delta_m: 134.0, t_q_years: 2.58e6 }.steps_low(&vec![5.623e6 / 300.0; 300]);
+        assert_eq!(low.iter().filter(|&&b| b).count(), 137, "the last 2.58 Myr of 5.623 Myr in 300 steps");
+        assert!(low[299] && !low[0]);
     }
 
     /// F169-A1: the torus noise follows the terrain (an origin rolls it exactly) and wraps (no seam).

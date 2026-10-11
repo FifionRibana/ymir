@@ -485,11 +485,13 @@ pub struct Drive<'a> {
     pub dt: Option<Box<dyn Fn(usize) -> f32 + 'a>>,
     /// ADR Finding 171-B -- the rock law (cover on basement, the heterogeneous K); `None` = one K everywhere.
     pub rock: Option<&'a Rock>,
+    /// ADR Finding 172-B1 -- the base level (norm) of step `i`; `None` = `cfg.sea_level` at every step.
+    pub sea: Option<Box<dyn Fn(usize) -> f32 + 'a>>,
 }
 
 impl<'a> Drive<'a> {
     pub fn steady(du: &'a [f32]) -> Self {
-        Self { du: Box::new(move |_| std::borrow::Cow::Borrowed(du)), hold_sea: true, eq_stop: true, rebound: None, dt: None, rock: None }
+        Self { du: Box::new(move |_| std::borrow::Cow::Borrowed(du)), hold_sea: true, eq_stop: true, rebound: None, dt: None, rock: None, sea: None }
     }
 }
 
@@ -569,6 +571,12 @@ fn run_loop(
             hill = ct.hillslope(n);
             hill.diffusion_substeps = cfg.diffusion_substeps.max((hill.diffusion / 0.2).ceil() as usize);
         }
+        // ADR Finding 172-B1: the step's base level (the lowstand)
+        let sea = drive.sea.as_ref().map_or(cfg.sea_level, |f| f(steps));
+        if drive.sea.is_some() {
+            solver.sea_level = sea;
+            hill.sea_level = sea;
+        }
         let mean_du = if drive.hold_sea {
             du.iter().map(|&v| v as f64).sum::<f64>() / n_land0 as f64
         } else {
@@ -583,7 +591,7 @@ fn run_loop(
         }
         if !drive.hold_sea {
             for k in 0..cells {
-                land[k] = z.data[k] > cfg.sea_level;
+                land[k] = z.data[k] > sea;
             }
         }
         let n_land = land.iter().filter(|&&l| l).count().max(1);

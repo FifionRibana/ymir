@@ -29,7 +29,7 @@ use crossbeam_channel::{Receiver, Sender, unbounded};
 use egui::Color32 as C;
 use ymir_core::cascade::amplify::{AmpConfig, AmpLevel, Budget, Chain, KHetero, Variant, Warp, WarpPlace};
 use ymir_core::cascade::history::{
-    Airy, C1Term, HistoryRun, Mapping, T_F165_YEARS, T_F166_YEARS, Timing, isostatic_datum, land_altitude_m,
+    Airy, C1Term, HistoryRun, Mapping, SeaLow, T_F165_YEARS, T_F166_YEARS, Timing, isostatic_datum, land_altitude_m,
     physics_history_rock, run_c1_sources_mapped,
 };
 use ymir_core::cascade::hydro::{Hydro, draw, hydrology};
@@ -114,6 +114,8 @@ struct Shown {
 }
 
 enum Evt {
+    /// F172-B5: the Δ the chain runs raised by (0 = no sea-level rise).
+    SeaShift(f32),
     Coarse(Shown, f64),
     Physics(Shown, Arc<LevelRecord>, PeakCalibration),
     Level(usize, Shown, Arc<AmpLevel>),
@@ -202,6 +204,10 @@ pub struct CascadeUi {
     plates: usize,
     /// F171-B/C: the rock (0 = K0 one K, 1 = K1 cover on basement, 2 = K2 with the heterogeneous K).
     rock: u8,
+    /// F172-B5: the sea-level rise, the lowstand view, and the Δ the current chain runs raised by.
+    sea_rise: bool,
+    low_view: bool,
+    amp_shift: f32,
     /// F169-A1: the torus cascade.
     torus: bool,
     /// F169-C: the continent's age (Myr; ≤ T = linear time).
@@ -270,6 +276,9 @@ impl Default for CascadeUi {
             select: false,
             plates: 16,
             rock: 0,
+            sea_rise: false,
+            low_view: false,
+            amp_shift: 0.0,
             // ADR Finding 169 (at commit) -- the torus is the cascade's default
             torus: true,
             age_ma: 5.62,
@@ -462,9 +471,15 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
             let mut remedies = Remedies::default();
             let mut chain: Option<Chain> = None;
             let mut history: Option<((bool, bool, C1Profile, bool, usize), Vec<GridF32>, [usize; 2], Vec<bool>)> = None;
-            let send_level = |etx: &Sender<Evt>, ch: &Chain, i: usize| {
+            // F172-B5: the sea-level rise -- the chain runs on the field raised by Δ, its results are shown lowered
+            let mut sea_shift = 0f32;
+            let lower = |g: GridF32, d: f32| -> GridF32 {
+                if d == 0.0 { g } else { GridF32 { width: g.width, height: g.height, data: g.data.iter().map(|v| v - d).collect() } }
+            };
+            let send_level = |etx: &Sender<Evt>, ch: &Chain, i: usize, d: f32| {
                 let l = &ch.levels[i];
-                let _ = etx.send(Evt::Level(i, shown(l.result()), Arc::new(l.clone())));
+                let g = if d == 0.0 { l.result() } else { GridF32 { width: l.n, height: l.n, data: l.result().data.iter().map(|v| v - d).collect() } };
+                let _ = etx.send(Evt::Level(i, shown(g), Arc::new(l.clone())));
             };
             for cmd in cmd_rx.iter() {
                 stop.store(false, Ordering::Relaxed);
@@ -528,7 +543,9 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                             // F169-C: the continent's age (linear time at A ≤ T)
                             let age = (o.age_ma as f64 * 1.0e6).max(t_years);
                             let age_years = (age > t_years * 1.0001).then_some(age);
-                            let run = HistoryRun { t_years, steps: 300, rebound: Some(Rebound::declared()), timing: Timing::History, age_years };
+                            // F172-B: the Quaternary lowstand during the history's last T_q
+                            let sea_low = o.sea_rise.then(SeaLow::declared);
+                            let run = HistoryRun { t_years, steps: 300, rebound: Some(Rebound::declared()), timing: Timing::History, age_years, sea_low };
                             // F171-B/C: the rock law (K1 cover on basement, K2 its heterogeneous K)
                             k_het = (o.rock == 2).then(KHetero::declared);
                             ln_k_phys = None;
@@ -565,7 +582,10 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                         };
                         if let Some((rec, cal)) = result {
                             let pm = to_m(&rec.z);
-                            let mut ch = Chain::new(pm.clone(), amp_cfg(variant, scale, boost, &remedies, torus_origin, k_het));
+                            sea_shift = if o.sea_rise && o.history > 0 { SeaLow::declared().delta_m as f32 } else { 0.0 };
+                            let _ = etx.send(Evt::SeaShift(sea_shift));
+                            let pm_r = if sea_shift == 0.0 { pm.clone() } else { GridF32 { width: pm.width, height: pm.height, data: pm.data.iter().map(|v| v + sea_shift).collect() } };
+                            let mut ch = Chain::new(pm_r, amp_cfg(variant, scale, boost, &remedies, torus_origin, k_het));
                             if let Some(l) = ln_k_phys.clone() {
                                 ch = ch.with_ln_k(l);
                             }
@@ -599,7 +619,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                                 ch.cfg.set_n1_k(n, k);
                             }
                             if run_level(ch, b, &etx, &cancel) {
-                                send_level(&etx, ch, ch.levels.len() - 1);
+                                send_level(&etx, ch, ch.levels.len() - 1, sea_shift);
                             }
                         }
                     }
@@ -610,7 +630,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                                 if !run_level(ch, b, &etx, &cancel) {
                                     break;
                                 }
-                                send_level(&etx, ch, ch.levels.len() - 1);
+                                send_level(&etx, ch, ch.levels.len() - 1, sea_shift);
                             }
                         }
                     }
@@ -626,12 +646,12 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                                 Process::Talus => l.talus(iters, &cfg, &cancel),
                                 Process::Deposit => l.deposit(iters, &cfg, &cancel),
                             }
-                            send_level(&etx, ch, i);
+                            send_level(&etx, ch, i, sea_shift);
                         }
                     }
                     Cmd::Retarget => {
                         if let Some((g, nc)) = chain.as_ref().and_then(|c| c.retargeted()) {
-                            let _ = etx.send(Evt::Retargeted(shown(g), nc));
+                            let _ = etx.send(Evt::Retargeted(shown(lower(g, sea_shift)), nc));
                         }
                     }
                 }
@@ -749,6 +769,7 @@ impl CascadeUi {
                 }
                 Evt::Progress(t, f) => self.progress = Some((t, f)),
                 Evt::Terms(t) => self.term_maps = t,
+                Evt::SeaShift(d) => self.amp_shift = d,
                 Evt::Snapshots(s) => {
                     self.snap_i = s.len().saturating_sub(1);
                     self.snapshots = s;
@@ -892,6 +913,12 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
         for (name, r) in [("K0", 0u8), ("K1", 1), ("K2", 2)] {
             ui.selectable_value(&mut cu.rock, r, name);
         }
+        ui.checkbox(&mut cu.sea_rise, "Remontée de la mer").on_hover_text(
+            "F172-B : pendant les 2,58 derniers Ma de l'histoire (le Quaternaire, ICS), le niveau de base est à −134 m (le bas niveau du dernier maximum glaciaire, Lambeck et al. 2014) ; les niveaux d'amplification érodent aussi à ce niveau ; à la fin la mer remonte à 0 m et noie les vallées. Mode histoire seulement",
+        );
+        ui.checkbox(&mut cu.low_view, "vue bas niveau").on_hover_text(
+            "F172-B5 : affiche le même champ avec la mer à −134 m (le paysage de bas niveau) au lieu de 0 m (après la remontée)",
+        );
         ui.separator();
         ui.checkbox(&mut cu.torus, "tore (F169)").on_hover_text(
             "F169-A1 : la cascade entièrement périodique — aucun récepteur hors carte, voisinages périodiques, bruits définis sur le tore et attachés au terrain ; le cadrage ne change plus le monde",
@@ -1334,7 +1361,10 @@ fn build_image(cu: &mut CascadeUi) -> Option<egui::ColorImage> {
                 2 => l.sum_talus.clone(),
                 _ => l.sum_deposit.clone(),
             };
-            (l.substep_field(cu.sub), Some(d))
+            // F172-B5: the chain's fields are raised by Δ when the sea rises
+            let f = l.substep_field(cu.sub);
+            let f = if cu.amp_shift == 0.0 { f } else { GridF32 { width: f.width, height: f.height, data: f.data.iter().map(|v| v - cu.amp_shift).collect() } };
+            (f, Some(d))
         }
         Sel::Physics => {
             let (_, r, _) = cu.physics.as_ref()?;
@@ -1355,6 +1385,13 @@ fn build_image(cu: &mut CascadeUi) -> Option<egui::ColorImage> {
         }
         Sel::Coarse | Sel::Snapshot(_) => ((*s.result).clone(), None),
         Sel::Term(i) => ((*s.result).clone(), cu.term_maps.get(i).map(|t| t.1.clone())),
+    };
+    // F172-B5: the lowstand view -- the same field with the sea at −Δ
+    let field = if cu.low_view {
+        let d = SeaLow::declared().delta_m as f32;
+        GridF32 { width: field.width, height: field.height, data: field.data.iter().map(|v| v + d).collect() }
+    } else {
+        field
     };
     let mut rgba = match (cu.view, &diff) {
         // F165-C4: the macro classes, on the field up to 512² (the 7 km relief costs too much beyond), else the physics
@@ -1422,12 +1459,14 @@ struct PhysOpts {
     /// F171: the selection's plate count and the rock (0 K0, 1 K1, 2 K2).
     plates: usize,
     rock: u8,
+    /// F172: the sea-level rise.
+    sea_rise: bool,
 }
 
 impl Default for PhysOpts {
     /// P0, F159–F162's level.
     fn default() -> Self {
-        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62, plates: 16, rock: 0 }
+        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62, plates: 16, rock: 0, sea_rise: false }
     }
 }
 
@@ -1444,6 +1483,7 @@ fn phys_opts(cu: &CascadeUi) -> PhysOpts {
         age_ma: cu.age_ma,
         plates: cu.plates,
         rock: cu.rock,
+        sea_rise: cu.sea_rise,
     }
 }
 

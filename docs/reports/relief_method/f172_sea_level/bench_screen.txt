@@ -1,0 +1,93 @@
+...
+    Finished `release` profile [optimized] target(s) in 6.88s
+     Running tests\f172_cascade.rs (target_f172b\release\deps\f172_cascade-6d8a55f87fea8411.exe)
+running 1 test
+==========  Finding 172 . D — the screening of 33 seeds (physics 256², young and old, K2, the rise)  ==========
+test f172_screen has been running for over 60 seconds
+   seed 1 young (N 16, k 10, BFS r* 1): land 50.4 % · mountain 60.6 % · plain + plateau 15.5 % · median 480 m · peak 4595 m · R 1.72 rampart false · convergent perimeter 18.5 % · mountain regions > 100 km² 8 · Europe's bands false
+   seed 1 old (N 16, k 10, BFS r* 1): land 50.4 % · mountain 11.0 % · plain + plateau 39.9 % · median 137 m · peak 1648 m · R 1.65 rampart false · convergent perimeter 18.5 % · mountain regions > 100 km² 13 · Europe's bands false
+   seed 2 young (N 16, k 7, compact r* 1): land 55.4 % · mountain 89.0 % · plain + plateau 4.4 % · median 1977 m · peak 6075 m · R 1.04 rampart false · convergent perimeter 21.9 % · mountain regions > 100 km² 2 · Europe's bands false
+   seed 2 old (N 16, k 7, compact r* 1): land 55.4 % · mountain 71.0 % · plain + plateau 5.0 % · median 773 m · peak 5277 m · R 0.69 rampart false · convergent perimeter 21.9 % · mountain regions > 100 km² 10 · Europe's bands false
+   seed 3 young (N 16, k 10, BFS r* 1): land 53.3 % · mountain 73.0 % · plain + plateau 9.4 % · median 760 m · peak 4681 m · R 1.22 rampart false · convergent perimeter 17.2 % · mountain regions > 100 km² 2 · Europe's bands false
+   seed 3 old (N 16, k 10, BFS r* 1): land 53.3 % · mountain 33.9 % · plain + plateau 24.4 % · median 257 m · peak 3570 m · R 0.85 rampart false · convergent perimeter 17.2 % · mountain regions > 100 km² 7 · Europe's bands false
+   seed 4 young (N 16, k 10, BFS r* 1): land 54.9 % · mountain 78.6 % · plain + plateau 12.8 % · median 1005 m · peak 4664 m · R 1.30 rampart false · convergent perimeter 0.0 % · mountain regions > 100 km² 2 · Europe's bands false
+   seed 4 old (N 16, k 10, BFS r* 1): land 54.9 % · mountain 49.6 % · plain + plateau 18.8 % · median 476 m · peak 4120 m · R 1.30 rampart false · convergent perimeter 0.0 % · mountain regions > 100 km² 5 · Europe's bands false
+   seed 5 young (N 24, k 15, compact r* 1): land 51.4 % · mountain 73.2 % · plain + plateau 7.2 % · median 788 m · peak 4313 m · R 1.32 rampart false · convergent perimeter 41.7 % · mountain regions > 100 km² 2 · Europe's bands false
+   seed 5 old (N 24, k 15, compact r* 1): land 51.4 % · mountain 40.8 % · plain + plateau 12.1 % · median 303 m · peak 2966 m · R 1.04 rampart false · convergent perimeter 41.7 % · mountain regions > 100 km² 9 · Europe's bands false
+   seed 6 young (N 16, k 9, BFS r* 2): land 53.3 % · mountain 80.3 % · plain + plateau 5.8 % · median 881 m · peak 5384 m · R 1.08 rampart false · convergent perimeter 35.8 % · mountain regions > 100 km² 1 · Europe's bands false
+   seed 6 old (N 16, k 9, BFS r* 2): land 53.3 % · mountain 32.8 % · plain + plateau 22.6 % · median 255 m · peak 5346 m · R 0.77 rampart false · convergent perimeter 35.8 % · mountain regions > 100 km² 8 · Europe's bands false
+   seed 7 young (N 16, k 8, compact r* 1): land 51.1 % · mountain 66.6 % · plain + plateau 11.8 % · median 666 m · peak 4376 m · R 1.14 rampart false · convergent perimeter 12.5 % · mountain regions > 100 km² 4 · Europe's bands false
+   seed 7 old (N 16, k 8, compact r* 1): land 51.1 % · mountain 22.4 % · plain + plateau 35.2 % · median 143 m · peak 2858 m · R 0.62 rampart false · convergent perimeter 12.5 % · mountain regions > 100 km² 6 · Europe's bands false
+   seed 8 young (N 16, k 7, compact r* 3): land 50.7 % · mountain 64.2 % · plain + plateau 12.4 % · median 629 m · peak 5510 m · R 1.49 rampart false · convergent perimeter 21.1 % · mountain regions > 100 km² 3 · Europe's bands false
+   seed 8 old (N 16, k 7, compact r* 3): land 50.7 % · mountain 30.3 % · plain + plateau 44.4 % · median 164 m · peak 4698 m · R 0.41 rampart false · convergent perimeter 21.1 % · mountain regions > 100 km² 4 · Europe's bands true
+   seed 9 young (N 16, k 7, compact r* 3): land 51.2 % · mountain 70.7 % · plain + plateau 9.1 % · median 679 m · peak 4694 m · R 1.07 rampart false · convergent perimeter 6.4 % · mountain regions > 100 km² 3 · Europe's bands false
+   seed 9 old (N 16, k 7, compact r* 3): land 51.2 % · mountain 23.9 % · plain + plateau 29.0 % · median 223 m · peak 3813 m · R 0.70 rampart false · convergent perimeter 6.4 % · mountain regions > 100 km² 13 · Europe's bands false
+   seed 10 young (N 20, k 13, compact r* 1): land 51.9 % · mountain 63.5 % · plain + plateau 9.9 % · median 508 m · peak 3797 m · R 1.41 rampart false · convergent perimeter 0.0 % · mountain regions > 100 km² 4 · Europe's bands false
+   seed 10 old (N 20, k 13, compact r* 1): land 51.9 % · mountain 1.6 % · plain + plateau 60.3 % · median 90 m · peak 635 m · R 0.26 rampart false · convergent perimeter 0.0 % · mountain regions > 100 km² 4 · Europe's bands false
+   seed 11 young (N 20, k 10, compact r* 1): land 51.7 % · mountain 62.2 % · plain + plateau 21.0 % · median 622 m · peak 5464 m · R 1.58 rampart false · convergent perimeter 25.9 % · mountain regions > 100 km² 5 · Europe's bands false
+   seed 11 old (N 20, k 10, compact r* 1): land 51.7 % · mountain 36.8 % · plain + plateau 22.5 % · median 291 m · peak 4347 m · R 1.06 rampart false · convergent perimeter 25.9 % · mountain regions > 100 km² 16 · Europe's bands false
+   seed 12 young (N 16, k 8, BFS r* 2): land 54.0 % · mountain 74.4 % · plain + plateau 7.3 % · median 808 m · peak 4246 m · R 1.28 rampart false · convergent perimeter 14.6 % · mountain regions > 100 km² 1 · Europe's bands false
+   seed 12 old (N 16, k 8, BFS r* 2): land 54.0 % · mountain 22.8 % · plain + plateau 25.8 % · median 181 m · peak 1486 m · R 1.05 rampart false · convergent perimeter 14.6 % · mountain regions > 100 km² 14 · Europe's bands false
+   seed 13 young (N 16, k 9, compact r* 2): land 52.0 % · mountain 78.1 % · plain + plateau 7.8 % · median 979 m · peak 5492 m · R 1.12 rampart false · convergent perimeter 11.1 % · mountain regions > 100 km² 2 · Europe's bands false
+   seed 13 old (N 16, k 9, compact r* 2): land 52.0 % · mountain 43.1 % · plain + plateau 10.5 % · median 318 m · peak 4694 m · R 0.79 rampart false · convergent perimeter 11.1 % · mountain regions > 100 km² 5 · Europe's bands false
+   seed 14 young (N 16, k 8, BFS r* 1): land 52.4 % · mountain 77.9 % · plain + plateau 13.3 % · median 1043 m · peak 5705 m · R 1.37 rampart false · convergent perimeter 33.4 % · mountain regions > 100 km² 1 · Europe's bands false
+   seed 14 old (N 16, k 8, BFS r* 1): land 52.4 % · mountain 46.4 % · plain + plateau 11.6 % · median 373 m · peak 4891 m · R 0.96 rampart false · convergent perimeter 33.4 % · mountain regions > 100 km² 13 · Europe's bands false
+   seed 15 young (N 20, k 10, compact r* 2): land 52.6 % · mountain 93.9 % · plain + plateau 2.0 % · median 2557 m · peak 5457 m · R 0.98 rampart false · convergent perimeter 28.5 % · mountain regions > 100 km² 1 · Europe's bands false
+   seed 15 old (N 20, k 10, compact r* 2): land 52.6 % · mountain 87.3 % · plain + plateau 1.3 % · median 1626 m · peak 4568 m · R 0.76 rampart false · convergent perimeter 28.5 % · mountain regions > 100 km² 3 · Europe's bands false
+   seed 16 young (N 16, k 10, compact r* 1): land 50.4 % · mountain 67.3 % · plain + plateau 10.7 % · median 745 m · peak 4290 m · R 1.26 rampart false · convergent perimeter 7.9 % · mountain regions > 100 km² 3 · Europe's bands false
+   seed 16 old (N 16, k 10, compact r* 1): land 50.4 % · mountain 17.0 % · plain + plateau 26.1 % · median 164 m · peak 1519 m · R 0.39 rampart false · convergent perimeter 7.9 % · mountain regions > 100 km² 15 · Europe's bands false
+   seed 17 young (N 16, k 8, BFS r* 1): land 51.5 % · mountain 59.3 % · plain + plateau 14.8 % · median 473 m · peak 4360 m · R 1.50 rampart false · convergent perimeter 0.0 % · mountain regions > 100 km² 5 · Europe's bands false
+   seed 17 old (N 16, k 8, BFS r* 1): land 51.5 % · mountain 3.5 % · plain + plateau 61.7 % · median 93 m · peak 1457 m · R 0.75 rampart false · convergent perimeter 0.0 % · mountain regions > 100 km² 8 · Europe's bands false
+   seed 18 young (N 16, k 11, compact r* 2): land 50.4 % · mountain 64.2 % · plain + plateau 10.9 % · median 599 m · peak 5691 m · R 0.94 rampart false · convergent perimeter 27.0 % · mountain regions > 100 km² 5 · Europe's bands false
+   seed 18 old (N 16, k 11, compact r* 2): land 50.4 % · mountain 28.5 % · plain + plateau 43.9 % · median 157 m · peak 4309 m · R 0.59 rampart false · convergent perimeter 27.0 % · mountain regions > 100 km² 4 · Europe's bands true
+   seed 19 young (N 20, k 12, BFS r* 1): land 56.2 % · mountain 57.3 % · plain + plateau 16.5 % · median 513 m · peak 4846 m · R 1.69 rampart false · convergent perimeter 12.0 % · mountain regions > 100 km² 10 · Europe's bands false
+   seed 19 old (N 20, k 12, BFS r* 1): land 56.2 % · mountain 23.2 % · plain + plateau 50.8 % · median 123 m · peak 4264 m · R 0.56 rampart false · convergent perimeter 12.0 % · mountain regions > 100 km² 3 · Europe's bands true
+   seed 20 young (N 16, k 9, BFS r* 2): land 54.0 % · mountain 68.1 % · plain + plateau 8.6 % · median 626 m · peak 4441 m · R 1.09 rampart false · convergent perimeter 11.6 % · mountain regions > 100 km² 2 · Europe's bands false
+   seed 20 old (N 16, k 9, BFS r* 2): land 54.0 % · mountain 9.6 % · plain + plateau 51.6 % · median 89 m · peak 1277 m · R 1.05 rampart false · convergent perimeter 11.6 % · mountain regions > 100 km² 6 · Europe's bands false
+   seed 21 young (N 16, k 8, compact r* 2): land 53.2 % · mountain 69.9 % · plain + plateau 13.7 % · median 707 m · peak 3979 m · R 1.39 rampart false · convergent perimeter 0.0 % · mountain regions > 100 km² 1 · Europe's bands false
+   seed 21 old (N 16, k 8, compact r* 2): land 53.2 % · mountain 17.9 % · plain + plateau 29.1 % · median 194 m · peak 2078 m · R 1.67 rampart false · convergent perimeter 0.0 % · mountain regions > 100 km² 9 · Europe's bands false
+   seed 22 young (N 16, k 10, compact r* 3): land 52.1 % · mountain 81.5 % · plain + plateau 6.8 % · median 1278 m · peak 4937 m · R 1.24 rampart false · convergent perimeter 39.9 % · mountain regions > 100 km² 1 · Europe's bands false
+   seed 22 old (N 16, k 10, compact r* 3): land 52.1 % · mountain 55.7 % · plain + plateau 15.0 % · median 457 m · peak 3957 m · R 1.34 rampart false · convergent perimeter 39.9 % · mountain regions > 100 km² 8 · Europe's bands false
+   seed 23 young (N 16, k 8, compact r* 1): land 52.3 % · mountain 64.4 % · plain + plateau 9.7 % · median 586 m · peak 5654 m · R 1.25 rampart false · convergent perimeter 18.0 % · mountain regions > 100 km² 4 · Europe's bands false
+   seed 23 old (N 16, k 8, compact r* 1): land 52.3 % · mountain 22.2 % · plain + plateau 48.0 % · median 136 m · peak 4724 m · R 0.75 rampart false · convergent perimeter 18.0 % · mountain regions > 100 km² 4 · Europe's bands true
+   seed 24 young (N 16, k 9, compact r* 2): land 51.6 % · mountain 71.7 % · plain + plateau 9.9 % · median 669 m · peak 3916 m · R 0.85 rampart false · convergent perimeter 0.0 % · mountain regions > 100 km² 5 · Europe's bands false
+   seed 24 old (N 16, k 9, compact r* 2): land 51.6 % · mountain 23.5 % · plain + plateau 32.2 % · median 222 m · peak 1395 m · R 0.55 rampart false · convergent perimeter 0.0 % · mountain regions > 100 km² 9 · Europe's bands false
+   seed 25 young (N 16, k 8, compact r* 1): land 53.1 % · mountain 57.6 % · plain + plateau 22.7 % · median 489 m · peak 4466 m · R 1.54 rampart false · convergent perimeter 5.7 % · mountain regions > 100 km² 3 · Europe's bands false
+   seed 25 old (N 16, k 8, compact r* 1): land 53.1 % · mountain 15.4 % · plain + plateau 36.8 % · median 160 m · peak 2083 m · R 1.12 rampart false · convergent perimeter 5.7 % · mountain regions > 100 km² 7 · Europe's bands false
+   seed 26 young (N 16, k 8, BFS r* 2): land 54.4 % · mountain 63.9 % · plain + plateau 8.6 % · median 552 m · peak 4711 m · R 1.32 rampart false · convergent perimeter 9.4 % · mountain regions > 100 km² 4 · Europe's bands false
+   seed 26 old (N 16, k 8, BFS r* 2): land 54.4 % · mountain 15.4 % · plain + plateau 62.2 % · median 91 m · peak 3346 m · R 0.86 rampart false · convergent perimeter 9.4 % · mountain regions > 100 km² 4 · Europe's bands false
+   seed 27 young (N 16, k 8, compact r* 3): land 52.0 % · mountain 76.9 % · plain + plateau 9.5 % · median 924 m · peak 4368 m · R 1.12 rampart false · convergent perimeter 3.4 % · mountain regions > 100 km² 3 · Europe's bands false
+   seed 27 old (N 16, k 8, compact r* 3): land 52.0 % · mountain 35.1 % · plain + plateau 21.3 % · median 277 m · peak 3358 m · R 0.67 rampart false · convergent perimeter 3.4 % · mountain regions > 100 km² 15 · Europe's bands false
+   seed 28 young (N 16, k 8, compact r* 3): land 53.2 % · mountain 75.7 % · plain + plateau 12.3 % · median 1055 m · peak 5298 m · R 1.42 rampart false · convergent perimeter 29.3 % · mountain regions > 100 km² 2 · Europe's bands false
+   seed 28 old (N 16, k 8, compact r* 3): land 53.2 % · mountain 51.1 % · plain + plateau 21.8 % · median 485 m · peak 5067 m · R 0.93 rampart false · convergent perimeter 29.3 % · mountain regions > 100 km² 2 · Europe's bands false
+   seed 29 young (N 20, k 13, compact r* 2): land 52.3 % · mountain 61.7 % · plain + plateau 11.6 % · median 474 m · peak 4472 m · R 1.32 rampart false · convergent perimeter 14.6 % · mountain regions > 100 km² 5 · Europe's bands false
+   seed 29 old (N 20, k 13, compact r* 2): land 52.3 % · mountain 18.2 % · plain + plateau 48.8 % · median 150 m · peak 2340 m · R 1.18 rampart false · convergent perimeter 14.6 % · mountain regions > 100 km² 10 · Europe's bands true
+   seed 30 young (N 16, k 10, compact r* 1): land 50.9 % · mountain 66.7 % · plain + plateau 13.1 % · median 671 m · peak 5102 m · R 1.40 rampart false · convergent perimeter 25.0 % · mountain regions > 100 km² 7 · Europe's bands false
+   seed 30 old (N 16, k 10, compact r* 1): land 50.9 % · mountain 28.9 % · plain + plateau 35.5 % · median 188 m · peak 4688 m · R 1.12 rampart false · convergent perimeter 25.0 % · mountain regions > 100 km² 11 · Europe's bands false
+   seed 31 young (N 20, k 11, BFS r* 2): land 53.4 % · mountain 72.5 % · plain + plateau 11.2 % · median 769 m · peak 5360 m · R 1.32 rampart false · convergent perimeter 20.5 % · mountain regions > 100 km² 2 · Europe's bands false
+   seed 31 old (N 20, k 11, BFS r* 2): land 53.4 % · mountain 36.4 % · plain + plateau 24.5 % · median 236 m · peak 5307 m · R 1.21 rampart false · convergent perimeter 20.5 % · mountain regions > 100 km² 4 · Europe's bands false
+   seed 32 young (N 16, k 8, compact r* 2): land 50.1 % · mountain 86.3 % · plain + plateau 3.1 % · median 1610 m · peak 5114 m · R 1.10 rampart false · convergent perimeter 45.3 % · mountain regions > 100 km² 2 · Europe's bands false
+   seed 32 old (N 16, k 8, compact r* 2): land 50.1 % · mountain 59.7 % · plain + plateau 13.4 % · median 642 m · peak 4303 m · R 0.71 rampart false · convergent perimeter 45.3 % · mountain regions > 100 km² 8 · Europe's bands false
+   seed 10481999410520546993 young (N 20, k 9, compact r* 2): land 51.5 % · mountain 76.6 % · plain + plateau 14.7 % · median 1009 m · peak 5636 m · R 1.33 rampart false · convergent perimeter 23.1 % · mountain regions > 100 km² 2 · Europe's bands false
+   seed 10481999410520546993 old (N 20, k 9, compact r* 2): land 51.5 % · mountain 43.4 % · plain + plateau 17.5 % · median 381 m · peak 5785 m · R 1.30 rampart false · convergent perimeter 23.1 % · mountain regions > 100 km² 7 · Europe's bands false
+   D young mountain %: median 70.7 · deciles 60.6/63.5/64.2/66.7/70.7/73.0/75.7/77.9/80.3
+   D young plain + plateau %: median 10.7 · deciles 5.8/7.3/8.6/9.5/10.7/11.6/12.4/13.3/14.8
+   D young median m: median 706.7 · deciles 489.5/552.3/621.8/665.8/706.7/768.6/881.0/1004.8/1054.9
+   D young peak m: median 4711.4 · deciles 4245.8/4360.2/4441.0/4595.3/4711.4/5102.0/5360.2/5463.9/5636.2
+   D young R: median 1.3 · deciles 1.0/1.1/1.1/1.2/1.3/1.3/1.4/1.4/1.5
+   D young mountain regions: median 3.0 · deciles 1.0/2.0/2.0/2.0/3.0/3.0/4.0/5.0/5.0
+   D young convergent perimeter %: median 17.2 · deciles 0.0/5.7/9.4/12.0/17.2/20.5/23.1/27.0/33.4
+   D young: the rampart on 0 % of the seeds · Spearman(convergent perimeter, R) -0.08
+   D old mountain %: median 28.9 · deciles 11.0/17.0/22.2/23.2/28.9/33.9/36.8/43.4/51.1
+   D old plain + plateau %: median 26.1 · deciles 11.6/15.0/21.3/22.6/26.1/32.2/36.8/44.4/50.8
+   D old median m: median 221.5 · deciles 93.2/136.7/157.1/164.5/221.5/255.3/291.0/372.9/475.8
+   D old peak m: median 3957.1 · deciles 1457.1/1648.5/2339.7/3345.6/3957.1/4302.6/4568.1/4698.4/5066.7
+   D old R: median 0.8 · deciles 0.6/0.6/0.7/0.8/0.8/1.0/1.1/1.1/1.3
+   D old mountain regions: median 8.0 · deciles 4.0/4.0/5.0/6.0/8.0/8.0/9.0/11.0/13.0
+   D old convergent perimeter %: median 17.2 · deciles 0.0/5.7/9.4/12.0/17.2/20.5/23.1/27.0/33.4
+   D old: the rampart on 0 % of the seeds · Spearman(convergent perimeter, R) 0.17
+   D: 33 seeds screened (0 with no qualified continent) · within Europe's three bands at ≥ 1 age: 15 % · the rampart at young on 0 % · cost 4494 s CPU in all (136 per seed), the selection 57 %
+   the catalogue: docs/reports/relief_method/f172_sea_level/catalogue.tsv and images/f172_catalogue.png (one row per seed in the table's order; young shaded | young classes | old shaded | old classes)
+==========  end Finding 172 (screen) . 4221.0 s wall  ==========
+test f172_screen ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 4221.05s

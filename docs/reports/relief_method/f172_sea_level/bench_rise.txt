@@ -1,0 +1,189 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.16s
+     Running tests\f172_cascade.rs (target_f172b\release\deps\f172_cascade-6d8a55f87fea8411.exe)
+running 1 test
+==========  Finding 172 . the sea-level rise (Δ 134 m over the last 2.58 Myr), the rampart  ==========
+   Corsica's coast Coast { dimension: 1.122932, length_ratio: 1.370949, aligned: 0.27188444, block_index: 0.78062284, edges: 5780 }; the bands: dimension 1.06–1.18 · length ratio 1.15–1.60 · aligned 0.22–0.32 · block index 0.58–0.98
+test f172_rise has been running for over 60 seconds
+   ══ seed 10481999410520546993 (Selected { plates: 20, k: 9, start: 0, compact: true }, N 20) ══
+      A1 the perimeter (64²): convergent 23.1 % · divergent 4.7 % · transform 1.2 % · no boundary 71.0 % · Σ Δs_DS by the distance to the coast (cells 0…7, ≥ 8): 1.43 [481] · 0.92 [315] · 0.71 [276] · 0.36 [310] · 0.15 [161] · 0.11 [170] · 0.10 [114] · 0.10 [114] · 0.12 [167]
+   ── seed 10481999410520546993 B0:
+   F171 K2 (before)           plain   1.0 % · plateau   4.9 % · hill  12.3 % · mountain  81.8 % · land 82839 km² · deciles 245/466/718/1057/1255/1635/2181/2961/3864
+   F172 (after the rise)      plain   1.1 % · plateau   5.1 % · hill  12.2 % · mountain  81.6 % · land 80823 km² · deciles 234/482/762/1099/1292/1689/2235/3012/3894
+      the classes move by ≤ 0.2 points · peaks 6442 → 6489 m · the land lost against F171 0.68 % · islands ≥ 1 km² (lowstand land → after) 2 → 2 · inland 256² cells ≤ −Δ 668
+      the coast (torus): before 0.983 / 0.901 / 0.272 / 0.831 (2 in the bands) → after 1.048 / 1.114 / 0.337 / 0.686 (1 in the bands) · Δdimension +0.065 · Δlength ratio +0.212 → closer to Corsica: false
+      drowned valleys (≥ 2 km): 3 · length p50 / p90 / max 2.7 / 2.7 / 3.3 km · Spearman(length, river area) -0.50 · the 5 longest (km, km²): 3.3 km / 77 km², 2.7 km / 71 km², 2.5 km / 116 km² · the shelf (0 to −Δ) median / p90 0.39 / 0.83 km
+      A2 (F171 K2): the mountain share within 10 km 90.4 % · 20 km 94.7 % · interior 72.7 % · R 1.30 → rampart false
+      A3 (F171 K2, the mountain class): 0–10 km: 13625 km² of mountain, walls 28° 26.01 %, facets 28.46 · 10–20 km: 13071 km² of mountain, walls 28° 14.36 %, facets 29.92 · > 20 km: 41040 km² of mountain, walls 28° 4.72 %, facets 14.91 · cover: 17036 km² of mountain, walls 28° 0.87 %, facets 8.73 · basement: 42048 km² of mountain, walls 28° 13.35 %, facets 23.32 · shield: 8652 km² of mountain, walls 28° 18.44 %, facets 27.48
+      after, 2048² whole: 13 of 19 within ×1.5 · out: facets 17.852/6.241; walls 28° 5.401/1.547; S_2 − 1 0.106/0.172; S_5 − 1 0.156/0.239; A_dir 0.436/0.206; F 0.077/0.043
+      after, 2048² mountain: 13 of 19 within ×1.5 · out: facets 20.393/6.746; walls 28° 6.541/2.320; S_2 − 1 0.103/0.175; S_5 − 1 0.147/0.255; A_dir 0.413/0.200; F 0.038/0.006
+      after: slope guard 0.410/0.537 · regularity 391 m CV_λ 0.890 · CV_L 0.951 · σ_θ 26.0° · R2_g 0.770 · lakes 14 / 2969 km² · cost before 450 / after 465 s CPU per world
+   ── seed 10481999410520546993 young 20 Myr:
+   F171 K2 (before)           plain   7.2 % · plateau   7.3 % · hill  10.3 % · mountain  75.3 % · land 83340 km² · deciles 363/465/587/754/978/1272/1695/2174/2806
+   F172 (after the rise)      plain   7.1 % · plateau   7.6 % · hill   8.7 % · mountain  76.6 % · land 81201 km² · deciles 412/478/629/777/1009/1308/1735/2206/2832
+      the classes move by ≤ 1.7 points · peaks 6062 → 6061 m · the land lost against F171 1.70 % · islands ≥ 1 km² (lowstand land → after) 2 → 2 · inland 256² cells ≤ −Δ 549
+      the coast (torus): before 0.985 / 0.904 / 0.298 / 0.788 (2 in the bands) → after 1.162 / 1.595 / 0.359 / 0.941 (3 in the bands) · Δdimension +0.177 · Δlength ratio +0.691 → closer to Corsica: true
+      drowned valleys (≥ 2 km): 5 · length p50 / p90 / max 2.5 / 3.5 / 13.3 km · Spearman(length, river area) 0.41 · the 5 longest (km, km²): 13.3 km / 3227 km², 3.5 km / 262 km², 2.5 km / 5 km², 2.3 km / 322 km², 2.3 km / 196 km² · the shelf (0 to −Δ) median / p90 0.87 / 2.34 km
+      A2 (F171 K2): the mountain share within 10 km 76.6 % · 20 km 86.9 % · interior 67.4 % · R 1.29 → rampart false
+      after, 2048² whole: 12 of 19 within ×1.5 · out: facets 15.140/6.241; walls 28° 4.578/1.547; CV_L 1.452/0.915; S_2 − 1 0.109/0.172; S_5 − 1 0.159/0.239; A_dir 0.430/0.206; F 0.085/0.043
+      after, 2048² mountain: 12 of 19 within ×1.5 · out: facets 19.028/6.746; walls 28° 5.878/2.320; octave 6.25–12.50 km 132.191/200.536; S_2 − 1 0.109/0.175; S_5 − 1 0.149/0.255; A_dir 0.386/0.200; F 0.024/0.006
+      after: slope guard 0.405/0.526 · regularity 391 m CV_λ 0.771 · CV_L 1.308 · σ_θ 25.4° · R2_g 0.708 · lakes 21 / 5249 km² · cost before 460 / after 479 s CPU per world
+   ── seed 10481999410520546993 intermediate 100 Myr:
+   F171 K2 (before)           plain   4.0 % · plateau  10.0 % · hill  23.1 % · mountain  62.9 % · land 83491 km² · deciles 122/267/408/511/638/764/907/1202/1769
+   F172 (after the rise)      plain   2.6 % · plateau  10.6 % · hill  20.8 % · mountain  66.0 % · land 79326 km² · deciles 169/326/445/546/673/787/941/1253/1815
+      the classes move by ≤ 3.1 points · peaks 5830 → 5838 m · the land lost against F171 4.69 % · islands ≥ 1 km² (lowstand land → after) 2 → 2 · inland 256² cells ≤ −Δ 484
+      the coast (torus): before 0.999 / 0.942 / 0.321 / 0.838 (1 in the bands) → after 1.290 / 2.282 / 0.350 / 1.033 (0 in the bands) · Δdimension +0.290 · Δlength ratio +1.340 → closer to Corsica: false
+      drowned valleys (≥ 2 km): 4 · length p50 / p90 / max 3.7 / 5.7 / 40.4 km · Spearman(length, river area) -0.20 · the 5 longest (km, km²): 40.4 km / 657 km², 5.7 km / 371 km², 3.7 km / 3 km², 2.7 km / 1083 km² · the shelf (0 to −Δ) median / p90 2.66 / 8.58 km
+      A2 (F171 K2): the mountain share within 10 km 39.3 % · 20 km 58.2 % · interior 63.5 % · R 0.92 → rampart false
+      after, 2048² whole: 14 of 19 within ×1.5 · out: facets 11.347/6.241; walls 28° 2.781/1.547; octave 6.25–12.50 km 79.189/159.805; A_dir 0.420/0.206; F 0.073/0.043
+      after, 2048² mountain: 12 of 19 within ×1.5 · out: facets 15.564/6.746; walls 28° 4.127/2.320; octave 6.25–12.50 km 98.012/200.536; S_2 − 1 0.109/0.175; S_5 − 1 0.149/0.255; A_dir 0.421/0.200; F 0.035/0.006
+      after: slope guard 0.345/0.511 · regularity 391 m CV_λ 0.769 · CV_L 0.914 · σ_θ 25.5° · R2_g 0.702 · lakes 16 / 3870 km² · cost before 474 / after 481 s CPU per world
+   ── seed 10481999410520546993 old 300 Myr:
+   F171 K2 (before)           plain  17.2 % · plateau   5.4 % · hill  36.8 % · mountain  40.5 % · land 83213 km² · deciles 61/125/187/262/348/443/569/800/1409
+   F172 (after the rise)      plain  11.5 % · plateau   6.0 % · hill  39.2 % · mountain  43.4 % · land 77617 km² · deciles 90/154/221/294/381/475/603/860/1457
+      the classes move by ≤ 5.7 points · peaks 5602 → 5613 m · the land lost against F171 7.22 % · islands ≥ 1 km² (lowstand land → after) 2 → 3 · inland 256² cells ≤ −Δ 92
+      the coast (torus): before 1.008 / 0.946 / 0.302 / 0.817 (2 in the bands) → after 1.321 / 2.423 / 0.362 / 1.098 (0 in the bands) · Δdimension +0.313 · Δlength ratio +1.477 → closer to Corsica: false
+      drowned valleys (≥ 2 km): 2 · length p50 / p90 / max 3.3 / 3.3 / 184.6 km · Spearman(length, river area) NaN · the 5 longest (km, km²): 184.6 km / 731 km², 3.3 km / 1 km² · the shelf (0 to −Δ) median / p90 4.23 / 18.53 km
+      A2 (F171 K2): the mountain share within 10 km 30.9 % · 20 km 43.0 % · interior 38.4 % · R 1.12 → rampart false
+      A3 (F171 K2, the mountain class): 0–10 km: 5591 km² of mountain, walls 28° 6.19 %, facets 18.32 · 10–20 km: 8894 km² of mountain, walls 28° 5.79 %, facets 16.48 · > 20 km: 19221 km² of mountain, walls 28° 4.88 %, facets 12.40 · cover: 154 km² of mountain, walls 28° 1.84 %, facets 13.14 · basement: 29072 km² of mountain, walls 28° 5.45 %, facets 14.24 · shield: 4480 km² of mountain, walls 28° 4.72 %, facets 15.14
+      after, 2048² whole: 14 of 19 within ×1.5 · out: octave 3.12–6.25 km 62.837/100.862; octave 6.25–12.50 km 70.345/159.805; S_2 − 1 0.113/0.172; A_dir 0.423/0.206; F 0.096/0.043
+      after, 2048² mountain: 12 of 19 within ×1.5 · out: facets 15.414/6.746; walls 28° 4.289/2.320; octave 6.25–12.50 km 107.236/200.536; S_2 − 1 0.104/0.175; S_5 − 1 0.145/0.255; A_dir 0.407/0.200; F 0.018/0.006
+      after: slope guard 0.352/0.513 · regularity 391 m CV_λ 0.762 · CV_L 0.884 · σ_θ 24.9° · R2_g 0.710 · lakes 24 / 3853 km² · cost before 475 / after 480 s CPU per world
+   sensitivity Δ = 60 m (the témoin, old): the coast 1.008 / 0.946 → 1.271 / 2.131 (dimension / length ratio) · drowned valleys 23 (max 184.6 km) · the classes move ≤ 3.8 points
+   ══ seed 42 (Selected { plates: 16, k: 7, start: 3, compact: true }, N 16) ══
+      A1 the perimeter (64²): convergent 14.8 % · divergent 4.1 % · transform 0.0 % · no boundary 81.0 % · Σ Δs_DS by the distance to the coast (cells 0…7, ≥ 8): 1.39 [413] · 0.90 [283] · 0.59 [269] · 0.33 [338] · 0.15 [196] · 0.08 [174] · 0.05 [118] · 0.03 [99] · 0.07 [211]
+   ── seed 42 B0:
+   F171 K2 (before)           plain   5.4 % · plateau   0.7 % · hill  26.3 % · mountain  67.6 % · land 82490 km² · deciles 96/179/293/449/662/995/1510/2310/3397
+   F172 (after the rise)      plain   1.9 % · plateau   0.8 % · hill  24.3 % · mountain  73.0 % · land 74272 km² · deciles 100/222/376/564/812/1180/1743/2523/3508
+      the classes move by ≤ 5.5 points · peaks 6544 → 6570 m · the land lost against F171 6.14 % · islands ≥ 1 km² (lowstand land → after) 1 → 2 · inland 256² cells ≤ −Δ 561
+      the coast (torus): before 0.975 / 0.886 / 0.299 / 0.998 (1 in the bands) → after 1.220 / 1.872 / 0.347 / 0.944 (1 in the bands) · Δdimension +0.246 · Δlength ratio +0.985 → closer to Corsica: false
+      drowned valleys (≥ 2 km): 6 · length p50 / p90 / max 2.3 / 16.0 / 106.6 km · Spearman(length, river area) 0.64 · the 5 longest (km, km²): 106.6 km / 167 km², 16.0 km / 162 km², 7.0 km / 161 km², 2.3 km / 283 km², 2.1 km / 80 km² · the shelf (0 to −Δ) median / p90 9.33 / 52.04 km
+      A2 (F171 K2): the mountain share within 10 km 77.9 % · 20 km 81.5 % · interior 59.2 % · R 1.38 → rampart false
+      A3 (F171 K2, the mountain class): 0–10 km: 10989 km² of mountain, walls 28° 19.97 %, facets 29.17 · 10–20 km: 10820 km² of mountain, walls 28° 13.08 %, facets 28.23 · > 20 km: 33921 km² of mountain, walls 28° 5.88 %, facets 14.96 · cover: 15022 km² of mountain, walls 28° 1.12 %, facets 6.76 · basement: 33625 km² of mountain, walls 28° 13.09 %, facets 24.81 · shield: 7082 km² of mountain, walls 28° 14.63 %, facets 28.81
+      after, 2048² whole: 15 of 19 within ×1.5 · out: facets 16.227/6.241; walls 28° 4.950/1.547; S_2 − 1 0.113/0.172; A_dir 0.387/0.206
+      after, 2048² mountain: 14 of 19 within ×1.5 · out: facets 20.785/6.746; walls 28° 6.644/2.320; S_2 − 1 0.105/0.175; S_5 − 1 0.144/0.255; A_dir 0.370/0.200
+      after: slope guard 0.432/0.535 · regularity 391 m CV_λ 0.812 · CV_L 0.845 · σ_θ 25.4° · R2_g 0.676 · lakes 11 / 1240 km² · cost before 443 / after 455 s CPU per world
+   ── seed 42 young 20 Myr:
+   F171 K2 (before)           plain  19.8 % · plateau   2.2 % · hill  18.9 % · mountain  59.0 % · land 82729 km² · deciles 66/215/354/414/522/734/1084/1552/2386
+   F172 (after the rise)      plain  16.4 % · plateau   2.6 % · hill  17.2 % · mountain  63.8 % · land 76377 km² · deciles 151/296/384/458/581/836/1181/1652/2483
+      the classes move by ≤ 4.8 points · peaks 5586 → 5571 m · the land lost against F171 6.22 % · islands ≥ 1 km² (lowstand land → after) 1 → 3 · inland 256² cells ≤ −Δ 524
+      the coast (torus): before 0.977 / 0.892 / 0.312 / 0.939 (2 in the bands) → after 1.244 / 2.004 / 0.349 / 0.999 (0 in the bands) · Δdimension +0.267 · Δlength ratio +1.112 → closer to Corsica: false
+      drowned valleys (≥ 2 km): 7 · length p50 / p90 / max 8.0 / 46.5 / 73.0 km · Spearman(length, river area) 0.43 · the 5 longest (km, km²): 73.0 km / 5431 km², 46.5 km / 297 km², 8.4 km / 347 km², 8.0 km / 151 km², 3.5 km / 160 km² · the shelf (0 to −Δ) median / p90 2.76 / 36.84 km
+      A2 (F171 K2): the mountain share within 10 km 66.1 % · 20 km 74.5 % · interior 50.4 % · R 1.48 → rampart false
+      after, 2048² whole: 14 of 19 within ×1.5 · out: facets 12.996/6.241; walls 28° 3.601/1.547; octave 6.25–12.50 km 103.392/159.805; A_dir 0.381/0.206; F 0.091/0.043
+      after, 2048² mountain: 11 of 19 within ×1.5 · out: facets 19.011/6.746; walls 28° 5.541/2.320; octave 6.25–12.50 km 129.796/200.536; S_2 − 1 0.110/0.175; S_5 − 1 0.145/0.255; S_10 − 1 0.190/0.289; A_dir 0.372/0.200; F 0.022/0.006
+      after: slope guard 0.404/0.524 · regularity 391 m CV_λ 0.753 · CV_L 0.843 · σ_θ 25.5° · R2_g 0.663 · lakes 14 / 1216 km² · cost before 458 / after 459 s CPU per world
+   ── seed 42 intermediate 100 Myr:
+   F171 K2 (before)           plain  14.1 % · plateau   4.8 % · hill  36.6 % · mountain  44.5 % · land 82771 km² · deciles 56/118/184/265/352/449/569/718/1144
+   F172 (after the rise)      plain   9.2 % · plateau   5.3 % · hill  37.3 % · mountain  48.2 % · land 76897 km² · deciles 87/151/223/304/386/484/600/753/1201
+      the classes move by ≤ 5.0 points · peaks 4654 → 4687 m · the land lost against F171 6.25 % · islands ≥ 1 km² (lowstand land → after) 1 → 5 · inland 256² cells ≤ −Δ 526
+      the coast (torus): before 0.987 / 0.931 / 0.321 / 0.924 (1 in the bands) → after 1.325 / 2.508 / 0.354 / 1.023 (0 in the bands) · Δdimension +0.338 · Δlength ratio +1.576 → closer to Corsica: false
+      drowned valleys (≥ 2 km): 4 · length p50 / p90 / max 17.8 / 21.9 / 56.6 km · Spearman(length, river area) 0.20 · the 5 longest (km, km²): 56.6 km / 1841 km², 21.9 km / 101 km², 17.8 km / 375 km², 2.9 km / 651 km² · the shelf (0 to −Δ) median / p90 4.90 / 18.35 km
+      A2 (F171 K2): the mountain share within 10 km 37.0 % · 20 km 42.8 % · interior 44.1 % · R 0.97 → rampart false
+      after, 2048² whole: 14 of 19 within ×1.5 · out: octave 3.12–6.25 km 57.352/100.862; octave 6.25–12.50 km 76.752/159.805; S_2 − 1 0.112/0.172; A_dir 0.401/0.206; F 0.090/0.043
+      after, 2048² mountain: 12 of 19 within ×1.5 · out: facets 12.039/6.746; octave 3.12–6.25 km 82.673/126.569; octave 6.25–12.50 km 110.638/200.536; S_2 − 1 0.099/0.175; S_5 − 1 0.138/0.255; A_dir 0.406/0.200; F 0.021/0.006
+      after: slope guard 0.312/0.500 · regularity 391 m CV_λ 0.702 · CV_L 0.820 · σ_θ 25.0° · R2_g 0.680 · lakes 18 / 1736 km² · cost before 453 / after 456 s CPU per world
+   ── seed 42 old 300 Myr:
+   F171 K2 (before)           plain  49.8 % · plateau   0.8 % · hill  28.4 % · mountain  21.0 % · land 82302 km² · deciles 24/52/83/116/155/203/264/379/765
+   F172 (after the rise)      plain  44.2 % · plateau   0.9 % · hill  31.8 % · mountain  23.1 % · land 74890 km² · deciles 39/72/105/138/178/225/290/422/837
+      the classes move by ≤ 5.6 points · peaks 4211 → 4212 m · the land lost against F171 8.05 % · islands ≥ 1 km² (lowstand land → after) 1 → 4 · inland 256² cells ≤ −Δ 563
+      the coast (torus): before 0.997 / 0.957 / 0.289 / 0.905 (2 in the bands) → after 1.376 / 2.825 / 0.354 / 1.013 (0 in the bands) · Δdimension +0.379 · Δlength ratio +1.869 → closer to Corsica: false
+      drowned valleys (≥ 2 km): 4 · length p50 / p90 / max 22.5 / 23.2 / 65.0 km · Spearman(length, river area) 1.00 · the 5 longest (km, km²): 65.0 km / 225 km², 23.2 km / 154 km², 22.5 km / 124 km², 4.1 km / 27 km² · the shelf (0 to −Δ) median / p90 6.99 / 22.52 km
+      A2 (F171 K2): the mountain share within 10 km 28.9 % · 20 km 28.9 % · interior 16.7 % · R 1.73 → rampart false
+      A3 (F171 K2, the mountain class): 0–10 km: 4045 km² of mountain, walls 28° 4.84 %, facets 17.47 · 10–20 km: 3650 km² of mountain, walls 28° 5.65 %, facets 16.51 · > 20 km: 9600 km² of mountain, walls 28° 6.03 %, facets 15.20 · cover: 54 km² of mountain, walls 28° 4.12 %, facets NaN · basement: 16064 km² of mountain, walls 28° 5.73 %, facets 16.18 · shield: 1177 km² of mountain, walls 28° 5.00 %, facets 13.24
+      after, 2048² whole: 14 of 19 within ×1.5 · out: slope p50 0.099/0.247; octave 3.12–6.25 km 46.177/100.862; octave 6.25–12.50 km 70.005/159.805; A_dir 0.362/0.206; F 0.163/0.043
+      after, 2048² mountain: 12 of 19 within ×1.5 · out: facets 17.256/6.746; walls 28° 4.503/2.320; S_2 − 1 0.102/0.175; S_5 − 1 0.138/0.255; S_10 − 1 0.179/0.289; A_dir 0.385/0.200; F 0.010/0.006
+      after: slope guard 0.381/0.515 · regularity 391 m CV_λ 0.657 · CV_L 0.839 · σ_θ 25.3° · R2_g 0.679 · lakes 14 / 962 km² · cost before 457 / after 501 s CPU per world
+   ══ seed 1 (Selected { plates: 16, k: 10, start: 6, compact: false }, N 16) ══
+      A1 the perimeter (64²): convergent 18.5 % · divergent 12.4 % · transform 1.4 % · no boundary 67.8 % · Σ Δs_DS by the distance to the coast (cells 0…7, ≥ 8): 1.02 [609] · 0.59 [425] · 0.35 [370] · 0.18 [357] · 0.05 [152] · 0.05 [105] · 0.09 [31] · 0.17 [13] · 0.23 [3]
+   ── seed 1 B0:
+   F171 K2 (before)           plain   6.0 % · plateau   1.6 % · hill  30.1 % · mountain  62.4 % · land 80793 km² · deciles 70/155/239/389/606/906/1374/2245/3300
+   F172 (after the rise)      plain   2.3 % · plateau   1.9 % · hill  25.7 % · mountain  70.1 % · land 70269 km² · deciles 105/194/352/545/799/1126/1673/2528/3492
+      the classes move by ≤ 7.8 points · peaks 5450 → 5461 m · the land lost against F171 7.52 % · islands ≥ 1 km² (lowstand land → after) 1 → 2 · inland 256² cells ≤ −Δ 1242
+      the coast (torus): before 0.979 / 0.902 / 0.303 / 0.785 (2 in the bands) → after 1.214 / 1.813 / 0.347 / 0.955 (1 in the bands) · Δdimension +0.235 · Δlength ratio +0.910 → closer to Corsica: false
+      drowned valleys (≥ 2 km): 8 · length p50 / p90 / max 3.9 / 70.9 / 184.0 km · Spearman(length, river area) 0.41 · the 5 longest (km, km²): 184.0 km / 70 km², 70.9 km / 151 km², 5.1 km / 879 km², 4.9 km / 213 km², 3.9 km / 128 km² · the shelf (0 to −Δ) median / p90 3.32 / 24.91 km
+      A2 (F171 K2): the mountain share within 10 km 78.3 % · 20 km 82.0 % · interior 43.2 % · R 1.90 → rampart false
+      A3 (F171 K2, the mountain class): 0–10 km: 14133 km² of mountain, walls 28° 22.66 %, facets 28.98 · 10–20 km: 14316 km² of mountain, walls 28° 15.04 %, facets 27.40 · > 20 km: 21939 km² of mountain, walls 28° 5.22 %, facets 14.86 · cover: 9635 km² of mountain, walls 28° 1.23 %, facets 7.42 · basement: 34635 km² of mountain, walls 28° 16.25 %, facets 25.20 · shield: 6118 km² of mountain, walls 28° 12.33 %, facets 29.03
+      after, 2048² whole: 13 of 19 within ×1.5 · out: facets 16.184/6.241; walls 28° 5.855/1.547; slope p50 0.378/0.247; S_2 − 1 0.104/0.172; S_5 − 1 0.153/0.239; A_dir 0.382/0.206
+      after, 2048² mountain: 14 of 19 within ×1.5 · out: facets 22.809/6.746; walls 28° 8.178/2.320; S_2 − 1 0.097/0.175; S_5 − 1 0.136/0.255; A_dir 0.374/0.200
+      after: slope guard 0.452/0.544 · regularity 391 m CV_λ 0.800 · CV_L 1.022 · σ_θ 24.9° · R2_g 0.695 · lakes 5 / 1938 km² · cost before 1080 / after 1066 s CPU per world
+   ── seed 1 young 20 Myr:
+   F171 K2 (before)           plain  16.8 % · plateau   0.1 % · hill  26.2 % · mountain  56.8 % · land 80137 km² · deciles 111/199/261/319/425/620/933/1378/2172
+   F172 (after the rise)      plain  15.3 % · plateau   0.2 % · hill  23.9 % · mountain  60.6 % · land 75051 km² · deciles 155/233/288/355/480/687/1010/1462/2242
+      the classes move by ≤ 3.8 points · peaks 5032 → 5041 m · the land lost against F171 5.37 % · islands ≥ 1 km² (lowstand land → after) 1 → 3 · inland 256² cells ≤ −Δ 1398
+      the coast (torus): before 0.987 / 0.927 / 0.311 / 0.775 (2 in the bands) → after 1.224 / 1.892 / 0.351 / 0.987 (0 in the bands) · Δdimension +0.237 · Δlength ratio +0.965 → closer to Corsica: false
+      drowned valleys (≥ 2 km): 2 · length p50 / p90 / max 16.0 / 16.0 / 113.3 km · Spearman(length, river area) NaN · the 5 longest (km, km²): 113.3 km / 215 km², 16.0 km / 2680 km² · the shelf (0 to −Δ) median / p90 1.67 / 13.28 km
+      A2 (F171 K2): the mountain share within 10 km 63.8 % · 20 km 72.7 % · interior 39.6 % · R 1.84 → rampart false
+      after, 2048² whole: 13 of 19 within ×1.5 · out: facets 12.580/6.241; walls 28° 3.767/1.547; octave 6.25–12.50 km 102.369/159.805; S_2 − 1 0.114/0.172; A_dir 0.402/0.206; F 0.068/0.043
+      after, 2048² mountain: 11 of 19 within ×1.5 · out: facets 19.443/6.746; walls 28° 6.033/2.320; octave 6.25–12.50 km 132.170/200.536; S_2 − 1 0.102/0.175; S_5 − 1 0.133/0.255; S_10 − 1 0.183/0.289; A_dir 0.397/0.200; F 0.015/0.006
+      after: slope guard 0.413/0.526 · regularity 391 m CV_λ 0.717 · CV_L 1.100 · σ_θ 25.4° · R2_g 0.660 · lakes 6 / 2732 km² · cost before 1063 / after 1088 s CPU per world
+   ── seed 1 intermediate 100 Myr:
+   F171 K2 (before)           plain  14.1 % · plateau   2.2 % · hill  51.3 % · mountain  32.4 % · land 78840 km² · deciles 50/104/161/220/282/360/422/516/744
+   F172 (after the rise)      plain  10.6 % · plateau   2.7 % · hill  50.2 % · mountain  36.5 % · land 70957 km² · deciles 83/146/205/260/324/387/450/548/784
+      the classes move by ≤ 4.1 points · peaks 3031 → 3025 m · the land lost against F171 8.52 % · islands ≥ 1 km² (lowstand land → after) 1 → 3 · inland 256² cells ≤ −Δ 1506
+      the coast (torus): before 0.994 / 0.945 / 0.320 / 1.065 (1 in the bands) → after 1.331 / 2.548 / 0.352 / 1.087 (0 in the bands) · Δdimension +0.337 · Δlength ratio +1.603 → closer to Corsica: false
+      drowned valleys (≥ 2 km): 1 · length p50 / p90 / max 32.6 / 32.6 / 32.6 km · Spearman(length, river area) NaN · the 5 longest (km, km²): 32.6 km / 533 km² · the shelf (0 to −Δ) median / p90 3.52 / 8.22 km
+      A2 (F171 K2): the mountain share within 10 km 22.4 % · 20 km 39.4 % · interior 23.7 % · R 1.66 → rampart false
+      after, 2048² whole: 15 of 19 within ×1.5 · out: octave 3.12–6.25 km 50.216/100.862; octave 6.25–12.50 km 51.291/159.805; A_dir 0.407/0.206; F 0.068/0.043
+      after, 2048² mountain: 11 of 19 within ×1.5 · out: facets 11.986/6.746; octave 3.12–6.25 km 83.336/126.569; octave 6.25–12.50 km 85.120/200.536; S_2 − 1 0.101/0.175; S_5 − 1 0.132/0.255; S_10 − 1 0.172/0.289; A_dir 0.440/0.200; F 0.015/0.006
+      after: slope guard 0.336/0.495 · regularity 391 m CV_λ 0.561 · CV_L 0.780 · σ_θ 23.8° · R2_g 0.494 · lakes 3 / 2109 km² · cost before 1080 / after 1062 s CPU per world
+   ── seed 1 old 300 Myr:
+   F171 K2 (before)           plain  48.5 % · plateau   0.1 % · hill  42.4 % · mountain   9.0 % · land 77329 km² · deciles 19/38/58/81/108/140/185/249/351
+   F172 (after the rise)      plain  39.8 % · plateau   0.1 % · hill  49.1 % · mountain  11.0 % · land 65781 km² · deciles 38/63/86/109/137/170/218/280/373
+      the classes move by ≤ 8.6 points · peaks 1971 → 1913 m · the land lost against F171 18.02 % · islands ≥ 1 km² (lowstand land → after) 1 → 3 · inland 256² cells ≤ −Δ 165
+      the coast (torus): before 1.001 / 0.956 / 0.308 / 1.179 (1 in the bands) → after 1.389 / 2.940 / 0.357 / 1.059 (0 in the bands) · Δdimension +0.388 · Δlength ratio +1.985 → closer to Corsica: false
+      drowned valleys (≥ 2 km): 1 · length p50 / p90 / max 251.4 / 251.4 / 251.4 km · Spearman(length, river area) NaN · the 5 longest (km, km²): 251.4 km / 91 km² · the shelf (0 to −Δ) median / p90 6.25 / 30.89 km
+      A2 (F171 K2): the mountain share within 10 km 5.9 % · 20 km 9.4 % · interior 8.1 % · R 1.16 → rampart false
+      A3 (F171 K2, the mountain class): 0–10 km: 1458 km² of mountain, walls 28° 4.05 %, facets 12.12 · 10–20 km: 2798 km² of mountain, walls 28° 1.18 %, facets 6.44 · > 20 km: 2735 km² of mountain, walls 28° 0.56 %, facets 4.09 · cover: 11 km² of mountain, walls 28° 0.00 %, facets NaN · basement: 6777 km² of mountain, walls 28° 1.59 %, facets 6.63 · shield: 203 km² of mountain, walls 28° 0.00 %, facets 4.72
+      after, 2048² whole: 11 of 19 within ×1.5 · out: slope p50 0.123/0.247; slope p90 0.316/0.501; octave 1.56–3.12 km 34.840/62.883; octave 3.12–6.25 km 32.400/100.862; octave 6.25–12.50 km 34.594/159.805; S_2 − 1 0.113/0.172; A_dir 0.399/0.206; F 0.131/0.043
+      after, 2048² mountain: 11 of 19 within ×1.5 · out: octave 0.39–0.78 km 43.092/19.227; octave 0.78–1.56 km 79.015/43.222; octave 6.25–12.50 km 104.389/200.536; S_2 − 1 0.081/0.175; S_5 − 1 0.102/0.255; S_10 − 1 0.114/0.289; A_dir 0.495/0.200; F 0.022/0.006
+      after: slope guard 0.286/0.467 · regularity 391 m CV_λ 0.545 · CV_L 0.790 · σ_θ 23.7° · R2_g 0.499 · lakes 2 / 247 km² · cost before 1047 / after 1067 s CPU per world
+   ══ seed 9 (Selected { plates: 16, k: 7, start: 15, compact: true }, N 16) ══
+      A1 the perimeter (64²): convergent 6.4 % · divergent 5.5 % · transform 0.6 % · no boundary 87.5 % · Σ Δs_DS by the distance to the coast (cells 0…7, ≥ 8): 1.35 [483] · 0.65 [341] · 0.43 [293] · 0.24 [342] · 0.14 [204] · 0.12 [182] · 0.13 [104] · 0.15 [86] · 0.22 [64]
+   ── seed 9 B0:
+   F171 K2 (before)           plain   2.3 % · plateau   0.4 % · hill  21.0 % · mountain  76.3 % · land 82463 km² · deciles 106/266/413/595/823/1165/1619/2202/3091
+   F172 (after the rise)      plain   0.8 % · plateau   0.5 % · hill  16.7 % · mountain  82.1 % · land 75266 km² · deciles 185/355/507/710/966/1313/1768/2356/3197
+      the classes move by ≤ 5.8 points · peaks 5471 → 5491 m · the land lost against F171 7.22 % · islands ≥ 1 km² (lowstand land → after) 1 → 2 · inland 256² cells ≤ −Δ 282
+      the coast (torus): before 0.987 / 0.921 / 0.304 / 0.714 (2 in the bands) → after 1.207 / 1.810 / 0.346 / 0.905 (1 in the bands) · Δdimension +0.221 · Δlength ratio +0.888 → closer to Corsica: false
+      drowned valleys (≥ 2 km): 7 · length p50 / p90 / max 64.3 / 73.8 / 83.0 km · Spearman(length, river area) 0.64 · the 5 longest (km, km²): 83.0 km / 170 km², 73.8 km / 1518 km², 68.0 km / 1296 km², 64.3 km / 238 km², 21.9 km / 188 km² · the shelf (0 to −Δ) median / p90 3.63 / 30.94 km
+      A2 (F171 K2): the mountain share within 10 km 72.8 % · 20 km 77.6 % · interior 74.1 % · R 1.05 → rampart false
+      A3 (F171 K2, the mountain class): 0–10 km: 12219 km² of mountain, walls 28° 18.85 %, facets 27.65 · 10–20 km: 12147 km² of mountain, walls 28° 13.02 %, facets 25.46 · > 20 km: 38542 km² of mountain, walls 28° 5.77 %, facets 16.19 · cover: 14319 km² of mountain, walls 28° 1.33 %, facets 8.14 · basement: 40997 km² of mountain, walls 28° 12.35 %, facets 22.62 · shield: 7593 km² of mountain, walls 28° 11.24 %, facets 30.53
+      after, 2048² whole: 12 of 19 within ×1.5 · out: facets 17.417/6.241; walls 28° 5.584/1.547; slope p50 0.393/0.247; S_2 − 1 0.114/0.172; S_5 − 1 0.159/0.239; A_dir 0.359/0.206; F 0.020/0.043
+      after, 2048² mountain: 14 of 19 within ×1.5 · out: facets 21.030/6.746; walls 28° 6.716/2.320; S_2 − 1 0.110/0.175; S_5 − 1 0.149/0.255; A_dir 0.358/0.200
+      after: slope guard 0.431/0.533 · regularity 391 m CV_λ 0.748 · CV_L 0.850 · σ_θ 25.6° · R2_g 0.678 · lakes 9 / 391 km² · cost before 987 / after 1072 s CPU per world
+   ── seed 9 young 20 Myr:
+   F171 K2 (before)           plain   6.4 % · plateau   3.4 % · hill  23.4 % · mountain  66.7 % · land 82410 km² · deciles 127/247/382/485/624/849/1154/1562/2178
+   F172 (after the rise)      plain   5.5 % · plateau   3.7 % · hill  20.1 % · mountain  70.7 % · land 77375 km² · deciles 191/306/426/535/679/923/1222/1629/2231
+      the classes move by ≤ 4.0 points · peaks 5205 → 5191 m · the land lost against F171 5.25 % · islands ≥ 1 km² (lowstand land → after) 1 → 1 · inland 256² cells ≤ −Δ 287
+      the coast (torus): before 0.989 / 0.942 / 0.314 / 0.841 (2 in the bands) → after 1.266 / 2.164 / 0.353 / 0.992 (0 in the bands) · Δdimension +0.277 · Δlength ratio +1.222 → closer to Corsica: false
+      drowned valleys (≥ 2 km): 4 · length p50 / p90 / max 4.1 / 39.3 / 61.5 km · Spearman(length, river area) 0.00 · the 5 longest (km, km²): 61.5 km / 315 km², 39.3 km / 498 km², 4.1 km / 214 km², 3.3 km / 345 km² · the shelf (0 to −Δ) median / p90 2.49 / 17.82 km
+      A2 (F171 K2): the mountain share within 10 km 57.2 % · 20 km 68.0 % · interior 64.7 % · R 1.05 → rampart false
+      after, 2048² whole: 15 of 19 within ×1.5 · out: facets 13.824/6.241; walls 28° 3.746/1.547; octave 6.25–12.50 km 96.938/159.805; A_dir 0.379/0.206
+      after, 2048² mountain: 11 of 19 within ×1.5 · out: facets 18.878/6.746; walls 28° 5.241/2.320; octave 6.25–12.50 km 116.306/200.536; S_2 − 1 0.107/0.175; S_5 − 1 0.141/0.255; S_10 − 1 0.181/0.289; A_dir 0.381/0.200; F 0.020/0.006
+      after: slope guard 0.396/0.521 · regularity 391 m CV_λ 0.757 · CV_L 0.863 · σ_θ 25.0° · R2_g 0.662 · lakes 12 / 1255 km² · cost before 984 / after 1088 s CPU per world
+   ── seed 9 intermediate 100 Myr:
+   F171 K2 (before)           plain  10.4 % · plateau   9.4 % · hill  36.2 % · mountain  44.1 % · land 82173 km² · deciles 51/120/211/309/420/511/597/743/1011
+   F172 (after the rise)      plain   5.6 % · plateau  12.1 % · hill  34.9 % · mountain  47.3 % · land 74854 km² · deciles 100/188/277/374/476/545/632/782/1052
+      the classes move by ≤ 4.8 points · peaks 4939 → 4958 m · the land lost against F171 9.03 % · islands ≥ 1 km² (lowstand land → after) 1 → 1 · inland 256² cells ≤ −Δ 272
+      the coast (torus): before 0.998 / 0.975 / 0.304 / 0.868 (2 in the bands) → after 1.356 / 2.717 / 0.361 / 1.086 (0 in the bands) · Δdimension +0.357 · Δlength ratio +1.741 → closer to Corsica: false
+      drowned valleys (≥ 2 km): 3 · length p50 / p90 / max 33.4 / 33.4 / 45.9 km · Spearman(length, river area) 0.50 · the 5 longest (km, km²): 45.9 km / 54 km², 33.4 km / 3793 km², 8.0 km / 31 km² · the shelf (0 to −Δ) median / p90 4.49 / 12.35 km
+      A2 (F171 K2): the mountain share within 10 km 20.7 % · 20 km 35.4 % · interior 48.3 % · R 0.73 → rampart false
+      after, 2048² whole: 13 of 19 within ×1.5 · out: octave 3.12–6.25 km 51.908/100.862; octave 6.25–12.50 km 54.594/159.805; S_2 − 1 0.102/0.172; S_5 − 1 0.148/0.239; A_dir 0.466/0.206; F 0.074/0.043
+      after, 2048² mountain: 11 of 19 within ×1.5 · out: facets 10.169/6.746; octave 3.12–6.25 km 75.906/126.569; octave 6.25–12.50 km 79.834/200.536; S_2 − 1 0.098/0.175; S_5 − 1 0.136/0.255; S_10 − 1 0.191/0.289; A_dir 0.444/0.200; F 0.028/0.006
+      after: slope guard 0.291/0.489 · regularity 391 m CV_λ 0.718 · CV_L 1.115 · σ_θ 23.8° · R2_g 0.815 · lakes 9 / 6824 km² · cost before 1105 / after 1118 s CPU per world
+   ── seed 9 old 300 Myr:
+   F171 K2 (before)           plain  34.9 % · plateau   2.7 % · hill  41.1 % · mountain  21.3 % · land 81731 km² · deciles 23/51/87/124/179/245/318/417/592
+   F172 (after the rise)      plain  25.9 % · plateau   3.1 % · hill  47.1 % · mountain  23.9 % · land 72175 km² · deciles 50/88/122/167/223/282/352/453/623
+      the classes move by ≤ 9.0 points · peaks 4343 → 4368 m · the land lost against F171 11.89 % · islands ≥ 1 km² (lowstand land → after) 1 → 1 · inland 256² cells ≤ −Δ 296
+      the coast (torus): before 1.013 / 1.012 / 0.298 / 0.819 (2 in the bands) → after 1.394 / 3.013 / 0.353 / 1.052 (0 in the bands) · Δdimension +0.381 · Δlength ratio +2.002 → closer to Corsica: false
+      drowned valleys (≥ 2 km): 1 · length p50 / p90 / max 48.0 / 48.0 / 48.0 km · Spearman(length, river area) NaN · the 5 longest (km, km²): 48.0 km / 1619 km² · the shelf (0 to −Δ) median / p90 5.68 / 16.41 km
+      A2 (F171 K2): the mountain share within 10 km 11.0 % · 20 km 16.4 % · interior 23.7 % · R 0.69 → rampart false
+      A3 (F171 K2, the mountain class): 0–10 km: 1819 km² of mountain, walls 28° 9.72 %, facets 19.76 · 10–20 km: 3223 km² of mountain, walls 28° 3.91 %, facets 11.24 · > 20 km: 12395 km² of mountain, walls 28° 0.93 %, facets 5.18 · cover: 7 km² of mountain, walls 28° 23.96 %, facets NaN · basement: 15979 km² of mountain, walls 28° 2.60 %, facets 7.98 · shield: 1450 km² of mountain, walls 28° 0.05 %, facets 3.37
+      after, 2048² whole: 12 of 19 within ×1.5 · out: slope p50 0.125/0.247; octave 1.56–3.12 km 37.442/62.883; octave 3.12–6.25 km 36.636/100.862; octave 6.25–12.50 km 42.685/159.805; S_2 − 1 0.113/0.172; A_dir 0.399/0.206; F 0.120/0.043
+      after, 2048² mountain: 11 of 19 within ×1.5 · out: octave 0.39–0.78 km 29.266/19.227; octave 3.12–6.25 km 75.514/126.569; octave 6.25–12.50 km 87.981/200.536; S_2 − 1 0.090/0.175; S_5 − 1 0.124/0.255; S_10 − 1 0.171/0.289; A_dir 0.400/0.200; F 0.029/0.006
+      after: slope guard 0.258/0.476 · regularity 391 m CV_λ 0.677 · CV_L 1.185 · σ_θ 23.9° · R2_g 0.816 · lakes 10 / 364 km² · cost before 1052 / after 1106 s CPU per world
+   R: the worlds closer to Corsica with the classes within 3 points: [(10481999410520546993, 1)] · seeds with ≥ 2 such ages 0 · the classes' largest move 9.0 points · the dimension rose by ≥ 0.01 somewhere: true → no success as written
+   images: f172_before_after.png (rows = the seeds; young before | after, old before | after), f172_coast_25km.png (Corsica | F171 | F172, old, the window with the most drowned cells), f172_rampart_map.png (young: red = mountains within 20 km of the coast, white = interior mountains, brown = coastal band, green = interior), f172_shelf_profile.png (the mean depth 0–20 km from the coast, one line per world, coloured by seed) · north up · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+==========  end Finding 172 (rise) . 21723.4 s wall  ==========
+test f172_rise ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 21723.41s
