@@ -50,3 +50,42 @@ P5–P7 belong to Parts B and C, which are not run this round (the sources are u
 - **The stop**: Part B stops anyway (the sources); the round ends with A0–A4 and the request for the articles.
 - **Cost**: A1–A2 add nothing to the world (measures only); A3 doubles the physics level (+100 % of its CPU, ~+15–25 % of a
   world).
+
+# Parts B and C — predictions, written before any measurement
+
+## The reviewer's (hypotheses to check; at least one is false)
+
+- **Q1**: W₁₀ at young drops by ≥ 40 % on ≥ 4 of 5 seeds, but rampart_W still fires on ≥ 1 seed, where margins became active.
+- **Q2**: at the end, 10–50 % of the perimeter is active, on ≥ 4 seeds.
+- **Q3**: the median shelf width is in the B3 band, on ≥ 4 seeds.
+- **Q4**: at B0, the coastline's share within 1 cell of C1's contour drops by ≥ 20 points.
+- **Q5**: the coast's dimension rises by ≥ 0.03 but stays under the rocky band on ≥ 4 seeds. A smooth ramp gives a smooth coast.
+- **Q6**: the selection finds a continent on 5 of 5 seeds, but with more fallbacks to 20 or 24 plates than in Part A.
+- **Q7**: B-hétéro raises the dimension by ≥ 0.05 but moves the classes by > 3 points.
+- **Q8**: with the step halved, the drainage density, λ and the sinuosity move by < 5 %.
+
+## Mine
+
+- **The rim is not consumed** (the code reading in `f174_declared.md`): the active share at the end < 5 % on every seed, the
+  rim-consumed share ≈ 0. **Q2 refuted**; the stop « no consumption » is reported. Q1's second half (rampart_W where margins
+  became active) refuted with it.
+- **Q1's first half held**: W₁₀ at young drops ≥ 40 % on ≥ 4 seeds — the O-C Andes wedge no longer seeds at the coast; what
+  remains of Davis-Suppe is the O-O fallback dome, set back behind the rim and the ramp. rampart_W fires on 0–1 seed.
+- **Q6 held**: the main margin moves the coast ~9–10 cells of 64² inward of the plate boundary (rim 2.5 + ~7 cells of ramp),
+  so the continents shrink and the selection needs larger k: found on 4–5 seeds, with more fallbacks than Part A (which needed
+  20 plates on 2 seeds). The ×2 variants fail the selection on ≥ 2 seeds.
+- **Q3 held**: the median shelf width 6–14 km on ≥ 4 seeds (the pure-Airy expectation is 10.9 km; Davis-Suppe and the erosion
+  narrow it a little). The break depth 250–600 m: deeper than the textbook 140 m, since there is no sediment.
+- **Q4 refuted**: at B0 the share within 1 cell drops by 5–15 points only — the physics level lowers the coastal land by tens
+  of metres at B0, which moves a coast on a ~2° ramp by < 1 cell of 256².
+- **Q5**: the dimension stays 0.98–1.02 (under the rocky band, held), but rises by < 0.03 (refuted on the rise).
+- **Q7**: B-hétéro raises the dimension by 0.01–0.04 (refuted on 0.05) and moves the classes by > 3 points (held).
+- **Q8 held**: density, λ and S₅ within 5 %.
+- **The macro**: the mountain class at young falls by 20–50 % relative to Part A (the rampart was much of it); land in 50–62 %
+  by the selection.
+- **The coast by rock type**: the margin's coastline is mostly cover (low type) at every age; its windows' dimension 0.98–1.02,
+  inside the sandy reference (0.95–1.00) or just above, far under the lagoon one.
+- **The arms**: fewer at old than in Part A? No — the arms come from valleys worn to 0 m, unchanged by the margin; similar
+  counts.
+- **Success**: 0 / 5 (the active share fails); the margin does not enter the profile.
+- **Cost**: the selection adds 30–120 s CPU per world (~100–300 C1 runs at < 0.5 s); the world itself unchanged.

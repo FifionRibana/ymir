@@ -8,6 +8,7 @@
 //! Declared in `docs/reports/relief_method/f168_continent_size/f168_declared.md`.
 
 use crate::cascade::history::{Airy, C1Term, Mapping, run_c1_sources_mapped};
+use crate::cascade::margin::{self, Margin};
 use crate::cascade::physio::{Circumnavigation, circumnavigation};
 use crate::tectonics::isostasy::IsostasyConfig;
 use crate::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
@@ -66,6 +67,14 @@ impl C1Profile {
     /// C1's initial state under this profile.
     pub fn init_state(self, grid: usize, seed: u64) -> C1State {
         init_c1_state_phase_2_r7_growth(grid, seed, &self.init_params(), self.growth())
+    }
+
+    /// ADR Finding 174-B -- C1's initial state under this profile with the margin applied ([`margin::apply`]);
+    /// [`Margin::off`] is [`Self::init_state`] bit for bit.
+    pub fn init_state_margin(self, grid: usize, seed: u64, m: &Margin) -> C1State {
+        let mut st = self.init_state(grid, seed);
+        margin::apply(&mut st, m, &self.init_params(), seed);
+        st
     }
 }
 
@@ -168,9 +177,15 @@ pub fn k_range(plates: usize) -> Vec<usize> {
 /// ADR Finding 171-A1 -- **the default selection**: 16 plates, then 20, then 24 if nothing qualifies (r* ≥ 1). Returns the
 /// retained plate count (`None` when even 24 fails) and every selection tried.
 pub fn select_continent_default(seed: u64) -> (Option<usize>, Vec<(usize, Selection)>) {
+    select_continent_default_margin(seed, &Margin::off())
+}
+
+/// ADR Finding 174-B1 -- [`select_continent_default`] with every candidate's C1 run starting from the margined state;
+/// [`Margin::off`] is [`select_continent_default`] bit for bit.
+pub fn select_continent_default_margin(seed: u64, m: &Margin) -> (Option<usize>, Vec<(usize, Selection)>) {
     let mut tried = Vec::new();
     for &n in &PLATES_FALLBACK {
-        let s = select_continent_plates(seed, n, &k_range(n), 1);
+        let s = select_continent_plates_margin(seed, n, &k_range(n), 1, m);
         let ok = s.chosen.is_some();
         tried.push((n, s));
         if ok {
@@ -196,6 +211,12 @@ fn end_land(mut st: C1State) -> (f32, Circumnavigation) {
 /// qualifies within [`SELECT_LAND`] and circumnavigable with r* ≥ `min_r`. The chosen one has the largest r*; ties go to the
 /// start plate's rank in C1's RNG draw order, then BFS before compact, then the larger k. Deterministic from the seed.
 pub fn select_continent_plates(seed: u64, plates: usize, ks: &[usize], min_r: usize) -> Selection {
+    select_continent_plates_margin(seed, plates, ks, min_r, &Margin::off())
+}
+
+/// ADR Finding 174-B1 -- [`select_continent_plates`] from the margined initial states (the memo keyed by the plate set,
+/// as before: the margin is a function of the plate set and the seed).
+pub fn select_continent_plates_margin(seed: u64, plates: usize, ks: &[usize], min_r: usize, m: &Margin) -> Selection {
     let base = Phase2InitParams { num_plates: plates, ..Phase2InitParams::default() };
     let order = start_plate_order(&base.cluster, plates);
     let mut memo: std::collections::HashMap<Vec<bool>, (f32, Circumnavigation)> = std::collections::HashMap::new();
@@ -207,7 +228,7 @@ pub fn select_continent_plates(seed: u64, plates: usize, ks: &[usize], min_r: us
             ks_desc.sort_unstable_by(|a, b| b.cmp(a));
             for k in ks_desc {
                 let p = C1Profile::Selected { plates, k, start, compact };
-                let st = p.init_state(64, seed);
+                let mut st = p.init_state(64, seed);
                 // the plate set: which plates are continental
                 let mut set = vec![false; plates];
                 for (pid, ty) in st.plate_id.data().iter().zip(st.plate_type.data()) {
@@ -215,7 +236,10 @@ pub fn select_continent_plates(seed: u64, plates: usize, ks: &[usize], min_r: us
                         set[*pid as usize] = true;
                     }
                 }
-                let (land, circ) = *memo.entry(set).or_insert_with(|| end_land(st));
+                let (land, circ) = *memo.entry(set).or_insert_with(|| {
+                    margin::apply(&mut st, m, &p.init_params(), seed);
+                    end_land(st)
+                });
                 candidates.push(Candidate { fraction: k as f64 / plates as f64, plates, k, compact, start, rng_rank, land, circ });
             }
         }

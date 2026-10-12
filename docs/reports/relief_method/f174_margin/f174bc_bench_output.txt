@@ -1,0 +1,103 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+warning: unused import: `CANONICAL_ORIGIN`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:12:14
+   |
+12 | use common::{CANONICAL_ORIGIN, PSEED, pct, sorted};
+   |              ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `ymir_core::cascade::amplify::restrict`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:15:5
+   |
+15 | use ymir_core::cascade::amplify::restrict;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `step_durations`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:20:5
+   |
+20 |     step_durations,
+   |     ^^^^^^^^^^^^^^
+
+warning: unused imports: `CLASS_NAMES`, `PLAIN`, `PLATEAU`, `RELIEF_RADIUS_KM`, `circumnavigation`, `coast`, `hovius`, and `local_relief`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:25:5
+   |
+25 |     CLASS_NAMES, Circumnavigation, Coast, MOUNTAIN, MacroStats, PLAIN, PLATEAU, RELIEF_RADIUS_KM, circumnavigation, classify, coast,
+   |     ^^^^^^^^^^^                                                 ^^^^^  ^^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^            ^^^^^
+26 |     coast_torus, edt, hovius, local_relief, macro_stats, periodic_components, slope_deg,
+   |                       ^^^^^^  ^^^^^^^^^^^^
+
+warning: unused import: `flat_map`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:28:58
+   |
+28 | use ymir_core::cascade::planform::{Planform, WINDOWS_KM, flat_map, planform};
+   |                                                          ^^^^^^^^
+
+warning: unused imports: `Selection`, `select_continent_default`, and `select_continent_plates`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:30:46
+   |
+30 | use ymir_core::cascade::profile::{C1Profile, Selection, c1_run_config, select_continent_default, select_continent_plates};
+   |                                              ^^^^^^^^^                 ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `ymir-core` (test "f174bc_cascade") generated 6 warnings (run `cargo fix --test "f174bc_cascade" -p ymir-core` to apply 6 suggestions)
+    Finished `release` profile [optimized] target(s) in 34.88s
+     Running tests\f174bc_cascade.rs (target_f174b\release\deps\f174bc_cascade-2d018fb185f6faa0.exe)
+
+running 1 test
+
+==========  Finding 174 B/C . continents inside their plates and the thinned margin (an initial condition of C1's continent profile)  ==========
+
+── B1: the selection per variant (N, k, family, land, r*, CPU s) ──
+test f174bc_measure has been running for over 60 seconds
+   seed 8: A (off): N 16 k 7 compact land 50.7 % r* 3 (386 s) · margin: NONE (1728 s) · w_rim x0.5: N 24 k 17 compact land 50.6 % r* 1 (1729 s) · w_rim x2: NONE (1732 s) · w_n x2: NONE (1732 s) · w_n /2: NONE (1722 s) · B-hetero: NONE (1729 s)
+   seed 18: A (off): N 16 k 11 compact land 50.4 % r* 2 (353 s) · margin: NONE (1494 s) · w_rim x0.5: NONE (1505 s) · w_rim x2: NONE (1502 s) · w_n x2: NONE (1501 s) · w_n /2: NONE (1497 s) · B-hetero: NONE (1500 s)
+   seed 19: A (off): N 20 k 12 bfs land 56.2 % r* 1 (1094 s) · margin: NONE (1750 s) · w_rim x0.5: NONE (1776 s) · w_rim x2: NONE (1772 s) · w_n x2: NONE (1776 s) · w_n /2: NONE (1773 s) · B-hetero: NONE (1774 s)
+   seed 23: A (off): N 16 k 8 compact land 52.3 % r* 1 (400 s) · margin: NONE (1654 s) · w_rim x0.5: NONE (1657 s) · w_rim x2: NONE (1655 s) · w_n x2: NONE (1651 s) · w_n /2: NONE (1652 s) · B-hetero: NONE (1652 s)
+   seed 29: A (off): N 20 k 13 compact land 52.3 % r* 2 (1119 s) · margin: NONE (1805 s) · w_rim x0.5: NONE (1812 s) · w_rim x2: NONE (1815 s) · w_n x2: NONE (1811 s) · w_n /2: NONE (1791 s) · B-hetero: NONE (1814 s)
+   found on 5: A (off) 5 · margin 0 · w_rim x0.5 1 · w_rim x2 0 · w_n x2 0 · w_n /2 0 · B-hetero 0
+
+   STOP: the selection fails on 5 seeds with the main margin (the stop rule).
+test f174bc_measure ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 1381.88s
+

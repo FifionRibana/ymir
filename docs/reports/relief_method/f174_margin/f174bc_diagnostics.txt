@@ -1,0 +1,24 @@
+# F174 B/C diagnostics (after the stop rule fired), crates/ymir-core/tests/f174bc_cascade.rs
+
+## f174bc_diag (seed 8): why the margined selection fails -- per plate count, the candidates' end land, in the band (50-62 %), circumnavigable with r* >= 1, wrapping, both
+seed 8 A (off) N 16: candidates 224 (runs 201), land 17.9–84.2 %, in band 65, circumnavigable r*≥1 67, wraps 140, both 2
+      in band: [(10, false, 0.58032227, true, None), (11, true, 0.6164551, true, None), (11, false, 0.5998535, true, None), (12, true, 0.60913086, true, None), (11, true, 0.52075195, true, None), (10, false, 0.57250977, true, None)]
+seed 8 margin N 16: candidates 224 (runs 201), land 1.3–64.2 %, in band 6, circumnavigable r*≥1 146, wraps 52, both 0
+      in band: [(12, true, 0.6008301, true, None), (11, false, 0.58740234, true, None), (10, false, 0.5317383, true, None), (12, false, 0.5263672, true, None), (11, false, 0.5031738, true, None), (11, true, 0.5827637, true, None)]
+seed 8 margin N 20: candidates 360 (runs 331), land 0.7–61.3 %, in band 17, circumnavigable r*≥1 236, wraps 81, both 0
+      in band: [(15, false, 0.58251953, true, None), (14, false, 0.53344727, true, None), (15, false, 0.50927734, true, None), (15, false, 0.51416016, true, None), (15, false, 0.50927734, true, None), (15, true, 0.60668945, true, None)]
+seed 8 margin N 24: candidates 480 (runs 463), land 7.2–64.8 %, in band 26, circumnavigable r*≥1 266, wraps 134, both 0
+      in band: [(18, false, 0.5185547, true, None), (18, false, 0.50512695, true, None), (18, true, 0.52490234, true, None), (18, true, 0.5234375, true, None), (18, true, 0.5307617, true, None), (18, false, 0.5456543, true, None)]
+(in band: (k, compact, land, wraps, r*))
+
+## f174bc_rim: the main margin applied to Part A's selected continent (C1 only; no selection, no world)
+seed 8 Selected { plates: 16, k: 7, start: 14, compact: true } A (off): t0 active 66.4 % / other plate's ocean 100.0 % · end active 15.6 % / consumed 28.7 % · max active 66.7 % · first > 5 % Some(0) · end land 50.7 % · circumnavigable true r* Some(3)
+seed 8 Selected { plates: 16, k: 7, start: 14, compact: true } margin: t0 active 7.3 % / other plate's ocean 3.1 % · end active 7.8 % / consumed 1.6 % · max active 10.4 % · first > 5 % Some(0) · end land 26.7 % · circumnavigable true r* Some(5)
+seed 18 Selected { plates: 16, k: 11, start: 12, compact: true } A (off): t0 active 48.5 % / other plate's ocean 100.0 % · end active 5.5 % / consumed 25.9 % · max active 48.5 % · first > 5 % Some(0) · end land 50.4 % · circumnavigable true r* Some(2)
+seed 18 Selected { plates: 16, k: 11, start: 12, compact: true } margin: t0 active 13.3 % / other plate's ocean 7.9 % · end active 10.9 % / consumed 3.6 % · max active 21.2 % · first > 5 % Some(0) · end land 26.8 % · circumnavigable true r* Some(9)
+seed 19 Selected { plates: 20, k: 12, start: 18, compact: false } A (off): t0 active 51.3 % / other plate's ocean 100.0 % · end active 18.4 % / consumed 22.4 % · max active 60.3 % · first > 5 % Some(0) · end land 56.2 % · circumnavigable true r* Some(1)
+seed 19 Selected { plates: 20, k: 12, start: 18, compact: false } margin: t0 active 16.2 % / other plate's ocean 5.4 % · end active 0.0 % / consumed 0.0 % · max active 16.2 % · first > 5 % Some(0) · end land 24.2 % · circumnavigable true r* Some(4)
+seed 23 Selected { plates: 16, k: 8, start: 0, compact: true } A (off): t0 active 53.6 % / other plate's ocean 100.0 % · end active 15.1 % / consumed 23.6 % · max active 53.6 % · first > 5 % Some(0) · end land 52.3 % · circumnavigable true r* Some(1)
+seed 23 Selected { plates: 16, k: 8, start: 0, compact: true } margin: t0 active 15.5 % / other plate's ocean 5.7 % · end active 0.0 % / consumed 0.0 % · max active 15.5 % · first > 5 % Some(0) · end land 23.8 % · circumnavigable true r* Some(8)
+seed 29 Selected { plates: 20, k: 13, start: 0, compact: true } A (off): t0 active 57.5 % / other plate's ocean 100.0 % · end active 15.0 % / consumed 17.5 % · max active 58.6 % · first > 5 % Some(0) · end land 52.3 % · circumnavigable true r* Some(2)
+seed 29 Selected { plates: 20, k: 13, start: 0, compact: true } margin: t0 active 20.2 % / other plate's ocean 5.9 % · end active 3.7 % / consumed 4.8 % · max active 20.2 % · first > 5 % Some(0) · end land 26.3 % · circumnavigable true r* Some(7)

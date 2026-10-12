@@ -21,6 +21,7 @@
 pub mod amplify;
 pub mod history;
 pub mod hydro;
+pub mod margin;
 pub mod measure;
 pub mod physio;
 pub mod planform;

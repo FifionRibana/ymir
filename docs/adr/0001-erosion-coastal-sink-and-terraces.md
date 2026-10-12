@@ -22813,3 +22813,54 @@ could not be read, neither refusal circumvented; Christensen & Mooney 1995 not f
     new solver (flexure, creep, PDE) in C1 or in the initial condition. A point that cannot be done without a solver is
     stopped and explained, not implemented.
 - The three Part B sources are now in `docs/refs` (`peron-pinvidic2013.pdf`, `harris2014.pdf`, `christensen1995.pdf`).
+
+### Finding 174, Parts B and C — continents inside their plates and the thinned margin: built as an initial condition (no solver), the selection's stop rule fires on 5 / 5 seeds — the margin moves the coast ~60 km inward, halves the land (50–56 % → 24–27 % on Part A's continents) and the 50–62 % land band then needs continents that wrap the torus; the rim is not consumed by the subduction closure as it is; production unchanged
+
+**Status: B built, the stop rule fired, Part C not run; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f174_margin/finding_174.md` (Parts B and C). Declared: `f174_declared.md` (Parts B and C).
+
+**B — built** (`cascade::margin`, an initial condition of the continent profile; C1's code untouched):
+- **The rim**: continental-plate cells within w_rim = 2.5 cells of an oceanic plate become oceanic on the same plate (C1's
+  oceanic init values).
+- **The ramp**: Péron-Pinvidic et al. 2013's knots 35 → 30 → 10 → 7 km (p. 22, 24–25, 34), the widths 200 / 100 / 150 km
+  (p. 27, 35, 34) ÷ 7.5 on the map.
+- **B-hétéro**: σ_rel 0.14 (Christensen & Mooney 1995, shields and platforms 41.5 ± 5.8 km, Table 3).
+- **The shelf band**: Harris et al. 2014's passive means per ocean 34.9–123.0 km (Table 2, p. 11) ÷ 7.5 = 4.65–16.4 km. The
+  article gives no shelf-break depth; the ~140 m benchmark is not supported by it.
+- **Controls** (permanent): the margin off and a zero-width margin are the profile's state bit for bit; the margined selection
+  with the margin off is `select_continent_default` bit for bit.
+
+**The stop**: the selection (16 → 20 → 24 plates, land 50–62 %, r* ≥ 1) finds a continent on **0 / 5** seeds with the main
+margin, and with every variant except w_rim × 0.5 on seed 8. Why:
+- the coast moves ~9.6 cells of 64² (60 km) inward of the plate boundary; on Part A's own continents the land halves
+  (50.4–56.2 % → 23.8–26.8 %);
+- to reach 50 % land the selection must make 70–75 % of the plates continental, and every such candidate wraps the torus
+  (seed 8: 6, 17 and 26 in-band candidates at 16, 20, 24 plates, none circumnavigable);
+- the scale conflict: a plate is 80–100 km across at 16–24 plates; the margin at ÷ 7.5 is 60 km plus the rim.
+
+**The rim is not consumed** (the main margin on Part A's continents, C1 only): the perimeter facing another plate's ocean
+3.1–7.9 % at t₀ (junction contacts) → 0–4.8 % at the end; active 7.3–20.2 % → 0–10.9 %, never rising. As read in the code
+before measuring, `apply_subduction_step` needs a continental cell of another plate on the boundary.
+
+**Predictions**: Q6 refuted (0 / 5, not 5 / 5); Q1–Q5, Q7, Q8 not tested. Mine: the rim not consumed and the ×2 variants failing
+held; the selection on 4–5 seeds refuted.
+
+**Open, for the author** (nothing chosen; none needs a solver): (1) the margin outward (annex the neighbouring oceanic band to
+the continental plate at t₀, keeping the coast and the land); (2) a narrower margin than ÷ 7.5; (3) a land band for the margin
+profile; (4) fewer, larger plates. Independently, coastal activity behind a rim would need the subduction closure to handle an
+O-O convergent boundary whose upper plate carries continent — a change of a C1 closure, the author's call.
+
+**At commit of Part B (2026-10-12), decided (the reviewer's proposals, not contested by the author)**:
+- **The reviewer's errors, recorded**:
+  - the ramp was placed inward (it moved the coast ~60 km inland);
+  - the whole proximal domain was included on the land side;
+  - the ~140 m shelf-break benchmark is not supported by Harris et al. 2014;
+  - the rim's consumption by the subduction closure had not been checked in the code.
+- **The author's decisions, verbatim**:
+  1. « Oui c'est bien d'avoir un peu de terre dans l'océan. » Option 1 is retained: the margin seaward.
+  2. « Ca demanderait de faire de la biblio pour ça + calage sur base des publications et expériences. Mais pourquoi pas. »
+     Option 5 (an O-O subduction closure) goes through the bibliography first; it is not coded in F174.
+  - Options 2 (a narrower margin), 3 (a land band for the margin profile) and 4 (fewer, larger plates) are discarded.
+  - The author's instruction stands: no solver in the mechanisms without a real need.
+- The code of Part B is committed as is (`cascade::margin`, off by default, its permanent controls); the selection's stop is
+  recorded.
