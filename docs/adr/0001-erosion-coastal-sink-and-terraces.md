@@ -22718,3 +22718,98 @@ la suite. J'ai rajouté spratt2016.pdf dans docs/refs. »
 "naturel". Ca manque toujours d'irrégularité. »
 
 **The order, decided by the author** (« Ok go »): F174 = the measures, then the passive margin; F175 = deposition (Yuan et al. 2019).
+
+## Finding 174 — the coastline is C1's thickness step at B0 (97–99.5 % within one 256² cell on 5 / 5 seeds) and leaves it at old only where valleys graded to 0 m drown (66–89 % within one cell); real coasts at 195 m give a rocky band (dimension 1.15–1.22) and a wide low band (0.95–1.35: straight sandy coasts and lagoon coasts); the brief's coast-type rule agrees on 5 / 8 windows; the physics level's step is unconverged locally (max |Δz| 0.5–1.3 km) but not in the macro; early in C1 the perimeter is 48–66 % convergent and < 1 % passive, because continents are whole plates on static plates, not because of the zero continental velocity; Part B not started (its sources could not be read); production unchanged
+
+**Status: Part 0 and Part A measured; Part B not started; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f174_margin/finding_174.md`.
+- Declared before any measurement: `f174_declared.md`. Predictions: `f174_predictions.md`. The bench: `f174_cascade.rs`.
+- F173 committed (`dddb732`). The panel 8, 18, 19, 23, 29; K2; the torus; no sea; B0 and old (300 Myr).
+
+**0 — the Spratt re-zero**: `SeaCurve::from_noaa_spratt2016` subtracts the youngest row's level (the stack read +8.96 m at
+0 ka); the curve reads 0 m today. An alignment of reference, not a calibration; tested permanently.
+
+**A1 — inherited from C1** (the final 2 048² coastline against the s = 0.915 contour of C1's last snapshot, upsampled as the
+cascade does):
+- B0: **97.2–99.5 %** of the coast within 1 cell of 256², 99.8–100 % within 2. **P1 holds at B0 on 5 / 5.**
+- Old: **65.9–88.8 %** within 1 cell, 78.4–99.7 % within 5. **P1 fails at old on 5 / 5.** P1 is mixed; the stop rule
+  (refuted at both ages) does not fire.
+- What moves the old coast is the physics level: arms of the sea up valley systems graded to 0 m (up to 20–22 % of the coast
+  beyond 5 cells on seeds 19 and 29; a dendritic inlet ~70 km long on seed 19).
+
+**A2 — real coasts by type** (8 windows of 50 km at 195.3 m, Copernicus GLO-30, F161's pipeline; a window variant of
+`physio::coast` whose border is never a coast, equal to it on a closed island, asserted):
+- **The rocky band** (Galicia, Dalmatia, North Brittany, Corsica west): dimension 1.152–1.223, length ratio 1.430–1.558,
+  aligned 0.272–0.293, block index 0.912–1.303.
+- **The low band** (Landes, Vendée, West Jutland, Golfe du Lion): dimension 0.952–1.354, length ratio 0.837–2.344, aligned
+  0.109–0.345, block index 0.804–1.493. Two families: straight sandy coasts (0.95–1.00) and lagoon coasts (1.25–1.35, the
+  lagoon's inner shore).
+- **P2 refuted** on both ranges.
+- **The rule** (p90 of the altitude within 5 km > 200 m = rocky) agrees on **5 / 8** windows (Galicia and Dalmatia mixed,
+  North Brittany low): it separates relief, not coast type. Flagged, not tuned.
+- **Our worlds** (256² windows of the 2 048² field): at B0 the windows are rocky by the rule and under the rocky band (dimension
+  0.98–1.00, 0–1 of 4 in band); at old mostly low, in the low band on 2–4 of 4 — as smooth as the Landes, never like a lagoon
+  coast.
+
+**A3 — the time step** (300 against 600 steps): max |Δz| **501–1 301 m** on every world, p99 78–190 m, p50 2–4 m; the classes
+move < 1 point on 9 / 10 worlds (1.65 on seed 29 old); 7.5–16.5 % of the order-≥ 3 channels displaced. **P3 refuted narrowly.**
+
+**A4 — the active perimeter**:
+- The first 50 C1 steps: convergent **48–66 %** (mean 55.4 %), divergent 24–43 %, transform 3–14 %, no boundary
+  **0.3–0.8 %**; the ocean on the continent's own plate on 0.4–0.9 % of the perimeter. After the merges (16 or 20 plates →
+  2–4) the passive share climbs to 48–78 %, too late (F173: the prism is built early). **P4 refuted** on its number.
+- **The code**: the zero velocity is `apply_continental_rigidity` (`tectonics_c1/time_loop.rs:251`, Issue #145: buoyant crust
+  must not advect into convergence). But `classify_boundaries` reads the **plates'** velocities, not the cells'; the zero
+  velocity does not make the coasts active. What does: the continent profile makes continents out of **whole plates**
+  (`init_r7/mod.rs:355`), and `plate_id` is never advected, so every coast is a fixed plate boundary from t₀. The reviewer's
+  « immobile continents » is half right (the plates are static).
+- **Proposals** (nothing corrected), in order: (1) continents inside their plates, with an oceanic rim of the same plate (a
+  passive margin by construction, combinable with B's ramp); (2) continents moving with their plates (C1 (b), large,
+  conflicts with #145 and the material-frame record); (3) slow continental plates (partial).
+
+**B — not started**: Péron-Pinvidic et al. 2013 (HAL bot protection) and Harris et al. 2014 (Elsevier page not rendering)
+could not be read, neither refusal circumvented; Christensen & Mooney 1995 not fetched. The author is asked to add the three to
+`docs/refs`. Part C not run; P5–P7 open.
+
+**Cost** (CPU per world): C1 < 1 s, the physics level 22–30 s (46–62 s at 600 steps), the chain 453–512 s.
+
+**Predictions**:
+- **The reviewer's**: P1 mixed (held at B0, refuted at old); P2 refuted; P3 refuted narrowly; P4 refuted on its number, its
+  cause half right; P5–P7 not tested.
+- **Mine**: held: P1 at B0 and its failure at old, the sandy / lagoon / rocky values, our coasts as smooth as the smoothest low
+  coast, the Δz and channel ranges, « none » ≈ 0 early, the plate-geometry cause; refuted: ≥ 98 % within 5 cells at old, the
+  physics level's share above the chain's, the rule right on 7 / 8, the length ratio separating the types, p99 < 50 m, the
+  classes < 1 point everywhere, the A3 cost; not predicted: the late merges.
+
+**Open, for the author** (nothing chosen):
+- (a) the three Part B articles in `docs/refs`;
+- (b) the coast-type rule (fails on 3 / 8 real windows);
+- (c) the low reference has two families; the lagoon family needs deposition (F175);
+- (d) A4's proposals (1)–(3);
+- (e) the physics level's step (locally unconverged, macro converged).
+
+**At commit of Part A (2026-10-12), decided (the reviewer's proposals, not contested by the author)**:
+- **The reviewer's errors, recorded**:
+  - the coast-type rule « p90 of the altitude within 5 km > 200 m » measured the relief, not the coast type;
+  - P2's ranges were wrong at both ends;
+  - the rampart's cause was half right: the plates are immobile because `plate_id` is static, not because of the zero
+    velocity of the continental cells.
+- **The coast-type rule, replaced**:
+  - on our worlds, a coast segment is typed by the rock at the coastline (basement or shield: rocky; cover: low), with the
+    seaside slope reported;
+  - the real windows keep their declared type;
+  - the references: rocky 1.15–1.22 (dimension) / 1.43–1.56 (length ratio); low sandy 0.95–1.00; low lagoon 1.25–1.35. The
+    lagoon family waits for deposition (F175).
+- **The time step is not halved.** The criterion is statistical convergence (classes, hypsometry, network statistics), not
+  local convergence, which a drainage network does not have.
+- **A4**: proposal 1 is retained — continents inside their plates.
+- **The reviewer's reading, a hypothesis to check**: the old profile's dendritic sea arms are valley floors worn to a zero
+  slope for want of sediment transport. They belong to deposition (F175).
+- **The author's instruction for Parts B and C, verbatim**: « attention à ne pas retomber dans le biais d'intégrer un solveur
+  dans les mécanismes sauf si réellement nécessaire. Mais c'est justement ce qu'on a essayé de fuir avec C1! »
+  - So C1 stays closure-based: Parts B and C use initial conditions (continents inside their plates, the rim w_rim, a margin
+    profile prescribed from Péron-Pinvidic et al. 2013, the B-hétéro field) and the existing closures (the rim consumed by
+    the subduction closure). Without the author's consent: no advection of `plate_id`, no simulated rifting or stretching, no
+    new solver (flexure, creep, PDE) in C1 or in the initial condition. A point that cannot be done without a solver is
+    stopped and explained, not implemented.
+- The three Part B sources are now in `docs/refs` (`peron-pinvidic2013.pdf`, `harris2014.pdf`, `christensen1995.pdf`).

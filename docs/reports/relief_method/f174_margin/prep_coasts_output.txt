@@ -1,0 +1,8 @@
+galicia_rias_baixas (rocky): tiles ['N42_00_W010_00', 'N42_00_W009_00'], tiles in the margin not on disk [], fine cells covered by a tile 1048576/1048576, land 67.8 %, max 944 m
+dalmatia_split (rocky): tiles ['N43_00_E016_00'], tiles in the margin not on disk ['N43_00_E015_00'], fine cells covered by a tile 1048576/1048576, land 68.9 %, max 1289 m
+bretagne_nord (rocky): tiles ['N48_00_W004_00'], tiles in the margin not on disk ['N48_00_W005_00'], fine cells covered by a tile 1048576/1048576, land 53.5 %, max 297 m
+landes_mimizan (low): tiles ['N43_00_W002_00', 'N44_00_W002_00'], tiles in the margin not on disk ['N43_00_W001_00', 'N44_00_W001_00'], fine cells covered by a tile 1048576/1048576, land 42.5 %, max 108 m
+vendee_sables (low): tiles ['N46_00_W002_00'], tiles in the margin not on disk ['N46_00_W003_00'], fine cells covered by a tile 1048576/1048576, land 68.7 %, max 99 m
+jutland_west (low): tiles ['N55_00_E008_00', 'N56_00_E008_00'], tiles in the margin not on disk ['N55_00_E007_00', 'N56_00_E007_00'], fine cells covered by a tile 916813/1048576, land 53.8 %, max 112 m
+golfe_du_lion_agde (low): tiles ['N43_00_E003_00'], tiles in the margin not on disk ['N42_00_E003_00'], fine cells covered by a tile 1048576/1048576, land 35.4 %, max 214 m
+corsica_west (rocky): crop of corse_1024.bin at columns 217..473, rows 395..651, land 52.6 %, max 2618 m

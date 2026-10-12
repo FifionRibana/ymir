@@ -365,8 +365,9 @@ impl SeaLow {
 }
 
 /// ADR Finding 173-B -- **a sea-level curve** s(age) in m above present: a published series (Spratt & Lisiecki 2016's
-/// `SeaLev_longPC1`, 0–798 ka every 1 kyr), taken as is. Between the series' oldest age and `quaternary_kyr` the level is
-/// `before_m` (0 = the declaration); older, 0.
+/// `SeaLev_longPC1`, 0–798 ka every 1 kyr). Between the series' oldest age and `quaternary_kyr` the level is `before_m`
+/// (0 = the declaration); older, 0. ADR Finding 174-0: the parsed series is re-zeroed so it reads 0 m today (the stack reads
+/// +8.96 m at 0 ka) -- an alignment of reference, not a calibration.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SeaCurve {
     pub age_kyr: Vec<f64>,
@@ -378,7 +379,8 @@ pub struct SeaCurve {
 }
 
 impl SeaCurve {
-    /// Parse NOAA's `spratt2016.txt` (study 19982): the `SeaLev_longPC1` column against `age_calkaBP`, the NaN rows dropped.
+    /// Parse NOAA's `spratt2016.txt` (study 19982): the `SeaLev_longPC1` column against `age_calkaBP`, the NaN rows dropped,
+    /// every level minus the youngest row's (F174-0: 0 m today).
     pub fn from_noaa_spratt2016(text: &str) -> Result<Self, String> {
         let mut col: Option<usize> = None;
         let (mut age, mut lev) = (Vec::new(), Vec::new());
@@ -401,6 +403,10 @@ impl SeaCurve {
         }
         if age.len() < 2 {
             return Err("too few rows".into());
+        }
+        let now = lev[0];
+        for v in &mut lev {
+            *v -= now;
         }
         Ok(Self { age_kyr: age, level_m: lev, before_m: 0.0, quaternary_kyr: 2580.0, sub_kyr: 2.0 })
     }
@@ -950,7 +956,10 @@ age_calkaBP	SeaLev_shortPC1	SeaLev_longPC1
 ";
         let cv = SeaCurve::from_noaa_spratt2016(text).unwrap();
         assert_eq!(cv.age_kyr, vec![0.0, 1.0, 3.0]);
-        assert!((cv.level_at(0.5) + 5.0).abs() < 1e-9 && (cv.level_at(2.0) + 30.0).abs() < 1e-9);
+        // F174-0: re-zeroed on the youngest row (10 m): 0 today, every level shifted by the same −10 m
+        assert_eq!(cv.level_m, vec![0.0, -30.0, -50.0]);
+        assert_eq!(cv.level_at(0.0), 0.0);
+        assert!((cv.level_at(0.5) + 15.0).abs() < 1e-9 && (cv.level_at(2.0) + 40.0).abs() < 1e-9);
         assert_eq!(cv.level_at(100.0), 0.0);
         let cv2 = SeaCurve { before_m: -50.0, ..cv.clone() };
         assert_eq!(cv2.level_at(100.0), -50.0);

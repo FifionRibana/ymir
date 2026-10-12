@@ -1,0 +1,171 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+warning: unused import: `CANONICAL_ORIGIN`
+  --> crates\ymir-core\tests\f174_cascade.rs:11:14
+   |
+11 | use common::{CANONICAL_ORIGIN, PSEED, pct, sorted};
+   |              ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `ymir_core::cascade::amplify::restrict`
+  --> crates\ymir-core\tests\f174_cascade.rs:14:5
+   |
+14 | use ymir_core::cascade::amplify::restrict;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `step_durations`
+  --> crates\ymir-core\tests\f174_cascade.rs:19:5
+   |
+19 |     step_durations,
+   |     ^^^^^^^^^^^^^^
+
+warning: unused imports: `CLASS_NAMES`, `PLAIN`, `PLATEAU`, `RELIEF_RADIUS_KM`, `circumnavigation`, `hovius`, and `local_relief`
+  --> crates\ymir-core\tests\f174_cascade.rs:24:5
+   |
+24 |     CLASS_NAMES, Circumnavigation, Coast, MOUNTAIN, MacroStats, PLAIN, PLATEAU, RELIEF_RADIUS_KM, circumnavigation, classify, coast,
+   |     ^^^^^^^^^^^                                                 ^^^^^  ^^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^
+25 |     coast_torus, edt, hovius, local_relief, macro_stats, periodic_components, slope_deg,
+   |                       ^^^^^^  ^^^^^^^^^^^^
+
+warning: unused import: `flat_map`
+  --> crates\ymir-core\tests\f174_cascade.rs:27:58
+   |
+27 | use ymir_core::cascade::planform::{Planform, WINDOWS_KM, flat_map, planform};
+   |                                                          ^^^^^^^^
+
+warning: unused imports: `Selection` and `select_continent_plates`
+  --> crates\ymir-core\tests\f174_cascade.rs:29:46
+   |
+29 | use ymir_core::cascade::profile::{C1Profile, Selection, c1_run_config, select_continent_default, select_continent_plates};
+   |                                              ^^^^^^^^^                                           ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `ymir-core` (test "f174_cascade") generated 6 warnings (run `cargo fix --test "f174_cascade" -p ymir-core` to apply 6 suggestions)
+    Finished `release` profile [optimized] target(s) in 27.60s
+     Running tests\f174_cascade.rs (target_f174b\release\deps\f174_cascade-5c4db163a30c94e0.exe)
+
+running 1 test
+
+==========  Finding 174 . the coastline inherited from C1, real reference coasts, the time step, the active perimeter  ==========
+
+   control: corse_256 (closed island) window variant 1.154 / 1.295 / 0.292 / 1.009 · physio::coast 1.154 / 1.295 / 0.292 / 1.009
+
+── A2: the real coast windows (50 km, 195.3 m; dimension / length ratio / aligned / block index; the rule's rocky share) ──
+   galicia_rias_baixas    declared rocky · 1.219 / 1.450 / 0.281 / 1.303 · coastline cells 1362 (266 km) · land 68 % · the rule: rocky share 37 % → mixed
+   dalmatia_split         declared rocky · 1.223 / 1.558 / 0.293 / 1.229 · coastline cells 1203 (235 km) · land 69 % · the rule: rocky share 39 % → mixed
+   bretagne_nord          declared rocky · 1.152 / 1.455 / 0.279 / 0.912 · coastline cells 698 (136 km) · land 54 % · the rule: rocky share 0 % → low
+   corsica_west           declared rocky · 1.152 / 1.430 / 0.272 / 1.158 · coastline cells 610 (119 km) · land 53 % · the rule: rocky share 99 % → rocky
+   landes_mimizan         declared low   · 0.952 / 0.837 / 0.109 / 1.493 · coastline cells 257 (50 km) · land 43 % · the rule: rocky share 0 % → low
+   vendee_sables          declared low   · 1.002 / 0.977 / 0.226 / 0.804 · coastline cells 419 (82 km) · land 69 % · the rule: rocky share 0 % → low
+   jutland_west           declared low   · 1.354 / 2.344 / 0.345 / 0.869 · coastline cells 1400 (273 km) · land 54 % · the rule: rocky share 0 % → low
+   golfe_du_lion_agde     declared low   · 1.250 / 1.823 / 0.321 / 1.017 · coastline cells 876 (171 km) · land 36 % · the rule: rocky share 0 % → low
+   the rocky band: dimension 1.152–1.223 · length ratio 1.430–1.558 · aligned 0.272–0.293 · block index 0.912–1.303
+   the low band: dimension 0.952–1.354 · length ratio 0.837–2.344 · aligned 0.109–0.345 · block index 0.804–1.493
+   the rule agrees with the declared type on 5 / 8 windows · P2: the low dimensions in 1.02–1.08 false · the rocky in 1.10–1.20 false
+
+   ══ seed 8 (Selected { plates: 16, k: 7, start: 14, compact: true }, N 16) ══
+test f174_measure has been running for over 60 seconds
+   ── B0: A1 at 2 048²: the coast within 1 / 2 / 5 cells of 256² of C1's contour 99.2 / 100.0 / 100.0 % (p50 0.25, p90 0.53 cells) · the physics level alone (256²): 99.1 / 100.0 / 100.0 % (p50 0.00, p90 1.00)
+      A2 on our world: windows rocky / low / mixed 24 / 0 / 1 · rocky median 0.984 / 0.896 / 0.305 / 0.591 (0 / 4 in the band) · low median none · the whole coast (coast_torus) 0.985 / 0.911 / 0.305 / 0.833
+      A3 (300 vs 600 steps): |Δz| all p50 / p99 / max 3.40 / 156.3 / 1005 m · land p50 / p99 6.41 / 201.9 m · the classes' largest move 0.26 points, cells changed 1.62 % · order-≥ 3 channels displaced 10.7 % · physics CPU 25 → 49 s
+      cost (CPU per world): C1 0 · physics 25 · chain 453 s
+   ── old 300 Myr: A1 at 2 048²: the coast within 1 / 2 / 5 cells of 256² of C1's contour 88.8 / 93.2 / 95.0 % (p50 0.35, p90 1.12 cells) · the physics level alone (256²): 87.5 / 92.3 / 94.7 % (p50 1.00, p90 1.41)
+      A2 on our world: windows rocky / low / mixed 8 / 19 / 1 · rocky median 0.995 / 0.966 / 0.243 / 0.724 (0 / 4 in the band) · low median 0.998 / 0.946 / 0.349 / 1.162 (3 / 4 in the band) · the whole coast (coast_torus) 1.004 / 0.951 / 0.323 / 1.615
+      A3 (300 vs 600 steps): |Δz| all p50 / p99 / max 2.36 / 190.0 / 928 m · land p50 / p99 3.51 / 312.8 m · the classes' largest move 0.43 points, cells changed 1.47 % · order-≥ 3 channels displaced 11.8 % · physics CPU 24 → 49 s
+      cost (CPU per world): C1 0 · physics 24 · chain 473 s
+      A4 the perimeter (convergent / divergent / transform / none): first 50 steps 65.9 / 23.6 / 9.7 / 0.8 % · all 300 steps 26.8 / 18.3 / 2.0 / 53.0 % · same-plate share 0.94 / 55.57 %
+      A4 the series (step: C/D/T/none %, (plates)): 0:66/24/10/0(16) 25:67/23/10/0(16) 50:33/29/0/38(6) 75:33/29/0/38(6) 100:16/14/0/70(2) 125:16/14/0/70(2) 150:16/14/0/70(2) 175:16/14/0/70(2) 200:16/14/0/70(2) 225:16/14/0/70(2) 250:16/14/0/70(2) 275:16/14/0/70(2) 299:16/14/0/70(2)
+
+   ══ seed 18 (Selected { plates: 16, k: 11, start: 12, compact: true }, N 16) ══
+   ── B0: A1 at 2 048²: the coast within 1 / 2 / 5 cells of 256² of C1's contour 97.2 / 99.8 / 100.0 % (p50 0.25, p90 0.62 cells) · the physics level alone (256²): 98.1 / 99.6 / 100.0 % (p50 0.00, p90 1.00)
+      A2 on our world: windows rocky / low / mixed 18 / 0 / 4 · rocky median 0.987 / 0.927 / 0.273 / 0.784 (1 / 4 in the band) · low median none · the whole coast (coast_torus) 0.971 / 0.888 / 0.291 / 1.373
+      A3 (300 vs 600 steps): |Δz| all p50 / p99 / max 1.67 / 122.9 / 1301 m · land p50 / p99 3.10 / 187.0 m · the classes' largest move 0.12 points, cells changed 1.20 % · order-≥ 3 channels displaced 9.0 % · physics CPU 23 → 49 s
+      cost (CPU per world): C1 0 · physics 23 · chain 483 s
+   ── old 300 Myr: A1 at 2 048²: the coast within 1 / 2 / 5 cells of 256² of C1's contour 79.6 / 94.4 / 99.7 % (p50 0.50, p90 1.41 cells) · the physics level alone (256²): 65.3 / 73.9 / 80.0 % (p50 1.00, p90 38.00)
+      A2 on our world: windows rocky / low / mixed 5 / 16 / 2 · rocky median 1.005 / 0.909 / 0.330 / 0.986 (1 / 4 in the band) · low median 1.016 / 0.994 / 0.359 / 0.780 (2 / 4 in the band) · the whole coast (coast_torus) 1.019 / 1.003 / 0.333 / 1.033
+      A3 (300 vs 600 steps): |Δz| all p50 / p99 / max 4.12 / 184.9 / 1152 m · land p50 / p99 3.75 / 332.3 m · the classes' largest move 0.20 points, cells changed 1.47 % · order-≥ 3 channels displaced 15.3 % · physics CPU 22 → 47 s
+      cost (CPU per world): C1 0 · physics 22 · chain 484 s
+      A4 the perimeter (convergent / divergent / transform / none): first 50 steps 48.3 / 37.7 / 13.5 / 0.4 % · all 300 steps 18.9 / 27.3 / 3.7 / 50.0 % · same-plate share 0.57 / 54.28 %
+      A4 the series (step: C/D/T/none %, (plates)): 0:48/38/14/0(16) 25:48/38/14/0(16) 50:42/35/1/21(8) 75:44/34/1/20(10) 100:6/23/1/69(5) 125:4/24/2/69(4) 150:5/23/2/70(3) 175:5/23/2/70(3) 200:5/23/2/70(3) 225:5/23/2/70(3) 250:5/23/2/70(3) 275:5/23/2/70(3) 299:5/23/2/70(3)
+
+   ══ seed 19 (Selected { plates: 20, k: 12, start: 18, compact: false }, N 20) ══
+   ── B0: A1 at 2 048²: the coast within 1 / 2 / 5 cells of 256² of C1's contour 97.5 / 99.9 / 100.0 % (p50 0.25, p90 0.62 cells) · the physics level alone (256²): 99.0 / 99.9 / 100.0 % (p50 0.00, p90 1.00)
+      A2 on our world: windows rocky / low / mixed 26 / 1 / 4 · rocky median 0.978 / 0.893 / 0.292 / 0.532 (1 / 4 in the band) · low median 1.079 / 1.004 / 0.242 / 0.440 (3 / 4 in the band) · the whole coast (coast_torus) 0.982 / 0.881 / 0.331 / 0.906
+      A3 (300 vs 600 steps): |Δz| all p50 / p99 / max 3.28 / 101.6 / 912 m · land p50 / p99 4.29 / 142.8 m · the classes' largest move 0.39 points, cells changed 1.27 % · order-≥ 3 channels displaced 7.5 % · physics CPU 24 → 52 s
+      cost (CPU per world): C1 0 · physics 24 · chain 511 s
+   ── old 300 Myr: A1 at 2 048²: the coast within 1 / 2 / 5 cells of 256² of C1's contour 70.6 / 77.6 / 79.8 % (p50 0.52, p90 34.12 cells) · the physics level alone (256²): 66.9 / 75.2 / 77.6 % (p50 1.00, p90 35.38)
+      A2 on our world: windows rocky / low / mixed 5 / 26 / 5 · rocky median 1.009 / 0.926 / 0.265 / 0.391 (0 / 4 in the band) · low median 1.024 / 0.972 / 0.302 / 0.575 (3 / 4 in the band) · the whole coast (coast_torus) 1.018 / 0.983 / 0.323 / 0.927
+      A3 (300 vs 600 steps): |Δz| all p50 / p99 / max 3.70 / 128.9 / 635 m · land p50 / p99 2.24 / 151.9 m · the classes' largest move 0.37 points, cells changed 1.71 % · order-≥ 3 channels displaced 16.4 % · physics CPU 24 → 47 s
+      cost (CPU per world): C1 0 · physics 24 · chain 517 s
+      A4 the perimeter (convergent / divergent / transform / none): first 50 steps 51.6 / 37.2 / 10.9 / 0.3 % · all 300 steps 30.7 / 13.2 / 2.2 / 53.9 % · same-plate share 0.49 / 55.99 %
+      A4 the series (step: C/D/T/none %, (plates)): 0:51/38/11/0(20) 25:51/37/11/0(20) 50:60/22/0/17(6) 75:60/22/1/17(7) 100:18/6/0/76(3) 125:18/5/0/76(2) 150:18/5/0/76(2) 175:18/5/0/76(2) 200:18/5/0/76(2) 225:18/5/0/76(2) 250:18/5/0/76(2) 275:18/5/0/76(2) 299:18/5/0/76(2)
+
+   ══ seed 23 (Selected { plates: 16, k: 8, start: 0, compact: true }, N 16) ══
+   ── B0: A1 at 2 048²: the coast within 1 / 2 / 5 cells of 256² of C1's contour 98.1 / 100.0 / 100.0 % (p50 0.25, p90 0.62 cells) · the physics level alone (256²): 99.1 / 100.0 / 100.0 % (p50 0.00, p90 1.00)
+      A2 on our world: windows rocky / low / mixed 28 / 1 / 2 · rocky median 0.995 / 0.918 / 0.313 / 0.520 (0 / 4 in the band) · low median 1.002 / 0.990 / 0.292 / 0.429 (3 / 4 in the band) · the whole coast (coast_torus) 0.992 / 0.909 / 0.308 / 0.911
+      A3 (300 vs 600 steps): |Δz| all p50 / p99 / max 3.32 / 152.0 / 726 m · land p50 / p99 4.33 / 196.0 m · the classes' largest move 0.75 points, cells changed 1.73 % · order-≥ 3 channels displaced 8.9 % · physics CPU 30 → 62 s
+      cost (CPU per world): C1 0 · physics 30 · chain 491 s
+   ── old 300 Myr: A1 at 2 048²: the coast within 1 / 2 / 5 cells of 256² of C1's contour 86.7 / 95.3 / 97.7 % (p50 0.38, p90 1.25 cells) · the physics level alone (256²): 77.0 / 87.1 / 90.0 % (p50 1.00, p90 5.83)
+      A2 on our world: windows rocky / low / mixed 5 / 24 / 3 · rocky median 1.014 / 0.896 / 0.258 / 0.791 (0 / 4 in the band) · low median 1.017 / 1.010 / 0.315 / 0.597 (3 / 4 in the band) · the whole coast (coast_torus) 1.020 / 0.980 / 0.310 / 0.833
+      A3 (300 vs 600 steps): |Δz| all p50 / p99 / max 3.10 / 137.9 / 1118 m · land p50 / p99 3.29 / 206.3 m · the classes' largest move 0.06 points, cells changed 1.33 % · order-≥ 3 channels displaced 12.5 % · physics CPU 29 → 56 s
+      cost (CPU per world): C1 0 · physics 29 · chain 495 s
+      A4 the perimeter (convergent / divergent / transform / none): first 50 steps 53.4 / 43.0 / 3.1 / 0.5 % · all 300 steps 29.2 / 20.5 / 0.7 / 49.7 % · same-plate share 0.63 / 53.36 %
+      A4 the series (step: C/D/T/none %, (plates)): 0:54/43/3/0(16) 25:54/43/3/0(16) 50:45/29/1/25(7) 75:45/29/1/24(7) 100:31/20/0/49(3) 125:32/20/0/48(3) 150:15/10/0/75(2) 175:15/10/0/75(2) 200:15/10/0/75(2) 225:15/10/0/75(2) 250:15/10/0/75(2) 275:15/10/0/75(2) 299:15/10/0/75(2)
+
+   ══ seed 29 (Selected { plates: 20, k: 13, start: 0, compact: true }, N 20) ══
+   ── B0: A1 at 2 048²: the coast within 1 / 2 / 5 cells of 256² of C1's contour 99.5 / 100.0 / 100.0 % (p50 0.25, p90 0.56 cells) · the physics level alone (256²): 99.3 / 100.0 / 100.0 % (p50 0.00, p90 1.00)
+      A2 on our world: windows rocky / low / mixed 22 / 0 / 3 · rocky median 0.996 / 0.921 / 0.314 / 0.552 (0 / 4 in the band) · low median none · the whole coast (coast_torus) 0.983 / 0.899 / 0.308 / 0.867
+      A3 (300 vs 600 steps): |Δz| all p50 / p99 / max 2.49 / 106.0 / 501 m · land p50 / p99 4.14 / 148.2 m · the classes' largest move 0.40 points, cells changed 1.62 % · order-≥ 3 channels displaced 7.7 % · physics CPU 30 → 49 s
+      cost (CPU per world): C1 0 · physics 30 · chain 512 s
+   ── old 300 Myr: A1 at 2 048²: the coast within 1 / 2 / 5 cells of 256² of C1's contour 65.9 / 72.3 / 78.4 % (p50 0.53, p90 23.15 cells) · the physics level alone (256²): 64.6 / 70.5 / 77.5 % (p50 1.00, p90 25.46)
+      A2 on our world: windows rocky / low / mixed 1 / 23 / 7 · rocky median 1.001 / 0.828 / 0.294 / 0.684 (0 / 4 in the band) · low median 1.007 / 0.956 / 0.302 / 0.947 (4 / 4 in the band) · the whole coast (coast_torus) 1.012 / 0.953 / 0.296 / 1.224
+      A3 (300 vs 600 steps): |Δz| all p50 / p99 / max 3.10 / 77.8 / 678 m · land p50 / p99 3.34 / 70.4 m · the classes' largest move 1.65 points, cells changed 2.81 % · order-≥ 3 channels displaced 16.5 % · physics CPU 26 → 46 s
+      cost (CPU per world): C1 0 · physics 26 · chain 477 s
+      A4 the perimeter (convergent / divergent / transform / none): first 50 steps 57.9 / 35.0 / 6.8 / 0.3 % · all 300 steps 32.0 / 17.4 / 2.6 / 48.0 % · same-plate share 0.38 / 53.90 %
+      A4 the series (step: C/D/T/none %, (plates)): 0:58/36/7/0(20) 25:58/35/7/0(20) 50:47/32/7/13(9) 75:51/29/7/13(13) 100:41/19/2/38(8) 125:40/20/2/38(7) 150:15/7/0/78(4) 175:15/7/0/78(4) 200:15/7/0/78(4) 225:15/7/0/78(4) 250:15/7/0/78(4) 275:15/7/0/78(4) 299:15/7/0/78(4)
+
+   R: P1 (≥ 90 % within 1 cell on ≥ 4 / 5) B0 5 seeds → true · old 0 seeds → false · P3: max |Δz| > 200 m on 5 seeds (≥ 3: true), the classes < 1 point everywhere false · P4: the convergent share over the first 50 steps, the panel's mean 55.4 % (> 60 %: false), per seed ["65.9", "48.3", "51.6", "53.4", "57.9"]
+   total 1593 s
+test f174_measure ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1592.87s
+
