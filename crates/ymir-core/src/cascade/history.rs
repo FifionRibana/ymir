@@ -364,6 +364,63 @@ impl SeaLow {
     }
 }
 
+/// ADR Finding 173-B -- **a sea-level curve** s(age) in m above present: a published series (Spratt & Lisiecki 2016's
+/// `SeaLev_longPC1`, 0–798 ka every 1 kyr), taken as is. Between the series' oldest age and `quaternary_kyr` the level is
+/// `before_m` (0 = the declaration); older, 0.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SeaCurve {
+    pub age_kyr: Vec<f64>,
+    pub level_m: Vec<f64>,
+    pub before_m: f64,
+    pub quaternary_kyr: f64,
+    /// The sub-step (kyr) of the C1 steps overlapping the series.
+    pub sub_kyr: f64,
+}
+
+impl SeaCurve {
+    /// Parse NOAA's `spratt2016.txt` (study 19982): the `SeaLev_longPC1` column against `age_calkaBP`, the NaN rows dropped.
+    pub fn from_noaa_spratt2016(text: &str) -> Result<Self, String> {
+        let mut col: Option<usize> = None;
+        let (mut age, mut lev) = (Vec::new(), Vec::new());
+        for line in text.lines() {
+            if line.starts_with('#') || line.trim().is_empty() {
+                continue;
+            }
+            let f: Vec<&str> = line.split('\t').map(|s| s.trim()).collect();
+            if f.first() == Some(&"age_calkaBP") {
+                col = f.iter().position(|s| *s == "SeaLev_longPC1");
+                continue;
+            }
+            let c = col.ok_or("no header with SeaLev_longPC1")?;
+            let (Some(a), Some(v)) = (f.first(), f.get(c)) else { continue };
+            let (Ok(a), Ok(v)) = (a.parse::<f64>(), v.parse::<f64>()) else { continue };
+            if v.is_finite() {
+                age.push(a);
+                lev.push(v);
+            }
+        }
+        if age.len() < 2 {
+            return Err("too few rows".into());
+        }
+        Ok(Self { age_kyr: age, level_m: lev, before_m: 0.0, quaternary_kyr: 2580.0, sub_kyr: 2.0 })
+    }
+    /// s at `age_kyr` (linear between the series' points).
+    pub fn level_at(&self, age_kyr: f64) -> f64 {
+        let last = *self.age_kyr.last().unwrap();
+        if age_kyr > last {
+            return if age_kyr <= self.quaternary_kyr { self.before_m } else { 0.0 };
+        }
+        let i = self.age_kyr.partition_point(|&a| a <= age_kyr).clamp(1, self.age_kyr.len() - 1);
+        let (a0, a1) = (self.age_kyr[i - 1], self.age_kyr[i]);
+        let w = if a1 > a0 { (age_kyr - a0) / (a1 - a0) } else { 0.0 };
+        self.level_m[i - 1] * (1.0 - w) + self.level_m[i] * w
+    }
+    /// The series' mean (m).
+    pub fn mean(&self) -> f64 {
+        self.level_m.iter().sum::<f64>() / self.level_m.len() as f64
+    }
+}
+
 /// ADR Finding 169-C1 -- the durations (years) of `steps` C1 steps whose last lasts `t_years / steps` and which sum to
 /// `age_years`, growing geometrically into the past; and r. At `age_years == t_years`, r = 1 exactly.
 pub fn step_durations(t_years: f64, age_years: f64, steps: usize) -> (Vec<f64>, f64) {
@@ -419,6 +476,23 @@ pub fn physics_history_rock(
     progress: &mut dyn FnMut(CascadeProgress),
     cancel: &dyn Fn() -> bool,
 ) -> Option<HistoryLevel> {
+    physics_history_sea(snaps, n, cfg, run, rock, None, progress, cancel)
+}
+
+/// ADR Finding 173-B -- [`physics_history_rock`] with the base level following a sea-level curve (`None` =
+/// [`physics_history_rock`] exactly): the C1 steps overlapping the curve's series are cut into ⌈d / sub⌉ equal sub-steps, each
+/// with its step's uplift spread uniformly and its base level s at its mid-age. `run.sea_low` is ignored when a curve is given.
+#[allow(clippy::too_many_arguments)]
+pub fn physics_history_sea(
+    snaps: &[GridF32],
+    n: usize,
+    cfg: &CascadeConfig,
+    run: &HistoryRun,
+    rock: Option<&super::Rock>,
+    curve: Option<&SeaCurve>,
+    progress: &mut dyn FnMut(CascadeProgress),
+    cancel: &dyn Fn() -> bool,
+) -> Option<HistoryLevel> {
     let n2m = cfg.norm_to_m();
     let up: Vec<GridF32> = snaps.iter().map(|s| upsample_to(s, n)).collect();
     if run.timing == Timing::Steady {
@@ -462,6 +536,58 @@ pub fn physics_history_rock(
     let zeros = vec![0f32; n * n];
     let steps = run.steps;
     let timing = run.timing;
+    // ADR Finding 173-B: the sea-level curve -- the sub-step plan (C1 step, the uplift's share, dt, the base level)
+    if let (Some(cv), Timing::History) = (curve, timing) {
+        let d: Vec<f64> = match run.age_years {
+            Some(a) => step_durations(run.t_years, a, steps).0,
+            None => vec![run.t_years / steps as f64; steps],
+        };
+        let interval = move |i: usize| ((i * intervals) / steps).min(intervals - 1);
+        let mut dsum = vec![0f64; intervals];
+        for (i, di) in d.iter().enumerate() {
+            dsum[interval(i)] += di;
+        }
+        let mut rem = vec![0f64; steps];
+        let mut acc = 0f64;
+        for i in (0..steps).rev() {
+            rem[i] = acc;
+            acc += d[i];
+        }
+        let window_yr = cv.age_kyr.last().copied().unwrap_or(0.0) * 1000.0;
+        let mut plan: Vec<(usize, f32, f32, f32)> = Vec::new();
+        for i in 0..steps {
+            let ns = if rem[i] < window_yr { (d[i] / (cv.sub_kyr * 1000.0)).ceil().max(1.0) as usize } else { 1 };
+            let share = match run.age_years {
+                Some(_) => d[i] / dsum[interval(i)],
+                None => intervals as f64 / steps as f64,
+            } / ns as f64;
+            let dt = d[i] / ns as f64;
+            for k in 0..ns {
+                let mid_age_kyr = (rem[i] + d[i] - (k as f64 + 0.5) * dt) / 1000.0;
+                let sea = cfg.sea_level + (cv.level_at(mid_age_kyr) as f32) / n2m;
+                plan.push((i, share as f32, dt as f32, sea));
+            }
+        }
+        let delta: Vec<Vec<f32>> = (0..intervals).map(|j| up[j + 1].data.iter().zip(&up[j].data).map(|(b, a)| b - a).collect()).collect();
+        let total = plan.len();
+        let plan = std::rc::Rc::new(plan);
+        let (p1, p2, p3) = (plan.clone(), plan.clone(), plan.clone());
+        let drive = Drive {
+            du: Box::new(move |s| {
+                let (i, f, _, _) = p1[s.min(total - 1)];
+                std::borrow::Cow::Owned(delta[interval(i)].iter().map(|v| v * f).collect())
+            }),
+            hold_sea: false,
+            eq_stop: false,
+            rebound: run.rebound,
+            dt: Some(Box::new(move |s| p2[s.min(total - 1)].2)),
+            rock,
+            sea: Some(Box::new(move |s| p3[s.min(total - 1)].3)),
+        };
+        let uplift = GridF32::new(n, n, 0.0);
+        let rec = run_loop(z0.clone(), uplift, &cfg_t, n, total, Some(0), &drive, progress, cancel)?;
+        return Some(HistoryLevel { rec, z0, snapshots: up });
+    }
     // ADR Finding 172-B1: the lowstand's base level per step (norm)
     let sea_fn = |durations: &[f64]| -> Option<Box<dyn Fn(usize) -> f32>> {
         run.sea_low.map(|sl| {
@@ -801,6 +927,41 @@ mod f169_tests {
         let low = SeaLow { delta_m: 134.0, t_q_years: 2.58e6 }.steps_low(&vec![5.623e6 / 300.0; 300]);
         assert_eq!(low.iter().filter(|&&b| b).count(), 137, "the last 2.58 Myr of 5.623 Myr in 300 steps");
         assert!(low[299] && !low[0]);
+    }
+
+    /// ADR Finding 173-B4 (permanent): the constant lowstand through the new entry point (no curve) is F172 bit for bit; a
+    /// curve parses, interpolates, falls back to `before_m` then 0; a non-zero curve changes the field and adds sub-steps.
+    #[test]
+    fn the_sea_curve_entry_point_keeps_f172_and_sub_steps() {
+        use crate::cascade::Rock;
+        let base = snaps();
+        let c = cfg([0, 0]);
+        let rock = Rock { rho_k: 10.0, cover_m: vec![80.0; 128 * 128], ln_k: None };
+        let run = HistoryRun { t_years: 2.0e6, steps: 30, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: None, sea_low: Some(SeaLow { delta_m: 134.0, t_q_years: 1.0e6 }) };
+        let a = physics_history_rock(&base, 128, &c, &run, Some(&rock), &mut |_| {}, &|| false).unwrap();
+        let b = physics_history_sea(&base, 128, &c, &run, Some(&rock), None, &mut |_| {}, &|| false).unwrap();
+        assert_eq!(a.rec.z.data, b.rec.z.data, "the constant lowstand, through the new entry point");
+        let text = "# x
+age_calkaBP	SeaLev_shortPC1	SeaLev_longPC1
+0	1	10
+1	NaN	-20
+2	NaN	NaN
+3	0	-40
+";
+        let cv = SeaCurve::from_noaa_spratt2016(text).unwrap();
+        assert_eq!(cv.age_kyr, vec![0.0, 1.0, 3.0]);
+        assert!((cv.level_at(0.5) + 5.0).abs() < 1e-9 && (cv.level_at(2.0) + 30.0).abs() < 1e-9);
+        assert_eq!(cv.level_at(100.0), 0.0);
+        let cv2 = SeaCurve { before_m: -50.0, ..cv.clone() };
+        assert_eq!(cv2.level_at(100.0), -50.0);
+        assert_eq!(cv2.level_at(3000.0), 0.0);
+        // a curve over the last 200 kyr of a 2 Myr history (30 steps of 66.7 kyr): the 3 last steps cut into 34 sub-steps each
+        let big = SeaCurve { age_kyr: vec![0.0, 200.0], level_m: vec![-100.0, -100.0], before_m: 0.0, quaternary_kyr: 2580.0, sub_kyr: 2.0 };
+        let run0 = HistoryRun { sea_low: None, ..run };
+        let plain = physics_history_rock(&base, 128, &c, &run0, Some(&rock), &mut |_| {}, &|| false).unwrap();
+        let curved = physics_history_sea(&base, 128, &c, &run0, Some(&rock), Some(&big), &mut |_| {}, &|| false).unwrap();
+        assert_eq!(curved.rec.steps, 27 + 3 * 34, "the sub-steps (the steps ending 0, 66.7 and 133.3 kyr before the end)");
+        assert_ne!(plain.rec.z.data, curved.rec.z.data);
     }
 
     /// F169-A1: the torus noise follows the terrain (an origin rolls it exactly) and wraps (no seam).

@@ -1,0 +1,74 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.36s
+     Running tests\f173_cascade.rs (target_f173b\release\deps\f173_cascade-92463738feb5ac30.exe)
+running 1 test
+test f173_screen has been running for over 60 seconds
+   seed 1 young: W10 0.613 · W_in 0.070 · rampart_W true
+   seed 1 old: W10 0.023 · W_in 0.000 · rampart_W false
+   seed 2 young: W10 0.735 · W_in 0.291 · rampart_W true
+   seed 2 old: W10 0.334 · W_in 0.247 · rampart_W false
+   seed 3 young: W10 0.569 · W_in 0.129 · rampart_W true
+   seed 3 old: W10 0.027 · W_in 0.051 · rampart_W false
+   seed 4 young: W10 0.799 · W_in 0.093 · rampart_W true
+   seed 4 old: W10 0.167 · W_in 0.008 · rampart_W false
+   seed 5 young: W10 0.651 · W_in 0.153 · rampart_W true
+   seed 5 old: W10 0.153 · W_in 0.069 · rampart_W false
+   seed 6 young: W10 0.599 · W_in 0.183 · rampart_W true
+   seed 6 old: W10 0.080 · W_in 0.057 · rampart_W false
+   seed 7 young: W10 0.499 · W_in 0.204 · rampart_W true
+   seed 7 old: W10 0.028 · W_in 0.050 · rampart_W false
+   seed 8 young: W10 0.620 · W_in 0.178 · rampart_W true
+   seed 8 old: W10 0.115 · W_in 0.180 · rampart_W false
+   seed 9 young: W10 0.489 · W_in 0.114 · rampart_W true
+   seed 9 old: W10 0.065 · W_in 0.015 · rampart_W false
+   seed 10 young: W10 0.467 · W_in 0.064 · rampart_W true
+   seed 10 old: W10 0.000 · W_in 0.000 · rampart_W false
+   seed 11 young: W10 0.603 · W_in 0.131 · rampart_W true
+   seed 11 old: W10 0.134 · W_in 0.096 · rampart_W false
+   seed 12 young: W10 0.676 · W_in 0.068 · rampart_W true
+   seed 12 old: W10 0.043 · W_in 0.000 · rampart_W false
+   seed 13 young: W10 0.606 · W_in 0.140 · rampart_W true
+   seed 13 old: W10 0.113 · W_in 0.057 · rampart_W false
+   seed 14 young: W10 0.744 · W_in 0.191 · rampart_W true
+   seed 14 old: W10 0.192 · W_in 0.116 · rampart_W false
+   seed 15 young: W10 0.810 · W_in 0.291 · rampart_W true
+   seed 15 old: W10 0.309 · W_in 0.230 · rampart_W false
+   seed 16 young: W10 0.568 · W_in 0.109 · rampart_W true
+   seed 16 old: W10 0.004 · W_in 0.000 · rampart_W false
+   seed 17 young: W10 0.451 · W_in 0.052 · rampart_W true
+   seed 17 old: W10 0.003 · W_in 0.000 · rampart_W false
+   seed 18 young: W10 0.411 · W_in 0.195 · rampart_W true
+   seed 18 old: W10 0.116 · W_in 0.115 · rampart_W false
+   seed 19 young: W10 0.544 · W_in 0.122 · rampart_W true
+   seed 19 old: W10 0.068 · W_in 0.104 · rampart_W false
+   seed 20 young: W10 0.432 · W_in 0.124 · rampart_W true
+   seed 20 old: W10 0.000 · W_in 0.000 · rampart_W false
+   seed 21 young: W10 0.677 · W_in 0.044 · rampart_W true
+   seed 21 old: W10 0.041 · W_in 0.000 · rampart_W false
+   seed 22 young: W10 0.779 · W_in 0.160 · rampart_W true
+   seed 22 old: W10 0.291 · W_in 0.072 · rampart_W false
+   seed 23 young: W10 0.629 · W_in 0.126 · rampart_W true
+   seed 23 old: W10 0.088 · W_in 0.107 · rampart_W false
+   seed 24 young: W10 0.368 · W_in 0.057 · rampart_W true
+   seed 24 old: W10 0.012 · W_in 0.000 · rampart_W false
+   seed 25 young: W10 0.590 · W_in 0.071 · rampart_W true
+   seed 25 old: W10 0.025 · W_in 0.000 · rampart_W false
+   seed 26 young: W10 0.565 · W_in 0.063 · rampart_W true
+   seed 26 old: W10 0.088 · W_in 0.050 · rampart_W false
+   seed 27 young: W10 0.584 · W_in 0.154 · rampart_W true
+   seed 27 old: W10 0.138 · W_in 0.036 · rampart_W false
+   seed 28 young: W10 0.754 · W_in 0.213 · rampart_W true
+   seed 28 old: W10 0.300 · W_in 0.068 · rampart_W false
+   seed 29 young: W10 0.456 · W_in 0.101 · rampart_W true
+   seed 29 old: W10 0.021 · W_in 0.034 · rampart_W false
+   seed 30 young: W10 0.562 · W_in 0.170 · rampart_W true
+   seed 30 old: W10 0.171 · W_in 0.111 · rampart_W false
+   seed 31 young: W10 0.669 · W_in 0.154 · rampart_W true
+   seed 31 old: W10 0.263 · W_in 0.098 · rampart_W false
+   seed 32 young: W10 0.750 · W_in 0.211 · rampart_W true
+   seed 32 old: W10 0.264 · W_in 0.140 · rampart_W false
+   seed 10481999410520546993 young: W10 0.777 · W_in 0.161 · rampart_W true
+   seed 10481999410520546993 old: W10 0.153 · W_in 0.070 · rampart_W false
+   C3: rampart_W at young on 33 / 33 seeds (100 %) · the catalogue: f173_sea_curve/catalogue.tsv · 20325.8 s wall
+test f173_screen ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 20325.85s

@@ -22637,3 +22637,84 @@ plaines, etc). »
 
 **The author's decision, verbatim**: « non pas besoin d'un navigateur de graines. Juste utiliser ces graines comme témoin pour
 la suite. J'ai rajouté spratt2016.pdf dans docs/refs. »
+
+## Finding 173 — a real sea-level curve (Spratt & Lisiecki 2016, at the physics level only): F172's excess came from the amplification levels (83–102 % of the length ratio's excess when they erode at −134 m); the published curve removes it but leaves the coast as smooth as without a sea (dimension 0.99–1.02, length ratio 0.90–0.99) and drowns closed lowland basins (2.7–7.3 % of the land at intermediate and old) — the curve's success fails, no stop fires; 75–86 % of the coastal prism was added at a convergent boundary (a former active margin); the wall index tracks the 2 048² walls (Pearson 0.96) and fires at young on 33 / 33 seeds — a probable C1 bias; production unchanged
+
+**Status: built, measured, gated; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f173_sea_curve/finding_173.md`.
+- Declared before any measurement: `f173_declared.md`. Predictions: `f173_predictions.md`. The catalogue: `catalogue.tsv` (with
+  `W10`, `W_in`, `rampart_W`).
+- F172 committed (`f6607c6`). The panel: the seeds 8, 18, 19, 23, 29.
+
+**B — the curve** (`history::SeaCurve`, `physics_history_sea`):
+- **The series**: Spratt & Lisiecki 2016, Clim. Past 12, 1079–1092 (`docs/refs/spratt2016.pdf`). The column `SeaLev_longPC1`
+  (0–798 ka every 1 kyr; the abstract p. 1079, Fig. 2 p. 1085).
+  - The numbers come from the archive the paper names (p. 1090): NOAA study 19982, `spratt2016.txt`, in `data/sealevel/`
+    (git-ignored). Parsed, not digitised.
+  - Taken as is (+8.96 m at 0 ka, min −130 m, mean −52.9 m); 0 m before.
+- **The physics level only**, with 2 kyr sub-steps over the last 798 kyr. The chain erodes at 0 m.
+- **The controls** (permanent): s ≡ 0 through the constant path is F171; the constant lowstand through the new entry point is
+  F172. The curve path with s ≡ 0 is not bit for bit (the sub-steps; max |Δz| 593 m locally, the classes 0.03 points).
+- **The viz**: « Mer : aucune / bas niveau constant / courbe quaternaire ».
+
+**A — the attribution** (the panel, young and old; a constant −134 m):
+- the amplification levels carry **83–102 %** of the length ratio's excess and 89–99 % of the dimension's;
+- the physics level's lowstand alone leaves the coast unchanged but drowns **2–14 %** of the land.
+
+**D — the curve** (the panel × 4 ages):
+- **The coast**: dimension 0.99–1.02 (Δ −0.02 to +0.05), length ratio 0.90–0.99 (Δ −0.03 to +0.10). Inside 0–2 of the 4 bands; the
+  length ratio under its band everywhere.
+- **The land lost**: 0.7–2.7 % at B0 / young, 2.7–7.3 % at intermediate / old. These are closed lowland basins connected to the
+  sea.
+- **The classes** move 1.6–3.8 points.
+- **The drowned valleys**: 1–7 per world, the longest 16–64 km, Spearman(length, area) 0.5–1.0 on 4 seeds.
+- **The 0 to −134 m zone**: 0.2–2.2 km.
+- **The sensitivities**: the stack's mean before 798 ka changes little; the chain at the mean over-cuts again (1.31 / 2.42).
+- **Cost**: the curve doubles the physics level (+~390 sub-steps) and adds 2–8 % per world.
+
+**C — the rampart**:
+- **C1**: 75–86 % of today's coastal prism was added at a convergent boundary (C-O 65–85 %, C-C 2–10 %), 37–64 % of it while
+  ≥ 10 plates remained. **The reviewer's hypothesis holds**: the no-boundary coast is a former active margin.
+- **C2**: W₁₀ (the share of the land within 10 km of the coast with a 256² slope ≥ 8°) against the 2 048² coastal walls: Pearson
+  0.96, Spearman 0.97. It fires at B0 and young on 5 / 5, at intermediate and old on none.
+- **C3**: rampart_W at young on **33 / 33** screened seeds, at old on 0. That is above F172's 80 % flag: a probable C1 bias.
+
+**R**:
+- the curve's success: 0 seeds;
+- too drowned: no; no effect: no;
+- the curve does not enter the profile.
+
+**The reading** (hypotheses to check):
+- The sea level does not make Corsica's coast: F172's Corsica-like dimension was the chain eroding a −134 m base.
+- The curve drowns lowland basins cut below 0 m with no deposition to fill them.
+- The rampart is C1's early active margins, a ring on every young continent.
+
+**Predictions**:
+- **The reviewer's**:
+  - held: Z1, Z3 at young, Z4 mostly, Z5, Z6, the meta;
+  - refuted: Z2's rises, Z3 at intermediate and old, Z4's ≤ 50 km on 2 worlds.
+- **Mine**:
+  - held: no success, no stop, Z6, the per-world cost, the meta;
+  - refuted: Z1, Z2, Z3's range, Z4's Spearman, Z5, the physics level's cost.
+
+**Open, for the author** (nothing chosen):
+- (a) the sea in the profile (deposition next, or the sea left out until then);
+- (b) the rampart: C1 (b), passive margins;
+- (c) the coast's smoothness has no sea-level lever left;
+- (d) the wall index as the rampart's measure.
+
+**At commit (2026-10-12), decided (the reviewer's proposals, not contested by the author)**:
+- **(a)** The sea does **not** enter the default profile until deposition exists. The code and the curve are kept.
+- **(b)** The rampart is a C1 bias (100 % at young). Coastal ranges on passive margins exist on Earth; the defect is that they are
+  everywhere.
+- **(c)** The sea level is not the coast's lever.
+- **(d)** The wall index W₁₀ is adopted.
+- **The reviewer's error, recorded**: Corsica taken as the reference of every coast. It stands for steep rocky coasts only; real
+  low coasts are often fairly smooth (Landes, the North Sea), their irregularity coming from deposition and waves.
+- **To correct (F174)**: Spratt & Lisiecki's series reads +8.96 m at 0 ka. It is re-zeroed to 0 m today: an alignment of
+  reference, not a calibration.
+
+**The author's view, verbatim**: « Je ne suis pas convaincu par l'aspect dendritique à la montée des eaux. Ca ne fait pas
+"naturel". Ca manque toujours d'irrégularité. »
+
+**The order, decided by the author** (« Ok go »): F174 = the measures, then the passive margin; F175 = deposition (Yuan et al. 2019).

@@ -1,0 +1,258 @@
+...
+    Finished `release` profile [optimized] target(s) in 0.16s
+     Running tests\f173_cascade.rs (target_f173b\release\deps\f173_cascade-92463738feb5ac30.exe)
+running 1 test
+==========  Finding 173 . the sea-level curve (Spratt & Lisiecki 2016, 799 points, 0–798 ka, mean -52.9 m, min -130.0 m), the attribution, the rampart  ==========
+   ══ seed 8 (Selected { plates: 16, k: 7, start: 14, compact: true }, N 16) ══
+      C1 the coastal prism (Σ Δs_DS of today's land within 2 cells of the coast): added at a C-O convergent boundary 73.3 % · C-C 4.8 % · no convergent boundary within 2 cells 21.9 % · by the plate count ≥ 10 / 7–9 / ≤ 6: 41.1 / 0.0 / 58.9 %
+   ── seed 8 B0:
+test f173_measure has been running for over 60 seconds
+      (curve: 687 physics steps)
+      the coast: none 0.985 / 0.911 / 0.305 / 0.833 (2 in the bands) · constant 1.167 / 1.595 / 0.351 / 0.898 (3 in the bands) · curve 1.001 / 0.936 / 0.338 / 0.978 (1 in the bands)
+      the land lost against none: constant 2.66 % · curve 0.71 % · the classes' largest move: constant 5.2 · curve 2.1 points · cost (CPU per world) none 451 · constant 482 · curve 488 s (physics 29 → 69 s)
+   none                       plain   3.0 % · plateau   1.8 % · hill  25.6 % · mountain  69.6 % · land 82749 km² · deciles 95/174/331/585/865/1270/2031/2930/3921
+   curve                      plain   1.7 % · plateau   1.8 % · hill  24.7 % · mountain  71.7 % · land 80286 km² · deciles 103/198/380/628/916/1325/2113/2984/3947
+      curve: drowned valleys 3 (length p50 / p90 / max 10.5 / 10.5 / 48.8 km, Spearman(length, area) 0.50; the 5 longest 48.8 km / 4937 km², 10.5 km / 43580 km², 2.1 km / 114 km²) · islands ≥ 1 km² 1 → 1 · the 0 to −134 m zone median / p90 0.20 / 1.76 km · lakes 13 / 1331 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 14 of 19 within ×1.5 · out: facets 16.665/6.241; walls 28° 5.410/1.547; S_2 − 1 0.099/0.172; S_5 − 1 0.143/0.239; A_dir 0.447/0.206
+      curve, 2048² mountain: 14 of 19 within ×1.5 · out: facets 22.042/6.746; walls 28° 7.307/2.320; S_2 − 1 0.103/0.175; S_5 − 1 0.143/0.255; A_dir 0.395/0.200
+      curve: slope guard 0.441/0.538 · regularity 391 m CV_λ 0.772 · CV_L 1.140 · σ_θ 25.4° · R2_g 0.806
+      C2: W10 0.855 · W_in 0.191 · rampart_W true · the 2048² walls (> 28°) within 10 km of the coast 0.183
+   ── seed 8 young 20 Myr:
+      (curve: 689 physics steps)
+      the coast: none 0.992 / 0.921 / 0.295 / 1.177 (1 in the bands) · constant 1.213 / 1.851 / 0.348 / 0.985 (0 in the bands) · curve 0.988 / 0.907 / 0.319 / 0.675 (2 in the bands)
+      the land lost against none: constant 2.66 % · curve 1.04 % · the classes' largest move: constant 3.1 · curve 1.6 points · cost (CPU per world) none 458 · constant 471 · curve 508 s (physics 22 → 51 s)
+   none                       plain  12.4 % · plateau   1.0 % · hill  25.4 % · mountain  61.1 % · land 82588 km² · deciles 124/191/261/365/559/863/1302/2019/3443
+   curve                      plain  12.0 % · plateau   1.1 % · hill  24.2 % · mountain  62.7 % · land 80447 km² · deciles 141/202/279/388/592/896/1345/2071/3503
+      A: A-phys 0.986 / 0.896 / 0.312 / 0.828 (2 in the bands) (lost 2.34 %) · A-ampl 1.212 / 1.869 / 0.352 / 0.888 (1 in the bands) (lost 0.99 %) · A-both = constant · the length ratio's excess from the amplifications 102 %, from the physics level -3 % · the dimension's from the amplifications 99 %
+      curve: drowned valleys 3 (length p50 / p90 / max 9.0 / 9.0 / 26.4 km, Spearman(length, area) 0.50; the 5 longest 26.4 km / 5599 km², 9.0 km / 19618 km², 3.1 km / 668 km²) · islands ≥ 1 km² 1 → 2 · the 0 to −134 m zone median / p90 0.44 / 1.75 km · lakes 19 / 3687 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 14 of 19 within ×1.5 · out: facets 13.620/6.241; walls 28° 4.044/1.547; S_2 − 1 0.112/0.172; A_dir 0.388/0.206; F 0.068/0.043
+      curve, 2048² mountain: 12 of 19 within ×1.5 · out: facets 21.466/6.746; walls 28° 6.340/2.320; S_2 − 1 0.104/0.175; S_5 − 1 0.143/0.255; S_10 − 1 0.190/0.289; A_dir 0.392/0.200; F 0.009/0.006
+      curve: slope guard 0.426/0.529 · regularity 391 m CV_λ 0.694 · CV_L 0.985 · σ_θ 25.3° · R2_g 0.763
+      C2: W10 0.591 · W_in 0.171 · rampart_W true · the 2048² walls (> 28°) within 10 km of the coast 0.080
+   ── seed 8 intermediate 100 Myr:
+      (curve: 693 physics steps)
+      the coast: none 0.999 / 0.933 / 0.323 / 1.655 (0 in the bands) · constant 1.360 / 2.765 / 0.343 / 1.062 (0 in the bands) · curve 1.010 / 0.959 / 0.333 / 0.662 (1 in the bands)
+      the land lost against none: constant 8.02 % · curve 2.68 % · the classes' largest move: constant 7.3 · curve 1.9 points · cost (CPU per world) none 445 · constant 450 · curve 475 s (physics 21 → 66 s)
+   none                       plain  17.3 % · plateau   1.3 % · hill  43.0 % · mountain  38.3 % · land 82168 km² · deciles 45/93/147/205/271/359/514/1044/2440
+   curve                      plain  15.4 % · plateau   1.4 % · hill  43.7 % · mountain  39.5 % · land 79702 km² · deciles 56/105/159/217/283/372/538/1107/2492
+      curve: drowned valleys 2 (length p50 / p90 / max 2.3 / 2.3 / 18.9 km, Spearman(length, area) NaN; the 5 longest 18.9 km / 15441 km², 2.3 km / 95 km²) · islands ≥ 1 km² 2 → 4 · the 0 to −134 m zone median / p90 1.49 / 3.54 km · lakes 17 / 1299 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 13 of 19 within ×1.5 · out: slope p50 0.153/0.247; octave 3.12–6.25 km 66.647/100.862; octave 6.25–12.50 km 90.280/159.805; S_2 − 1 0.111/0.172; A_dir 0.401/0.206; F 0.100/0.043
+      curve, 2048² mountain: 13 of 19 within ×1.5 · out: facets 17.441/6.746; walls 28° 5.383/2.320; S_2 − 1 0.107/0.175; S_5 − 1 0.151/0.255; A_dir 0.396/0.200; F 0.013/0.006
+      curve: slope guard 0.384/0.523 · regularity 391 m CV_λ 0.652 · CV_L 0.906 · σ_θ 24.4° · R2_g 0.706
+      C2: W10 0.173 · W_in 0.160 · rampart_W false · the 2048² walls (> 28°) within 10 km of the coast 0.025
+   ── seed 8 old 300 Myr:
+      (curve: 694 physics steps)
+      the coast: none 1.004 / 0.951 / 0.323 / 1.615 (0 in the bands) · constant 1.409 / 3.094 / 0.351 / 1.071 (0 in the bands) · curve 1.008 / 0.950 / 0.303 / 0.766 (2 in the bands)
+      the land lost against none: constant 10.68 % · curve 3.72 % · the classes' largest move: constant 7.6 · curve 1.8 points · cost (CPU per world) none 434 · constant 447 · curve 459 s (physics 27 → 65 s)
+   none                       plain  51.9 % · plateau   0.1 % · hill  20.9 % · mountain  27.1 % · land 81819 km² · deciles 21/43/67/95/133/189/295/787/1986
+   curve                      plain  50.1 % · plateau   0.1 % · hill  21.6 % · mountain  28.1 % · land 78657 km² · deciles 27/50/75/103/143/200/320/844/2042
+      A: A-phys 1.017 / 0.963 / 0.284 / 0.880 (2 in the bands) (lost 9.45 %) · A-ampl 1.366 / 2.749 / 0.349 / 1.049 (0 in the bands) (lost 3.00 %) · A-both = constant · the length ratio's excess from the amplifications 84 %, from the physics level 1 % · the dimension's from the amplifications 89 %
+      curve: drowned valleys 1 (length p50 / p90 / max 23.0 / 23.0 / 23.0 km, Spearman(length, area) NaN; the 5 longest 23.0 km / 15379 km²) · islands ≥ 1 km² 2 → 4 · the 0 to −134 m zone median / p90 1.95 / 5.20 km · lakes 13 / 1406 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 14 of 19 within ×1.5 · out: slope p50 0.077/0.247; octave 3.12–6.25 km 61.321/100.862; octave 6.25–12.50 km 85.562/159.805; A_dir 0.365/0.206; F 0.187/0.043
+      curve, 2048² mountain: 13 of 19 within ×1.5 · out: facets 22.829/6.746; walls 28° 6.729/2.320; S_2 − 1 0.113/0.175; S_5 − 1 0.158/0.255; A_dir 0.396/0.200; F 0.009/0.006
+      curve: slope guard 0.430/0.530 · regularity 391 m CV_λ 0.631 · CV_L 0.966 · σ_θ 25.6° · R2_g 0.750
+      C2: W10 0.140 · W_in 0.138 · rampart_W false · the 2048² walls (> 28°) within 10 km of the coast 0.019
+      (curve: 694 physics steps)
+      (curve: 694 physics steps)
+   sensitivity (seed 8, old): none 1.004 / 0.951 / 0.323 / 1.615 (0 in the bands) · the mean (-52.9 m) from 2.58 Ma to 798 ka 1.016 / 0.958 / 0.311 / 0.909 (2 in the bands) · the chain at the mean 1.311 / 2.421 / 0.356 / 1.076 (0 in the bands)
+   ══ seed 18 (Selected { plates: 16, k: 11, start: 12, compact: true }, N 16) ══
+      C1 the coastal prism (Σ Δs_DS of today's land within 2 cells of the coast): added at a C-O convergent boundary 65.2 % · C-C 10.1 % · no convergent boundary within 2 cells 24.7 % · by the plate count ≥ 10 / 7–9 / ≤ 6: 53.6 / 21.8 / 24.7 %
+   ── seed 18 B0:
+      (curve: 687 physics steps)
+      the coast: none 0.971 / 0.888 / 0.291 / 1.373 (1 in the bands) · constant 1.242 / 1.950 / 0.341 / 1.033 (0 in the bands) · curve 1.020 / 0.992 / 0.335 / 1.298 (0 in the bands)
+      the land lost against none: constant 12.10 % · curve 1.53 % · the classes' largest move: constant 7.9 · curve 3.5 points · cost (CPU per world) none 433 · constant 436 · curve 464 s (physics 30 → 68 s)
+   none                       plain   4.3 % · plateau   1.1 % · hill  30.2 % · mountain  64.4 % · land 82253 km² · deciles 71/155/261/406/585/910/1437/2130/3461
+   curve                      plain   2.6 % · plateau   1.0 % · hill  28.4 % · mountain  67.9 % · land 78262 km² · deciles 95/194/311/456/640/1005/1519/2218/3554
+      curve: drowned valleys 6 (length p50 / p90 / max 17.8 / 41.0 / 44.1 km, Spearman(length, area) -0.09; the 5 longest 44.1 km / 3772 km², 41.0 km / 2377 km², 38.5 km / 7242 km², 17.8 km / 17784 km², 6.8 km / 24181 km²) · islands ≥ 1 km² 1 → 2 · the 0 to −134 m zone median / p90 0.28 / 9.77 km · lakes 5 / 447 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 14 of 19 within ×1.5 · out: facets 14.581/6.241; walls 28° 4.700/1.547; S_2 − 1 0.107/0.172; S_5 − 1 0.154/0.239; A_dir 0.393/0.206
+      curve, 2048² mountain: 14 of 19 within ×1.5 · out: facets 20.407/6.746; walls 28° 6.722/2.320; S_2 − 1 0.109/0.175; S_5 − 1 0.150/0.255; A_dir 0.376/0.200
+      curve: slope guard 0.426/0.532 · regularity 391 m CV_λ 0.716 · CV_L 1.008 · σ_θ 25.3° · R2_g 0.728
+      C2: W10 0.760 · W_in 0.151 · rampart_W true · the 2048² walls (> 28°) within 10 km of the coast 0.141
+   ── seed 18 young 20 Myr:
+      (curve: 689 physics steps)
+      the coast: none 0.974 / 0.891 / 0.342 / 1.214 (0 in the bands) · constant 1.288 / 2.256 / 0.353 / 1.006 (0 in the bands) · curve 1.019 / 0.981 / 0.324 / 0.962 (1 in the bands)
+      the land lost against none: constant 13.46 % · curve 2.28 % · the classes' largest move: constant 7.8 · curve 3.7 points · cost (CPU per world) none 425 · constant 433 · curve 453 s (physics 28 → 53 s)
+   none                       plain  14.6 % · plateau   1.9 % · hill  27.2 % · mountain  56.4 % · land 81831 km² · deciles 37/112/211/325/472/687/998/1656/2570
+   curve                      plain  12.0 % · plateau   2.0 % · hill  25.9 % · mountain  60.1 % · land 76760 km² · deciles 71/160/258/371/532/766/1098/1748/2679
+      A: A-phys 1.005 / 0.929 / 0.321 / 1.052 (0 in the bands) (lost 12.81 %) · A-ampl 1.257 / 2.149 / 0.363 / 1.078 (0 in the bands) (lost 1.50 %) · A-both = constant · the length ratio's excess from the amplifications 92 %, from the physics level 3 % · the dimension's from the amplifications 90 %
+      curve: drowned valleys 3 (length p50 / p90 / max 16.0 / 16.0 / 64.3 km, Spearman(length, area) 1.00; the 5 longest 64.3 km / 23606 km², 16.0 km / 17187 km², 3.3 km / 306 km²) · islands ≥ 1 km² 1 → 2 · the 0 to −134 m zone median / p90 0.62 / 10.86 km · lakes 6 / 513 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 12 of 19 within ×1.5 · out: facets 12.221/6.241; walls 28° 3.559/1.547; octave 6.25–12.50 km 95.904/159.805; S_2 − 1 0.111/0.172; S_5 − 1 0.155/0.239; A_dir 0.382/0.206; F 0.074/0.043
+      curve, 2048² mountain: 13 of 19 within ×1.5 · out: facets 19.288/6.746; walls 28° 5.815/2.320; octave 6.25–12.50 km 123.696/200.536; S_2 − 1 0.110/0.175; S_5 − 1 0.148/0.255; A_dir 0.377/0.200
+      curve: slope guard 0.413/0.523 · regularity 391 m CV_λ 0.665 · CV_L 0.978 · σ_θ 25.0° · R2_g 0.720
+      C2: W10 0.532 · W_in 0.141 · rampart_W true · the 2048² walls (> 28°) within 10 km of the coast 0.059
+   ── seed 18 intermediate 100 Myr:
+      (curve: 693 physics steps)
+      the coast: none 0.981 / 0.915 / 0.322 / 1.065 (0 in the bands) · constant 1.354 / 2.705 / 0.352 / 1.036 (0 in the bands) · curve 0.999 / 0.930 / 0.328 / 0.840 (1 in the bands)
+      the land lost against none: constant 13.28 % · curve 6.08 % · the classes' largest move: constant 6.9 · curve 2.9 points · cost (CPU per world) none 439 · constant 440 · curve 461 s (physics 27 → 62 s)
+   none                       plain  20.8 % · plateau   1.2 % · hill  40.5 % · mountain  37.6 % · land 80667 km² · deciles 36/79/128/187/258/347/491/924/2138
+   curve                      plain  17.9 % · plateau   1.3 % · hill  41.5 % · mountain  39.4 % · land 77080 km² · deciles 50/96/145/206/275/368/522/1002/2184
+      curve: drowned valleys 2 (length p50 / p90 / max 14.1 / 14.1 / 27.9 km, Spearman(length, area) NaN; the 5 longest 27.9 km / 10006 km², 14.1 km / 12667 km²) · islands ≥ 1 km² 2 → 3 · the 0 to −134 m zone median / p90 1.67 / 4.08 km · lakes 5 / 439 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 13 of 19 within ×1.5 · out: slope p50 0.149/0.247; octave 3.12–6.25 km 66.322/100.862; octave 6.25–12.50 km 66.964/159.805; S_2 − 1 0.110/0.172; A_dir 0.391/0.206; F 0.116/0.043
+      curve, 2048² mountain: 12 of 19 within ×1.5 · out: facets 16.600/6.746; walls 28° 4.767/2.320; octave 6.25–12.50 km 106.697/200.536; S_2 − 1 0.105/0.175; S_5 − 1 0.147/0.255; A_dir 0.405/0.200; F 0.013/0.006
+      curve: slope guard 0.376/0.515 · regularity 391 m CV_λ 0.632 · CV_L 0.956 · σ_θ 24.1° · R2_g 0.750
+      C2: W10 0.132 · W_in 0.119 · rampart_W false · the 2048² walls (> 28°) within 10 km of the coast 0.011
+   ── seed 18 old 300 Myr:
+      (curve: 694 physics steps)
+      the coast: none 1.019 / 1.003 / 0.333 / 1.033 (0 in the bands) · constant 1.416 / 3.160 / 0.348 / 1.064 (0 in the bands) · curve 1.002 / 0.948 / 0.312 / 0.882 (2 in the bands)
+      the land lost against none: constant 15.61 % · curve 7.29 % · the classes' largest move: constant 10.1 · curve 2.4 points · cost (CPU per world) none 446 · constant 438 · curve 451 s (physics 29 → 67 s)
+   none                       plain  53.4 % · plateau   0.5 % · hill  21.0 % · mountain  25.1 % · land 79919 km² · deciles 16/39/67/96/128/171/260/653/1934
+   curve                      plain  50.9 % · plateau   0.5 % · hill  22.2 % · mountain  26.3 % · land 76018 km² · deciles 24/50/77/106/137/184/286/771/2001
+      A: A-phys 1.008 / 0.941 / 0.309 / 0.939 (2 in the bands) (lost 14.34 %) · A-ampl 1.392 / 3.024 / 0.358 / 1.117 (0 in the bands) (lost 6.38 %) · A-both = constant · the length ratio's excess from the amplifications 94 %, from the physics level -3 % · the dimension's from the amplifications 94 %
+      curve: drowned valleys 2 (length p50 / p90 / max 16.8 / 16.8 / 21.3 km, Spearman(length, area) NaN; the 5 longest 21.3 km / 10309 km², 16.8 km / 12242 km²) · islands ≥ 1 km² 2 → 3 · the 0 to −134 m zone median / p90 2.21 / 4.94 km · lakes 6 / 439 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 14 of 19 within ×1.5 · out: slope p50 0.080/0.247; octave 3.12–6.25 km 60.964/100.862; octave 6.25–12.50 km 60.821/159.805; A_dir 0.353/0.206; F 0.191/0.043
+      curve, 2048² mountain: 13 of 19 within ×1.5 · out: facets 22.444/6.746; walls 28° 6.068/2.320; octave 6.25–12.50 km 118.562/200.536; S_2 − 1 0.113/0.175; S_5 − 1 0.153/0.255; A_dir 0.371/0.200
+      curve: slope guard 0.425/0.523 · regularity 391 m CV_λ 0.603 · CV_L 0.920 · σ_θ 25.3° · R2_g 0.668
+      C2: W10 0.118 · W_in 0.093 · rampart_W false · the 2048² walls (> 28°) within 10 km of the coast 0.008
+   ══ seed 19 (Selected { plates: 20, k: 12, start: 18, compact: false }, N 20) ══
+      C1 the coastal prism (Σ Δs_DS of today's land within 2 cells of the coast): added at a C-O convergent boundary 84.6 % · C-C 1.6 % · no convergent boundary within 2 cells 13.8 % · by the plate count ≥ 10 / 7–9 / ≤ 6: 40.9 / 16.5 / 42.7 %
+   ── seed 19 B0:
+      (curve: 687 physics steps)
+      the coast: none 0.982 / 0.881 / 0.331 / 0.906 (1 in the bands) · constant 1.172 / 1.582 / 0.343 / 0.971 (3 in the bands) · curve 1.005 / 0.931 / 0.331 / 0.733 (1 in the bands)
+      the land lost against none: constant 4.82 % · curve 1.61 % · the classes' largest move: constant 6.2 · curve 3.0 points · cost (CPU per world) none 455 · constant 467 · curve 496 s (physics 31 → 71 s)
+   none                       plain   4.8 % · plateau   2.2 % · hill  28.9 % · mountain  64.2 % · land 89932 km² · deciles 80/160/270/418/618/909/1455/2157/3137
+   curve                      plain   2.5 % · plateau   2.3 % · hill  28.0 % · mountain  67.2 % · land 85925 km² · deciles 103/194/313/468/687/987/1552/2239/3191
+      curve: drowned valleys 7 (length p50 / p90 / max 17.2 / 36.7 / 36.7 km, Spearman(length, area) 0.95; the 5 longest 36.7 km / 51139 km², 36.7 km / 4465 km², 20.5 km / 1727 km², 17.2 km / 4383 km², 3.7 km / 1447 km²) · islands ≥ 1 km² 1 → 3 · the 0 to −134 m zone median / p90 0.28 / 9.15 km · lakes 6 / 5476 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 13 of 19 within ×1.5 · out: facets 14.215/6.241; walls 28° 4.610/1.547; S_2 − 1 0.092/0.172; S_5 − 1 0.137/0.239; A_dir 0.476/0.206; F 0.065/0.043
+      curve, 2048² mountain: 11 of 19 within ×1.5 · out: facets 19.619/6.746; walls 28° 6.644/2.320; CV_L 1.368/0.825; S_2 − 1 0.094/0.175; S_5 − 1 0.133/0.255; S_10 − 1 0.189/0.289; A_dir 0.430/0.200; F 0.015/0.006
+      curve: slope guard 0.421/0.535 · regularity 391 m CV_λ 0.872 · CV_L 1.346 · σ_θ 25.3° · R2_g 0.801
+      C2: W10 0.799 · W_in 0.164 · rampart_W true · the 2048² walls (> 28°) within 10 km of the coast 0.184
+   ── seed 19 young 20 Myr:
+      (curve: 689 physics steps)
+      the coast: none 0.980 / 0.891 / 0.294 / 0.870 (2 in the bands) · constant 1.232 / 1.943 / 0.345 / 1.056 (0 in the bands) · curve 0.986 / 0.899 / 0.302 / 0.782 (2 in the bands)
+      the land lost against none: constant 5.45 % · curve 2.15 % · the classes' largest move: constant 4.2 · curve 2.3 points · cost (CPU per world) none 471 · constant 480 · curve 504 s (physics 32 → 70 s)
+   none                       plain  13.7 % · plateau   4.5 % · hill  28.8 % · mountain  53.0 % · land 89570 km² · deciles 76/172/262/351/470/603/857/1508/2319
+   curve                      plain  12.5 % · plateau   4.8 % · hill  27.5 % · mountain  55.3 % · land 85864 km² · deciles 105/206/289/378/490/634/916/1579/2363
+      A: A-phys 0.984 / 0.892 / 0.321 / 0.858 (1 in the bands) (lost 4.34 %) · A-ampl 1.217 / 1.864 / 0.356 / 1.013 (0 in the bands) (lost 1.07 %) · A-both = constant · the length ratio's excess from the amplifications 93 %, from the physics level 0 % · the dimension's from the amplifications 94 %
+      curve: drowned valleys 6 (length p50 / p90 / max 8.0 / 25.4 / 30.9 km, Spearman(length, area) 0.77; the 5 longest 30.9 km / 3517 km², 25.4 km / 37515 km², 21.1 km / 8990 km², 8.0 km / 198 km², 3.1 km / 727 km²) · islands ≥ 1 km² 1 → 1 · the 0 to −134 m zone median / p90 0.55 / 4.49 km · lakes 7 / 4756 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 12 of 19 within ×1.5 · out: facets 11.378/6.241; walls 28° 3.300/1.547; octave 6.25–12.50 km 100.628/159.805; S_2 − 1 0.105/0.172; S_5 − 1 0.155/0.239; A_dir 0.414/0.206; F 0.073/0.043
+      curve, 2048² mountain: 12 of 19 within ×1.5 · out: facets 19.235/6.746; walls 28° 5.845/2.320; S_2 − 1 0.097/0.175; S_5 − 1 0.132/0.255; S_10 − 1 0.178/0.289; A_dir 0.421/0.200; F 0.015/0.006
+      curve: slope guard 0.409/0.525 · regularity 391 m CV_λ 0.749 · CV_L 1.198 · σ_θ 25.3° · R2_g 0.764
+      C2: W10 0.552 · W_in 0.115 · rampart_W true · the 2048² walls (> 28°) within 10 km of the coast 0.078
+   ── seed 19 intermediate 100 Myr:
+      (curve: 693 physics steps)
+      the coast: none 1.002 / 0.932 / 0.326 / 0.908 (1 in the bands) · constant 1.357 / 2.697 / 0.361 / 1.052 (0 in the bands) · curve 0.997 / 0.924 / 0.291 / 0.894 (2 in the bands)
+      the land lost against none: constant 12.79 % · curve 4.36 % · the classes' largest move: constant 9.0 · curve 2.9 points · cost (CPU per world) none 468 · constant 473 · curve 492 s (physics 29 → 66 s)
+   none                       plain  21.5 % · plateau   3.2 % · hill  41.1 % · mountain  34.2 % · land 87815 km² · deciles 30/65/108/162/227/324/464/689/1484
+   curve                      plain  18.6 % · plateau   3.4 % · hill  42.2 % · mountain  35.7 % · land 83958 km² · deciles 41/80/124/178/246/346/487/710/1531
+      curve: drowned valleys 1 (length p50 / p90 / max 28.3 / 28.3 / 28.3 km, Spearman(length, area) NaN; the 5 longest 28.3 km / 9989 km²) · islands ≥ 1 km² 2 → 8 · the 0 to −134 m zone median / p90 1.41 / 4.10 km · lakes 13 / 3716 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 14 of 19 within ×1.5 · out: slope p50 0.131/0.247; octave 3.12–6.25 km 53.383/100.862; octave 6.25–12.50 km 67.989/159.805; A_dir 0.382/0.206; F 0.114/0.043
+      curve, 2048² mountain: 12 of 19 within ×1.5 · out: facets 14.358/6.746; walls 28° 3.927/2.320; octave 6.25–12.50 km 113.928/200.536; S_2 − 1 0.104/0.175; S_5 − 1 0.150/0.255; A_dir 0.419/0.200; F 0.019/0.006
+      curve: slope guard 0.346/0.510 · regularity 391 m CV_λ 0.657 · CV_L 0.945 · σ_θ 24.1° · R2_g 0.655
+      C2: W10 0.097 · W_in 0.089 · rampart_W false · the 2048² walls (> 28°) within 10 km of the coast 0.011
+   ── seed 19 old 300 Myr:
+      (curve: 694 physics steps)
+      the coast: none 1.018 / 0.983 / 0.323 / 0.927 (1 in the bands) · constant 1.410 / 3.072 / 0.354 / 1.020 (0 in the bands) · curve 1.007 / 0.944 / 0.320 / 0.898 (1 in the bands)
+      the land lost against none: constant 15.09 % · curve 6.28 % · the classes' largest move: constant 8.9 · curve 2.4 points · cost (CPU per world) none 482 · constant 469 · curve 489 s (physics 32 → 67 s)
+   none                       plain  58.6 % · plateau   0.9 % · hill  20.7 % · mountain  19.8 % · land 86677 km² · deciles 11/24/39/61/90/131/193/390/1181
+   curve                      plain  56.1 % · plateau   1.0 % · hill  21.9 % · mountain  20.9 % · land 81936 km² · deciles 16/30/48/70/100/142/206/448/1233
+      A: A-phys 1.020 / 0.951 / 0.298 / 0.824 (2 in the bands) (lost 13.62 %) · A-ampl 1.390 / 2.908 / 0.349 / 1.101 (0 in the bands) (lost 4.34 %) · A-both = constant · the length ratio's excess from the amplifications 92 %, from the physics level -2 % · the dimension's from the amplifications 95 %
+      curve: drowned valleys 2 (length p50 / p90 / max 6.1 / 6.1 / 33.2 km, Spearman(length, area) NaN; the 5 longest 33.2 km / 11012 km², 6.1 km / 218 km²) · islands ≥ 1 km² 3 → 6 · the 0 to −134 m zone median / p90 2.08 / 5.85 km · lakes 15 / 2097 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 12 of 19 within ×1.5 · out: slope p50 0.056/0.247; octave 1.56–3.12 km 38.632/62.883; octave 3.12–6.25 km 46.221/100.862; octave 6.25–12.50 km 60.528/159.805; CV_L 1.506/0.915; A_dir 0.375/0.206; F 0.236/0.043
+      curve, 2048² mountain: 13 of 19 within ×1.5 · out: facets 20.232/6.746; walls 28° 5.489/2.320; octave 6.25–12.50 km 132.480/200.536; S_5 − 1 0.167/0.255; A_dir 0.386/0.200; F 0.010/0.006
+      curve: slope guard 0.412/0.522 · regularity 391 m CV_λ 0.654 · CV_L 1.352 · σ_θ 25.4° · R2_g 0.742
+      C2: W10 0.068 · W_in 0.081 · rampart_W false · the 2048² walls (> 28°) within 10 km of the coast 0.006
+   ══ seed 23 (Selected { plates: 16, k: 8, start: 0, compact: true }, N 16) ══
+      C1 the coastal prism (Σ Δs_DS of today's land within 2 cells of the coast): added at a C-O convergent boundary 79.2 % · C-C 2.6 % · no convergent boundary within 2 cells 18.2 % · by the plate count ≥ 10 / 7–9 / ≤ 6: 37.2 / 31.4 / 31.5 %
+   ── seed 23 B0:
+      (curve: 687 physics steps)
+      the coast: none 0.992 / 0.909 / 0.308 / 0.911 (2 in the bands) · constant 1.239 / 1.912 / 0.363 / 0.981 (0 in the bands) · curve 1.022 / 0.972 / 0.332 / 0.943 (1 in the bands)
+      the land lost against none: constant 8.99 % · curve 1.25 % · the classes' largest move: constant 8.4 · curve 3.8 points · cost (CPU per world) none 435 · constant 445 · curve 479 s (physics 29 → 66 s)
+   none                       plain   5.6 % · plateau   2.2 % · hill  26.9 % · mountain  65.3 % · land 85398 km² · deciles 61/134/258/475/733/1079/1788/2917/3853
+   curve                      plain   2.6 % · plateau   2.3 % · hill  25.9 % · mountain  69.2 % · land 80798 km² · deciles 81/176/329/573/816/1177/1971/3016/3907
+      curve: drowned valleys 3 (length p50 / p90 / max 54.1 / 54.1 / 54.1 km, Spearman(length, area) 0.87; the 5 longest 54.1 km / 24319 km², 54.1 km / 8763 km², 2.1 km / 55 km²) · islands ≥ 1 km² 1 → 2 · the 0 to −134 m zone median / p90 0.28 / 6.92 km · lakes 7 / 515 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 14 of 19 within ×1.5 · out: facets 15.282/6.241; walls 28° 5.298/1.547; S_2 − 1 0.105/0.172; S_5 − 1 0.150/0.239; A_dir 0.390/0.206
+      curve, 2048² mountain: 14 of 19 within ×1.5 · out: facets 21.108/6.746; walls 28° 7.393/2.320; S_2 − 1 0.106/0.175; S_5 − 1 0.148/0.255; A_dir 0.352/0.200
+      curve: slope guard 0.442/0.538 · regularity 391 m CV_λ 0.760 · CV_L 1.042 · σ_θ 25.4° · R2_g 0.755
+      C2: W10 0.849 · W_in 0.154 · rampart_W true · the 2048² walls (> 28°) within 10 km of the coast 0.196
+   ── seed 23 young 20 Myr:
+      (curve: 689 physics steps)
+      the coast: none 0.997 / 0.921 / 0.309 / 0.884 (2 in the bands) · constant 1.244 / 2.006 / 0.358 / 0.958 (1 in the bands) · curve 1.003 / 0.932 / 0.322 / 0.891 (1 in the bands)
+      the land lost against none: constant 5.29 % · curve 1.48 % · the classes' largest move: constant 4.7 · curve 2.3 points · cost (CPU per world) none 456 · constant 451 · curve 479 s (physics 28 → 69 s)
+   none                       plain  11.1 % · plateau   0.9 % · hill  28.2 % · mountain  59.7 % · land 85496 km² · deciles 81/184/291/404/510/757/1150/1873/3038
+   curve                      plain  10.1 % · plateau   1.0 % · hill  26.8 % · mountain  62.1 % · land 82249 km² · deciles 113/215/320/430/548/805/1210/1961/3086
+      A: A-phys 1.002 / 0.925 / 0.336 / 0.867 (1 in the bands) (lost 4.73 %) · A-ampl 1.227 / 1.918 / 0.366 / 0.988 (0 in the bands) (lost 1.09 %) · A-both = constant · the length ratio's excess from the amplifications 92 %, from the physics level 0 % · the dimension's from the amplifications 93 %
+      curve: drowned valleys 4 (length p50 / p90 / max 3.3 / 8.2 / 28.3 km, Spearman(length, area) 0.63; the 5 longest 28.3 km / 17885 km², 8.2 km / 3250 km², 3.3 km / 105 km², 3.3 km / 14311 km²) · islands ≥ 1 km² 1 → 2 · the 0 to −134 m zone median / p90 0.55 / 2.74 km · lakes 8 / 1968 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 13 of 19 within ×1.5 · out: facets 12.714/6.241; walls 28° 3.915/1.547; octave 6.25–12.50 km 105.243/159.805; S_2 − 1 0.112/0.172; S_5 − 1 0.157/0.239; A_dir 0.371/0.206
+      curve, 2048² mountain: 12 of 19 within ×1.5 · out: facets 19.639/6.746; walls 28° 6.197/2.320; S_2 − 1 0.109/0.175; S_5 − 1 0.143/0.255; S_10 − 1 0.190/0.289; A_dir 0.369/0.200; F 0.010/0.006
+      curve: slope guard 0.421/0.527 · regularity 391 m CV_λ 0.722 · CV_L 0.986 · σ_θ 24.9° · R2_g 0.708
+      C2: W10 0.629 · W_in 0.124 · rampart_W true · the 2048² walls (> 28°) within 10 km of the coast 0.086
+   ── seed 23 intermediate 100 Myr:
+      (curve: 693 physics steps)
+      the coast: none 1.023 / 0.979 / 0.321 / 0.749 (1 in the bands) · constant 1.328 / 2.513 / 0.367 / 1.077 (0 in the bands) · curve 1.017 / 0.949 / 0.308 / 0.757 (2 in the bands)
+      the land lost against none: constant 8.03 % · curve 3.03 % · the classes' largest move: constant 6.5 · curve 2.5 points · cost (CPU per world) none 483 · constant 477 · curve 503 s (physics 27 → 65 s)
+   none                       plain  12.9 % · plateau   1.5 % · hill  47.3 % · mountain  38.3 % · land 84775 km² · deciles 42/92/147/202/267/349/462/672/1945
+   curve                      plain  10.4 % · plateau   1.6 % · hill  48.1 % · mountain  39.9 % · land 81550 km² · deciles 57/109/162/217/282/364/481/702/2058
+      curve: drowned valleys 3 (length p50 / p90 / max 2.3 / 2.3 / 16.0 km, Spearman(length, area) 1.00; the 5 longest 16.0 km / 16977 km², 2.3 km / 4509 km², 2.1 km / 1244 km²) · islands ≥ 1 km² 1 → 6 · the 0 to −134 m zone median / p90 1.25 / 3.41 km · lakes 12 / 852 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 12 of 19 within ×1.5 · out: slope p50 0.157/0.247; octave 3.12–6.25 km 61.128/100.862; octave 6.25–12.50 km 76.066/159.805; S_2 − 1 0.102/0.172; S_5 − 1 0.150/0.239; A_dir 0.425/0.206; F 0.098/0.043
+      curve, 2048² mountain: 12 of 19 within ×1.5 · out: facets 14.265/6.746; walls 28° 4.086/2.320; octave 6.25–12.50 km 120.548/200.536; S_2 − 1 0.101/0.175; S_5 − 1 0.140/0.255; A_dir 0.406/0.200; F 0.017/0.006
+      curve: slope guard 0.346/0.512 · regularity 391 m CV_λ 0.691 · CV_L 1.022 · σ_θ 23.8° · R2_g 0.732
+      C2: W10 0.125 · W_in 0.109 · rampart_W false · the 2048² walls (> 28°) within 10 km of the coast 0.020
+   ── seed 23 old 300 Myr:
+      (curve: 694 physics steps)
+      the coast: none 1.020 / 0.980 / 0.310 / 0.833 (2 in the bands) · constant 1.386 / 2.833 / 0.351 / 0.987 (0 in the bands) · curve 1.005 / 0.925 / 0.326 / 0.998 (0 in the bands)
+      the land lost against none: constant 12.42 % · curve 5.53 % · the classes' largest move: constant 8.7 · curve 2.4 points · cost (CPU per world) none 478 · constant 479 · curve 508 s (physics 27 → 64 s)
+   none                       plain  56.5 % · plateau   0.1 % · hill  24.2 % · mountain  19.2 % · land 83875 km² · deciles 13/29/47/71/103/146/205/326/1588
+   curve                      plain  54.2 % · plateau   0.1 % · hill  25.5 % · mountain  20.2 % · land 79570 km² · deciles 20/37/56/80/113/157/217/356/1706
+      A: A-phys 1.017 / 0.950 / 0.296 / 0.949 (2 in the bands) (lost 11.33 %) · A-ampl 1.373 / 2.787 / 0.358 / 1.067 (0 in the bands) (lost 4.61 %) · A-both = constant · the length ratio's excess from the amplifications 97 %, from the physics level -2 % · the dimension's from the amplifications 96 %
+      curve: drowned valleys 5 (length p50 / p90 / max 2.9 / 4.1 / 24.6 km, Spearman(length, area) 0.10; the 5 longest 24.6 km / 16210 km², 4.1 km / 0 km², 2.9 km / 1 km², 2.5 km / 3754 km², 2.1 km / 433 km²) · islands ≥ 1 km² 4 → 9 · the 0 to −134 m zone median / p90 1.99 / 4.69 km · lakes 15 / 598 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 13 of 19 within ×1.5 · out: slope p50 0.061/0.247; octave 1.56–3.12 km 39.310/62.883; octave 3.12–6.25 km 54.297/100.862; octave 6.25–12.50 km 67.150/159.805; A_dir 0.390/0.206; F 0.214/0.043
+      curve, 2048² mountain: 14 of 19 within ×1.5 · out: facets 22.839/6.746; walls 28° 6.371/2.320; S_2 − 1 0.111/0.175; S_5 − 1 0.150/0.255; A_dir 0.375/0.200
+      curve: slope guard 0.433/0.528 · regularity 391 m CV_λ 0.658 · CV_L 1.017 · σ_θ 25.0° · R2_g 0.801
+      C2: W10 0.096 · W_in 0.096 · rampart_W false · the 2048² walls (> 28°) within 10 km of the coast 0.013
+   ══ seed 29 (Selected { plates: 20, k: 13, start: 0, compact: true }, N 20) ══
+      C1 the coastal prism (Σ Δs_DS of today's land within 2 cells of the coast): added at a C-O convergent boundary 81.1 % · C-C 4.3 % · no convergent boundary within 2 cells 14.6 % · by the plate count ≥ 10 / 7–9 / ≤ 6: 63.6 / 28.7 / 7.7 %
+   ── seed 29 B0:
+      (curve: 687 physics steps)
+      the coast: none 0.983 / 0.899 / 0.308 / 0.867 (2 in the bands) · constant 1.186 / 1.658 / 0.354 / 0.876 (1 in the bands) · curve 1.014 / 0.939 / 0.321 / 0.756 (1 in the bands)
+      the land lost against none: constant 4.88 % · curve 2.74 % · the classes' largest move: constant 5.6 · curve 3.4 points · cost (CPU per world) none 461 · constant 472 · curve 492 s (physics 30 → 60 s)
+   none                       plain   3.6 % · plateau   1.1 % · hill  28.3 % · mountain  67.0 % · land 84565 km² · deciles 82/180/283/427/612/817/1140/1805/2966
+   curve                      plain   1.7 % · plateau   1.2 % · hill  26.7 % · mountain  70.4 % · land 80701 km² · deciles 113/213/327/471/667/866/1207/1887/3027
+      curve: drowned valleys 5 (length p50 / p90 / max 26.0 / 27.1 / 37.1 km, Spearman(length, area) 0.10; the 5 longest 37.1 km / 7126 km², 27.1 km / 2850 km², 26.0 km / 13991 km², 19.3 km / 22946 km², 3.1 km / 93 km²) · islands ≥ 1 km² 1 → 1 · the 0 to −134 m zone median / p90 0.39 / 7.42 km · lakes 7 / 3171 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 13 of 19 within ×1.5 · out: facets 14.184/6.241; walls 28° 4.477/1.547; S_2 − 1 0.095/0.172; S_5 − 1 0.138/0.239; A_dir 0.480/0.206; F 0.068/0.043
+      curve, 2048² mountain: 13 of 19 within ×1.5 · out: facets 17.993/6.746; walls 28° 6.204/2.320; S_2 − 1 0.104/0.175; S_5 − 1 0.144/0.255; A_dir 0.373/0.200; F 0.012/0.006
+      curve: slope guard 0.406/0.531 · regularity 391 m CV_λ 0.805 · CV_L 1.260 · σ_θ 24.9° · R2_g 0.782
+      C2: W10 0.783 · W_in 0.173 · rampart_W true · the 2048² walls (> 28°) within 10 km of the coast 0.158
+   ── seed 29 young 20 Myr:
+      (curve: 689 physics steps)
+      the coast: none 0.999 / 0.925 / 0.305 / 0.850 (2 in the bands) · constant 1.264 / 2.107 / 0.361 / 1.060 (0 in the bands) · curve 1.013 / 0.949 / 0.327 / 0.631 (1 in the bands)
+      the land lost against none: constant 4.40 % · curve 1.82 % · the classes' largest move: constant 4.3 · curve 2.1 points · cost (CPU per world) none 470 · constant 478 · curve 502 s (physics 29 → 69 s)
+   none                       plain  12.8 % · plateau   0.3 % · hill  29.5 % · mountain  57.4 % · land 84346 km² · deciles 93/188/278/358/438/569/802/1159/1879
+   curve                      plain  12.0 % · plateau   0.3 % · hill  28.1 % · mountain  59.6 % · land 81453 km² · deciles 120/213/300/376/453/597/831/1198/1912
+      A: A-phys 1.002 / 0.922 / 0.318 / 0.894 (2 in the bands) (lost 4.02 %) · A-ampl 1.247 / 2.034 / 0.356 / 0.992 (0 in the bands) (lost 1.67 %) · A-both = constant · the length ratio's excess from the amplifications 94 %, from the physics level -0 % · the dimension's from the amplifications 94 %
+      curve: drowned valleys 4 (length p50 / p90 / max 9.6 / 23.6 / 26.4 km, Spearman(length, area) 0.80; the 5 longest 26.4 km / 23415 km², 23.6 km / 11674 km², 9.6 km / 3201 km², 6.4 km / 4061 km²) · islands ≥ 1 km² 1 → 2 · the 0 to −134 m zone median / p90 0.70 / 4.53 km · lakes 12 / 6133 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 12 of 19 within ×1.5 · out: facets 10.758/6.241; walls 28° 2.937/1.547; octave 6.25–12.50 km 88.689/159.805; S_2 − 1 0.106/0.172; S_5 − 1 0.152/0.239; A_dir 0.420/0.206; F 0.081/0.043
+      curve, 2048² mountain: 12 of 19 within ×1.5 · out: facets 16.246/6.746; walls 28° 4.868/2.320; octave 6.25–12.50 km 115.077/200.536; S_2 − 1 0.106/0.175; S_5 − 1 0.142/0.255; A_dir 0.405/0.200; F 0.020/0.006
+      curve: slope guard 0.370/0.518 · regularity 391 m CV_λ 0.717 · CV_L 1.092 · σ_θ 24.5° · R2_g 0.779
+      C2: W10 0.434 · W_in 0.102 · rampart_W true · the 2048² walls (> 28°) within 10 km of the coast 0.057
+   ── seed 29 intermediate 100 Myr:
+      (curve: 693 physics steps)
+      the coast: none 1.004 / 0.942 / 0.304 / 0.930 (2 in the bands) · constant 1.350 / 2.684 / 0.352 / 1.098 (0 in the bands) · curve 1.016 / 0.960 / 0.302 / 0.875 (2 in the bands)
+      the land lost against none: constant 10.33 % · curve 3.00 % · the classes' largest move: constant 7.0 · curve 2.4 points · cost (CPU per world) none 465 · constant 470 · curve 485 s (physics 28 → 70 s)
+   none                       plain  22.7 % · plateau   2.0 % · hill  45.0 % · mountain  30.3 % · land 82659 km² · deciles 38/83/134/192/255/329/407/537/843
+   curve                      plain  20.3 % · plateau   2.1 % · hill  45.9 % · mountain  31.7 % · land 79316 km² · deciles 52/100/150/207/271/341/420/556/867
+      curve: drowned valleys 3 (length p50 / p90 / max 4.7 / 4.7 / 24.6 km, Spearman(length, area) 1.00; the 5 longest 24.6 km / 25624 km², 4.7 km / 725 km², 3.1 km / 709 km²) · islands ≥ 1 km² 1 → 6 · the 0 to −134 m zone median / p90 1.56 / 3.88 km · lakes 16 / 4810 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 12 of 19 within ×1.5 · out: slope p50 0.121/0.247; octave 3.12–6.25 km 43.280/100.862; octave 6.25–12.50 km 52.032/159.805; S_2 − 1 0.103/0.172; S_5 − 1 0.151/0.239; A_dir 0.431/0.206; F 0.122/0.043
+      curve, 2048² mountain: 12 of 19 within ×1.5 · out: facets 11.504/6.746; octave 3.12–6.25 km 76.920/126.569; octave 6.25–12.50 km 92.475/200.536; S_2 − 1 0.098/0.175; S_5 − 1 0.134/0.255; A_dir 0.402/0.200; F 0.022/0.006
+      curve: slope guard 0.307/0.497 · regularity 391 m CV_λ 0.631 · CV_L 1.204 · σ_θ 23.6° · R2_g 0.746
+      C2: W10 0.050 · W_in 0.041 · rampart_W false · the 2048² walls (> 28°) within 10 km of the coast 0.006
+   ── seed 29 old 300 Myr:
+      (curve: 694 physics steps)
+      the coast: none 1.012 / 0.953 / 0.296 / 1.224 (1 in the bands) · constant 1.397 / 3.049 / 0.355 / 1.040 (0 in the bands) · curve 1.022 / 0.971 / 0.294 / 0.914 (2 in the bands)
+      the land lost against none: constant 12.75 % · curve 4.87 % · the classes' largest move: constant 8.1 · curve 2.3 points · cost (CPU per world) none 448 · constant 473 · curve 470 s (physics 22 → 54 s)
+   none                       plain  56.2 % · plateau   0.6 % · hill  27.9 % · mountain  15.4 % · land 81375 km² · deciles 15/33/56/83/116/156/213/294/482
+   curve                      plain  53.9 % · plateau   0.6 % · hill  29.3 % · mountain  16.3 % · land 76887 km² · deciles 23/43/67/94/127/167/227/308/501
+      A: A-phys 1.018 / 0.967 / 0.294 / 0.835 (2 in the bands) (lost 13.61 %) · A-ampl 1.360 / 2.685 / 0.355 / 1.165 (0 in the bands) (lost 3.86 %) · A-both = constant · the length ratio's excess from the amplifications 83 %, from the physics level 1 % · the dimension's from the amplifications 90 %
+      curve: drowned valleys 2 (length p50 / p90 / max 2.7 / 2.7 / 26.6 km, Spearman(length, area) NaN; the 5 longest 26.6 km / 14800 km², 2.7 km / 1466 km²) · islands ≥ 1 km² 2 → 6 · the 0 to −134 m zone median / p90 2.18 / 4.89 km · lakes 12 / 3020 km² · verdict (≥ 3 bands, < 5 %, < 3 points) false
+      curve, 2048² whole: 11 of 19 within ×1.5 · out: slope p50 0.067/0.247; slope p90 0.293/0.501; octave 0.78–1.56 km 21.631/34.443; octave 1.56–3.12 km 31.481/62.883; octave 3.12–6.25 km 28.836/100.862; octave 6.25–12.50 km 42.049/159.805; A_dir 0.360/0.206; F 0.206/0.043
+      curve, 2048² mountain: 11 of 19 within ×1.5 · out: facets 10.765/6.746; octave 3.12–6.25 km 71.629/126.569; octave 6.25–12.50 km 104.447/200.536; S_2 − 1 0.092/0.175; S_5 − 1 0.129/0.255; S_10 − 1 0.180/0.289; A_dir 0.416/0.200; F 0.023/0.006
+      curve: slope guard 0.295/0.488 · regularity 391 m CV_λ 0.586 · CV_L 1.010 · σ_θ 24.6° · R2_g 0.726
+      C2: W10 0.020 · W_in 0.030 · rampart_W false · the 2048² walls (> 28°) within 10 km of the coast 0.003
+      (curve: 694 physics steps)
+   B4: the curve path with s ≡ 0 against F171 (the témoin, old, 256²): max |Δz| 593.1 m · the classes' largest move 0.03 points (the 2 kyr sub-steps; not bit for bit, as declared)
+   C2: W10 against the 2048² coastal walls over 20 panel worlds: Pearson 0.96 · Spearman 0.97
+   R: the curve's verdict per seed (ages passing ≥ 3 bands, < 5 %, < 3 points): {} → 0 seeds with ≥ 2 ages · the length ratio > 1.60 with the curve on 0 seeds · the dimension rose ≥ 0.01 somewhere true → no success, no stop as written
+   A, the attribution: 8 young 20 Myr: LR ampl 102 % phys -3 % · 8 old 300 Myr: LR ampl 84 % phys 1 % · 18 young 20 Myr: LR ampl 92 % phys 3 % · 18 old 300 Myr: LR ampl 94 % phys -3 % · 19 young 20 Myr: LR ampl 93 % phys 0 % · 19 old 300 Myr: LR ampl 92 % phys -2 % · 23 young 20 Myr: LR ampl 92 % phys 0 % · 23 old 300 Myr: LR ampl 97 % phys -2 % · 29 young 20 Myr: LR ampl 94 % phys -0 % · 29 old 300 Myr: LR ampl 83 % phys 1 %
+   images: f173_maps.png (rows = the panel; young none | constant | curve, old none | constant | curve), f173_coast_25km.png (Corsica | none | constant | curve, old), f173_sea_curve.png (s(t) over 0–800 ka, present at the right; black 0 m, red −134 m; grey ticks = the linear profile's sub-steps) · north up · produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+==========  end Finding 173 (measure) . 7345.5 s wall  ==========
+test f173_measure ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 7345.46s

@@ -1,0 +1,95 @@
+C1 ('73.3', '4.8', '21.9', '41.1', '0.0', '58.9')
+8 B0 COAST none 0.985 0.911 b 2 | const 1.167 1.595 b 3 | curve 1.001 0.936 0.338 0.978 b 1
+8 B0 LOST const 2.66 curve 0.71 MV const 5.2 curve 2.1 COST 451 482 488 phys 29 -> 69
+8 B0 DV 3 max 48.8 sp 0.50 isl 1 -> 1 shelf 0.20 lakes 13 1331
+8 B0 TEX ('0.441/0.538', '0.772', '1.140', '25.4', '0.806')
+8 young COAST none 0.992 0.921 b 1 | const 1.213 1.851 b 0 | curve 0.988 0.907 0.319 0.675 b 2
+8 young LOST const 2.66 curve 1.04 MV const 3.1 curve 1.6 COST 458 471 508 phys 22 -> 51
+8 young ATTR phys 0.986 0.896 lost 2.34 | ampl 1.212 1.869 lost 0.99 | LR ampl 102 phys -3 dim ampl 99
+8 young DV 3 max 26.4 sp 0.50 isl 1 -> 2 shelf 0.44 lakes 19 3687
+8 young TEX ('0.426/0.529', '0.694', '0.985', '25.3', '0.763')
+8 inter COAST none 0.999 0.933 b 0 | const 1.360 2.765 b 0 | curve 1.010 0.959 0.333 0.662 b 1
+8 inter LOST const 8.02 curve 2.68 MV const 7.3 curve 1.9 COST 445 450 475 phys 21 -> 66
+8 inter DV 2 max 18.9 sp NaN isl 2 -> 4 shelf 1.49 lakes 17 1299
+8 inter TEX ('0.384/0.523', '0.652', '0.906', '24.4', '0.706')
+8 old 3 COAST none 1.004 0.951 b 0 | const 1.409 3.094 b 0 | curve 1.008 0.950 0.303 0.766 b 2
+8 old 3 LOST const 10.68 curve 3.72 MV const 7.6 curve 1.8 COST 434 447 459 phys 27 -> 65
+8 old 3 ATTR phys 1.017 0.963 lost 9.45 | ampl 1.366 2.749 lost 3.00 | LR ampl 84 phys 1 dim ampl 89
+8 old 3 DV 1 max 23.0 sp NaN isl 2 -> 4 shelf 1.95 lakes 13 1406
+8 old 3 TEX ('0.430/0.530', '0.631', '0.966', '25.6', '0.750')
+C1 ('65.2', '10.1', '24.7', '53.6', '21.8', '24.7')
+18 B0 COAST none 0.971 0.888 b 1 | const 1.242 1.950 b 0 | curve 1.020 0.992 0.335 1.298 b 0
+18 B0 LOST const 12.10 curve 1.53 MV const 7.9 curve 3.5 COST 433 436 464 phys 30 -> 68
+18 B0 DV 6 max 44.1 sp -0.09 isl 1 -> 2 shelf 0.28 lakes 5 447
+18 B0 TEX ('0.426/0.532', '0.716', '1.008', '25.3', '0.728')
+18 young COAST none 0.974 0.891 b 0 | const 1.288 2.256 b 0 | curve 1.019 0.981 0.324 0.962 b 1
+18 young LOST const 13.46 curve 2.28 MV const 7.8 curve 3.7 COST 425 433 453 phys 28 -> 53
+18 young ATTR phys 1.005 0.929 lost 12.81 | ampl 1.257 2.149 lost 1.50 | LR ampl 92 phys 3 dim ampl 90
+18 young DV 3 max 64.3 sp 1.00 isl 1 -> 2 shelf 0.62 lakes 6 513
+18 young TEX ('0.413/0.523', '0.665', '0.978', '25.0', '0.720')
+18 inter COAST none 0.981 0.915 b 0 | const 1.354 2.705 b 0 | curve 0.999 0.930 0.328 0.840 b 1
+18 inter LOST const 13.28 curve 6.08 MV const 6.9 curve 2.9 COST 439 440 461 phys 27 -> 62
+18 inter DV 2 max 27.9 sp NaN isl 2 -> 3 shelf 1.67 lakes 5 439
+18 inter TEX ('0.376/0.515', '0.632', '0.956', '24.1', '0.750')
+18 old 3 COAST none 1.019 1.003 b 0 | const 1.416 3.160 b 0 | curve 1.002 0.948 0.312 0.882 b 2
+18 old 3 LOST const 15.61 curve 7.29 MV const 10.1 curve 2.4 COST 446 438 451 phys 29 -> 67
+18 old 3 ATTR phys 1.008 0.941 lost 14.34 | ampl 1.392 3.024 lost 6.38 | LR ampl 94 phys -3 dim ampl 94
+18 old 3 DV 2 max 21.3 sp NaN isl 2 -> 3 shelf 2.21 lakes 6 439
+18 old 3 TEX ('0.425/0.523', '0.603', '0.920', '25.3', '0.668')
+C1 ('84.6', '1.6', '13.8', '40.9', '16.5', '42.7')
+19 B0 COAST none 0.982 0.881 b 1 | const 1.172 1.582 b 3 | curve 1.005 0.931 0.331 0.733 b 1
+19 B0 LOST const 4.82 curve 1.61 MV const 6.2 curve 3.0 COST 455 467 496 phys 31 -> 71
+19 B0 DV 7 max 36.7 sp 0.95 isl 1 -> 3 shelf 0.28 lakes 6 5476
+19 B0 TEX ('0.421/0.535', '0.872', '1.346', '25.3', '0.801')
+19 young COAST none 0.980 0.891 b 2 | const 1.232 1.943 b 0 | curve 0.986 0.899 0.302 0.782 b 2
+19 young LOST const 5.45 curve 2.15 MV const 4.2 curve 2.3 COST 471 480 504 phys 32 -> 70
+19 young ATTR phys 0.984 0.892 lost 4.34 | ampl 1.217 1.864 lost 1.07 | LR ampl 93 phys 0 dim ampl 94
+19 young DV 6 max 30.9 sp 0.77 isl 1 -> 1 shelf 0.55 lakes 7 4756
+19 young TEX ('0.409/0.525', '0.749', '1.198', '25.3', '0.764')
+19 inter COAST none 1.002 0.932 b 1 | const 1.357 2.697 b 0 | curve 0.997 0.924 0.291 0.894 b 2
+19 inter LOST const 12.79 curve 4.36 MV const 9.0 curve 2.9 COST 468 473 492 phys 29 -> 66
+19 inter DV 1 max 28.3 sp NaN isl 2 -> 8 shelf 1.41 lakes 13 3716
+19 inter TEX ('0.346/0.510', '0.657', '0.945', '24.1', '0.655')
+19 old 3 COAST none 1.018 0.983 b 1 | const 1.410 3.072 b 0 | curve 1.007 0.944 0.320 0.898 b 1
+19 old 3 LOST const 15.09 curve 6.28 MV const 8.9 curve 2.4 COST 482 469 489 phys 32 -> 67
+19 old 3 ATTR phys 1.020 0.951 lost 13.62 | ampl 1.390 2.908 lost 4.34 | LR ampl 92 phys -2 dim ampl 95
+19 old 3 DV 2 max 33.2 sp NaN isl 3 -> 6 shelf 2.08 lakes 15 2097
+19 old 3 TEX ('0.412/0.522', '0.654', '1.352', '25.4', '0.742')
+C1 ('79.2', '2.6', '18.2', '37.2', '31.4', '31.5')
+23 B0 COAST none 0.992 0.909 b 2 | const 1.239 1.912 b 0 | curve 1.022 0.972 0.332 0.943 b 1
+23 B0 LOST const 8.99 curve 1.25 MV const 8.4 curve 3.8 COST 435 445 479 phys 29 -> 66
+23 B0 DV 3 max 54.1 sp 0.87 isl 1 -> 2 shelf 0.28 lakes 7 515
+23 B0 TEX ('0.442/0.538', '0.760', '1.042', '25.4', '0.755')
+23 young COAST none 0.997 0.921 b 2 | const 1.244 2.006 b 1 | curve 1.003 0.932 0.322 0.891 b 1
+23 young LOST const 5.29 curve 1.48 MV const 4.7 curve 2.3 COST 456 451 479 phys 28 -> 69
+23 young ATTR phys 1.002 0.925 lost 4.73 | ampl 1.227 1.918 lost 1.09 | LR ampl 92 phys 0 dim ampl 93
+23 young DV 4 max 28.3 sp 0.63 isl 1 -> 2 shelf 0.55 lakes 8 1968
+23 young TEX ('0.421/0.527', '0.722', '0.986', '24.9', '0.708')
+23 inter COAST none 1.023 0.979 b 1 | const 1.328 2.513 b 0 | curve 1.017 0.949 0.308 0.757 b 2
+23 inter LOST const 8.03 curve 3.03 MV const 6.5 curve 2.5 COST 483 477 503 phys 27 -> 65
+23 inter DV 3 max 16.0 sp 1.00 isl 1 -> 6 shelf 1.25 lakes 12 852
+23 inter TEX ('0.346/0.512', '0.691', '1.022', '23.8', '0.732')
+23 old 3 COAST none 1.020 0.980 b 2 | const 1.386 2.833 b 0 | curve 1.005 0.925 0.326 0.998 b 0
+23 old 3 LOST const 12.42 curve 5.53 MV const 8.7 curve 2.4 COST 478 479 508 phys 27 -> 64
+23 old 3 ATTR phys 1.017 0.950 lost 11.33 | ampl 1.373 2.787 lost 4.61 | LR ampl 97 phys -2 dim ampl 96
+23 old 3 DV 5 max 24.6 sp 0.10 isl 4 -> 9 shelf 1.99 lakes 15 598
+23 old 3 TEX ('0.433/0.528', '0.658', '1.017', '25.0', '0.801')
+C1 ('81.1', '4.3', '14.6', '63.6', '28.7', '7.7')
+29 B0 COAST none 0.983 0.899 b 2 | const 1.186 1.658 b 1 | curve 1.014 0.939 0.321 0.756 b 1
+29 B0 LOST const 4.88 curve 2.74 MV const 5.6 curve 3.4 COST 461 472 492 phys 30 -> 60
+29 B0 DV 5 max 37.1 sp 0.10 isl 1 -> 1 shelf 0.39 lakes 7 3171
+29 B0 TEX ('0.406/0.531', '0.805', '1.260', '24.9', '0.782')
+29 young COAST none 0.999 0.925 b 2 | const 1.264 2.107 b 0 | curve 1.013 0.949 0.327 0.631 b 1
+29 young LOST const 4.40 curve 1.82 MV const 4.3 curve 2.1 COST 470 478 502 phys 29 -> 69
+29 young ATTR phys 1.002 0.922 lost 4.02 | ampl 1.247 2.034 lost 1.67 | LR ampl 94 phys -0 dim ampl 94
+29 young DV 4 max 26.4 sp 0.80 isl 1 -> 2 shelf 0.70 lakes 12 6133
+29 young TEX ('0.370/0.518', '0.717', '1.092', '24.5', '0.779')
+29 inter COAST none 1.004 0.942 b 2 | const 1.350 2.684 b 0 | curve 1.016 0.960 0.302 0.875 b 2
+29 inter LOST const 10.33 curve 3.00 MV const 7.0 curve 2.4 COST 465 470 485 phys 28 -> 70
+29 inter DV 3 max 24.6 sp 1.00 isl 1 -> 6 shelf 1.56 lakes 16 4810
+29 inter TEX ('0.307/0.497', '0.631', '1.204', '23.6', '0.746')
+29 old 3 COAST none 1.012 0.953 b 1 | const 1.397 3.049 b 0 | curve 1.022 0.971 0.294 0.914 b 2
+29 old 3 LOST const 12.75 curve 4.87 MV const 8.1 curve 2.3 COST 448 473 470 phys 22 -> 54
+29 old 3 ATTR phys 1.018 0.967 lost 13.61 | ampl 1.360 2.685 lost 3.86 | LR ampl 83 phys 1 dim ampl 90
+29 old 3 DV 2 max 26.6 sp NaN isl 2 -> 6 shelf 2.18 lakes 12 3020
+29 old 3 TEX ('0.295/0.488', '0.586', '1.010', '24.6', '0.726')
