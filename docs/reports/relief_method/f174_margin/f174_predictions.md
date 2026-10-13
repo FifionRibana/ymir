@@ -89,3 +89,41 @@ P5–P7 belong to Parts B and C, which are not run this round (the sources are u
   counts.
 - **Success**: 0 / 5 (the active share fails); the margin does not enter the profile.
 - **Cost**: the selection adds 30–120 s CPU per world (~100–300 C1 runs at < 0.5 s); the world itself unchanged.
+
+# Parts B′ and C′ — predictions, written before any measurement
+
+## The reviewer's (hypotheses to check; at least one is false)
+
+- **R1**: the selection finds a continent on ≥ 4 of 5 seeds, with the same N as Part A on ≥ 3.
+- **R2**: at the end, ≤ 5 % of the perimeter is active on ≥ 4 seeds. W₁₀ at young drops by ≥ 60 %.
+- **R3**: the median shelf width is in 4.65–16.4 km on ≥ 4 seeds.
+- **R4**: at B0, the coastline's share within 1 cell of C1's contour drops by ≥ 20 points.
+- **R5**: the coast's dimension rises by ≥ 0.02 but stays under the rocky band.
+- **R6**: the land stays within ±5 points of Part A on ≥ 4 seeds.
+- **R7**: at young, the mountain share drops by ≥ 10 points, since the rampart disappears.
+- **R8**: with the step halved, the drainage density, λ and the sinuosity move by < 5 %.
+
+## Mine
+
+- **R1 held**: found on 5 / 5, the same N on ≥ 3 — the coast stays put, so the land and the circumnavigation are Part A's
+  within a few points. But Part A's chosen candidate need not be the margin's (C1's coastal growth changes without O-C
+  subduction): the same (N, k, start) on 2–4 seeds.
+- **R6 held**: C1's end land within ±5 points on 4–5 seeds; slightly lower than Part A (no arc mass and no Andes wedge on the
+  coast), by 0–4 points.
+- **R2**: active ≤ 5 % at the end on ≥ 4 seeds (held); W₁₀ at young down by 40–80 %, ≥ 60 % on 2–3 seeds only (**refuted** on
+  ≥ 4 if read so): Davis-Suppe still seeds on the O-O boundary 44 km offshore with its fallback dome, and its wedge reaches the
+  coast in places.
+- **R3 held**: the median shelf 6–11 km on ≥ 4 seeds (the pure-Airy 10.7 km, narrowed by C1's σ blur and the bicubic upsample
+  that round the knot); the break at 250–450 m.
+- **R4 refuted**: the drop is 3–15 points at B0 (the coast on a ~2.4° map slope moves < 1 cell of 256² for tens of metres of
+  change).
+- **R5 held**: the dimension rises by 0.01–0.04 (the amplification's noise on a gentle slope), ≥ 0.02 on ≥ 3 seeds, all under
+  1.15.
+- **R7 held**: the mountain share at young drops by 10–30 points.
+- **R8 held**: density, λ, S₅ within 5 %.
+- **The conflicts**: (a) and (b) on 0–15 % of the perimeter (straits between the continent's own lobes across the torus);
+  (c) ≥ 1 oceanic plate fully annexed on ≥ 2 seeds.
+- **Islands**: a few more than Part A (shelf highs and the band's continental knobs), 0–10 per world.
+- **The arms**: unchanged in count (they come from valleys worn to 0 m).
+- **The success**: 3–5 seeds (W₁₀'s 40 % is the uncertain criterion); I predict ≥ 4 → the seaward margin enters the profile.
+- **Cost**: the world unchanged; the selection as Part A's.

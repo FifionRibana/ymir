@@ -22864,3 +22864,64 @@ O-O convergent boundary whose upper plate carries continent — a change of a C1
   - The author's instruction stands: no solver in the mechanisms without a real need.
 - The code of Part B is committed as is (`cascade::margin`, off by default, its permanent controls); the selection's stop is
   recorded.
+
+### Finding 174, Parts B′, C′ and D — the margin seaward (an initial condition, no closure modified): the selection holds (5 / 5, land within ±5 points on 4), the margins stay passive (0–1.9 % active at the end) and W₁₀ at young falls 63–90 % on 4 / 5 seeds, but no shelf forms (median 0 km on 5 / 5): Davis-Suppe's ocean-ocean fallback thickens the band's continental crust, which emerges, and the coast ends on the taper break with the step back — a point that needs a modified closure, stopped; Part D's note on an O-O subduction closure written, nothing implemented; production unchanged
+
+**Status: B′ built, measured; the success fails (0 / 5, the shelf); nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f174_margin/finding_174.md` (B′, C′, D). Declared: `f174_declared.md` (B′ and C′, two amendments
+after the smoke run: S₁₀ for S₅, the texture without the 2 048² `read_cell`). Note: `f174_option5_note.md`.
+
+**B′ — built** (`Margin::seaward`): Péron-Pinvidic's ramp placed so 32 km of crust falls on Part A's edge (35 → 32 km inside,
+16 km); the rest of the proximal, the necking and the distal domains (to +44 km) on an ocean band attached to the continental
+plate at t₀, continental while the crust exceeds 10 km (the taper break, p. 25), oceanic beyond; the nearest continent wins
+where bands meet; oceanic plates may be fully annexed. Permanent control: a zero-width band is Part A bit for bit; the geometry,
+the type rule, 32 km on the edge. The viz: « Marge vers le large », « Bathymétrie côtière », « Plaques à t₀ (bande) ».
+
+**C′ — measured** (the panel, K2, four ages; each variant with its own selection):
+- **The selection**: 5 / 5 (also B-hétéro); the same N as Part A on 3; C1's end land within ±5 points on 4 (|Δ| 0.6–5.7);
+  a different continent on every seed.
+- **The conflicts**: (a), (b) 0 % on the seaward continents; (c) 0–2 oceanic plates fully annexed, 4–8 losing > 50 %.
+- **The margins**: active at the end 0 / 1.9 / 0 / 0 / 0 % (Part A 5.5–18.4 %).
+- **The rampart**: W₁₀ at young −18 / 90 / 63 / 82 / 78 %; rampart_W fires on seed 8 only.
+- **The shelf** (the declared break rule): median 0 km everywhere, Part A included; supplementary, not declared: the
+  0 → −448 m zone 0.8–2.1 km wide (Part A 1.0–1.1 km).
+- **Why**: at t₀ the profile is the declared one; over C1's history Davis-Suppe's crust falls 59–73 % on Part A's continent but
+  rises on the band (seed 8: 421 → 1 837), seeded by the O-O boundary now 44 km offshore with the velocity-based upper plate and
+  the fallback dome (`retarget_upper_plate_continental` does not touch O-O); the band's continental cells emerge (+1.5 to
+  +3.2 km out to +3 cells on seeds 8 and 23) and the coast ends on the taper break, where Airy reads the oceanic cells at s = 0.2.
+- **The coast**: A1 at B0 −7.6 to −46.1 points; the dimension does not rise (0.974–0.988); mostly cover (low) windows inside the
+  sandy reference; gentle seaside slopes (1.1–2.3° on 4 seeds); fewer dendritic arms; no more islands.
+- **The macro**: seed 8 a high plateau (90 % mountain), the others lower (mountain at young −26.8 to +5.4 points).
+- **R8**: density, λ, S₁₀ within 2.6 % on 4 / 4.
+
+**The success**: 0 / 5 (the shelf). **The stop on a closure point**: a shelf needs Davis-Suppe not to seed on O-O boundaries, or
+the band excluded from its wedge, or the Airy mapping to read the true s of oceanic cells on continental plates (with C1's
+advection of oceanic s and #145's rigidity in the way) — each a change of C1 or of the mapping, not an initial condition; none
+implemented.
+
+**Predictions**: R1, R2, R6, R8 held; R3, R5, R7 refuted; R4 on 3 / 5. Mine: R1, R6, the activity, R8 and the conflicts held;
+the shelf, R4, R5, R7, the islands, the arms and the success refuted.
+
+**D — the note** (all four articles read): the older oceanic side sinks [S04 p. 276; SG18 p. 26]; passive-margin initiation is
+rare [S04 p. 275, 282; SG18 p. 2, 36–37; C20 p. 6] and needs thin, hot margins (Moho > 660 °C) [N10; SG18 p. 42]; induced
+initiation ~100 km of convergence at ≥ 1–2 cm/yr, 5–10 Myr [SG18 p. 44; S04 p. 280; C20 p. 6–7]; 13 events in ~105 Myr, all
+within 1 500 km of a subduction zone [C20 p. 5, Table 1]; a continent arriving jams the trench and polarity reversal gives an
+Andean margin [S04 p. 278–280; SG18 p. 16, 18]. A proposed O-O closure with calibration targets and six validation criteria;
+nothing implemented.
+
+**Open, for the author** (nothing chosen): (a) the shelf's closure change, or option 5 replacing Davis-Suppe's O-O fallback;
+(b) option 5 itself; (c) whether to keep the seaward margin behind its flag meanwhile.
+
+**At commit of Parts B′, C′ and D (2026-10-13), decided (the reviewer's proposals, not contested by the author)**:
+- **The reviewer's error, recorded**: a continental shelf was expected from an initial condition alone (B′'s success criterion).
+  A flat, shallow shelf is mostly a sedimentary prism (the reviewer's reading, a hypothesis to check); the shelf goes to
+  deposition (F176).
+- **The seaward margin is off by default** (`Margin::off()`; `Margin::seaward()` only behind its flag); it is activated in F175.
+- **A method rule**: an initial-condition variant that changes the selection is compared **also at a fixed continent** (the
+  plates chosen for the variant, run with and without it), not only with the selection redone — B′ chose a different continent
+  on every seed, which mixed the margin's effect with the continent's.
+- **The time-step question is closed**: the physics level's step is not halved; the criterion is statistical convergence
+  (density, λ, sinuosity, classes), which holds (F174 A3; B′'s R8 within 2.6 % on 4 / 4).
+- **The author's decisions, verbatim**: on option 5, « Ca demanderait de faire de la biblio pour ça + calage sur base des
+  publications et expériences. Mais pourquoi pas. »; on the order, « oui ok pour l'ordre » (F175 = option 5, F176 = deposition).
+  The instruction stands: no solver; option 5 is a change of an existing closure, behind a flag.

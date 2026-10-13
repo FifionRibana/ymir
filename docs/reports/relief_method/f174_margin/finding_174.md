@@ -337,3 +337,161 @@ choice, none a solver):
   - The author's instruction stands: no solver in the mechanisms without a real need.
 - The code of Part B is committed as is (`cascade::margin`, off by default, its permanent controls); the selection's stop is
   recorded.
+
+# Parts B′, C′ and D — the margin seaward, and the bibliographic note for option 5
+
+**Status: B′ built (an initial condition, no closure modified); the selection holds (5 / 5) but the success fails on 0 / 5 seeds
+(no shelf); one point is stopped because it needs a modified closure; Part D written; nothing committed without the feu vert.**
+- Declared before any measurement: `f174_declared.md` (B′ and C′, with two amendments after the smoke run), predictions
+  `f174_predictions.md` (B′ and C′).
+- Code: `cascade::margin` (`Margin::seaward`, `apply_seaward`, `seaward_conflicts`; Part B's code unchanged); the viz
+  (« Marge vers le large », the « Bathymétrie côtière » view, the « Plaques à t₀ (bande) » map in the terms' frieze).
+- The bench: `f174bc_cascade.rs` — `f174b2_measure` (`f174b2_bench_output.txt`, 5 642 s), diagnostics `f174b2_ds` and
+  `f174b2_profile` (`f174bc_diagnostics.txt`), the supplementary `f174b2_shelf_zone` (`f174b2_shelf_zone_output.txt`).
+- Part D: `f174_option5_note.md`.
+
+## B′ — what was built
+
+- The ramp seaward: 32 km of crust (Airy's 0 m) on Part A's continental edge; 35 → 32 km inside (16 km); the rest of the
+  proximal (to 30 km at +10.7 km), the necking (to 10 km at +24 km) and the distal domain (to 7 km at +44 km) on a band of the
+  ocean **attached to the continental plate** at t₀ — continental while the crust exceeds 10 km (Péron-Pinvidic's taper break,
+  p. 25), oceanic beyond. The nearest continent wins where bands meet.
+- **The permanent control** `the_seaward_margin_keeps_the_coast_and_annexes_a_band`: a zero-width band is Part A bit for bit;
+  plate_id changes only on band cells, each to its nearest continent's plate; the type rule; 32 km on the edge; the first sea
+  cell under s = 0.915. The flag off is Part A bit for bit (Part B's permanent controls).
+- **At t₀ the profile is the declared one** (`f174b2_profile`, mean Airy altitude by the distance to Part A's edge, 64² cells):
+  +250…+460 m at −1…−2 cells, −160 m at +1, −900 m at +2, −2 700 m at +3, −4 500 m at +4, −5 500 m from +5.
+
+## C′ — the measures (the panel, K2, four ages; each variant with its own selection)
+
+**The selection** (R1, R6):
+
+| seed | Part A: N, k, C1 end land | seaward: N, k, C1 end land | \|Δ land\| | B-hétéro: N, k, land |
+|---|---|---|---|---|
+| 8 | 16, 7, 50.7 % | 16, 8, 52.2 % | 1.5 | 16, 8, 51.1 % |
+| 18 | 16, 11, 50.4 % | 16, 8, 56.1 % | 5.7 | 16, 11, 52.0 % |
+| 19 | 20, 12, 56.2 % | 16, 7, 55.6 % | 0.6 | 16, 7, 53.5 % |
+| 23 | 16, 8, 52.3 % | 16, 8, 50.9 % | 1.4 | 16, 6, 51.1 % |
+| 29 | 20, 13, 52.3 % | 16, 9, 54.5 % | 2.2 | 16, 8, 54.2 % |
+
+- Found on 5 / 5 with the seaward margin and with B-hétéro; the same N as Part A on 3 / 5; C1's end land within ±5 points on
+  4 / 5. **The chosen continent differs on every seed** (k or start), so Part A and the margin are not the same continent.
+
+**The conflicts (B′2)**, on the seaward continents: (a) and (b) 0 % of the perimeter on every seed (on Part A's own
+continents: 0 / 0 / 28.6 / 34.8 / 0 % and 0 / 0 / 12.6 / 16.4 / 0 %); (c) oceanic plates fully annexed 0 / 2 / 1 / 0 / 0, losing
+> 50 % 4 / 8 / 8 / 6 / 7, and 64–100 % of the perimeter faces such a plate. C1 ran with the annexed plates without error.
+
+**The margins** (C1, every step): active at t₀ 3.8–10.4 % (the junction contacts: 2.0–3.8 % of the perimeter faces another
+plate's ocean), **at the end 0 / 1.9 / 0 / 0 / 0 %** (Part A: 5.5–18.4 %). The margins stay passive.
+
+**The rampart** (W₁₀ at young): Part A 0.591 / 0.532 / 0.552 / 0.629 / 0.434 → seaward 0.695 / 0.051 / 0.202 / 0.111 / 0.097, a
+drop of −18 / 90 / 63 / 82 / 78 % (≥ 40 % and ≥ 60 % on 4 / 5); rampart_W still fires on seed 8 only.
+
+**The shelf** (B3's declared measure, at young): **the median width is 0 km on every seed and every variant, Part A included**;
+the share of coastline cells with a detected shelf 2 / 28 / 23 / 23 / 23 % (Part A 16–23 %), the break 91–275 m. **R3 refuted;
+the success fails on its shelf criterion on 5 / 5.**
+- **Supplementary, not declared** (`f174b2_shelf_zone`, F173's zone measure at young): the 0 → −140 m zone is 0.2–1.1 km wide
+  (median; Part A 0.4 km), the 0 → −448 m zone 0.8–2.1 km (Part A 1.0–1.1 km); the mean depth 1 km off the coast −560 to
+  −2 480 m (Part A −870 to −1 680 m). The seaward margin widens the shallow zone on seeds 18, 19, 29 by ×2–3, but it stays
+  ~1–2 km wide, not the declared 10.7 km.
+
+**Why there is no shelf** (`f174b2_profile`, `f174b2_ds`): over C1's history **the band's continental cells are thickened and
+emerge**. At the end the Airy altitude is +1.5 to +3.2 km out to +3 cells on seeds 8 and 23 (+0.5 km to +2 cells on seed 18):
+the coast moves seaward onto the band, to the taper break (the continental / oceanic type contact at +24 km), where Airy reads
+the oceanic cells at s = 0.2 — the step is back, one cell from land to −5 km. Davis-Suppe is what lifts the band: on Part A's
+continent its crust falls by 59–73 % with the margin (its coastal share 45–64 % → 17–29 %), while off it — on the band — it
+rises (seed 8: 421 → 1 837). The plate boundary is now ocean against ocean 44 km offshore; `retarget_upper_plate_continental`
+does not touch O-O boundaries, so Davis-Suppe seeds there with the velocity-based upper plate and its fallback « dome »
+geometry, and its wedge reaches the band's continental cells. The selection compensates the larger land by picking smaller
+continents (fewer plates), which is why the land stays within ±5 points.
+
+**The coast**:
+- A1 at B0 (the share within 1 cell of C1's contour): Part A 97.2–99.5 % → seaward 91.6 / 51.1 / 76.6 / 91.4 / 60.9 % — a drop
+  of 7.6 / 46.1 / 20.9 / 6.7 / 38.6 points (≥ 20 on 3 / 5).
+- The whole coast's dimension at young: 0.983 / 0.988 / 0.975 / 0.974 / 0.977 against Part A 0.992 / 0.974 / 0.980 / 0.997 / 0.999
+  (Δ −0.023 to +0.014): no rise; under the rocky band. **R5 refuted.**
+- By the rock at the coastline (young): the seaward coasts are mostly cover (low) windows (9–31 per world against Part A's 0–4),
+  their median dimension 0.958–0.991, inside the sandy reference (0.95–1.00); the few rocky windows never reach the rocky band.
+- The seaside slope p50 at young: 13.9 / 1.1 / 1.8 / 2.3 / 1.3° against Part A 5.6–7.4° (gentle coasts, except seed 8).
+- The dendritic arms: fewer (0 on seeds 8, 19, 23 at every age; 0–4 elsewhere) than Part A (0–8).
+- The islands ≥ 1 km² off the main land: 0 on seeds 8, 19, 23; 1–3 on seed 18; 10–14 (~90 km²) on seed 29 at intermediate and
+  old. Not more than Part A overall.
+
+**The macro** (no rule): the mountain share at young 89.7 / 29.6 / 58.4 / 62.6 / 48.6 % against Part A 61.1 / 56.4 / 53.0 /
+59.7 / 57.4 % (Δ +28.6 / −26.8 / +5.4 / +2.9 / −8.8 points; R7's −10 points on 1 / 5). Seed 8 becomes a high plateau (90 %
+mountain, the first decile 759 m) — the band's and the coast's thickening; the others are lower with fewer coastal walls.
+
+**Statistical convergence** (seeds 8 and 23, B0 and old, 300 vs 600 steps): drainage density −1.6 … +0.1 %, λ −2.6 … −0.5 %,
+S₁₀ −0.4 … +0.6 % — **R8 holds 4 / 4**; the classes move 0.05–0.73 points except seed 8 old (3.66 points).
+
+**B-hétéro** (young): the dimension 0.975 / 0.984 / 0.982 / 0.978 / 0.983 (Δ against the seaward margin −0.008 … +0.009); it
+selects other continents on three seeds, so its macro moves are not separable (the mountain share 83.7 / 38.5 / 58.0 / 37.4 /
+70.2 %).
+
+**Lakes**: fewer on seeds 18, 23, 29 (0–454 km²), more on seed 8 (7 092 km²). **Texture**: the 2 048² slope p50 at young
+1.3–20.3°. **Cost**: 790–940 s CPU per world with the selection (the selection's CPU is process-wide, its variants run in
+parallel threads); 1–3 s of measures.
+
+**Images** (north up, checked): `f174b2_maps_young.png` (rows: seeds; columns: Part A | seaward | B-hétéro — the coastal walls
+of Part A, the pale shallow fringe and the low coasts of the margin, seed 8's plateau), `f174b2_plates_t0.png` (the band
+around each continent), `f174b2_margins_c1_end.png`, `f174b2_coast_crops_25km.png` (Corsica west | the Landes | Part A |
+seaward), `f174b2_transect_seed8.png` and `f174b2_transect_seed18.png` (a smooth sigmoid from 0 to −5 km, no flat).
+
+## The success and the stops
+
+- **The selection**: found on 5 / 5 — the stop rule does not fire.
+- **The success**: 0 / 5 — W₁₀ −40 % on 4 / 5 and the land ±5 points on 4 / 5, but **the shelf on 0 / 5**. The seaward margin does
+  not enter the profile.
+- **A point stopped because it needs a modified closure**: the shelf. With initial conditions only, the band either stays
+  continental (Davis-Suppe's O-O fallback lifts it and the coast moves to the taper break) or is made oceanic (Airy reads
+  oceanic cells at s = 0.2 and the step returns at the old coast). Getting a shelf needs one of:
+  1. Davis-Suppe **not seeding on ocean-ocean convergent boundaries** (they are island-arc settings — option 5's ground); a
+     change to a C1 closure;
+  2. the band's thinned crust kept continental but **excluded from Davis-Suppe's wedge** beyond the taper break; also a closure
+     change;
+  3. reading the true s of oceanic cells on continental plates in the Airy mapping — a cascade-side change, but C1's oceanic s
+     is advected with the plate (the ramp would be carried away) and the rigidity mask (#145) covers only continental cells; a
+     C1 change as well.
+  None is implemented.
+
+## Predictions (B′ and C′)
+
+- **The reviewer's**: R1 held (5 / 5, the same N on 3); R2 held (≤ 5 % active on 5 / 5; W₁₀ −60 % on 4 / 5); **R3 refuted** (0 / 5);
+  R4 on 3 / 5 (7.6–46.1 points); **R5 refuted** (no rise); R6 held (4 / 5); **R7 refuted** (1 / 5); R8 held (4 / 4).
+- **Mine**: held: R1, R6, active ≤ 5 %, R8, the conflicts (a)–(b) small and (c) ≥ 1 plate fully annexed on ≥ 2 seeds; refuted: the
+  W₁₀ count (I said ≥ 60 % on 2–3; 4), R3 (the shelf), R4 (I said 3–15 points), R5, R7, more islands, unchanged arms, the success
+  ≥ 4 (0).
+
+## D — the bibliographic note for option 5
+
+`f174_option5_note.md`: the four articles were all present and read (Stern 2004, Nikolaeva et al. 2010, Crameri et al. 2020,
+Stern & Gerya 2018), cited by page, paragraph, figure or table. In short: the older oceanic side sinks; passive-margin
+initiation is rare (no Cenozoic example; 2 of the 13 SZI events near and none along a passive margin; only thin, hot margins in
+N10's experiments; Cloetingh's 20 Ma rule via SG18); induced initiation needs ~100 km of convergence at ≥ 1–2 cm/yr and takes
+5–10 Myr; a continent arriving at a trench jams it and polarity reversal makes an Andean-type margin. The proposed closure
+(O-O consumption of the older side, island arcs on the overriding side, the boundary migrating by reassignment, an initiation
+after D_init of convergence, no spontaneous passive-margin collapse) comes with calibration targets and six validation
+criteria. **Nothing is implemented.** Note: the B′ result adds a second O-O question to option 5 — Davis-Suppe's fallback at
+O-O boundaries.
+
+## Open, for the author (nothing chosen)
+
+- (a) The shelf needs a closure change (1–3 above), or option 5's O-O rule (which would also stop Davis-Suppe's fallback dome at
+  O-O boundaries if it replaced it there).
+- (b) Option 5 itself (the note).
+- (c) Whether the seaward margin, which removes the rampart on 4 / 5 seeds and keeps the margins passive, is worth keeping behind
+  its flag in the meantime (the shelf criterion fails).
+
+## At commit of Parts B′, C′ and D (2026-10-13)
+- **The reviewer's error, recorded**: a continental shelf was expected from an initial condition alone (B′'s success criterion).
+  A flat, shallow shelf is mostly a sedimentary prism (the reviewer's reading, a hypothesis to check); the shelf goes to
+  deposition (F176).
+- **The seaward margin is off by default** (`Margin::off()`; `Margin::seaward()` only behind its flag); it is activated in F175.
+- **A method rule**: an initial-condition variant that changes the selection is compared **also at a fixed continent** (the
+  plates chosen for the variant, run with and without it), not only with the selection redone — B′ chose a different continent
+  on every seed, which mixed the margin's effect with the continent's.
+- **The time-step question is closed**: the physics level's step is not halved; the criterion is statistical convergence
+  (density, λ, sinuosity, classes), which holds (F174 A3; B′'s R8 within 2.6 % on 4 / 4).
+- **The author's decisions, verbatim**: on option 5, « Ca demanderait de faire de la biblio pour ça + calage sur base des
+  publications et expériences. Mais pourquoi pas. »; on the order, « oui ok pour l'ordre » (F175 = option 5, F176 = deposition).
+  The instruction stands: no solver; option 5 is a change of an existing closure, behind a flag.

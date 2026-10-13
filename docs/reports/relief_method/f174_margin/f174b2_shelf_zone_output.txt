@@ -1,0 +1,101 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+warning: unused import: `CANONICAL_ORIGIN`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:13:14
+   |
+13 | use common::{CANONICAL_ORIGIN, PSEED, pct, sorted};
+   |              ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `ymir_core::cascade::amplify::restrict`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:16:5
+   |
+16 | use ymir_core::cascade::amplify::restrict;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `step_durations`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:21:5
+   |
+21 |     step_durations,
+   |     ^^^^^^^^^^^^^^
+
+warning: unused imports: `CLASS_NAMES`, `PLAIN`, `PLATEAU`, `RELIEF_RADIUS_KM`, `coast`, `hovius`, and `local_relief`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:26:5
+   |
+26 |     CLASS_NAMES, Circumnavigation, Coast, MOUNTAIN, MacroStats, PLAIN, PLATEAU, RELIEF_RADIUS_KM, circumnavigation, classify, coast,
+   |     ^^^^^^^^^^^                                                 ^^^^^  ^^^^^^^  ^^^^^^^^^^^^^^^^                              ^^^^^
+27 |     coast_torus, edt, hovius, local_relief, macro_stats, periodic_components, slope_deg,
+   |                       ^^^^^^  ^^^^^^^^^^^^
+
+warning: unused import: `flat_map`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:29:58
+   |
+29 | use ymir_core::cascade::planform::{Planform, WINDOWS_KM, flat_map, planform};
+   |                                                          ^^^^^^^^
+
+warning: unused imports: `Selection` and `select_continent_plates`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:31:46
+   |
+31 | use ymir_core::cascade::profile::{C1Profile, Selection, c1_run_config, select_continent_default, select_continent_plates};
+   |                                              ^^^^^^^^^                                           ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `ymir-core` (test "f174bc_cascade") generated 6 warnings (run `cargo fix --test "f174bc_cascade" -p ymir-core` to apply 6 suggestions)
+    Finished `release` profile [optimized] target(s) in 29.80s
+     Running tests\f174bc_cascade.rs (target_f174b\release\deps\f174bc_cascade-2d018fb185f6faa0.exe)
+
+running 1 test
+test f174b2_shelf_zone has been running for over 60 seconds
+seed 8 A (off): 0 → −140 m zone p50 / p90 0.4 / 0.7 km · 0 → −448 m zone 1.0 / 1.4 km · mean depth by km from the coast -1683/-2199/-2874/-3536/-4018/-4352/-4568/-4704/-4786/-4810/-4830/-4839/-4842/-4843/-4843/-4845
+seed 8 seaward: 0 → −140 m zone p50 / p90 0.2 / 0.4 km · 0 → −448 m zone 0.8 / 1.2 km · mean depth by km from the coast -2481/-2925/-3472/-4006/-4372/-4654/-4818/-4919/-4993/-5008/-5028/-5042/-5053/-5058/-5069/-5080
+seed 18 A (off): 0 → −140 m zone p50 / p90 0.4 / 0.8 km · 0 → −448 m zone 1.0 / 1.6 km · mean depth by km from the coast -873/-1479/-2328/-3167/-3780/-4227/-4517/-4697/-4799/-4847/-4874/-4889/-4898/-4902/-4904/-4907
+seed 18 seaward: 0 → −140 m zone p50 / p90 1.1 / 3.5 km · 0 → −448 m zone 2.1 / 7.0 km · mean depth by km from the coast -558/-804/-1163/-1559/-1962/-2321/-2634/-2879/-3126/-3308/-3504/-3690/-3880/-4062/-4236/-4394
+seed 19 A (off): 0 → −140 m zone p50 / p90 0.4 / 0.7 km · 0 → −448 m zone 1.0 / 1.4 km · mean depth by km from the coast -1676/-2198/-2905/-3578/-4051/-4383/-4565/-4667/-4724/-4736/-4745/-4750/-4750/-4750/-4749/-4751
+seed 19 seaward: 0 → −140 m zone p50 / p90 0.8 / 1.4 km · 0 → −448 m zone 1.5 / 2.7 km · mean depth by km from the coast -689/-1088/-1650/-2231/-2804/-3352/-3719/-3987/-4205/-4376/-4519/-4637/-4734/-4814/-4875/-4923
+seed 23 A (off): 0 → −140 m zone p50 / p90 0.4 / 0.7 km · 0 → −448 m zone 1.0 / 1.4 km · mean depth by km from the coast -1571/-2121/-2881/-3575/-4043/-4374/-4578/-4698/-4765/-4786/-4796/-4796/-4793/-4788/-4783/-4782
+seed 23 seaward: 0 → −140 m zone p50 / p90 0.6 / 1.0 km · 0 → −448 m zone 1.2 / 1.9 km · mean depth by km from the coast -2061/-2382/-2841/-3363/-3804/-4181/-4441/-4628/-4775/-4831/-4889/-4933/-4971/-5003/-5027/-5041
+seed 29 A (off): 0 → −140 m zone p50 / p90 0.4 / 0.9 km · 0 → −448 m zone 1.1 / 1.8 km · mean depth by km from the coast -1518/-1994/-2679/-3330/-3809/-4223/-4504/-4644/-4727/-4754/-4777/-4793/-4807/-4817/-4820/-4824
+seed 29 seaward: 0 → −140 m zone p50 / p90 0.8 / 1.4 km · 0 → −448 m zone 1.6 / 2.8 km · mean depth by km from the coast -1721/-1994/-2378/-2821/-3184/-3541/-3845/-4113/-4355/-4481/-4573/-4662/-4738/-4798/-4848/-4891
+test f174b2_shelf_zone ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 1545.32s
+

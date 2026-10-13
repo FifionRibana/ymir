@@ -1,0 +1,364 @@
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen_range`: Renamed to `random_range`
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+warning: unused variable: `src_width`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `src_catch`
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+warning: value assigned to `next_id` is never read
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ymir-core` (lib) generated 5 warnings (run `cargo fix --lib -p ymir-core` to apply 2 suggestions)
+warning: unused import: `CANONICAL_ORIGIN`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:13:14
+   |
+13 | use common::{CANONICAL_ORIGIN, PSEED, pct, sorted};
+   |              ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `ymir_core::cascade::amplify::restrict`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:16:5
+   |
+16 | use ymir_core::cascade::amplify::restrict;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `step_durations`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:21:5
+   |
+21 |     step_durations,
+   |     ^^^^^^^^^^^^^^
+
+warning: unused imports: `CLASS_NAMES`, `PLAIN`, `PLATEAU`, `RELIEF_RADIUS_KM`, `coast`, `hovius`, and `local_relief`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:26:5
+   |
+26 |     CLASS_NAMES, Circumnavigation, Coast, MOUNTAIN, MacroStats, PLAIN, PLATEAU, RELIEF_RADIUS_KM, circumnavigation, classify, coast,
+   |     ^^^^^^^^^^^                                                 ^^^^^  ^^^^^^^  ^^^^^^^^^^^^^^^^                              ^^^^^
+27 |     coast_torus, edt, hovius, local_relief, macro_stats, periodic_components, slope_deg,
+   |                       ^^^^^^  ^^^^^^^^^^^^
+
+warning: unused import: `flat_map`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:29:58
+   |
+29 | use ymir_core::cascade::planform::{Planform, WINDOWS_KM, flat_map, planform};
+   |                                                          ^^^^^^^^
+
+warning: unused imports: `Selection` and `select_continent_plates`
+  --> crates\ymir-core\tests\f174bc_cascade.rs:31:46
+   |
+31 | use ymir_core::cascade::profile::{C1Profile, Selection, c1_run_config, select_continent_default, select_continent_plates};
+   |                                              ^^^^^^^^^                                           ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `ymir-core` (test "f174bc_cascade") generated 6 warnings (run `cargo fix --test "f174bc_cascade" -p ymir-core` to apply 6 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.56s
+     Running tests\f174bc_cascade.rs (target_f174b\release\deps\f174bc_cascade-2d018fb185f6faa0.exe)
+
+running 1 test
+
+==========  Finding 174 B′/C′ . the margin seaward (an initial condition of C1's continent profile; no closure modified)  ==========
+
+── B1: the selection per variant (N, k, family, land, r*, CPU s) ──
+test f174b2_measure has been running for over 60 seconds
+   seed 8: A (off): N 16 k 7 compact land 50.7 % r* 3 (369 s) · seaward: N 16 k 8 compact land 52.2 % r* 2 (391 s) · B-hetero: N 16 k 8 compact land 51.1 % r* 2 (392 s)
+      B′2 conflicts on A (off)'s continent (Selected { plates: 16, k: 7, start: 14, compact: true }): continents 1 · (a) the perimeter within 2 bands of another continent 0.0 % · (b) within 1 band 0.0 % · (c) oceanic plates fully annexed 4, losing > 50 % 9, the perimeter facing them 100.0 %
+      B′2 conflicts on seaward's continent (Selected { plates: 16, k: 8, start: 2, compact: true }): continents 1 · (a) the perimeter within 2 bands of another continent 0.0 % · (b) within 1 band 0.0 % · (c) oceanic plates fully annexed 0, losing > 50 % 4, the perimeter facing them 63.6 %
+   seed 18: A (off): N 16 k 11 compact land 50.4 % r* 2 (372 s) · seaward: N 16 k 8 compact land 56.1 % r* 2 (391 s) · B-hetero: N 16 k 11 compact land 52.0 % r* 1 (391 s)
+      B′2 conflicts on A (off)'s continent (Selected { plates: 16, k: 11, start: 12, compact: true }): continents 1 · (a) the perimeter within 2 bands of another continent 0.0 % · (b) within 1 band 0.0 % · (c) oceanic plates fully annexed 1, losing > 50 % 4, the perimeter facing them 89.3 %
+      B′2 conflicts on seaward's continent (Selected { plates: 16, k: 8, start: 11, compact: true }): continents 1 · (a) the perimeter within 2 bands of another continent 0.0 % · (b) within 1 band 0.0 % · (c) oceanic plates fully annexed 2, losing > 50 % 8, the perimeter facing them 100.0 %
+   seed 19: A (off): N 20 k 12 bfs land 56.2 % r* 1 (642 s) · seaward: N 16 k 7 compact land 55.6 % r* 3 (438 s) · B-hetero: N 16 k 7 compact land 53.5 % r* 3 (439 s)
+      B′2 conflicts on A (off)'s continent (Selected { plates: 20, k: 12, start: 18, compact: false }): continents 2 · (a) the perimeter within 2 bands of another continent 28.6 % · (b) within 1 band 12.6 % · (c) oceanic plates fully annexed 4, losing > 50 % 8, the perimeter facing them 100.0 %
+      B′2 conflicts on seaward's continent (Selected { plates: 16, k: 7, start: 1, compact: true }): continents 1 · (a) the perimeter within 2 bands of another continent 0.0 % · (b) within 1 band 0.0 % · (c) oceanic plates fully annexed 1, losing > 50 % 8, the perimeter facing them 97.3 %
+   seed 23: A (off): N 16 k 8 compact land 52.3 % r* 1 (396 s) · seaward: N 16 k 8 compact land 50.9 % r* 1 (404 s) · B-hetero: N 16 k 6 compact land 51.1 % r* 2 (404 s)
+      B′2 conflicts on A (off)'s continent (Selected { plates: 16, k: 8, start: 0, compact: true }): continents 3 · (a) the perimeter within 2 bands of another continent 34.8 % · (b) within 1 band 16.4 % · (c) oceanic plates fully annexed 2, losing > 50 % 8, the perimeter facing them 100.0 %
+      B′2 conflicts on seaward's continent (Selected { plates: 16, k: 8, start: 6, compact: true }): continents 1 · (a) the perimeter within 2 bands of another continent 0.0 % · (b) within 1 band 0.0 % · (c) oceanic plates fully annexed 0, losing > 50 % 6, the perimeter facing them 96.3 %
+   seed 29: A (off): N 20 k 13 compact land 52.3 % r* 2 (640 s) · seaward: N 16 k 9 compact land 54.5 % r* 3 (421 s) · B-hetero: N 16 k 8 compact land 54.2 % r* 3 (423 s)
+      B′2 conflicts on A (off)'s continent (Selected { plates: 20, k: 13, start: 0, compact: true }): continents 1 · (a) the perimeter within 2 bands of another continent 0.0 % · (b) within 1 band 0.0 % · (c) oceanic plates fully annexed 1, losing > 50 % 7, the perimeter facing them 100.0 %
+      B′2 conflicts on seaward's continent (Selected { plates: 16, k: 9, start: 11, compact: true }): continents 1 · (a) the perimeter within 2 bands of another continent 0.0 % · (b) within 1 band 0.0 % · (c) oceanic plates fully annexed 0, losing > 50 % 7, the perimeter facing them 100.0 %
+   found on 5: A (off) 5 · seaward 5 · B-hetero 5
+
+   ══ seed 8 ══
+   ── A (off): C1's end land (64², the selection's measure) 50.7 % (selection 50.7 %)
+   ── A (off) (Selected { plates: 16, k: 7, start: 14, compact: true }, N 16; selection 369 s CPU): the perimeter at t0 active 66.4 % / another plate's ocean 100.0 % · at the end active 15.6 % / rim consumed 28.7 % · first step > 5 % active Some(0) · series (step: active/consumed %, plates) 0:66/100(16) 50:33/55(6) 100:16/29(2) 150:16/29(2) 200:16/29(2) 250:16/29(2) 299:16/29(2)
+         land (2 048²) 53.4 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      B0: A1 within 1 / 2 / 5 cells 99.2 / 100.0 / 100.0 % · W10 0.855 (W_in 0.191, rampart true) · shelf median / p90 0.0 / 0.0 km, break 325 m, with a shelf 3 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.985 / 0.911 / 0.305 / 0.833 · windows rocky / low / mixed 9 / 0 / 16 · rocky 0.989 / 0.896 / 0.304 / 0.479 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low none · seaside slope p50 17.2° · lakes 13 (1335 km²) · texture relief p50 (256²) 1178 m, slope p50 / p90 (2 048²) 18.9 / 27.7° · measures 3 s wall · cost (CPU per world, selection included) 1445 s
+   A (off) B0                 plain   3.0 % · plateau   1.8 % · hill  25.6 % · mountain  69.6 % · land 82749 km² · deciles 95/174/331/585/865/1270/2031/2930/3921
+         land (2 048²) 53.4 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      young 20 Myr: A1 within 1 / 2 / 5 cells 97.8 / 99.5 / 100.0 % · W10 0.591 (W_in 0.171, rampart true) · shelf median / p90 0.0 / 1.1 km, break 248 m, with a shelf 16 % (band 4.65–16.4: false) · sea arms 2 (penetration p50 4.0, max 4.0 km)
+         the coast: whole 0.992 / 0.921 / 0.295 / 1.177 · windows rocky / low / mixed 15 / 1 / 11 · rocky 0.995 / 0.900 / 0.281 / 0.651 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.976 / 0.901 / 0.391 / 0.542 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 7.4° · lakes 20 (3694 km²) · texture relief p50 (256²) 1004 m, slope p50 / p90 (2 048²) 14.9 / 27.0° · measures 3 s wall · cost (CPU per world, selection included) 1465 s
+   A (off) young 20 Myr       plain  12.4 % · plateau   1.0 % · hill  25.4 % · mountain  61.1 % · land 82588 km² · deciles 124/191/261/365/559/863/1302/2019/3443
+         land (2 048²) 53.1 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      intermediate 100 Myr: A1 within 1 / 2 / 5 cells 90.4 / 93.6 / 94.9 % · W10 0.173 (W_in 0.160, rampart false) · shelf median / p90 0.0 / 1.1 km, break 173 m, with a shelf 33 % (band 4.65–16.4: false) · sea arms 2 (penetration p50 46.9, max 46.9 km)
+         the coast: whole 0.999 / 0.933 / 0.323 / 1.655 · windows rocky / low / mixed 16 / 2 / 10 · rocky 0.994 / 0.902 / 0.298 / 0.926 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 1.005 / 0.932 / 0.368 / 0.836 (dimension sandy 0.95–1.00 false, lagoon 1.25–1.35 false) · seaside slope p50 2.6° · lakes 17 (1292 km²) · texture relief p50 (256²) 358 m, slope p50 / p90 (2 048²) 7.8 / 25.4° · measures 1 s wall · cost (CPU per world, selection included) 1261 s
+   A (off) intermediate 100 Myr plain  17.3 % · plateau   1.3 % · hill  43.0 % · mountain  38.3 % · land 82168 km² · deciles 45/93/147/205/271/359/514/1044/2440
+         land (2 048²) 53.1 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      old 300 Myr: A1 within 1 / 2 / 5 cells 88.8 / 93.2 / 95.0 % · W10 0.140 (W_in 0.138, rampart false) · shelf median / p90 0.0 / 1.1 km, break 158 m, with a shelf 35 % (band 4.65–16.4: false) · sea arms 3 (penetration p50 7.2, max 47.0 km)
+         the coast: whole 1.004 / 0.951 / 0.323 / 1.615 · windows rocky / low / mixed 17 / 1 / 10 · rocky 0.998 / 0.944 / 0.299 / 1.063 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.995 / 1.075 / 0.149 / 0.492 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 2.1° · lakes 13 (1375 km²) · texture relief p50 (256²) 174 m, slope p50 / p90 (2 048²) 3.8 / 24.9° · measures 2 s wall · cost (CPU per world, selection included) 791 s
+   A (off) old 300 Myr        plain  51.9 % · plateau   0.1 % · hill  20.9 % · mountain  27.1 % · land 81819 km² · deciles 21/43/67/95/133/189/295/787/1986
+   ── seaward: C1's end land (64², the selection's measure) 52.2 % (selection 52.2 %)
+   ── seaward (Selected { plates: 16, k: 8, start: 2, compact: true }, N 16; selection 391 s CPU): the perimeter at t0 active 10.1 % / another plate's ocean 3.4 % · at the end active 0.0 % / rim consumed 0.0 % · first step > 5 % active Some(0) · series (step: active/consumed %, plates) 0:10/3(16) 50:8/3(8) 100:6/2(4) 150:0/0(3) 200:0/0(3) 250:0/0(3) 299:0/0(3)
+         land (2 048²) 52.1 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      B0: A1 within 1 / 2 / 5 cells 91.6 / 99.3 / 100.0 % · W10 0.718 (W_in 0.120, rampart true) · shelf median / p90 0.0 / 0.0 km, break 278 m, with a shelf 2 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.976 / 0.888 / 0.290 / 0.606 · windows rocky / low / mixed 1 / 13 / 8 · rocky 0.967 / 0.942 / 0.259 / 0.360 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.995 / 0.902 / 0.290 / 0.656 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 16.4° · lakes 17 (7329 km²) · texture relief p50 (256²) 854 m, slope p50 / p90 (2 048²) 20.2 / 27.4° · measures 1 s wall · cost (CPU per world, selection included) 788 s
+   seaward B0                 plain   0.0 % · plateau   6.7 % · hill   2.8 % · mountain  90.5 % · land 83076 km² · deciles 781/1145/1475/1769/1980/2136/2373/2678/3094
+         convergence (300 vs 600 steps): drainage density 0.219 → 0.219 (+0.1 %) · λ 15.38 → 15.21 km (-1.1 %) · S10 1.132 → 1.140 (+0.6 %) · the classes' largest move 0.05 points · Q8 (< 5 %) true
+         land (2 048²) 52.2 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      young 20 Myr: A1 within 1 / 2 / 5 cells 89.7 / 98.5 / 100.0 % · W10 0.695 (W_in 0.054, rampart true) · shelf median / p90 0.0 / 0.0 km, break 275 m, with a shelf 2 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.983 / 0.903 / 0.321 / 0.604 · windows rocky / low / mixed 2 / 9 / 10 · rocky 1.029 / 0.918 / 0.334 / 0.582 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.991 / 0.902 / 0.364 / 0.465 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 13.9° · lakes 14 (7092 km²) · texture relief p50 (256²) 761 m, slope p50 / p90 (2 048²) 20.3 / 27.3° · measures 1 s wall · cost (CPU per world, selection included) 800 s
+   seaward young 20 Myr       plain   0.0 % · plateau   7.3 % · hill   3.0 % · mountain  89.7 % · land 83262 km² · deciles 759/1034/1332/1569/1778/1962/2167/2402/2735
+         transect image: passive true · active false
+         land (2 048²) 52.4 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      intermediate 100 Myr: A1 within 1 / 2 / 5 cells 89.3 / 95.9 / 100.0 % · W10 0.510 (W_in 0.013, rampart true) · shelf median / p90 0.0 / 0.0 km, break 261 m, with a shelf 2 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.976 / 0.891 / 0.335 / 0.595 · windows rocky / low / mixed 1 / 6 / 14 · rocky 0.967 / 0.938 / 0.350 / 0.294 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 1.003 / 0.925 / 0.292 / 0.502 (dimension sandy 0.95–1.00 false, lagoon 1.25–1.35 false) · seaside slope p50 11.7° · lakes 21 (8945 km²) · texture relief p50 (256²) 649 m, slope p50 / p90 (2 048²) 17.6 / 26.6° · measures 1 s wall · cost (CPU per world, selection included) 807 s
+   seaward intermediate 100 Myr plain   0.0 % · plateau  11.0 % · hill   3.4 % · mountain  85.6 % · land 83616 km² · deciles 699/989/1138/1283/1418/1566/1717/1886/2138
+         land (2 048²) 52.6 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      old 300 Myr: A1 within 1 / 2 / 5 cells 87.5 / 94.4 / 100.0 % · W10 0.380 (W_in 0.002, rampart true) · shelf median / p90 0.0 / 0.0 km, break 342 m, with a shelf 2 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.979 / 0.898 / 0.312 / 0.648 · windows rocky / low / mixed 1 / 9 / 12 · rocky 0.978 / 0.962 / 0.219 / 0.436 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.980 / 0.884 / 0.296 / 0.655 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 10.6° · lakes 26 (6221 km²) · texture relief p50 (256²) 525 m, slope p50 / p90 (2 048²) 15.8 / 26.0° · measures 1 s wall · cost (CPU per world, selection included) 813 s
+   seaward old 300 Myr        plain   0.7 % · plateau  16.4 % · hill   4.5 % · mountain  78.4 % · land 83843 km² · deciles 530/733/876/1005/1145/1294/1450/1630/1846
+         convergence (300 vs 600 steps): drainage density 0.252 → 0.252 (+0.1 %) · λ 23.72 → 23.44 km (-1.2 %) · S10 1.136 → 1.131 (-0.4 %) · the classes' largest move 3.66 points · Q8 (< 5 %) true
+   ── B-hetero: C1's end land (64², the selection's measure) 51.1 % (selection 51.1 %)
+   ── B-hetero (Selected { plates: 16, k: 8, start: 2, compact: true }, N 16; selection 392 s CPU): the perimeter at t0 active 10.1 % / another plate's ocean 3.4 % · at the end active 0.0 % / rim consumed 0.0 % · first step > 5 % active Some(0) · series (step: active/consumed %, plates) 0:10/3(16) 50:8/3(8) 100:6/2(3) 150:0/0(2) 200:0/0(2) 250:0/0(2) 299:0/0(2)
+         land (2 048²) 52.1 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      young 20 Myr: A1 within 1 / 2 / 5 cells 89.9 / 98.2 / 100.0 % · W10 0.669 (W_in 0.066, rampart true) · shelf median / p90 0.0 / 0.0 km, break 255 m, with a shelf 2 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.975 / 0.890 / 0.324 / 0.775 · windows rocky / low / mixed 0 / 12 / 9 · rocky none · low 0.984 / 0.906 / 0.359 / 0.550 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 13.2° · lakes 14 (7144 km²) · texture relief p50 (256²) 748 m, slope p50 / p90 (2 048²) 19.0 / 27.1° · measures 1 s wall · cost (CPU per world, selection included) 819 s
+   B-hetero young 20 Myr      plain   2.3 % · plateau   8.0 % · hill   6.0 % · mountain  83.7 % · land 82966 km² · deciles 432/686/945/1237/1475/1671/1918/2191/2497
+         land (2 048²) 52.5 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      old 300 Myr: A1 within 1 / 2 / 5 cells 85.6 / 94.6 / 100.0 % · W10 0.344 (W_in 0.000, rampart true) · shelf median / p90 0.0 / 0.0 km, break 289 m, with a shelf 2 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.979 / 0.898 / 0.330 / 0.569 · windows rocky / low / mixed 2 / 8 / 11 · rocky 1.037 / 0.918 / 0.420 / 0.662 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.988 / 0.931 / 0.298 / 0.566 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 10.2° · lakes 24 (5322 km²) · texture relief p50 (256²) 384 m, slope p50 / p90 (2 048²) 12.2 / 25.3° · measures 1 s wall · cost (CPU per world, selection included) 809 s
+   B-hetero old 300 Myr       plain   4.2 % · plateau  24.4 % · hill   9.4 % · mountain  62.0 % · land 83562 km² · deciles 408/509/621/731/842/959/1098/1265/1499
+   seed 8: W10 young A 0.591 → seaward 0.695 (drop -18 %) · C1 end land A 50.7 → seaward 52.2 % (|Δ| 1.5 points) · shelf in band (young) false · active at the end 0.0 % · success false
+
+   ══ seed 18 ══
+   ── A (off): C1's end land (64², the selection's measure) 50.4 % (selection 50.4 %)
+   ── A (off) (Selected { plates: 16, k: 11, start: 12, compact: true }, N 16; selection 372 s CPU): the perimeter at t0 active 48.5 % / another plate's ocean 100.0 % · at the end active 5.5 % / rim consumed 25.9 % · first step > 5 % active Some(0) · series (step: active/consumed %, plates) 0:48/100(16) 50:42/71(8) 100:6/26(5) 150:5/26(3) 200:5/26(3) 250:5/26(3) 299:5/26(3)
+         land (2 048²) 53.8 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      B0: A1 within 1 / 2 / 5 cells 97.2 / 99.8 / 100.0 % · W10 0.760 (W_in 0.151, rampart true) · shelf median / p90 0.0 / 0.0 km, break 274 m, with a shelf 5 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.971 / 0.888 / 0.291 / 1.373 · windows rocky / low / mixed 4 / 5 / 13 · rocky 1.024 / 0.984 / 0.352 / 0.794 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.975 / 0.880 / 0.320 / 0.541 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 14.9° · lakes 7 (364 km²) · texture relief p50 (256²) 1004 m, slope p50 / p90 (2 048²) 15.7 / 27.2° · measures 1 s wall · cost (CPU per world, selection included) 797 s
+   A (off) B0                 plain   4.3 % · plateau   1.1 % · hill  30.2 % · mountain  64.4 % · land 82253 km² · deciles 71/155/261/406/585/910/1437/2130/3461
+         land (2 048²) 53.8 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      young 20 Myr: A1 within 1 / 2 / 5 cells 93.5 / 99.1 / 100.0 % · W10 0.532 (W_in 0.141, rampart true) · shelf median / p90 0.0 / 1.1 km, break 221 m, with a shelf 21 % (band 4.65–16.4: false) · sea arms 1 (penetration p50 5.5, max 5.5 km)
+         the coast: whole 0.974 / 0.891 / 0.342 / 1.214 · windows rocky / low / mixed 7 / 4 / 11 · rocky 1.020 / 0.927 / 0.322 / 0.579 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.982 / 0.888 / 0.312 / 0.909 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 6.8° · lakes 6 (510 km²) · texture relief p50 (256²) 814 m, slope p50 / p90 (2 048²) 12.7 / 26.6° · measures 1 s wall · cost (CPU per world, selection included) 792 s
+   A (off) young 20 Myr       plain  14.6 % · plateau   1.9 % · hill  27.2 % · mountain  56.4 % · land 81831 km² · deciles 37/112/211/325/472/687/998/1656/2570
+         land (2 048²) 53.8 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      intermediate 100 Myr: A1 within 1 / 2 / 5 cells 89.7 / 97.5 / 99.6 % · W10 0.132 (W_in 0.119, rampart false) · shelf median / p90 0.0 / 1.1 km, break 175 m, with a shelf 36 % (band 4.65–16.4: false) · sea arms 2 (penetration p50 8.2, max 8.2 km)
+         the coast: whole 0.981 / 0.915 / 0.322 / 1.065 · windows rocky / low / mixed 8 / 2 / 12 · rocky 0.998 / 0.978 / 0.347 / 0.947 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 1.027 / 1.006 / 0.391 / 1.051 (dimension sandy 0.95–1.00 false, lagoon 1.25–1.35 false) · seaside slope p50 2.6° · lakes 5 (432 km²) · texture relief p50 (256²) 363 m, slope p50 / p90 (2 048²) 6.8 / 24.9° · measures 1 s wall · cost (CPU per world, selection included) 807 s
+   A (off) intermediate 100 Myr plain  20.8 % · plateau   1.2 % · hill  40.5 % · mountain  37.6 % · land 80667 km² · deciles 36/79/128/187/258/347/491/924/2138
+         land (2 048²) 53.7 % · islands ≥ 1 km² off the main land 5 (60 km²)
+      old 300 Myr: A1 within 1 / 2 / 5 cells 79.6 / 94.4 / 99.7 % · W10 0.118 (W_in 0.093, rampart false) · shelf median / p90 0.0 / 1.1 km, break 152 m, with a shelf 36 % (band 4.65–16.4: false) · sea arms 6 (penetration p50 5.4, max 8.5 km)
+         the coast: whole 1.019 / 1.003 / 0.333 / 1.033 · windows rocky / low / mixed 10 / 2 / 11 · rocky 1.062 / 1.086 / 0.359 / 0.788 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 1.030 / 1.017 / 0.330 / 0.986 (dimension sandy 0.95–1.00 false, lagoon 1.25–1.35 false) · seaside slope p50 1.7° · lakes 7 (447 km²) · texture relief p50 (256²) 165 m, slope p50 / p90 (2 048²) 3.5 / 24.2° · measures 1 s wall · cost (CPU per world, selection included) 803 s
+   A (off) old 300 Myr        plain  53.4 % · plateau   0.5 % · hill  21.0 % · mountain  25.1 % · land 79919 km² · deciles 16/39/67/96/128/171/260/653/1934
+   ── seaward: C1's end land (64², the selection's measure) 56.1 % (selection 56.1 %)
+   ── seaward (Selected { plates: 16, k: 8, start: 11, compact: true }, N 16; selection 391 s CPU): the perimeter at t0 active 3.8 % / another plate's ocean 2.8 % · at the end active 1.9 % / rim consumed 0.9 % · first step > 5 % active Some(99) · series (step: active/consumed %, plates) 0:4/3(14) 50:2/3(7) 100:8/2(4) 150:2/1(2) 200:2/1(2) 250:2/1(2) 299:2/1(2)
+         land (2 048²) 60.1 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      B0: A1 within 1 / 2 / 5 cells 51.1 / 67.3 / 90.6 % · W10 0.109 (W_in 0.058, rampart false) · shelf median / p90 0.0 / 6.9 km, break 295 m, with a shelf 20 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.976 / 0.870 / 0.369 / 1.749 · windows rocky / low / mixed 0 / 32 / 2 · rocky none · low 0.972 / 0.875 / 0.378 / 1.460 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 1.7° · lakes 2 (44 km²) · texture relief p50 (256²) 379 m, slope p50 / p90 (2 048²) 6.6 / 24.8° · measures 1 s wall · cost (CPU per world, selection included) 863 s
+   seaward B0                 plain  22.5 % · plateau   3.6 % · hill  35.0 % · mountain  38.9 % · land 95513 km² · deciles 25/50/83/133/203/367/658/946/1373
+         land (2 048²) 60.0 % · islands ≥ 1 km² off the main land 2 (32 km²)
+      young 20 Myr: A1 within 1 / 2 / 5 cells 51.2 / 65.8 / 86.9 % · W10 0.051 (W_in 0.022, rampart false) · shelf median / p90 0.0 / 1.7 km, break 124 m, with a shelf 28 % (band 4.65–16.4: false) · sea arms 1 (penetration p50 6.4, max 6.4 km)
+         the coast: whole 0.988 / 0.896 / 0.387 / 1.968 · windows rocky / low / mixed 1 / 31 / 4 · rocky 1.011 / 0.896 / 0.256 / 0.526 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.976 / 0.875 / 0.369 / 1.185 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 1.1° · lakes 1 (293 km²) · texture relief p50 (256²) 164 m, slope p50 / p90 (2 048²) 2.5 / 23.8° · measures 1 s wall · cost (CPU per world, selection included) 884 s
+   seaward young 20 Myr       plain  47.9 % · plateau   4.8 % · hill  17.8 % · mountain  29.6 % · land 94946 km² · deciles 4/9/15/25/62/171/458/807/1149
+         transect image: passive true · active true
+         land (2 048²) 58.2 % · islands ≥ 1 km² off the main land 1 (4 km²)
+      intermediate 100 Myr: A1 within 1 / 2 / 5 cells 49.2 / 61.0 / 81.3 % · W10 0.000 (W_in 0.002, rampart false) · shelf median / p90 0.0 / 1.1 km, break 99 m, with a shelf 28 % (band 4.65–16.4: false) · sea arms 4 (penetration p50 9.6, max 30.5 km)
+         the coast: whole 0.993 / 0.910 / 0.374 / 2.224 · windows rocky / low / mixed 3 / 26 / 6 · rocky 1.019 / 0.875 / 0.313 / 0.699 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.989 / 0.921 / 0.371 / 1.647 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 1.0° · lakes 0 (-0 km²) · texture relief p50 (256²) 168 m, slope p50 / p90 (2 048²) 2.8 / 20.1° · measures 2 s wall · cost (CPU per world, selection included) 856 s
+   seaward intermediate 100 Myr plain  49.6 % · plateau   1.2 % · hill  26.8 % · mountain  22.4 % · land 91819 km² · deciles 2/4/9/29/76/137/223/405/775
+         land (2 048²) 57.6 % · islands ≥ 1 km² off the main land 3 (14 km²)
+      old 300 Myr: A1 within 1 / 2 / 5 cells 49.7 / 61.3 / 78.6 % · W10 0.000 (W_in 0.000, rampart false) · shelf median / p90 0.0 / 1.1 km, break 89 m, with a shelf 30 % (band 4.65–16.4: false) · sea arms 4 (penetration p50 9.6, max 32.7 km)
+         the coast: whole 0.994 / 0.912 / 0.350 / 2.044 · windows rocky / low / mixed 6 / 24 / 4 · rocky 1.015 / 0.967 / 0.328 / 1.124 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.986 / 0.892 / 0.353 / 1.492 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 1.0° · lakes 1 (15 km²) · texture relief p50 (256²) 121 m, slope p50 / p90 (2 048²) 2.0 / 13.9° · measures 1 s wall · cost (CPU per world, selection included) 860 s
+   seaward old 300 Myr        plain  61.9 % · plateau   0.1 % · hill  24.8 % · mountain  13.3 % · land 90698 km² · deciles 1/3/8/27/52/83/125/195/413
+   ── B-hetero: C1's end land (64², the selection's measure) 52.0 % (selection 52.0 %)
+   ── B-hetero (Selected { plates: 16, k: 11, start: 12, compact: true }, N 16; selection 391 s CPU): the perimeter at t0 active 22.8 % / another plate's ocean 6.1 % · at the end active 3.9 % / rim consumed 2.2 % · first step > 5 % active Some(0) · series (step: active/consumed %, plates) 0:23/6(15) 50:14/2(8) 100:6/2(5) 150:3/2(4) 200:4/2(4) 250:3/2(4) 299:4/2(4)
+         land (2 048²) 65.2 % · islands ≥ 1 km² off the main land 2 (14 km²)
+      young 20 Myr: A1 within 1 / 2 / 5 cells 45.2 / 65.0 / 85.9 % · W10 0.026 (W_in 0.039, rampart false) · shelf median / p90 0.0 / 1.1 km, break 119 m, with a shelf 23 % (band 4.65–16.4: false) · sea arms 2 (penetration p50 18.9, max 18.9 km)
+         the coast: whole 0.984 / 0.880 / 0.348 / 1.649 · windows rocky / low / mixed 0 / 23 / 7 · rocky none · low 0.964 / 0.861 / 0.321 / 1.580 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 1.0° · lakes 4 (29 km²) · texture relief p50 (256²) 552 m, slope p50 / p90 (2 048²) 4.1 / 24.2° · measures 1 s wall · cost (CPU per world, selection included) 898 s
+   B-hetero young 20 Myr      plain  31.4 % · plateau   0.4 % · hill  29.6 % · mountain  38.5 % · land 93040 km² · deciles 6/12/26/62/150/290/476/754/1219
+         land (2 048²) 60.9 % · islands ≥ 1 km² off the main land 13 (710 km²)
+      old 300 Myr: A1 within 1 / 2 / 5 cells 24.8 / 43.3 / 58.6 % · W10 0.013 (W_in 0.003, rampart false) · shelf median / p90 0.0 / 1.1 km, break 71 m, with a shelf 26 % (band 4.65–16.4: false) · sea arms 5 (penetration p50 55.0, max 95.1 km)
+         the coast: whole 1.035 / 1.016 / 0.340 / 1.669 · windows rocky / low / mixed 10 / 18 / 13 · rocky 1.044 / 0.910 / 0.303 / 0.953 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.995 / 0.932 / 0.360 / 1.339 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 0.7° · lakes 1 (42 km²) · texture relief p50 (256²) 84 m, slope p50 / p90 (2 048²) 0.9 / 10.7° · measures 1 s wall · cost (CPU per world, selection included) 888 s
+   B-hetero old 300 Myr       plain  73.9 % · plateau   0.8 % · hill  16.0 % · mountain   9.3 % · land 90208 km² · deciles 1/2/6/13/23/39/67/144/333
+   seed 18: W10 young A 0.532 → seaward 0.051 (drop 90 %) · C1 end land A 50.4 → seaward 56.1 % (|Δ| 5.7 points) · shelf in band (young) false · active at the end 1.9 % · success false
+
+   ══ seed 19 ══
+   ── A (off): C1's end land (64², the selection's measure) 56.2 % (selection 56.2 %)
+   ── A (off) (Selected { plates: 20, k: 12, start: 18, compact: false }, N 20; selection 642 s CPU): the perimeter at t0 active 51.3 % / another plate's ocean 100.0 % · at the end active 18.4 % / rim consumed 22.4 % · first step > 5 % active Some(0) · series (step: active/consumed %, plates) 0:51/100(20) 50:60/78(6) 100:18/22(3) 150:18/22(2) 200:18/22(2) 250:18/22(2) 299:18/22(2)
+         land (2 048²) 59.6 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      B0: A1 within 1 / 2 / 5 cells 97.5 / 99.9 / 100.0 % · W10 0.799 (W_in 0.164, rampart true) · shelf median / p90 0.0 / 0.0 km, break 248 m, with a shelf 5 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.982 / 0.881 / 0.331 / 0.906 · windows rocky / low / mixed 13 / 5 / 13 · rocky 0.977 / 0.875 / 0.305 / 0.435 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.975 / 0.885 / 0.266 / 0.643 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 15.3° · lakes 9 (5493 km²) · texture relief p50 (256²) 1132 m, slope p50 / p90 (2 048²) 14.2 / 27.3° · measures 2 s wall · cost (CPU per world, selection included) 1108 s
+   A (off) B0                 plain   4.8 % · plateau   2.2 % · hill  28.9 % · mountain  64.2 % · land 89932 km² · deciles 80/160/270/418/618/909/1455/2157/3137
+         land (2 048²) 59.7 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      young 20 Myr: A1 within 1 / 2 / 5 cells 96.0 / 99.1 / 100.0 % · W10 0.552 (W_in 0.115, rampart true) · shelf median / p90 0.0 / 1.1 km, break 236 m, with a shelf 19 % (band 4.65–16.4: false) · sea arms 1 (penetration p50 7.7, max 7.7 km)
+         the coast: whole 0.980 / 0.891 / 0.294 / 0.870 · windows rocky / low / mixed 16 / 1 / 13 · rocky 0.979 / 0.915 / 0.288 / 0.516 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 1.067 / 1.089 / 0.317 / 0.821 (dimension sandy 0.95–1.00 false, lagoon 1.25–1.35 false) · seaside slope p50 6.8° · lakes 8 (4719 km²) · texture relief p50 (256²) 822 m, slope p50 / p90 (2 048²) 11.5 / 26.4° · measures 1 s wall · cost (CPU per world, selection included) 1110 s
+   A (off) young 20 Myr       plain  13.7 % · plateau   4.5 % · hill  28.8 % · mountain  53.0 % · land 89570 km² · deciles 76/172/262/351/470/603/857/1508/2319
+         land (2 048²) 57.6 % · islands ≥ 1 km² off the main land 2 (2340 km²)
+      intermediate 100 Myr: A1 within 1 / 2 / 5 cells 73.0 / 77.3 / 78.5 % · W10 0.097 (W_in 0.089, rampart false) · shelf median / p90 0.0 / 1.1 km, break 174 m, with a shelf 32 % (band 4.65–16.4: false) · sea arms 2 (penetration p50 103.4, max 103.4 km)
+         the coast: whole 1.002 / 0.932 / 0.326 / 0.908 · windows rocky / low / mixed 24 / 1 / 11 · rocky 1.009 / 0.949 / 0.312 / 0.566 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 1.044 / 0.898 / 0.417 / 0.764 (dimension sandy 0.95–1.00 false, lagoon 1.25–1.35 false) · seaside slope p50 2.5° · lakes 13 (3506 km²) · texture relief p50 (256²) 340 m, slope p50 / p90 (2 048²) 6.4 / 23.8° · measures 1 s wall · cost (CPU per world, selection included) 1100 s
+   A (off) intermediate 100 Myr plain  21.5 % · plateau   3.2 % · hill  41.1 % · mountain  34.2 % · land 87815 km² · deciles 30/65/108/162/227/324/464/689/1484
+         land (2 048²) 57.4 % · islands ≥ 1 km² off the main land 3 (2286 km²)
+      old 300 Myr: A1 within 1 / 2 / 5 cells 70.6 / 77.6 / 79.8 % · W10 0.068 (W_in 0.081, rampart false) · shelf median / p90 0.0 / 1.1 km, break 157 m, with a shelf 36 % (band 4.65–16.4: false) · sea arms 4 (penetration p50 4.7, max 103.5 km)
+         the coast: whole 1.018 / 0.983 / 0.323 / 0.927 · windows rocky / low / mixed 29 / 0 / 7 · rocky 1.014 / 0.969 / 0.302 / 0.520 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low none · seaside slope p50 1.8° · lakes 16 (2185 km²) · texture relief p50 (256²) 146 m, slope p50 / p90 (2 048²) 2.6 / 22.0° · measures 1 s wall · cost (CPU per world, selection included) 1110 s
+   A (off) old 300 Myr        plain  58.6 % · plateau   0.9 % · hill  20.7 % · mountain  19.8 % · land 86677 km² · deciles 11/24/39/61/90/131/193/390/1181
+   ── seaward: C1's end land (64², the selection's measure) 55.6 % (selection 55.6 %)
+   ── seaward (Selected { plates: 16, k: 7, start: 1, compact: true }, N 16; selection 438 s CPU): the perimeter at t0 active 4.0 % / another plate's ocean 2.0 % · at the end active 0.0 % / rim consumed 0.0 % · first step > 5 % active Some(49) · series (step: active/consumed %, plates) 0:4/2(15) 50:7/2(5) 100:7/2(3) 150:0/0(2) 200:0/0(2) 250:0/0(2) 299:0/0(2)
+         land (2 048²) 58.3 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      B0: A1 within 1 / 2 / 5 cells 76.6 / 90.6 / 96.2 % · W10 0.267 (W_in 0.080, rampart false) · shelf median / p90 0.0 / 1.0 km, break 112 m, with a shelf 11 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.980 / 0.898 / 0.346 / 1.477 · windows rocky / low / mixed 1 / 20 / 5 · rocky 0.921 / 0.818 / 0.358 / 0.441 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.974 / 0.887 / 0.348 / 1.032 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 2.4° · lakes 5 (2209 km²) · texture relief p50 (256²) 625 m, slope p50 / p90 (2 048²) 13.1 / 26.3° · measures 2 s wall · cost (CPU per world, selection included) 894 s
+   seaward B0                 plain   9.6 % · plateau   5.9 % · hill  21.6 % · mountain  62.9 % · land 92056 km² · deciles 35/96/267/670/1019/1342/1648/1927/2303
+         land (2 048²) 58.4 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      young 20 Myr: A1 within 1 / 2 / 5 cells 72.6 / 89.8 / 96.5 % · W10 0.202 (W_in 0.053, rampart false) · shelf median / p90 0.0 / 1.1 km, break 126 m, with a shelf 23 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.975 / 0.889 / 0.357 / 1.301 · windows rocky / low / mixed 5 / 18 / 3 · rocky 0.976 / 0.938 / 0.348 / 0.328 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.985 / 0.894 / 0.378 / 1.282 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 1.8° · lakes 5 (2441 km²) · texture relief p50 (256²) 574 m, slope p50 / p90 (2 048²) 11.9 / 26.1° · measures 2 s wall · cost (CPU per world, selection included) 906 s
+   seaward young 20 Myr       plain  19.8 % · plateau   5.5 % · hill  16.3 % · mountain  58.4 % · land 91707 km² · deciles 13/42/159/442/808/1152/1500/1768/2100
+         land (2 048²) 58.8 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      intermediate 100 Myr: A1 within 1 / 2 / 5 cells 65.0 / 83.8 / 96.5 % · W10 0.058 (W_in 0.013, rampart false) · shelf median / p90 0.0 / 1.1 km, break 129 m, with a shelf 31 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.985 / 0.909 / 0.356 / 1.473 · windows rocky / low / mixed 6 / 15 / 4 · rocky 1.002 / 0.994 / 0.335 / 0.418 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.988 / 0.932 / 0.349 / 1.366 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 1.6° · lakes 0 (-0 km²) · texture relief p50 (256²) 526 m, slope p50 / p90 (2 048²) 9.9 / 25.0° · measures 1 s wall · cost (CPU per world, selection included) 912 s
+   seaward intermediate 100 Myr plain  18.6 % · plateau   3.5 % · hill  26.3 % · mountain  51.6 % · land 92129 km² · deciles 7/51/135/252/412/621/877/1166/1600
+         land (2 048²) 59.1 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      old 300 Myr: A1 within 1 / 2 / 5 cells 62.9 / 79.7 / 96.5 % · W10 0.006 (W_in 0.000, rampart false) · shelf median / p90 0.0 / 1.1 km, break 124 m, with a shelf 34 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.988 / 0.910 / 0.333 / 1.329 · windows rocky / low / mixed 7 / 15 / 3 · rocky 0.977 / 0.915 / 0.261 / 0.447 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.985 / 0.870 / 0.377 / 1.362 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 1.4° · lakes 0 (-0 km²) · texture relief p50 (256²) 352 m, slope p50 / p90 (2 048²) 6.4 / 21.4° · measures 2 s wall · cost (CPU per world, selection included) 906 s
+   seaward old 300 Myr        plain  24.5 % · plateau   3.1 % · hill  35.7 % · mountain  36.6 % · land 92456 km² · deciles 5/40/86/147/228/335/480/659/919
+   ── B-hetero: C1's end land (64², the selection's measure) 53.5 % (selection 53.5 %)
+   ── B-hetero (Selected { plates: 16, k: 7, start: 1, compact: true }, N 16; selection 439 s CPU): the perimeter at t0 active 4.0 % / another plate's ocean 2.0 % · at the end active 0.0 % / rim consumed 0.0 % · first step > 5 % active Some(49) · series (step: active/consumed %, plates) 0:4/2(15) 50:7/2(5) 100:7/2(3) 150:0/0(2) 200:0/0(2) 250:0/0(2) 299:0/0(2)
+         land (2 048²) 57.4 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      young 20 Myr: A1 within 1 / 2 / 5 cells 66.7 / 83.9 / 95.8 % · W10 0.208 (W_in 0.069, rampart false) · shelf median / p90 0.0 / 1.1 km, break 161 m, with a shelf 23 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.982 / 0.907 / 0.344 / 1.659 · windows rocky / low / mixed 4 / 22 / 4 · rocky 0.989 / 0.962 / 0.308 / 0.610 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.992 / 0.911 / 0.324 / 1.431 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 1.7° · lakes 9 (3586 km²) · texture relief p50 (256²) 699 m, slope p50 / p90 (2 048²) 12.5 / 26.3° · measures 2 s wall · cost (CPU per world, selection included) 906 s
+   B-hetero young 20 Myr      plain  15.2 % · plateau   6.6 % · hill  20.2 % · mountain  58.0 % · land 89490 km² · deciles 14/50/182/442/845/1301/1614/1898/2205
+         land (2 048²) 58.5 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      old 300 Myr: A1 within 1 / 2 / 5 cells 60.2 / 76.2 / 92.7 % · W10 0.006 (W_in 0.000, rampart false) · shelf median / p90 0.0 / 1.1 km, break 129 m, with a shelf 32 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.991 / 0.925 / 0.328 / 1.737 · windows rocky / low / mixed 7 / 15 / 5 · rocky 1.015 / 0.938 / 0.340 / 0.361 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.987 / 0.946 / 0.295 / 1.634 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 1.4° · lakes 0 (-0 km²) · texture relief p50 (256²) 373 m, slope p50 / p90 (2 048²) 6.5 / 21.8° · measures 2 s wall · cost (CPU per world, selection included) 905 s
+   B-hetero old 300 Myr       plain  25.0 % · plateau   2.1 % · hill  35.1 % · mountain  37.8 % · land 91406 km² · deciles 7/36/80/139/218/325/471/663/924
+   seed 19: W10 young A 0.552 → seaward 0.202 (drop 63 %) · C1 end land A 56.2 → seaward 55.6 % (|Δ| 0.6 points) · shelf in band (young) false · active at the end 0.0 % · success false
+
+   ══ seed 23 ══
+   ── A (off): C1's end land (64², the selection's measure) 52.3 % (selection 52.3 %)
+   ── A (off) (Selected { plates: 16, k: 8, start: 0, compact: true }, N 16; selection 396 s CPU): the perimeter at t0 active 53.6 % / another plate's ocean 100.0 % · at the end active 15.1 % / rim consumed 23.6 % · first step > 5 % active Some(0) · series (step: active/consumed %, plates) 0:54/100(16) 50:45/69(7) 100:31/46(3) 150:15/24(2) 200:15/24(2) 250:15/24(2) 299:15/24(2)
+         land (2 048²) 55.2 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      B0: A1 within 1 / 2 / 5 cells 98.1 / 100.0 / 100.0 % · W10 0.849 (W_in 0.154, rampart true) · shelf median / p90 0.0 / 0.0 km, break 340 m, with a shelf 6 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.992 / 0.909 / 0.308 / 0.911 · windows rocky / low / mixed 16 / 3 / 12 · rocky 0.993 / 0.920 / 0.313 / 0.474 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 1.002 / 0.990 / 0.303 / 0.520 (dimension sandy 0.95–1.00 false, lagoon 1.25–1.35 false) · seaside slope p50 15.2° · lakes 12 (1008 km²) · texture relief p50 (256²) 986 m, slope p50 / p90 (2 048²) 17.8 / 27.6° · measures 1 s wall · cost (CPU per world, selection included) 829 s
+   A (off) B0                 plain   5.6 % · plateau   2.2 % · hill  26.9 % · mountain  65.3 % · land 85398 km² · deciles 61/134/258/475/733/1079/1788/2917/3853
+         land (2 048²) 55.3 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      young 20 Myr: A1 within 1 / 2 / 5 cells 95.4 / 100.0 / 100.0 % · W10 0.629 (W_in 0.124, rampart true) · shelf median / p90 0.0 / 1.1 km, break 243 m, with a shelf 23 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.997 / 0.921 / 0.309 / 0.884 · windows rocky / low / mixed 19 / 3 / 9 · rocky 1.009 / 0.962 / 0.322 / 0.577 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.983 / 0.972 / 0.318 / 0.454 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 7.1° · lakes 9 (2002 km²) · texture relief p50 (256²) 843 m, slope p50 / p90 (2 048²) 14.7 / 26.9° · measures 2 s wall · cost (CPU per world, selection included) 839 s
+   A (off) young 20 Myr       plain  11.1 % · plateau   0.9 % · hill  28.2 % · mountain  59.7 % · land 85496 km² · deciles 81/184/291/404/510/757/1150/1873/3038
+         land (2 048²) 54.7 % · islands ≥ 1 km² off the main land 3 (77 km²)
+      intermediate 100 Myr: A1 within 1 / 2 / 5 cells 81.4 / 88.3 / 90.9 % · W10 0.125 (W_in 0.109, rampart false) · shelf median / p90 0.0 / 1.1 km, break 187 m, with a shelf 36 % (band 4.65–16.4: false) · sea arms 5 (penetration p50 4.6, max 45.3 km)
+         the coast: whole 1.023 / 0.979 / 0.321 / 0.749 · windows rocky / low / mixed 24 / 3 / 6 · rocky 1.044 / 1.000 / 0.294 / 0.615 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.989 / 1.006 / 0.393 / 0.607 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 2.7° · lakes 14 (867 km²) · texture relief p50 (256²) 367 m, slope p50 / p90 (2 048²) 7.9 / 24.6° · measures 2 s wall · cost (CPU per world, selection included) 833 s
+   A (off) intermediate 100 Myr plain  12.9 % · plateau   1.5 % · hill  47.3 % · mountain  38.3 % · land 84775 km² · deciles 42/92/147/202/267/349/462/672/1945
+         land (2 048²) 55.2 % · islands ≥ 1 km² off the main land 2 (59 km²)
+      old 300 Myr: A1 within 1 / 2 / 5 cells 86.7 / 95.3 / 97.7 % · W10 0.096 (W_in 0.096, rampart false) · shelf median / p90 0.0 / 1.1 km, break 182 m, with a shelf 41 % (band 4.65–16.4: false) · sea arms 4 (penetration p50 5.2, max 26.5 km)
+         the coast: whole 1.020 / 0.980 / 0.310 / 0.833 · windows rocky / low / mixed 25 / 2 / 5 · rocky 1.027 / 0.991 / 0.280 / 0.589 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.992 / 1.017 / 0.365 / 1.212 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 2.1° · lakes 14 (596 km²) · texture relief p50 (256²) 144 m, slope p50 / p90 (2 048²) 2.9 / 22.9° · measures 2 s wall · cost (CPU per world, selection included) 863 s
+   A (off) old 300 Myr        plain  56.5 % · plateau   0.1 % · hill  24.2 % · mountain  19.2 % · land 83875 km² · deciles 13/29/47/71/103/146/205/326/1588
+   ── seaward: C1's end land (64², the selection's measure) 50.9 % (selection 50.9 %)
+   ── seaward (Selected { plates: 16, k: 8, start: 6, compact: true }, N 16; selection 404 s CPU): the perimeter at t0 active 10.4 % / another plate's ocean 3.8 % · at the end active 0.0 % / rim consumed 0.0 % · first step > 5 % active Some(0) · series (step: active/consumed %, plates) 0:10/4(16) 50:7/3(7) 100:3/1(5) 150:0/0(2) 200:0/0(2) 250:0/0(2) 299:0/0(2)
+         land (2 048²) 54.8 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      B0: A1 within 1 / 2 / 5 cells 91.4 / 97.9 / 100.0 % · W10 0.251 (W_in 0.099, rampart false) · shelf median / p90 0.0 / 1.1 km, break 141 m, with a shelf 14 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.964 / 0.867 / 0.335 / 1.989 · windows rocky / low / mixed 0 / 18 / 5 · rocky none · low 0.969 / 0.861 / 0.356 / 1.735 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 3.1° · lakes 2 (142 km²) · texture relief p50 (256²) 726 m, slope p50 / p90 (2 048²) 16.0 / 26.5° · measures 2 s wall · cost (CPU per world, selection included) 852 s
+   seaward B0                 plain   4.8 % · plateau   5.7 % · hill  21.7 % · mountain  67.8 % · land 82485 km² · deciles 42/174/380/610/853/1097/1308/1544/1830
+         convergence (300 vs 600 steps): drainage density 0.203 → 0.203 (-0.1 %) · λ 16.48 → 16.40 km (-0.5 %) · S10 1.119 → 1.121 (+0.1 %) · the classes' largest move 0.60 points · Q8 (< 5 %) true
+         land (2 048²) 54.9 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      young 20 Myr: A1 within 1 / 2 / 5 cells 85.8 / 96.2 / 100.0 % · W10 0.111 (W_in 0.067, rampart false) · shelf median / p90 0.0 / 1.1 km, break 165 m, with a shelf 23 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.974 / 0.884 / 0.314 / 1.951 · windows rocky / low / mixed 0 / 17 / 6 · rocky none · low 0.958 / 0.865 / 0.336 / 1.607 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 2.3° · lakes 2 (454 km²) · texture relief p50 (256²) 738 m, slope p50 / p90 (2 048²) 14.2 / 26.1° · measures 2 s wall · cost (CPU per world, selection included) 856 s
+   seaward young 20 Myr       plain   6.6 % · plateau   4.5 % · hill  26.3 % · mountain  62.6 % · land 82346 km² · deciles 28/139/285/439/626/834/1034/1293/1661
+         land (2 048²) 55.4 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      intermediate 100 Myr: A1 within 1 / 2 / 5 cells 75.0 / 93.6 / 100.0 % · W10 0.010 (W_in 0.002, rampart false) · shelf median / p90 0.0 / 1.1 km, break 146 m, with a shelf 34 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.974 / 0.886 / 0.328 / 1.833 · windows rocky / low / mixed 0 / 14 / 9 · rocky none · low 0.966 / 0.895 / 0.346 / 1.936 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 1.8° · lakes 1 (15 km²) · texture relief p50 (256²) 533 m, slope p50 / p90 (2 048²) 8.1 / 22.9° · measures 2 s wall · cost (CPU per world, selection included) 866 s
+   seaward intermediate 100 Myr plain  13.7 % · plateau   1.6 % · hill  39.0 % · mountain  45.7 % · land 82769 km² · deciles 29/72/124/193/282/391/524/671/882
+         land (2 048²) 55.5 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      old 300 Myr: A1 within 1 / 2 / 5 cells 71.0 / 92.3 / 100.0 % · W10 0.000 (W_in 0.000, rampart false) · shelf median / p90 0.0 / 1.1 km, break 144 m, with a shelf 42 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.976 / 0.903 / 0.330 / 1.398 · windows rocky / low / mixed 3 / 8 / 11 · rocky 1.020 / 0.938 / 0.239 / 0.408 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.959 / 0.887 / 0.348 / 1.949 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 1.5° · lakes 0 (-0 km²) · texture relief p50 (256²) 210 m, slope p50 / p90 (2 048²) 3.2 / 13.3° · measures 2 s wall · cost (CPU per world, selection included) 880 s
+   seaward old 300 Myr        plain  43.3 % · plateau   1.4 % · hill  42.5 % · mountain  12.8 % · land 82815 km² · deciles 12/27/47/72/105/146/198/271/415
+         convergence (300 vs 600 steps): drainage density 0.231 → 0.227 (-1.6 %) · λ 27.39 → 26.68 km (-2.6 %) · S10 1.120 → 1.120 (+0.0 %) · the classes' largest move 0.73 points · Q8 (< 5 %) true
+   ── B-hetero: C1's end land (64², the selection's measure) 51.1 % (selection 51.1 %)
+   ── B-hetero (Selected { plates: 16, k: 6, start: 2, compact: true }, N 16; selection 404 s CPU): the perimeter at t0 active 12.8 % / another plate's ocean 3.6 % · at the end active 3.1 % / rim consumed 1.5 % · first step > 5 % active Some(0) · series (step: active/consumed %, plates) 0:13/4(15) 50:8/3(7) 100:3/2(3) 150:3/2(3) 200:3/2(3) 250:3/2(3) 299:3/2(3)
+         land (2 048²) 60.2 % · islands ≥ 1 km² off the main land 1 (191 km²)
+      young 20 Myr: A1 within 1 / 2 / 5 cells 47.8 / 72.9 / 95.6 % · W10 0.096 (W_in 0.032, rampart false) · shelf median / p90 0.0 / 1.1 km, break 90 m, with a shelf 18 % (band 4.65–16.4: false) · sea arms 2 (penetration p50 14.3, max 14.3 km)
+         the coast: whole 0.978 / 0.883 / 0.346 / 1.636 · windows rocky / low / mixed 1 / 22 / 4 · rocky 1.091 / 1.070 / 0.208 / 0.611 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.981 / 0.869 / 0.339 / 1.067 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 1.1° · lakes 2 (173 km²) · texture relief p50 (256²) 447 m, slope p50 / p90 (2 048²) 4.3 / 24.7° · measures 1 s wall · cost (CPU per world, selection included) 886 s
+   B-hetero young 20 Myr      plain  36.7 % · plateau   0.3 % · hill  25.6 % · mountain  37.4 % · land 91968 km² · deciles 7/13/27/62/138/261/497/831/1284
+         land (2 048²) 61.0 % · islands ≥ 1 km² off the main land 1 (214 km²)
+      old 300 Myr: A1 within 1 / 2 / 5 cells 36.7 / 66.8 / 92.9 % · W10 0.048 (W_in 0.011, rampart false) · shelf median / p90 0.0 / 1.1 km, break 87 m, with a shelf 27 % (band 4.65–16.4: false) · sea arms 1 (penetration p50 4.4, max 4.4 km)
+         the coast: whole 0.972 / 0.862 / 0.332 / 1.918 · windows rocky / low / mixed 0 / 20 / 4 · rocky none · low 0.965 / 0.875 / 0.366 / 1.411 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 0.9° · lakes 5 (181 km²) · texture relief p50 (256²) 72 m, slope p50 / p90 (2 048²) 1.2 / 15.0° · measures 2 s wall · cost (CPU per world, selection included) 925 s
+   B-hetero old 300 Myr       plain  74.0 % · plateau   0.4 % · hill  12.5 % · mountain  13.1 % · land 92488 km² · deciles 2/5/13/23/38/59/90/157/633
+   seed 23: W10 young A 0.629 → seaward 0.111 (drop 82 %) · C1 end land A 52.3 → seaward 50.9 % (|Δ| 1.4 points) · shelf in band (young) false · active at the end 0.0 % · success false
+
+   ══ seed 29 ══
+   ── A (off): C1's end land (64², the selection's measure) 52.3 % (selection 52.3 %)
+   ── A (off) (Selected { plates: 20, k: 13, start: 0, compact: true }, N 20; selection 640 s CPU): the perimeter at t0 active 57.5 % / another plate's ocean 100.0 % · at the end active 15.0 % / rim consumed 17.5 % · first step > 5 % active Some(0) · series (step: active/consumed %, plates) 0:58/100(20) 50:47/81(9) 100:41/48(8) 150:15/18(4) 200:15/18(4) 250:15/18(4) 299:15/18(4)
+         land (2 048²) 55.6 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      B0: A1 within 1 / 2 / 5 cells 99.5 / 100.0 / 100.0 % · W10 0.783 (W_in 0.173, rampart true) · shelf median / p90 0.0 / 0.0 km, break 305 m, with a shelf 8 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.983 / 0.899 / 0.308 / 0.867 · windows rocky / low / mixed 12 / 2 / 11 · rocky 1.007 / 0.927 / 0.345 / 0.673 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.993 / 0.948 / 0.387 / 1.286 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 13.3° · lakes 9 (3210 km²) · texture relief p50 (256²) 927 m, slope p50 / p90 (2 048²) 14.5 / 27.2° · measures 2 s wall · cost (CPU per world, selection included) 1118 s
+   A (off) B0                 plain   3.6 % · plateau   1.1 % · hill  28.3 % · mountain  67.0 % · land 84565 km² · deciles 82/180/283/427/612/817/1140/1805/2966
+         land (2 048²) 54.8 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      young 20 Myr: A1 within 1 / 2 / 5 cells 86.1 / 89.3 / 90.6 % · W10 0.434 (W_in 0.102, rampart true) · shelf median / p90 0.0 / 1.1 km, break 232 m, with a shelf 23 % (band 4.65–16.4: false) · sea arms 2 (penetration p50 65.8, max 65.8 km)
+         the coast: whole 0.999 / 0.925 / 0.305 / 0.850 · windows rocky / low / mixed 17 / 0 / 10 · rocky 1.007 / 0.919 / 0.284 / 0.749 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low none · seaside slope p50 5.6° · lakes 15 (6121 km²) · texture relief p50 (256²) 683 m, slope p50 / p90 (2 048²) 10.9 / 26.3° · measures 2 s wall · cost (CPU per world, selection included) 1104 s
+   A (off) young 20 Myr       plain  12.8 % · plateau   0.3 % · hill  29.5 % · mountain  57.4 % · land 84346 km² · deciles 93/188/278/358/438/569/802/1159/1879
+         land (2 048²) 54.5 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      intermediate 100 Myr: A1 within 1 / 2 / 5 cells 77.8 / 83.7 / 88.5 % · W10 0.050 (W_in 0.041, rampart false) · shelf median / p90 0.0 / 1.4 km, break 206 m, with a shelf 40 % (band 4.65–16.4: false) · sea arms 6 (penetration p50 5.1, max 66.1 km)
+         the coast: whole 1.004 / 0.942 / 0.304 / 0.930 · windows rocky / low / mixed 18 / 0 / 10 · rocky 1.018 / 0.984 / 0.282 / 0.622 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low none · seaside slope p50 2.4° · lakes 15 (4758 km²) · texture relief p50 (256²) 325 m, slope p50 / p90 (2 048²) 5.8 / 21.6° · measures 2 s wall · cost (CPU per world, selection included) 1118 s
+   A (off) intermediate 100 Myr plain  22.7 % · plateau   2.0 % · hill  45.0 % · mountain  30.3 % · land 82659 km² · deciles 38/83/134/192/255/329/407/537/843
+         land (2 048²) 53.3 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      old 300 Myr: A1 within 1 / 2 / 5 cells 65.9 / 72.3 / 78.4 % · W10 0.020 (W_in 0.030, rampart false) · shelf median / p90 0.0 / 1.3 km, break 174 m, with a shelf 41 % (band 4.65–16.4: false) · sea arms 8 (penetration p50 6.7, max 89.5 km)
+         the coast: whole 1.012 / 0.953 / 0.296 / 1.224 · windows rocky / low / mixed 20 / 0 / 11 · rocky 1.013 / 0.962 / 0.303 / 0.941 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low none · seaside slope p50 1.8° · lakes 13 (3064 km²) · texture relief p50 (256²) 147 m, slope p50 / p90 (2 048²) 3.2 / 15.3° · measures 2 s wall · cost (CPU per world, selection included) 1112 s
+   A (off) old 300 Myr        plain  56.2 % · plateau   0.6 % · hill  27.9 % · mountain  15.4 % · land 81375 km² · deciles 15/33/56/83/116/156/213/294/482
+   ── seaward: C1's end land (64², the selection's measure) 54.5 % (selection 54.5 %)
+   ── seaward (Selected { plates: 16, k: 9, start: 11, compact: true }, N 16; selection 421 s CPU): the perimeter at t0 active 6.9 % / another plate's ocean 2.3 % · at the end active 0.0 % / rim consumed 0.5 % · first step > 5 % active Some(0) · series (step: active/consumed %, plates) 0:7/2(16) 50:7/2(8) 100:0/0(3) 150:0/0(3) 200:0/0(3) 250:0/0(3) 299:0/0(3)
+         land (2 048²) 59.4 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      B0: A1 within 1 / 2 / 5 cells 60.9 / 83.8 / 95.6 % · W10 0.149 (W_in 0.181, rampart false) · shelf median / p90 0.0 / 1.1 km, break 105 m, with a shelf 15 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.975 / 0.914 / 0.348 / 1.633 · windows rocky / low / mixed 0 / 24 / 3 · rocky none · low 0.985 / 0.922 / 0.349 / 1.457 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 1.9° · lakes 8 (347 km²) · texture relief p50 (256²) 701 m, slope p50 / p90 (2 048²) 11.4 / 26.2° · measures 2 s wall · cost (CPU per world, selection included) 936 s
+   seaward B0                 plain   9.2 % · plateau   3.1 % · hill  33.1 % · mountain  54.7 % · land 92405 km² · deciles 28/77/163/283/448/656/924/1251/2272
+         land (2 048²) 59.7 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      young 20 Myr: A1 within 1 / 2 / 5 cells 51.9 / 80.2 / 91.9 % · W10 0.097 (W_in 0.114, rampart false) · shelf median / p90 0.0 / 1.1 km, break 91 m, with a shelf 23 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.977 / 0.910 / 0.365 / 1.811 · windows rocky / low / mixed 0 / 22 / 4 · rocky none · low 0.988 / 0.920 / 0.378 / 1.320 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 1.3° · lakes 6 (176 km²) · texture relief p50 (256²) 523 m, slope p50 / p90 (2 048²) 9.1 / 25.4° · measures 2 s wall · cost (CPU per world, selection included) 931 s
+   seaward young 20 Myr       plain  19.8 % · plateau   1.8 % · hill  29.9 % · mountain  48.6 % · land 92310 km² · deciles 11/37/101/211/329/489/724/1033/1690
+         land (2 048²) 59.1 % · islands ≥ 1 km² off the main land 10 (94 km²)
+      intermediate 100 Myr: A1 within 1 / 2 / 5 cells 44.2 / 73.0 / 84.6 % · W10 0.041 (W_in 0.075, rampart false) · shelf median / p90 0.0 / 1.1 km, break 90 m, with a shelf 28 % (band 4.65–16.4: false) · sea arms 1 (penetration p50 22.9, max 22.9 km)
+         the coast: whole 1.010 / 0.982 / 0.369 / 1.818 · windows rocky / low / mixed 3 / 20 / 4 · rocky 1.044 / 0.987 / 0.322 / 0.935 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.976 / 0.917 / 0.374 / 2.089 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 0.9° · lakes 5 (1753 km²) · texture relief p50 (256²) 262 m, slope p50 / p90 (2 048²) 4.2 / 21.9° · measures 1 s wall · cost (CPU per world, selection included) 913 s
+   seaward intermediate 100 Myr plain  35.9 % · plateau   1.1 % · hill  34.9 % · mountain  28.1 % · land 91069 km² · deciles 8/26/61/105/162/232/337/526/1027
+         land (2 048²) 56.0 % · islands ≥ 1 km² off the main land 14 (87 km²)
+      old 300 Myr: A1 within 1 / 2 / 5 cells 35.8 / 68.4 / 82.5 % · W10 0.040 (W_in 0.062, rampart false) · shelf median / p90 0.0 / 1.1 km, break 103 m, with a shelf 29 % (band 4.65–16.4: false) · sea arms 1 (penetration p50 50.7, max 50.7 km)
+         the coast: whole 0.990 / 0.942 / 0.364 / 1.763 · windows rocky / low / mixed 6 / 15 / 7 · rocky 1.029 / 1.142 / 0.390 / 1.600 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.974 / 0.884 / 0.349 / 1.693 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 0.9° · lakes 6 (2932 km²) · texture relief p50 (256²) 129 m, slope p50 / p90 (2 048²) 2.1 / 17.3° · measures 2 s wall · cost (CPU per world, selection included) 908 s
+   seaward old 300 Myr        plain  61.4 % · plateau   0.2 % · hill  23.9 % · mountain  14.5 % · land 85994 km² · deciles 5/15/30/52/80/117/172/272/732
+   ── B-hetero: C1's end land (64², the selection's measure) 54.2 % (selection 54.2 %)
+   ── B-hetero (Selected { plates: 16, k: 8, start: 11, compact: true }, N 16; selection 423 s CPU): the perimeter at t0 active 9.3 % / another plate's ocean 2.8 % · at the end active 0.0 % / rim consumed 0.0 % · first step > 5 % active Some(0) · series (step: active/consumed %, plates) 0:9/3(16) 50:6/2(8) 100:0/0(3) 150:3/1(3) 200:0/0(1) 250:0/0(1) 299:0/0(1)
+         land (2 048²) 57.2 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      young 20 Myr: A1 within 1 / 2 / 5 cells 76.9 / 93.3 / 99.9 % · W10 0.208 (W_in 0.088, rampart false) · shelf median / p90 0.0 / 1.1 km, break 163 m, with a shelf 21 % (band 4.65–16.4: false) · sea arms 0 (penetration p50 0.0, max 0.0 km)
+         the coast: whole 0.983 / 0.904 / 0.331 / 1.125 · windows rocky / low / mixed 4 / 15 / 9 · rocky 0.985 / 0.932 / 0.315 / 0.554 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.992 / 0.883 / 0.362 / 1.341 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 3.0° · lakes 2 (49 km²) · texture relief p50 (256²) 889 m, slope p50 / p90 (2 048²) 16.8 / 26.7° · measures 2 s wall · cost (CPU per world, selection included) 921 s
+   B-hetero young 20 Myr      plain   5.3 % · plateau   0.7 % · hill  23.7 % · mountain  70.2 % · land 88904 km² · deciles 35/150/318/531/764/1016/1269/1559/1887
+         land (2 048²) 57.0 % · islands ≥ 1 km² off the main land 0 (0 km²)
+      old 300 Myr: A1 within 1 / 2 / 5 cells 59.2 / 74.5 / 88.8 % · W10 0.000 (W_in 0.000, rampart false) · shelf median / p90 0.0 / 1.1 km, break 154 m, with a shelf 32 % (band 4.65–16.4: false) · sea arms 1 (penetration p50 46.8, max 46.8 km)
+         the coast: whole 0.999 / 0.941 / 0.341 / 1.162 · windows rocky / low / mixed 10 / 9 / 11 · rocky 1.008 / 0.949 / 0.340 / 0.567 (dimension in 1.15–1.22 false, length ratio in 1.43–1.56 false) · low 0.982 / 0.875 / 0.354 / 2.093 (dimension sandy 0.95–1.00 true, lagoon 1.25–1.35 false) · seaside slope p50 2.0° · lakes 0 (-0 km²) · texture relief p50 (256²) 335 m, slope p50 / p90 (2 048²) 5.6 / 18.3° · measures 2 s wall · cost (CPU per world, selection included) 929 s
+   B-hetero old 300 Myr       plain  17.6 % · plateau   2.2 % · hill  50.8 % · mountain  29.4 % · land 89617 km² · deciles 21/56/98/148/206/275/355/453/587
+   seed 29: W10 young A 0.434 → seaward 0.097 (drop 78 %) · C1 end land A 52.3 → seaward 54.5 % (|Δ| 2.1 points) · shelf in band (young) false · active at the end 0.0 % · success false
+
+   R: success (W10 young −40 %, C1 land ±5 points, shelf in band at young) on 0 / 5 seeds → false · active at the end (seaward) ["0.0", "1.9", "0.0", "0.0", "0.0"] · ≤ 5 % on every seed: true · R8 4 / 4
+   total 5642 s
+test f174b2_measure ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 5642.30s
+

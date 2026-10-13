@@ -291,3 +291,106 @@ selection, at **young and old** only (cost).
 10–60 %; the median shelf width in 4.65–16.4 km. The coast's dimension is reported, not part of the success.
 **The stops**: the selection fails on ≥ 2 seeds → stop and report; < 5 % active on every seed → reported (« the subduction
 closure does not do what is expected of it »).
+
+# Parts B′ and C′ — the margin seaward, declared before any measurement (2026-10-12, after Part B's commit `bdc0c0d`)
+
+The author's decisions: the margin seaward (option 1); option 5 through the bibliography first (Part D, no code); no solver;
+**no closure of C1 modified**. Everything below is an initial condition of the continent profile (`cascade::margin`, the
+`seaward` mode), off by default; C1's code is not touched.
+
+## B′1 — the geometry
+
+- **The signed distance to Part A's continental edge**: Part A's continental cells are the profile's continental plates (whole
+  plates). For a continental cell, x = −(d_o − ½) · 6.25 km, d_o the periodic Euclidean distance (cell centres, 64² cells) to
+  the nearest non-continental cell; for an oceanic cell, x = +(d_c − ½) · 6.25 km, d_c the distance to the nearest continental
+  cell. The edge (the faces between the two) is x = 0.
+- **The ramp** (Péron-Pinvidic et al. 2013, the widths ÷ 7.5 as declared in Part B; s = 1 ↔ 35 km): the proximal domain
+  (35 → 30 km over 26.7 km) is placed so that **32 km of crust (s = 0.914, Airy's 0 m at s = 0.915) falls on x = 0**:
+
+  | x on the map (km) | thickness (km) | s | domain |
+  |---|---|---|---|
+  | ≤ −16.0 | unchanged (35, or the craton's) | unchanged | interior |
+  | −16.0 → 0 | 35 → 32 | 1 → 0.914 | proximal, landward part (inside Part A's continent) |
+  | 0 → +10.7 | 32 → 30 | 0.914 → 0.857 | proximal, seaward part |
+  | +10.7 → +24.0 | 30 → 10 | 0.857 → 0.286 | necking (100 km ÷ 7.5 = 13.3) |
+  | +24.0 → +44.0 | 10 → 7 | 0.286 → 0.200 | distal (150 km ÷ 7.5 = 20) |
+  | ≥ +44.0 | C1's ocean | 0.2 | outer / oceanic |
+
+  s = 0.2 + (s_int − 0.2) · g(x), g piecewise linear through 1, 0.821, 0.107, 0 at x = −16, +10.7, +24, +44; s_int = 1, or
+  C1's craton ratio on the cratonic shield (a cratonic edge therefore puts its coast slightly seaward of x = 0).
+- **The band**: the oceanic cells with x < 44 km (d_c < 7.54 cells) are **attached to the continental plate** of their nearest
+  continental cell (`plate_id`, at t₀ only; no advection). The plate boundary moves seaward, to x ≈ 44 km.
+- **The band's plate type** (declared from Péron-Pinvidic et al. 2013): **continental while the crust exceeds 10 km** (the
+  proximal and necking domains, x < 24 km), **oceanic beyond** (the distal domain, on the continental plate). Justification:
+  the taper break, the necking domain's outer end, is « the nearest point to the coast where the crustal thickness is reduced
+  down to 10 km or less » (p. 25); seaward of it the distal domain's basement is < 10 km and « no remnant ductile layers prevail
+  in the thinned continental crust » — upper or lower crust, exhumed mantle or embryonic oceanic crust (p. 25). C1's types are
+  binary; ductile continental crust is what C1's « continental » stands for.
+  - Consequence (recorded before measuring): Airy reads C1's oceanic cells at s = 0.2 (F167), so the distal cells' ramp
+    (0.286 → 0.2) is not seen by the altitude: the depth steps from −4.85 km (10 km of crust) to −5.51 km at the taper break.
+- **The band's other fields**: continental band cells: the continental age baseline, out of the cratonic mask; oceanic
+  (distal) band cells: C1's own oceanic age rule (`init_age_field_ridge_aligned` re-run on the new plate ids and types; only the
+  band's cells take it). The interior's cells beyond x = −16 km are untouched.
+- **The expected shelf** (pure Airy on the initial profile): the coast at x = 0, the first marked slope increase at the
+  proximal / necking knot, x = 10.7 km, at **−448 m**. So **10.7 km on the map** (80 km real), inside Harris's 4.65–16.4 km.
+  The break depth is reported without a target.
+
+## B′2 — the conflicts (rules declared before measuring)
+
+- **A continent** = a 4-connected component (periodic) of Part A's continental cells.
+- **(a) Two bands overlapping** (two different continents within 2 × 44 km of the same oceanic cell): **the nearest continent
+  wins** (each band cell takes the plate and the x of its nearest continental cell; ties go to the lowest cell index). The
+  bands meet on the midline, where both ramps have the same x, so s is continuous. Reported: the share of Part A's coastal
+  perimeter (continental cells with an oceanic 4-neighbour) within 2 × 7.54 cells of another continent.
+- **(b) A band reaching another continent** (another continent within 44 km of the coast): the same midline rule (the band
+  never annexes a continent's cell). Reported: the share of the perimeter within 7.54 cells of another continent.
+- **(c) A band wider than the neighbouring oceanic plate**: allowed — an oceanic plate whose cells are all annexed disappears
+  at t₀ (its kinematics row stays, unused). Reported: the oceanic plates fully annexed and those losing > 50 % of their cells,
+  and the share of the perimeter 4-adjacent (at t₀, before the band) to such a plate.
+
+## B′3 — the selection
+
+`select_continent_default_margin` with the seaward margin: 16 plates, then 20, then 24; land 50–62 %; r* ≥ 1. Reported: N, k,
+the C1 end land against Part A's, r*.
+
+## B′4 — B-hétéro
+
+The seaward margin plus Christensen & Mooney's field (σ_rel 0.14, Table 3; the 40 km fBm of Part B) on s_int of every
+continental cell (the interior and the continental band). Measured only, with its own selection, at young and old.
+
+## B′5 — the controls (permanent)
+
+- The flag off: Part A bit for bit (already permanent: `Margin::off()`).
+- A band of zero width (the seaward ramp scaled to 0): Part A bit for bit.
+- The seaward geometry: plate_id changes only on band cells, every band cell takes its nearest continent's plate, the coast
+  cells keep s > 0.914 on land / < 0.915 at sea at the edge, the type rule (continental iff x < 24 km in the band).
+
+## B′6 — the viz
+
+The Cascade window: a « Marge vers le large » box (the selection and C1 with the seaward margin), a coastal bathymetry view
+(the depth 0 → −6 km shaded, the shelf 0 → −200 m highlighted), and a view of the plates at t₀ with the band.
+
+## C′ — the measures
+
+As declared for Part C (Parts B and C above), with these changes:
+- **The variants**: Part A (off), **the seaward margin** (four ages), B-hétéro (young and old). Each with its own selection.
+- **The margins' activity** (C1, every step): the continental-type perimeter (the taper break, in the band) with a convergent
+  boundary in its 3 × 3 = active; the share at the end and the series. Expected: ~0 except at continent-continent contacts.
+- **The islands** (« un peu de terre dans l'océan »): land components at 2 048² not connected to the largest land mass, with
+  ≥ 1 km² (F173's `islands`), count and total area.
+- **The land**: C1's end land (64², Airy; the selection's measure) against Part A's — **the success reads this one**; the
+  2 048² world's land at each age is reported.
+- The shelf (B3's measure, unchanged), A1, the coast by rock type, the seaside slope, the arms, the macro, the statistical
+  convergence (seeds 8 and 23, B0 and old, 300 vs 600 steps: drainage density, λ, S₅, classes), lakes, texture, images, cost —
+  as declared for Part C.
+- **The success** (≥ 4 of 5 seeds): the median shelf width in 4.65–16.4 km (young), W₁₀ at young down ≥ 40 % against Part A,
+  C1's end land within ±5 points of Part A's. **The stop**: the selection fails on ≥ 2 seeds → stop and report (Part D anyway).
+
+### Amendments after the smoke run (seed 8, young only), before the full bench
+
+- **The sinuosity**: S₅'s 5 km window is under 4 cells at 256² (`planform` returns NaN), so the statistical convergence reads
+  **S₁₀** (10 km, 6.4 cells) instead. Nothing else in R8 changes.
+- **The texture**: `read_cell` on the 2 048² field cost too much per world; the texture is read as the slope p50 / p90 of the
+  2 048² land (Horn) and the relief p50 of the 256² physics level (`read_cell` there).
+- **A diagnostic, not a rule**: the smoke showed no shelf and a high plateau on seed 8; a C1-only diagnostic (`f174b2_ds`)
+  locates Davis-Suppe's crust with and without the band. No declared rule or threshold changes.

@@ -34,7 +34,8 @@ use ymir_core::cascade::history::{
 };
 use ymir_core::cascade::hydro::{Hydro, draw, hydrology};
 use ymir_core::cascade::physio::{MOUNTAIN, classify};
-use ymir_core::cascade::profile::{C1Profile, k_range, select_continent_default, select_continent_plates};
+use ymir_core::cascade::margin::Margin;
+use ymir_core::cascade::profile::{C1Profile, k_range, select_continent_default_margin, select_continent_plates_margin};
 use ymir_core::cascade::{
     CascadeConfig, CascadeProgress, LevelRecord, PeakCalibration, Rebound, Rock, SubStep, diff_rgba, physics_level, roll,
     shade_m_rgba,
@@ -144,6 +145,8 @@ enum View {
     Diff,
     /// F165-C4: the macro classes (plain / plateau / hill / mountain).
     Classes,
+    /// F174-B′6: the coastal bathymetry (the sea by depth, the shelf 0 → −200 m highlighted).
+    Bathy,
 }
 
 /// What the frieze selects: the 64² tectonics, the physics level, an amplification level, the retargeted field.
@@ -202,6 +205,8 @@ pub struct CascadeUi {
     select: bool,
     /// F171-A2: the plate count of the selection (16 = the default with its fallback to 20 then 24).
     plates: usize,
+    /// F174-B′6: the margin seaward (an initial condition of the continent profile).
+    seaward: bool,
     /// F171-B/C: the rock (0 = K0 one K, 1 = K1 cover on basement, 2 = K2 with the heterogeneous K).
     rock: u8,
     /// F172-B5 / F173-B5: the sea (0 none, 1 the constant lowstand of F172, 2 the Quaternary curve), the lowstand view, and the
@@ -276,6 +281,7 @@ impl Default for CascadeUi {
             profile: C1Profile::Production,
             select: false,
             plates: 16,
+            seaward: false,
             rock: 0,
             sea_mode: 0,
             low_view: false,
@@ -342,6 +348,7 @@ pub fn cascade_history(
     sources: bool,
     airy: bool,
     profile: C1Profile,
+    margin: Margin,
 ) -> (Vec<GridF32>, Vec<(String, Vec<f32>)>, [usize; 2], Vec<bool>) {
     // F168-B4: the C1 profile (production, or the continent L1 / L2 initial fraction)
     let spec = C1RunSpec { seed, init_params: profile.init_params(), ..C1RunSpec::default() };
@@ -354,7 +361,7 @@ pub fn cascade_history(
         drainage_max_distance: spec.drainage_max_distance,
     };
     // F169-A4: a selected profile grows its BFS from its start plate
-    let mut state = profile.init_state(spec.grid_size, seed);
+    let mut state = profile.init_state_margin(spec.grid_size, seed, &margin);
     let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
     let ss = SteinSteinParams::default();
     let exclude: &[C1Term] = if sources { &[C1Term::Erosion] } else { &[] };
@@ -387,7 +394,7 @@ pub fn cascade_history(
         .collect::<Vec<_>>();
     // F169-B1: the thickening age, from a second (read-only, bit-identical) C1 run observed per step
     let mut terms = terms;
-    let mut st2 = profile.init_state(spec.grid_size, seed);
+    let mut st2 = profile.init_state_margin(spec.grid_size, seed, &margin);
     let mut kin2 = PlateKinematics::preset_phase_1_1(st2.num_plates);
     let cur = std::cell::RefCell::new(vec![0f64; n * n]);
     let steps = std::cell::RefCell::new(Vec::<Vec<f64>>::new());
@@ -421,7 +428,24 @@ pub fn cascade_history(
         .collect();
     terms.push(("Âge d'épaississement".to_string(), rolled(&age)));
     // F171-B: the cratonic shields at t₀ (bare basement), rolled like the snapshots
-    let sh0 = profile.init_state(spec.grid_size, seed).cratonic_mask.data().to_vec();
+    // F174-B′6: the plates at t₀ with the band (2 = Part A's continent, 1 = the band's continental cells, ½ = its oceanic
+    // (distal) cells, 0 = the other ocean; −1 on the plate boundaries)
+    let pa = profile.init_state(spec.grid_size, seed);
+    let pb = profile.init_state_margin(spec.grid_size, seed, &margin);
+    let cont = |st: &ymir_core::tectonics_c1::state::C1State, k: usize| st.plate_type.data()[k] == ymir_core::tectonics_v2::boundaries::plate_type::PlateType::Continental;
+    let plates_t0: Vec<f64> = (0..n * n)
+        .map(|k| {
+            let (x, y) = (k % n, k / n);
+            let id = pb.plate_id.data()[k];
+            if [y * n + (x + 1) % n, ((y + 1) % n) * n + x].iter().any(|&j| pb.plate_id.data()[j] != id) {
+                return -1.0;
+            }
+            let annexed = pa.plate_id.data()[k] != id;
+            if cont(&pa, k) { 2.0 } else if annexed && cont(&pb, k) { 1.0 } else if annexed { 0.5 } else { 0.0 }
+        })
+        .collect();
+    terms.push(("Plaques à t₀ (bande)".to_string(), rolled(&plates_t0)));
+    let sh0 = pb.cratonic_mask.data().to_vec();
     let shields = (0..n * n).map(|k| sh0[((k / n + off[1]) % n) * n + (k % n + off[0]) % n]).collect();
     (snaps, terms, off, shields)
 }
@@ -471,7 +495,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
             let mut torus_origin: Option<[usize; 2]> = None;
             let mut remedies = Remedies::default();
             let mut chain: Option<Chain> = None;
-            let mut history: Option<((bool, bool, C1Profile, bool, usize), Vec<GridF32>, [usize; 2], Vec<bool>)> = None;
+            let mut history: Option<((bool, bool, C1Profile, bool, usize, bool), Vec<GridF32>, [usize; 2], Vec<bool>)> = None;
             // F172-B5: the sea-level rise -- the chain runs on the field raised by Δ, its results are shown lowered
             let mut sea_shift = 0f32;
             let mut sea_curve: Option<SeaCurve> = None;
@@ -509,16 +533,18 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                         // F165-C4: driven by C1's history (recorded on demand, the same C1 run as the coarse field)
                         let result = if o.history > 0 {
                             let sources = o.history == 2;
-                            if history.as_ref().is_none_or(|h| h.0 != (sources, o.airy, o.profile, o.select, o.plates)) {
+                            if history.as_ref().is_none_or(|h| h.0 != (sources, o.airy, o.profile, o.select, o.plates, o.seaward)) {
                                 // F171-A: the selected continent (16 plates falling back to 20 then 24, or the slider's
                                 // count alone), L2 when none qualifies
+                                // F174-B′: the margin seaward (an initial condition; off = Part A bit for bit)
+                                let margin = if o.seaward { Margin::seaward() } else { Margin::off() };
                                 let profile = if o.select {
                                     let _ = etx.send(Evt::Progress(format!("sélection des plaques continentales ({} plaques)", o.plates), 0.0));
                                     let (s, n_used) = if o.plates == 16 {
-                                        let (np, mut tried) = select_continent_default(seed);
+                                        let (np, mut tried) = select_continent_default_margin(seed, &margin);
                                         (tried.pop().unwrap().1, np)
                                     } else {
-                                        let s = select_continent_plates(seed, o.plates, &k_range(o.plates), 1);
+                                        let s = select_continent_plates_margin(seed, o.plates, &k_range(o.plates), 1, &margin);
                                         let np = s.chosen.map(|_| o.plates);
                                         (s, np)
                                     };
@@ -534,9 +560,9 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                                 } else {
                                     o.profile
                                 };
-                                let (s, terms, off, shields) = cascade_history(seed, offset_cells, sources, o.airy, profile);
+                                let (s, terms, off, shields) = cascade_history(seed, offset_cells, sources, o.airy, profile, margin);
                                 let _ = etx.send(Evt::Terms(terms));
-                                history = Some(((sources, o.airy, o.profile, o.select, o.plates), s, off, shields));
+                                history = Some(((sources, o.airy, o.profile, o.select, o.plates, o.seaward), s, off, shields));
                             }
                             torus_origin = o.torus.then(|| history.as_ref().unwrap().2);
                             ccfg.torus = torus_origin;
@@ -918,6 +944,9 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
         ui.add_enabled(cu.select, egui::Slider::new(&mut cu.plates, 8..=24).text("Plaques")).on_hover_text(
             "F171-A2 : le nombre de plaques de Voronoï de la sélection. 16 = le défaut, avec repli à 20 puis 24 ; une autre valeur sélectionne à ce nombre seul et affiche si un candidat se qualifie",
         );
+        ui.checkbox(&mut cu.seaward, "Marge vers le large").on_hover_text(
+            "F174-B′ : à t₀, la rampe de Péron-Pinvidic et al. 2013 (÷ 7,5) placée vers le large : 32 km de croûte sur le bord du continent (la côte reste celle de la partie A), 35 → 32 km à l'intérieur, puis le reste du domaine proximal, l'étranglement et le domaine distal sur une bande d'océan rattachée à la plaque continentale (continentale tant que la croûte dépasse 10 km, océanique au-delà). La sélection et C1 tournent avec. Mode histoire",
+        );
         ui.label(small("Roche :".into())).on_hover_text(
             "F171-B/C : K0 = un K unique (F170) ; K1 = une couverture tendre de 1,5 km sur un socle 10 × plus dur (boucliers à nu dès t₀ ; niveau de physique seulement) ; K2 = K1 × un K hétérogène fixé à la roche (σ_lnK 0,5, fBm de 25 km à 0,39 km), aussi aux niveaux d'amplification",
         );
@@ -1255,7 +1284,7 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
     }
     // ── 5. the view ──
     ui.horizontal(|ui| {
-        for (v, name) in [(View::Shade, "Ombrage"), (View::Hypso, "Hypsométrie"), (View::Diff, "Différence"), (View::Classes, "Classes")] {
+        for (v, name) in [(View::Shade, "Ombrage"), (View::Hypso, "Hypsométrie"), (View::Diff, "Différence"), (View::Classes, "Classes"), (View::Bathy, "Bathymétrie côtière")] {
             if ui.selectable_label(cu.view == v, name).clicked() {
                 cu.view = v;
             }
@@ -1445,6 +1474,28 @@ fn build_image(cu: &mut CascadeUi) -> Option<egui::ColorImage> {
             diff_rgba(d, n, n, sat)
         }
         (View::Hypso, _) => shade_m_rgba(&field, f32::MAX, depth),
+        // F174-B′6: the coastal bathymetry -- the land shaded, the sea by depth (0 → −6 km), the shelf (0 → −200 m) in cyan
+        (View::Bathy, _) => {
+            let mut out = shade_m_rgba(&field, cell_m, depth);
+            for y in 0..n {
+                for x in 0..n {
+                    let z = field.data[y * n + x];
+                    if z > 0.0 {
+                        continue;
+                    }
+                    let c = if z > -200.0 {
+                        let u = -z / 200.0;
+                        [(120.0 - 60.0 * u) as u8, (230.0 - 40.0 * u) as u8, (230.0 - 20.0 * u) as u8]
+                    } else {
+                        let u = ((-z - 200.0) / 5800.0).clamp(0.0, 1.0).sqrt();
+                        [(60.0 - 50.0 * u) as u8, (150.0 - 120.0 * u) as u8, (210.0 - 110.0 * u) as u8]
+                    };
+                    let o = ((n - 1 - y) * n + x) * 4;
+                    out[o..o + 4].copy_from_slice(&[c[0], c[1], c[2], 255]);
+                }
+            }
+            out
+        }
         _ => shade_m_rgba(&field, cell_m, depth),
     };
     draw(&mut rgba, &s.hydro, cu.min_order, cu.rivers, cu.lakes);
@@ -1473,6 +1524,8 @@ struct PhysOpts {
     /// F171: the selection's plate count and the rock (0 K0, 1 K1, 2 K2).
     plates: usize,
     rock: u8,
+    /// F174-B′: the margin seaward.
+    seaward: bool,
     /// F172 / F173: the sea (0 none, 1 constant, 2 the curve).
     sea_mode: u8,
 }
@@ -1480,7 +1533,7 @@ struct PhysOpts {
 impl Default for PhysOpts {
     /// P0, F159–F162's level.
     fn default() -> Self {
-        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62, plates: 16, rock: 0, sea_mode: 0 }
+        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62, plates: 16, rock: 0, seaward: false, sea_mode: 0 }
     }
 }
 
@@ -1497,6 +1550,7 @@ fn phys_opts(cu: &CascadeUi) -> PhysOpts {
         age_ma: cu.age_ma,
         plates: cu.plates,
         rock: cu.rock,
+        seaward: cu.seaward,
         sea_mode: cu.sea_mode,
     }
 }

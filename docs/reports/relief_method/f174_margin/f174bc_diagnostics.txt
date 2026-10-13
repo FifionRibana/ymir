@@ -22,3 +22,50 @@ seed 23 Selected { plates: 16, k: 8, start: 0, compact: true } A (off): t0 activ
 seed 23 Selected { plates: 16, k: 8, start: 0, compact: true } margin: t0 active 15.5 % / other plate's ocean 5.7 % · end active 0.0 % / consumed 0.0 % · max active 15.5 % · first > 5 % Some(0) · end land 23.8 % · circumnavigable true r* Some(8)
 seed 29 Selected { plates: 20, k: 13, start: 0, compact: true } A (off): t0 active 57.5 % / other plate's ocean 100.0 % · end active 15.0 % / consumed 17.5 % · max active 58.6 % · first > 5 % Some(0) · end land 52.3 % · circumnavigable true r* Some(2)
 seed 29 Selected { plates: 20, k: 13, start: 0, compact: true } margin: t0 active 20.2 % / other plate's ocean 5.9 % · end active 3.7 % / consumed 4.8 % · max active 20.2 % · first > 5 % Some(0) · end land 26.3 % · circumnavigable true r* Some(7)
+
+## f174b2_ds (B′): Davis-Suppe's crust, Part A against the seaward margin (C1 only; each with its own selection)
+seed 8 A (off) Selected { plates: 16, k: 7, start: 14, compact: true }: ΣΔs_DS on Part A's continent 1249.98 (within 2 cells of its coast 57 %) · ΣΔs_DS off it 421.40 · ΣΔs subduction -10.28 · rift -128.73 · C1 end land deciles (m) 450/473/620/1196/1680/2598/3900/4790/5650
+seed 8 seaward Selected { plates: 16, k: 8, start: 2, compact: true }: ΣΔs_DS on Part A's continent 511.47 (within 2 cells of its coast 26 %) · ΣΔs_DS off it 1836.58 · ΣΔs subduction -0.27 · rift -23.17 · C1 end land deciles (m) 1161/1651/2017/2300/2527/2772/3045/3421/3877
+seed 18 A (off) Selected { plates: 16, k: 11, start: 12, compact: true }: ΣΔs_DS on Part A's continent 874.13 (within 2 cells of its coast 45 %) · ΣΔs_DS off it 587.91 · ΣΔs subduction -9.81 · rift -163.04 · C1 end land deciles (m) 450/450/582/861/1186/1791/2397/3906/5624
+seed 18 seaward Selected { plates: 16, k: 8, start: 11, compact: true }: ΣΔs_DS on Part A's continent 233.58 (within 2 cells of its coast 17 %) · ΣΔs_DS off it 520.01 · ΣΔs subduction -0.11 · rift -89.82 · C1 end land deciles (m) 243/433/450/450/630/1074/1412/1740/2167
+seed 19 A (off) Selected { plates: 20, k: 12, start: 18, compact: false }: ΣΔs_DS on Part A's continent 1080.44 (within 2 cells of its coast 64 %) · ΣΔs_DS off it 394.54 · ΣΔs subduction -17.55 · rift -160.34 · C1 end land deciles (m) 450/492/673/857/1039/1765/2740/4237/5650
+seed 19 seaward Selected { plates: 16, k: 7, start: 1, compact: true }: ΣΔs_DS on Part A's continent 402.17 (within 2 cells of its coast 23 %) · ΣΔs_DS off it 1054.68 · ΣΔs subduction -0.08 · rift -45.65 · C1 end land deciles (m) 423/643/1092/1448/1709/2023/2291/2628/2951
+seed 23 A (off) Selected { plates: 16, k: 8, start: 0, compact: true }: ΣΔs_DS on Part A's continent 1395.96 (within 2 cells of its coast 61 %) · ΣΔs_DS off it 985.40 · ΣΔs subduction -15.17 · rift -153.77 · C1 end land deciles (m) 450/450/576/1014/1454/2380/3997/5650/5650
+seed 23 seaward Selected { plates: 16, k: 8, start: 6, compact: true }: ΣΔs_DS on Part A's continent 351.87 (within 2 cells of its coast 29 %) · ΣΔs_DS off it 1187.27 · ΣΔs subduction -0.06 · rift -121.68 · C1 end land deciles (m) 566/866/1169/1467/1686/1894/2074/2209/2460
+seed 29 A (off) Selected { plates: 20, k: 13, start: 0, compact: true }: ΣΔs_DS on Part A's continent 1011.82 (within 2 cells of its coast 59 %) · ΣΔs_DS off it 1076.99 · ΣΔs subduction -10.16 · rift -152.04 · C1 end land deciles (m) 450/456/586/902/1224/1575/2188/3927/5650
+seed 29 seaward Selected { plates: 16, k: 9, start: 11, compact: true }: ΣΔs_DS on Part A's continent 392.48 (within 2 cells of its coast 18 %) · ΣΔs_DS off it 1008.84 · ΣΔs subduction -0.22 · rift -122.59 · C1 end land deciles (m) 391/526/833/1114/1280/1436/1669/2097/2686
+
+## f174b2_profile (B′): the seaward margin's profile through C1 -- mean Airy altitude of the first / last snapshot and mean s (t₀ / end, raw C1 s, erosion included) by the signed distance to Part A's edge (64² cells)
+seed 8 seaward Selected { plates: 16, k: 8, start: 2, compact: true }:
+   x -2: alt t0 461 → end 2421 m, s t0 1.003 → end 0.688
+   x -1: alt t0 250 → end 2516 m, s t0 0.968 → end 0.628
+   x +1: alt t0 -157 → end 2863 m, s t0 0.893 → end 0.506
+   x +2: alt t0 -921 → end 3190 m, s t0 0.813 → end 0.442
+   x +3: alt t0 -2691 → end 2606 m, s t0 0.570 → end 0.390
+   x +4: alt t0 -4505 → end 59 m, s t0 0.333 → end 0.322
+   x +5: alt t0 -5435 → end -4951 m, s t0 0.260 → end 0.327
+   x +6: alt t0 -5513 → end -5512 m, s t0 0.233 → end 0.210
+   x +7: alt t0 -5513 → end -5513 m, s t0 0.208 → end 0.378
+   x +8: alt t0 -5513 → end -5513 m, s t0 0.200 → end 0.221
+seed 18 seaward Selected { plates: 16, k: 8, start: 11, compact: true }:
+   x -2: alt t0 337 → end 741 m, s t0 0.980 → end 0.371
+   x -1: alt t0 146 → end 604 m, s t0 0.946 → end 0.328
+   x +1: alt t0 -164 → end 466 m, s t0 0.894 → end 0.257
+   x +2: alt t0 -898 → end 47 m, s t0 0.816 → end 0.219
+   x +3: alt t0 -2640 → end -1296 m, s t0 0.576 → end 0.202
+   x +4: alt t0 -4465 → end -3197 m, s t0 0.337 → end 0.206
+   x +5: alt t0 -5429 → end -5284 m, s t0 0.261 → end 0.110
+   x +6: alt t0 -5513 → end -5513 m, s t0 0.234 → end 0.018
+   x +7: alt t0 -5513 → end -5513 m, s t0 0.209 → end 0.013
+   x +8: alt t0 -5513 → end -5513 m, s t0 0.200 → end 0.013
+seed 23 seaward Selected { plates: 16, k: 8, start: 6, compact: true }:
+   x -2: alt t0 416 → end 1568 m, s t0 0.996 → end 0.508
+   x -1: alt t0 179 → end 1570 m, s t0 0.952 → end 0.445
+   x +1: alt t0 -160 → end 1546 m, s t0 0.894 → end 0.321
+   x +2: alt t0 -878 → end 1513 m, s t0 0.819 → end 0.259
+   x +3: alt t0 -2669 → end 846 m, s t0 0.573 → end 0.245
+   x +4: alt t0 -4519 → end -1403 m, s t0 0.332 → end 0.212
+   x +5: alt t0 -5439 → end -5133 m, s t0 0.260 → end 0.150
+   x +6: alt t0 -5513 → end -5512 m, s t0 0.233 → end 0.107
+   x +7: alt t0 -5513 → end -5513 m, s t0 0.208 → end 0.133
+   x +8: alt t0 -5513 → end -5513 m, s t0 0.200 → end 0.157
