@@ -1,0 +1,14 @@
+   seed 10 F178_gap3_seed10: A1 share any 23.2 % · majority 15.1 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 9509 m (C-O wedge 9474 m), passive 3488 m, ratio 2.73 · trench segments 30 (median 6 km, p90 31 km, max 88 km world) · C1 end land 57.7 %, circumnavigable true r* Some(0) · merges 12 splits 9 · C1 CPU 17.5 s
+      active 0–3 cells (129 cells): C-O wedge 16054 · collision 357 · arcs 36 · other -382
+      active 3–6 cells (125 cells): C-O wedge 2683 · collision 285 · arcs 0 · other -224
+      active 6–15 cells (277 cells): C-O wedge 106 · collision 187 · arcs 0 · other -108
+      active 15–30 cells (108 cells): C-O wedge 0 · collision 268 · arcs 0 · other -225
+      passive 0–3 cells (412 cells): C-O wedge 5034 · collision 809 · arcs 23 · other -113
+      passive 3–6 cells (396 cells): C-O wedge 639 · collision 601 · arcs 0 · other -108
+      passive 6–15 cells (936 cells): C-O wedge 10 · collision 604 · arcs 0 · other -256
+      passive 15–30 cells (361 cells): C-O wedge 0 · collision 436 · arcs 0 · other -308
+#A1 0.23243243243243245 0.15135135135135136 1 1
+#UP 9509.342897407794 3487.6118498252577 9473.720516116182
+#TR 30 6.25 31.25 87.5
+#LAND 0.5773926 1 0
+#BAND 16053.583985946678 357.0811518235673 35.98297753330221 -382.23329473470955 2683.30141525111 284.77930022625435 0 -223.57204277176822 105.59389629584543 187.47478577243098 0 -107.59255927935226 0 267.53637178345735 0 -224.6923225761735 5034.071226058393 808.6214738480131 22.658431830716637 -113.25170028621787 639.3240363350629 600.7692873050887 0 -108.46350318299207 9.774540933826138 603.9684787339304 0 -256.0459678070629 0.18506306711435355 435.7728393450487 0 -308.2407903162317

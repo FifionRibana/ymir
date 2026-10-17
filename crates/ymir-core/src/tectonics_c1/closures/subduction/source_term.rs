@@ -462,6 +462,7 @@ pub fn apply_oo_subduction_step(
     tracker: &OoTracker,
     dt: f64,
     stats: &mut SubductionStats,
+    arc_band: Option<(usize, usize)>,
 ) {
     if !params.enabled {
         return;
@@ -517,7 +518,12 @@ pub fn apply_oo_subduction_step(
             }
             // A2: the arc on the overriding plate
             let arc_mass = delta_s * params.arc_efficiency;
-            let (placed, on_ocean) = distribute_arc_mass_plate(s, plate_id, plate_type, i, j, pid_n, arc_mass, params.arc_distance, &idx_x, &idx_y);
+            // F178-A2 (variant): the arc at the arc-trench band, else F175's rule
+            let banded = arc_band.and_then(|(lo, hi)| distribute_arc_mass_band(s, plate_id, plate_type, i, j, pid_n, arc_mass, lo, hi, &idx_x, &idx_y));
+            let (placed, on_ocean) = match banded {
+                Some(r) => r,
+                None => distribute_arc_mass_plate(s, plate_id, plate_type, i, j, pid_n, arc_mass, params.arc_distance, &idx_x, &idx_y),
+            };
             if on_ocean {
                 stats.oo_arc_oceanic += placed;
             } else {
@@ -576,6 +582,58 @@ fn distribute_arc_mass_plate(
         s.set(*ci, *cj, s.get(*ci, *cj) + per);
     }
     (arc_mass, on_ocean)
+}
+
+/// ADR Finding 178-A2 -- the arc mass on `plate`'s cells at walk depths `lo..=hi` from the origin (the walk crosses any cell, as
+/// [`distribute_arc_mass_plate`]), its continental cells first, else its oceanic ones; `None` when the band holds none of its
+/// cells.
+#[allow(clippy::too_many_arguments)]
+fn distribute_arc_mass_band(
+    s: &mut Field2D,
+    plate_id: &PlateIdField,
+    plate_type: &PlateTypeField,
+    origin_i: usize,
+    origin_j: usize,
+    plate: u16,
+    arc_mass: f64,
+    lo: usize,
+    hi: usize,
+    idx_x: &PeriodicIndex,
+    idx_y: &PeriodicIndex,
+) -> Option<(f64, bool)> {
+    if arc_mass <= 0.0 || hi == 0 {
+        return None;
+    }
+    let mut visited: HashSet<(usize, usize)> = HashSet::new();
+    let mut queue: VecDeque<(usize, usize, usize)> = VecDeque::new();
+    queue.push_back((origin_i, origin_j, 0));
+    visited.insert((origin_i, origin_j));
+    let (mut cont, mut ocean) = (Vec::new(), Vec::new());
+    while let Some((i, j, depth)) = queue.pop_front() {
+        if depth >= lo && depth > 0 && plate_id.get(i, j) == plate {
+            if plate_type.get(i, j) == PlateType::Continental {
+                cont.push((i, j));
+            } else {
+                ocean.push((i, j));
+            }
+        }
+        if depth < hi {
+            for (ni, nj) in [(idx_x.next(i), j), (idx_x.prev(i), j), (i, idx_y.next(j)), (i, idx_y.prev(j))] {
+                if visited.insert((ni, nj)) {
+                    queue.push_back((ni, nj, depth + 1));
+                }
+            }
+        }
+    }
+    let (cells, on_ocean) = if !cont.is_empty() { (cont, false) } else { (ocean, true) };
+    if cells.is_empty() {
+        return None;
+    }
+    let per = arc_mass / cells.len() as f64;
+    for (ci, cj) in &cells {
+        s.set(*ci, *cj, s.get(*ci, *cj) + per);
+    }
+    Some((arc_mass, on_ocean))
 }
 
 #[cfg(test)]

@@ -80,6 +80,7 @@ pub mod bench_guard;
 pub mod cached_product;
 pub mod closures;
 pub mod debug_labels;
+pub mod andean_seed;
 pub mod distance_field;
 pub mod drainage;
 pub mod hd_assembly;

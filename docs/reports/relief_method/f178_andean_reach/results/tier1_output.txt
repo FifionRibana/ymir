@@ -1,0 +1,283 @@
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+    Finished `release` profile [optimized] target(s) in 24.74s
+     Running tests\f178_cascade.rs (target_f178\release\deps\f178_cascade-504646ae325b2342.exe)
+running 1 test
+   seed 8 F176_seed8: A1 share any 9.0 % · majority 5.6 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 2629 m (C-O wedge 1871 m), passive 2746 m, ratio 0.96 · trench segments 21 (median 19 km, p90 62 km, max 119 km world) · C1 end land 50.0 %, circumnavigable true r* Some(2) · merges 14 splits 9 · C1 CPU 12.6 s
+      active 0–3 cells (45 cells): C-O wedge 3334 · collision 815 · arcs 350 · other -186
+      active 3–6 cells (39 cells): C-O wedge 184 · collision 566 · arcs 0 · other -63
+      active 6–15 cells (62 cells): C-O wedge 0 · collision 1134 · arcs 0 · other -49
+      active 15–30 cells (49 cells): C-O wedge 0 · collision 2658 · arcs 0 · other -138
+      passive 0–3 cells (465 cells): C-O wedge 817 · collision 2687 · arcs 15 · other -52
+      passive 3–6 cells (414 cells): C-O wedge 193 · collision 1783 · arcs 0 · other -39
+      passive 6–15 cells (923 cells): C-O wedge 7 · collision 1737 · arcs 0 · other -38
+      passive 15–30 cells (342 cells): C-O wedge 0 · collision 1524 · arcs 0 · other -161
+   seed 18 F176_seed18: A1 share any 37.4 % · majority 30.0 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 3908 m (C-O wedge 3061 m), passive 2178 m, ratio 1.79 · trench segments 25 (median 19 km, p90 75 km, max 131 km world) · C1 end land 50.1 %, circumnavigable true r* Some(2) · merges 11 splits 9 · C1 CPU 12.7 s
+      active 0–3 cells (194 cells): C-O wedge 4930 · collision 1019 · arcs 88 · other -115
+      active 3–6 cells (163 cells): C-O wedge 837 · collision 811 · arcs 0 · other -140
+      active 6–15 cells (385 cells): C-O wedge 21 · collision 1173 · arcs 0 · other -222
+      active 15–30 cells (194 cells): C-O wedge 0 · collision 2266 · arcs 0 · other -5
+      passive 0–3 cells (341 cells): C-O wedge 2256 · collision 993 · arcs 18 · other -113
+      passive 3–6 cells (308 cells): C-O wedge 417 · collision 820 · arcs 0 · other -139
+      passive 6–15 cells (669 cells): C-O wedge 18 · collision 955 · arcs 0 · other -286
+      passive 15–30 cells (227 cells): C-O wedge 0 · collision 1606 · arcs 0 · other -546
+   seed 19 F176_seed19: A1 share any 16.4 % · majority 4.4 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 1273 m (C-O wedge 452 m), passive 847 m, ratio 1.50 · trench segments 18 (median 31 km, p90 69 km, max 94 km world) · C1 end land 50.8 %, circumnavigable true r* Some(3) · merges 7 splits 3 · C1 CPU 12.5 s
+      active 0–3 cells (111 cells): C-O wedge 911 · collision 810 · arcs 5 · other -46
+      active 3–6 cells (120 cells): C-O wedge 26 · collision 871 · arcs 0 · other -1
+      active 6–15 cells (314 cells): C-O wedge 0 · collision 1327 · arcs 0 · other -252
+      active 15–30 cells (180 cells): C-O wedge 0 · collision 1382 · arcs 0 · other -528
+      passive 0–3 cells (531 cells): C-O wedge 180 · collision 887 · arcs 8 · other -44
+      passive 3–6 cells (452 cells): C-O wedge 26 · collision 675 · arcs 0 · other -72
+      passive 6–15 cells (805 cells): C-O wedge 0 · collision 551 · arcs 0 · other -100
+      passive 15–30 cells (321 cells): C-O wedge 0 · collision 976 · arcs 0 · other -161
+   seed 23 F176_seed23: A1 share any 28.3 % · majority 16.7 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 1865 m (C-O wedge 0 m), passive 1402 m, ratio 1.33 · trench segments 21 (median 25 km, p90 38 km, max 75 km world) · C1 end land 56.9 %, circumnavigable true r* Some(2) · merges 7 splits 2 · C1 CPU 12.6 s
+      active 0–3 cells (164 cells): C-O wedge 0 · collision 2421 · arcs 21 · other -127
+      active 3–6 cells (159 cells): C-O wedge 0 · collision 1479 · arcs 0 · other -79
+      active 6–15 cells (369 cells): C-O wedge 0 · collision 1275 · arcs 0 · other -429
+      active 15–30 cells (219 cells): C-O wedge 0 · collision 114 · arcs 0 · other -195
+      passive 0–3 cells (416 cells): C-O wedge 540 · collision 1339 · arcs 39 · other -49
+      passive 3–6 cells (377 cells): C-O wedge 89 · collision 855 · arcs 0 · other -57
+      passive 6–15 cells (788 cells): C-O wedge 2 · collision 643 · arcs 0 · other -28
+      passive 15–30 cells (490 cells): C-O wedge 0 · collision 203 · arcs 0 · other -287
+   seed 29 F176_seed29: A1 share any 27.4 % · majority 21.3 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 612 m (C-O wedge 0 m), passive 1652 m, ratio 0.37 · trench segments 24 (median 6 km, p90 50 km, max 131 km world) · C1 end land 53.8 %, circumnavigable true r* Some(3) · merges 5 splits 8 · C1 CPU 12.5 s
+      active 0–3 cells (159 cells): C-O wedge 0 · collision 816 · arcs 13 · other -79
+      active 3–6 cells (136 cells): C-O wedge 0 · collision 552 · arcs 0 · other -101
+      active 6–15 cells (282 cells): C-O wedge 0 · collision 794 · arcs 0 · other -115
+      active 15–30 cells (92 cells): C-O wedge 0 · collision 2447 · arcs 0 · other -837
+      passive 0–3 cells (404 cells): C-O wedge 285 · collision 1764 · arcs 9 · other -141
+      passive 3–6 cells (366 cells): C-O wedge 61 · collision 1435 · arcs 0 · other -136
+      passive 6–15 cells (848 cells): C-O wedge 0 · collision 1602 · arcs 0 · other -201
+      passive 15–30 cells (503 cells): C-O wedge 0 · collision 2528 · arcs 0 · other -662
+   seed 1 F176_seed1: A1 share any 13.5 % · majority 11.0 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 4401 m (C-O wedge 3642 m), passive 1546 m, ratio 2.85 · trench segments 18 (median 12 km, p90 88 km, max 119 km world) · C1 end land 57.5 %, circumnavigable true r* Some(1) · merges 6 splits 2 · C1 CPU 12.6 s
+      active 0–3 cells (69 cells): C-O wedge 4722 · collision 339 · arcs 171 · other 458
+      active 3–6 cells (38 cells): C-O wedge 1680 · collision 381 · arcs 0 · other -0
+      active 6–15 cells (49 cells): C-O wedge 4 · collision 1159 · arcs 0 · other 0
+      active 15–30 cells (22 cells): C-O wedge 0 · collision 3146 · arcs 0 · other -381
+      passive 0–3 cells (499 cells): C-O wedge 722 · collision 1350 · arcs 4 · other -61
+      passive 3–6 cells (460 cells): C-O wedge 141 · collision 944 · arcs 0 · other -48
+      passive 6–15 cells (1060 cells): C-O wedge 3 · collision 983 · arcs 0 · other -132
+      passive 15–30 cells (667 cells): C-O wedge 0 · collision 1886 · arcs 0 · other -284
+   seed 2 F176_seed2: A1 share any 21.3 % · majority 14.9 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 2382 m (C-O wedge 2056 m), passive 2310 m, ratio 1.03 · trench segments 21 (median 12 km, p90 75 km, max 181 km world) · C1 end land 51.1 %, circumnavigable true r* Some(3) · merges 6 splits 5 · C1 CPU 12.6 s
+      active 0–3 cells (139 cells): C-O wedge 2343 · collision 774 · arcs 88 · other -433
+      active 3–6 cells (125 cells): C-O wedge 1738 · collision 606 · arcs 0 · other -396
+      active 6–15 cells (351 cells): C-O wedge 211 · collision 539 · arcs 0 · other -320
+      active 15–30 cells (174 cells): C-O wedge 0 · collision 87 · arcs 0 · other -34
+      passive 0–3 cells (487 cells): C-O wedge 2046 · collision 1207 · arcs 27 · other -61
+      passive 3–6 cells (428 cells): C-O wedge 565 · collision 846 · arcs 0 · other -134
+      passive 6–15 cells (764 cells): C-O wedge 50 · collision 894 · arcs 0 · other -253
+      passive 15–30 cells (185 cells): C-O wedge 0 · collision 266 · arcs 0 · other -77
+   seed 3 F176_seed3: A1 share any 28.1 % · majority 17.9 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 1781 m (C-O wedge 408 m), passive 1555 m, ratio 1.15 · trench segments 23 (median 12 km, p90 62 km, max 119 km world) · C1 end land 56.1 %, circumnavigable true r* Some(2) · merges 13 splits 12 · C1 CPU 12.6 s
+      active 0–3 cells (187 cells): C-O wedge 678 · collision 1578 · arcs 61 · other -19
+      active 3–6 cells (175 cells): C-O wedge 119 · collision 1306 · arcs 0 · other -197
+      active 6–15 cells (417 cells): C-O wedge 5 · collision 1791 · arcs 0 · other -541
+      active 15–30 cells (183 cells): C-O wedge 0 · collision 1216 · arcs 0 · other -732
+      passive 0–3 cells (455 cells): C-O wedge 668 · collision 1481 · arcs 12 · other -194
+      passive 3–6 cells (397 cells): C-O wedge 92 · collision 1177 · arcs 0 · other -186
+      passive 6–15 cells (831 cells): C-O wedge 3 · collision 1515 · arcs 0 · other -441
+      passive 15–30 cells (315 cells): C-O wedge 0 · collision 1378 · arcs 0 · other -638
+   seed 4 F176_seed4: A1 share any 31.5 % · majority 20.1 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 4737 m (C-O wedge 1297 m), passive 1577 m, ratio 3.00 · trench segments 22 (median 19 km, p90 50 km, max 162 km world) · C1 end land 52.9 %, circumnavigable true r* Some(1) · merges 17 splits 19 · C1 CPU 12.7 s
+      active 0–3 cells (169 cells): C-O wedge 2546 · collision 3918 · arcs 50 · other -233
+      active 3–6 cells (163 cells): C-O wedge 1 · collision 3274 · arcs 0 · other -139
+      active 6–15 cells (421 cells): C-O wedge 0 · collision 2358 · arcs 0 · other -689
+      active 15–30 cells (182 cells): C-O wedge 0 · collision 946 · arcs 0 · other -383
+      passive 0–3 cells (366 cells): C-O wedge 418 · collision 1887 · arcs 12 · other -258
+      passive 3–6 cells (357 cells): C-O wedge 9 · collision 1474 · arcs 0 · other -399
+      passive 6–15 cells (768 cells): C-O wedge 0 · collision 1209 · arcs 0 · other -403
+      passive 15–30 cells (284 cells): C-O wedge 0 · collision 558 · arcs 0 · other -198
+   seed 5 F176_seed5: A1 share any 15.0 % · majority 12.8 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 4139 m (C-O wedge 2420 m), passive 3167 m, ratio 1.31 · trench segments 23 (median 12 km, p90 56 km, max 119 km world) · C1 end land 51.0 %, circumnavigable true r* Some(4) · merges 9 splits 6 · C1 CPU 12.7 s
+      active 0–3 cells (79 cells): C-O wedge 3704 · collision 2247 · arcs 35 · other -581
+      active 3–6 cells (69 cells): C-O wedge 951 · collision 1860 · arcs 0 · other -120
+      active 6–15 cells (152 cells): C-O wedge 10 · collision 2749 · arcs 0 · other -98
+      active 15–30 cells (55 cells): C-O wedge 0 · collision 2410 · arcs 0 · other -133
+      passive 0–3 cells (455 cells): C-O wedge 1288 · collision 2670 · arcs 7 · other -127
+      passive 3–6 cells (403 cells): C-O wedge 412 · collision 2049 · arcs 0 · other -51
+      passive 6–15 cells (846 cells): C-O wedge 49 · collision 1981 · arcs 0 · other -165
+      passive 15–30 cells (242 cells): C-O wedge 0 · collision 2254 · arcs 0 · other -446
+   seed 6 F176_seed6: A1 share any 25.2 % · majority 18.7 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 2475 m (C-O wedge 0 m), passive 1090 m, ratio 2.27 · trench segments 17 (median 12 km, p90 56 km, max 94 km world) · C1 end land 56.2 %, circumnavigable true r* Some(2) · merges 11 splits 7 · C1 CPU 12.5 s
+      active 0–3 cells (175 cells): C-O wedge 0 · collision 2764 · arcs 235 · other -74
+      active 3–6 cells (179 cells): C-O wedge 0 · collision 2247 · arcs 0 · other -213
+      active 6–15 cells (455 cells): C-O wedge 0 · collision 2216 · arcs 0 · other -324
+      active 15–30 cells (215 cells): C-O wedge 0 · collision 1957 · arcs 0 · other -669
+      passive 0–3 cells (480 cells): C-O wedge 204 · collision 1204 · arcs 8 · other -62
+      passive 3–6 cells (404 cells): C-O wedge 5 · collision 882 · arcs 0 · other -112
+      passive 6–15 cells (824 cells): C-O wedge 0 · collision 726 · arcs 0 · other -172
+      passive 15–30 cells (331 cells): C-O wedge 0 · collision 1066 · arcs 0 · other -722
+   seed 7 F176_seed7: A1 share any 54.4 % · majority 38.5 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 912 m (C-O wedge 0 m), passive 1852 m, ratio 0.49 · trench segments 20 (median 12 km, p90 81 km, max 256 km world) · C1 end land 51.7 %, circumnavigable true r* Some(3) · merges 15 splits 23 · C1 CPU 12.5 s
+      active 0–3 cells (350 cells): C-O wedge 0 · collision 1163 · arcs 18 · other -60
+      active 3–6 cells (312 cells): C-O wedge 0 · collision 873 · arcs 0 · other -194
+      active 6–15 cells (697 cells): C-O wedge 0 · collision 805 · arcs 0 · other -179
+      active 15–30 cells (355 cells): C-O wedge 0 · collision 998 · arcs 0 · other -480
+      passive 0–3 cells (303 cells): C-O wedge 0 · collision 2522 · arcs 11 · other -252
+      passive 3–6 cells (276 cells): C-O wedge 0 · collision 1633 · arcs 0 · other -251
+      passive 6–15 cells (427 cells): C-O wedge 0 · collision 1010 · arcs 0 · other -568
+      passive 15–30 cells (160 cells): C-O wedge 0 · collision 381 · arcs 0 · other -873
+   seed 9 F176_seed9: A1 share any 34.8 % · majority 24.7 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 2764 m (C-O wedge 338 m), passive 1265 m, ratio 2.18 · trench segments 28 (median 12 km, p90 62 km, max 81 km world) · C1 end land 50.6 %, circumnavigable true r* Some(3) · merges 12 splits 11 · C1 CPU 12.7 s
+      active 0–3 cells (210 cells): C-O wedge 563 · collision 2850 · arcs 75 · other -196
+      active 3–6 cells (216 cells): C-O wedge 120 · collision 2305 · arcs 2 · other -176
+      active 6–15 cells (542 cells): C-O wedge 26 · collision 2321 · arcs 0 · other -835
+      active 15–30 cells (257 cells): C-O wedge 0 · collision 2325 · arcs 0 · other -777
+      passive 0–3 cells (352 cells): C-O wedge 131 · collision 1265 · arcs 5 · other -30
+      passive 3–6 cells (278 cells): C-O wedge 23 · collision 1165 · arcs 0 · other -56
+      passive 6–15 cells (504 cells): C-O wedge 1 · collision 1354 · arcs 0 · other -265
+      passive 15–30 cells (234 cells): C-O wedge 0 · collision 2314 · arcs 0 · other -509
+   seed 10 F176_seed10: A1 share any 23.2 % · majority 15.1 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 444 m (C-O wedge 52 m), passive 1253 m, ratio 0.35 · trench segments 30 (median 6 km, p90 31 km, max 88 km world) · C1 end land 50.9 %, circumnavigable true r* Some(1) · merges 12 splits 9 · C1 CPU 12.5 s
+      active 0–3 cells (129 cells): C-O wedge 102 · collision 797 · arcs 30 · other -321
+      active 3–6 cells (125 cells): C-O wedge 0 · collision 486 · arcs 0 · other -212
+      active 6–15 cells (277 cells): C-O wedge 0 · collision 279 · arcs 0 · other -108
+      active 15–30 cells (108 cells): C-O wedge 0 · collision 275 · arcs 0 · other -225
+      passive 0–3 cells (412 cells): C-O wedge 697 · collision 1076 · arcs 23 · other -41
+      passive 3–6 cells (396 cells): C-O wedge 57 · collision 773 · arcs 0 · other -99
+      passive 6–15 cells (936 cells): C-O wedge 1 · collision 670 · arcs 0 · other -254
+      passive 15–30 cells (361 cells): C-O wedge 0 · collision 439 · arcs 0 · other -307
+   seed 11 F176_seed11: A1 share any 45.6 % · majority 31.4 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 2282 m (C-O wedge 26 m), passive 1448 m, ratio 1.58 · trench segments 23 (median 12 km, p90 56 km, max 100 km world) · C1 end land 50.1 %, circumnavigable true r* Some(2) · merges 12 splits 12 · C1 CPU 12.5 s
+      active 0–3 cells (293 cells): C-O wedge 49 · collision 2759 · arcs 61 · other -59
+      active 3–6 cells (260 cells): C-O wedge 0 · collision 1734 · arcs 0 · other -46
+      active 6–15 cells (556 cells): C-O wedge 0 · collision 1525 · arcs 0 · other -221
+      active 15–30 cells (161 cells): C-O wedge 0 · collision 2131 · arcs 0 · other -643
+      passive 0–3 cells (346 cells): C-O wedge 357 · collision 1564 · arcs 6 · other -103
+      passive 3–6 cells (309 cells): C-O wedge 5 · collision 1162 · arcs 0 · other -139
+      passive 6–15 cells (626 cells): C-O wedge 0 · collision 1478 · arcs 0 · other -480
+      passive 15–30 cells (185 cells): C-O wedge 0 · collision 1728 · arcs 0 · other -733
+   F176: A1 median any 27.4 % · majority 17.9 % (sorted majority [4.4, 5.6, 11.0, 12.8, 14.9, 15.1, 16.7, 17.9, 18.7, 20.1, 21.3, 24.7, 30.0, 31.4, 38.5]) · continents with an active margin 15 / 15 · > 70 % active 0 · C-O wedge on the active 0–6 cells positive on 12 / 15 (median 408 m) · active ≥ 2 × passive on 0–6 cells 4 · ratio median 1.33 · circumnavigation lost 0 · trench segment medians (km) [18.75, 18.75, 31.25, 25.0, 6.25, 12.5, 12.5, 12.5, 18.75, 12.5, 12.5, 12.5, 12.5, 6.25, 12.5]
+   seed 8 F178_seed8: A1 share any 10.1 % · majority 6.2 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 14077 m (C-O wedge 13507 m), passive 7563 m, ratio 1.86 · trench segments 21 (median 19 km, p90 69 km, max 119 km world) · C1 end land 55.0 %, circumnavigable true r* Some(2) · merges 14 splits 9 · C1 CPU 17.5 s
+      active 0–3 cells (56 cells): C-O wedge 23339 · collision 891 · arcs 315 · other -589
+      active 3–6 cells (60 cells): C-O wedge 4331 · collision 605 · arcs 0 · other -80
+      active 6–15 cells (152 cells): C-O wedge 268 · collision 956 · arcs 0 · other -55
+      active 15–30 cells (74 cells): C-O wedge 0 · collision 1883 · arcs 0 · other -110
+      passive 0–3 cells (454 cells): C-O wedge 10901 · collision 1326 · arcs 9 · other -310
+      passive 3–6 cells (393 cells): C-O wedge 1500 · collision 1073 · arcs 0 · other -48
+      passive 6–15 cells (833 cells): C-O wedge 31 · collision 1640 · arcs 0 · other -35
+      passive 15–30 cells (317 cells): C-O wedge 0 · collision 1634 · arcs 0 · other -169
+   seed 18 F178_seed18: A1 share any 30.5 % · majority 21.4 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 19741 m (C-O wedge 19624 m), passive 14163 m, ratio 1.39 · trench segments 27 (median 19 km, p90 56 km, max 119 km world) · C1 end land 60.5 %, circumnavigable true r* Some(0) · merges 11 splits 9 · C1 CPU 16.0 s
+      active 0–3 cells (167 cells): C-O wedge 31039 · collision 404 · arcs 2 · other -403
+      active 3–6 cells (153 cells): C-O wedge 7165 · collision 394 · arcs 0 · other -154
+      active 6–15 cells (389 cells): C-O wedge 205 · collision 837 · arcs 0 · other -222
+      active 15–30 cells (194 cells): C-O wedge 0 · collision 2384 · arcs 0 · other -4
+      passive 0–3 cells (364 cells): C-O wedge 22759 · collision 273 · arcs 10 · other -526
+      passive 3–6 cells (318 cells): C-O wedge 4491 · collision 258 · arcs 0 · other -149
+      passive 6–15 cells (665 cells): C-O wedge 120 · collision 637 · arcs 0 · other -292
+      passive 15–30 cells (227 cells): C-O wedge 2 · collision 1648 · arcs 0 · other -541
+   seed 19 F178_seed19: A1 share any 15.1 % · majority 9.8 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 15888 m (C-O wedge 15817 m), passive 8232 m, ratio 1.93 · trench segments 12 (median 31 km, p90 56 km, max 169 km world) · C1 end land 65.3 %, circumnavigable true r* Some(1) · merges 13 splits 12 · C1 CPU 17.5 s
+      active 0–3 cells (102 cells): C-O wedge 25854 · collision 432 · arcs 24 · other -578
+      active 3–6 cells (104 cells): C-O wedge 5973 · collision 400 · arcs 0 · other -140
+      active 6–15 cells (210 cells): C-O wedge 402 · collision 848 · arcs 0 · other -58
+      active 15–30 cells (25 cells): C-O wedge 0 · collision 1593 · arcs 0 · other -198
+      passive 0–3 cells (540 cells): C-O wedge 13096 · collision 372 · arcs 8 · other -184
+      passive 3–6 cells (468 cells): C-O wedge 2174 · collision 282 · arcs 0 · other -62
+      passive 6–15 cells (909 cells): C-O wedge 77 · collision 585 · arcs 0 · other -185
+      passive 15–30 cells (476 cells): C-O wedge 0 · collision 1182 · arcs 0 · other -294
+   seed 23 F178_seed23: A1 share any 35.9 % · majority 25.3 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 16415 m (C-O wedge 16574 m), passive 8677 m, ratio 1.89 · trench segments 20 (median 25 km, p90 44 km, max 75 km world) · C1 end land 70.0 %, circumnavigable false r* None · merges 7 splits 2 · C1 CPU 17.6 s
+      active 0–3 cells (208 cells): C-O wedge 27213 · collision 112 · arcs 68 · other -621
+      active 3–6 cells (204 cells): C-O wedge 5726 · collision 196 · arcs 0 · other -66
+      active 6–15 cells (504 cells): C-O wedge 230 · collision 676 · arcs 0 · other -324
+      active 15–30 cells (339 cells): C-O wedge 1 · collision 73 · arcs 0 · other -182
+      passive 0–3 cells (372 cells): C-O wedge 13923 · collision 292 · arcs 31 · other -214
+      passive 3–6 cells (332 cells): C-O wedge 2416 · collision 342 · arcs 0 · other -81
+      passive 6–15 cells (653 cells): C-O wedge 83 · collision 661 · arcs 0 · other -29
+      passive 15–30 cells (370 cells): C-O wedge 0 · collision 268 · arcs 0 · other -327
+   seed 29 F178_seed29: A1 share any 26.4 % · majority 19.3 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 19903 m (C-O wedge 19865 m), passive 10694 m, ratio 1.86 · trench segments 24 (median 6 km, p90 38 km, max 138 km world) · C1 end land 66.3 %, circumnavigable true r* Some(1) · merges 5 splits 8 · C1 CPU 17.5 s
+      active 0–3 cells (151 cells): C-O wedge 30427 · collision 169 · arcs 14 · other -158
+      active 3–6 cells (127 cells): C-O wedge 7306 · collision 174 · arcs 0 · other -121
+      active 6–15 cells (241 cells): C-O wedge 385 · collision 605 · arcs 0 · other -93
+      active 15–30 cells (85 cells): C-O wedge 2 · collision 1972 · arcs 0 · other -1516
+      passive 0–3 cells (412 cells): C-O wedge 16840 · collision 471 · arcs 5 · other -269
+      passive 3–6 cells (375 cells): C-O wedge 3280 · collision 588 · arcs 0 · other -154
+      passive 6–15 cells (889 cells): C-O wedge 187 · collision 1106 · arcs 0 · other -206
+      passive 15–30 cells (510 cells): C-O wedge 5 · collision 2399 · arcs 0 · other -549
+   seed 1 F178_seed1: A1 share any 18.3 % · majority 14.2 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 19137 m (C-O wedge 18802 m), passive 9353 m, ratio 2.05 · trench segments 17 (median 19 km, p90 88 km, max 112 km world) · C1 end land 67.7 %, circumnavigable true r* Some(0) · merges 6 splits 2 · C1 CPU 17.3 s
+      active 0–3 cells (105 cells): C-O wedge 30594 · collision 633 · arcs 139 · other -452
+      active 3–6 cells (103 cells): C-O wedge 6780 · collision 382 · arcs 0 · other -30
+      active 6–15 cells (285 cells): C-O wedge 320 · collision 579 · arcs 0 · other -65
+      active 15–30 cells (184 cells): C-O wedge 0 · collision 2254 · arcs 0 · other -164
+      passive 0–3 cells (455 cells): C-O wedge 14054 · collision 1104 · arcs 12 · other -336
+      passive 3–6 cells (394 cells): C-O wedge 2315 · collision 795 · arcs 0 · other -86
+      passive 6–15 cells (824 cells): C-O wedge 50 · collision 1047 · arcs 0 · other -170
+      passive 15–30 cells (505 cells): C-O wedge 2 · collision 2258 · arcs 0 · other -391
+   seed 2 F178_seed2: A1 share any 17.9 % · majority 12.4 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 12297 m (C-O wedge 11997 m), passive 11182 m, ratio 1.10 · trench segments 26 (median 19 km, p90 44 km, max 56 km world) · C1 end land 63.3 %, circumnavigable true r* Some(0) · merges 6 splits 5 · C1 CPU 17.4 s
+      active 0–3 cells (116 cells): C-O wedge 20138 · collision 482 · arcs 37 · other -212
+      active 3–6 cells (117 cells): C-O wedge 3924 · collision 607 · arcs 0 · other -313
+      active 6–15 cells (339 cells): C-O wedge 329 · collision 523 · arcs 0 · other -319
+      active 15–30 cells (174 cells): C-O wedge 0 · collision 88 · arcs 0 · other -34
+      passive 0–3 cells (504 cells): C-O wedge 17465 · collision 502 · arcs 19 · other -204
+      passive 3–6 cells (435 cells): C-O wedge 3205 · collision 476 · arcs 0 · other -145
+      passive 6–15 cells (760 cells): C-O wedge 190 · collision 828 · arcs 0 · other -261
+      passive 15–30 cells (185 cells): C-O wedge 0 · collision 268 · arcs 0 · other -81
+   seed 3 F178_seed3: A1 share any 23.3 % · majority 13.5 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 20081 m (C-O wedge 20100 m), passive 12196 m, ratio 1.65 · trench segments 22 (median 12 km, p90 50 km, max 131 km world) · C1 end land 70.4 %, circumnavigable false r* None · merges 13 splits 12 · C1 CPU 17.4 s
+      active 0–3 cells (164 cells): C-O wedge 31146 · collision 371 · arcs 85 · other -471
+      active 3–6 cells (161 cells): C-O wedge 8849 · collision 312 · arcs 0 · other -334
+      active 6–15 cells (329 cells): C-O wedge 285 · collision 1248 · arcs 0 · other -468
+      active 15–30 cells (131 cells): C-O wedge 1 · collision 1227 · arcs 0 · other -637
+      passive 0–3 cells (476 cells): C-O wedge 19152 · collision 811 · arcs 13 · other -422
+      passive 3–6 cells (411 cells): C-O wedge 3259 · collision 654 · arcs 0 · other -240
+      passive 6–15 cells (919 cells): C-O wedge 208 · collision 1194 · arcs 0 · other -575
+      passive 15–30 cells (367 cells): C-O wedge 4 · collision 1255 · arcs 0 · other -692
+   seed 4 F178_seed4: A1 share any 25.0 % · majority 19.0 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 18300 m (C-O wedge 18701 m), passive 8294 m, ratio 2.21 · trench segments 22 (median 19 km, p90 44 km, max 162 km world) · C1 end land 61.5 %, circumnavigable false r* None · merges 17 splits 19 · C1 CPU 17.0 s
+      active 0–3 cells (131 cells): C-O wedge 29307 · collision 926 · arcs 67 · other -2452
+      active 3–6 cells (120 cells): C-O wedge 7123 · collision 868 · arcs 0 · other -116
+      active 6–15 cells (273 cells): C-O wedge 649 · collision 2089 · arcs 0 · other -872
+      active 15–30 cells (85 cells): C-O wedge 0 · collision 580 · arcs 0 · other -446
+      passive 0–3 cells (404 cells): C-O wedge 14099 · collision 597 · arcs 10 · other -646
+      passive 3–6 cells (400 cells): C-O wedge 2201 · collision 674 · arcs 0 · other -406
+      passive 6–15 cells (916 cells): C-O wedge 61 · collision 880 · arcs 0 · other -447
+      passive 15–30 cells (379 cells): C-O wedge 1 · collision 717 · arcs 0 · other -252
+   seed 5 F178_seed5: A1 share any 14.4 % · majority 12.3 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 17574 m (C-O wedge 17318 m), passive 8082 m, ratio 2.17 · trench segments 22 (median 12 km, p90 56 km, max 131 km world) · C1 end land 54.8 %, circumnavigable true r* Some(2) · merges 9 splits 6 · C1 CPU 16.6 s
+      active 0–3 cells (78 cells): C-O wedge 27989 · collision 470 · arcs 30 · other -488
+      active 3–6 cells (69 cells): C-O wedge 5255 · collision 652 · arcs 0 · other -119
+      active 6–15 cells (152 cells): C-O wedge 143 · collision 2284 · arcs 0 · other -96
+      active 15–30 cells (55 cells): C-O wedge 0 · collision 2363 · arcs 0 · other -133
+      passive 0–3 cells (456 cells): C-O wedge 10700 · collision 1796 · arcs 1 · other -265
+      passive 3–6 cells (403 cells): C-O wedge 1975 · collision 1468 · arcs 0 · other -57
+      passive 6–15 cells (846 cells): C-O wedge 85 · collision 1769 · arcs 0 · other -162
+      passive 15–30 cells (242 cells): C-O wedge 0 · collision 2220 · arcs 0 · other -446
+   seed 6 F178_seed6: A1 share any 25.2 % · majority 18.3 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 19232 m (C-O wedge 19055 m), passive 8485 m, ratio 2.27 · trench segments 17 (median 12 km, p90 56 km, max 94 km world) · C1 end land 70.2 %, circumnavigable true r* Some(0) · merges 11 splits 7 · C1 CPU 17.6 s
+      active 0–3 cells (175 cells): C-O wedge 30716 · collision 274 · arcs 278 · other -473
+      active 3–6 cells (179 cells): C-O wedge 7654 · collision 486 · arcs 0 · other -213
+      active 6–15 cells (455 cells): C-O wedge 218 · collision 1611 · arcs 0 · other -298
+      active 15–30 cells (215 cells): C-O wedge 0 · collision 2222 · arcs 0 · other -719
+      passive 0–3 cells (480 cells): C-O wedge 13141 · collision 612 · arcs 13 · other -225
+      passive 3–6 cells (404 cells): C-O wedge 2077 · collision 509 · arcs 0 · other -109
+      passive 6–15 cells (824 cells): C-O wedge 49 · collision 793 · arcs 0 · other -165
+      passive 15–30 cells (331 cells): C-O wedge 0 · collision 1323 · arcs 0 · other -726
+   seed 7 F178_seed7: A1 share any 54.9 % · majority 39.4 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 22209 m (C-O wedge 23043 m), passive 15443 m, ratio 1.44 · trench segments 26 (median 12 km, p90 56 km, max 250 km world) · C1 end land 69.2 %, circumnavigable true r* Some(0) · merges 16 splits 22 · C1 CPU 17.7 s
+      active 0–3 cells (357 cells): C-O wedge 35278 · collision 197 · arcs 4 · other -1796
+      active 3–6 cells (316 cells): C-O wedge 9222 · collision 222 · arcs 0 · other -198
+      active 6–15 cells (697 cells): C-O wedge 98 · collision 498 · arcs 0 · other -161
+      active 15–30 cells (355 cells): C-O wedge 0 · collision 907 · arcs 0 · other -517
+      passive 0–3 cells (296 cells): C-O wedge 25487 · collision 641 · arcs 7 · other -1136
+      passive 3–6 cells (272 cells): C-O wedge 4725 · collision 630 · arcs 0 · other -312
+      passive 6–15 cells (427 cells): C-O wedge 132 · collision 747 · arcs 0 · other -620
+      passive 15–30 cells (160 cells): C-O wedge 1 · collision 325 · arcs 0 · other -908
+   seed 9 F178_seed9: A1 share any 35.4 % · majority 24.2 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 14562 m (C-O wedge 14246 m), passive 10031 m, ratio 1.45 · trench segments 30 (median 12 km, p90 50 km, max 131 km world) · C1 end land 59.8 %, circumnavigable true r* Some(1) · merges 12 splits 11 · C1 CPU 17.1 s
+      active 0–3 cells (214 cells): C-O wedge 23841 · collision 953 · arcs 67 · other -1007
+      active 3–6 cells (216 cells): C-O wedge 4739 · collision 820 · arcs 2 · other -206
+      active 6–15 cells (533 cells): C-O wedge 218 · collision 1760 · arcs 0 · other -876
+      active 15–30 cells (257 cells): C-O wedge 0 · collision 2279 · arcs 0 · other -777
+      passive 0–3 cells (348 cells): C-O wedge 15968 · collision 325 · arcs 3 · other -496
+      passive 3–6 cells (278 cells): C-O wedge 2551 · collision 326 · arcs 0 · other -68
+      passive 6–15 cells (513 cells): C-O wedge 80 · collision 1042 · arcs 0 · other -262
+      passive 15–30 cells (234 cells): C-O wedge 0 · collision 2298 · arcs 0 · other -501
+   seed 10 F178_seed10: A1 share any 23.2 % · majority 15.1 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 14922 m (C-O wedge 14922 m), passive 7645 m, ratio 1.95 · trench segments 30 (median 6 km, p90 31 km, max 88 km world) · C1 end land 61.2 %, circumnavigable false r* None · merges 12 splits 9 · C1 CPU 17.5 s
+      active 0–3 cells (129 cells): C-O wedge 23856 · collision 323 · arcs 40 · other -410
+      active 3–6 cells (125 cells): C-O wedge 5703 · collision 275 · arcs 0 · other -229
+      active 6–15 cells (277 cells): C-O wedge 238 · collision 184 · arcs 0 · other -114
+      active 15–30 cells (108 cells): C-O wedge 0 · collision 268 · arcs 0 · other -225
+      passive 0–3 cells (412 cells): C-O wedge 12408 · collision 608 · arcs 23 · other -162
+      passive 3–6 cells (396 cells): C-O wedge 1818 · collision 492 · arcs 0 · other -108
+      passive 6–15 cells (936 cells): C-O wedge 79 · collision 549 · arcs 0 · other -257
+      passive 15–30 cells (361 cells): C-O wedge 1 · collision 435 · arcs 0 · other -315
+   seed 11 F178_seed11: A1 share any 46.5 % · majority 31.4 % · continents 1 with an active margin 1 · on 0–6 cells: active Δh 21268 m (C-O wedge 21124 m), passive 14106 m, ratio 1.51 · trench segments 25 (median 12 km, p90 56 km, max 106 km world) · C1 end land 65.5 %, circumnavigable true r* Some(0) · merges 12 splits 12 · C1 CPU 17.6 s
+      active 0–3 cells (299 cells): C-O wedge 32715 · collision 332 · arcs 39 · other -520
+      active 3–6 cells (266 cells): C-O wedge 8095 · collision 533 · arcs 0 · other -57
+      active 6–15 cells (574 cells): C-O wedge 290 · collision 981 · arcs 0 · other -259
+      active 15–30 cells (170 cells): C-O wedge 3 · collision 2162 · arcs 0 · other -634
+      passive 0–3 cells (340 cells): C-O wedge 22184 · collision 539 · arcs 5 · other -377
+      passive 3–6 cells (303 cells): C-O wedge 4483 · collision 522 · arcs 0 · other -149
+      passive 6–15 cells (608 cells): C-O wedge 180 · collision 1086 · arcs 0 · other -475
+      passive 15–30 cells (176 cells): C-O wedge 1 · collision 1503 · arcs 0 · other -740
+   F178: A1 median any 25.0 % · majority 18.3 % (sorted majority [6.2, 9.8, 12.3, 12.4, 13.5, 14.2, 15.1, 18.3, 19.0, 19.3, 21.4, 24.2, 25.3, 31.4, 39.4]) · continents with an active margin 15 / 15 · > 70 % active 0 · C-O wedge on the active 0–6 cells positive on 15 / 15 (median 18701 m) · active ≥ 2 × passive on 0–6 cells 4 · ratio median 1.86 · circumnavigation lost 4 · trench segment medians (km) [18.75, 18.75, 31.25, 25.0, 6.25, 18.75, 18.75, 12.5, 18.75, 12.5, 12.5, 12.5, 12.5, 6.25, 12.5]
+   F178_A2: A1 median any 25.0 % · majority 18.3 % (sorted majority [6.2, 9.8, 11.9, 12.3, 13.5, 14.2, 15.1, 18.3, 19.0, 19.3, 21.4, 24.2, 25.3, 31.4, 39.8]) · continents with an active margin 15 / 15 · > 70 % active 0 · C-O wedge on the active 0–6 cells positive on 15 / 15 (median 18639 m) · active ≥ 2 × passive on 0–6 cells 4 · ratio median 1.86 · circumnavigation lost 4 · trench segment medians (km) [18.75, 18.75, 31.25, 25.0, 6.25, 18.75, 18.75, 12.5, 18.75, 12.5, 12.5, 12.5, 12.5, 6.25, 12.5]
+   F178_gap3: A1 median any 23.9 % · majority 17.9 % (sorted majority [6.2, 11.5, 13.2, 13.3, 13.5, 13.9, 15.1, 17.9, 18.3, 18.3, 19.2, 19.3, 24.2, 32.3, 38.9]) · continents with an active margin 15 / 15 · > 70 % active 0 · C-O wedge on the active 0–6 cells positive on 15 / 15 (median 14761 m) · active ≥ 2 × passive on 0–6 cells 15 · ratio median 2.78 · circumnavigation lost 1 · trench segment medians (km) [18.75, 18.75, 6.25, 25.0, 6.25, 18.75, 18.75, 12.5, 6.25, 12.5, 12.5, 12.5, 12.5, 6.25, 18.75]
+   F178_gap5: A1 median any 24.9 % · majority 18.3 % (sorted majority [6.2, 10.2, 10.6, 13.2, 13.4, 13.5, 15.1, 18.3, 18.3, 18.5, 20.2, 20.9, 24.2, 31.9, 38.1]) · continents with an active margin 15 / 15 · > 70 % active 0 · C-O wedge on the active 0–6 cells positive on 15 / 15 (median 17791 m) · active ≥ 2 × passive on 0–6 cells 11 · ratio median 2.62 · circumnavigation lost 3 · trench segment medians (km) [18.75, 18.75, 31.25, 25.0, 6.25, 18.75, 18.75, 12.5, 18.75, 12.5, 12.5, 18.75, 12.5, 6.25, 12.5]
+   T7: A2's change of the active coasts' 0–6 cell uplift (%) [(8, 0.2), (18, 0.2), (19, 0.1), (23, 0.1), (29, 0.2), (1, 0.1), (2, 7.5), (3, 0.1), (4, 0.0), (5, -0.4), (6, 0.2), (7, 0.1), (9, 0.3), (10, 0.2), (11, 0.1)]
+   tier 1: 12 s
+test f178_tier1_c1 ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 12.25s

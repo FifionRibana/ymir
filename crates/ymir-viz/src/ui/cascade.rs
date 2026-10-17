@@ -30,7 +30,7 @@ use egui::Color32 as C;
 use ymir_core::cascade::amplify::{AmpConfig, AmpLevel, Budget, Chain, KHetero, Variant, Warp, WarpPlace};
 use ymir_core::cascade::history::{
     Airy, C1Term, HistoryRun, Mapping, SeaCurve, SeaLow, T_F165_YEARS, T_F166_YEARS, Timing, isostatic_datum, land_altitude_m,
-    physics_history_sea, run_c1_sources_mapped_flags,
+    physics_history_sea, run_c1_sources_mapped_ext,
 };
 use ymir_core::cascade::hydro::{Hydro, draw, hydrology};
 use ymir_core::cascade::physio::{MOUNTAIN, classify};
@@ -47,7 +47,7 @@ use ymir_core::tectonics_c1::init_r7::init_c1_state_phase_2_r7;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::land_topology::land_topology;
 use ymir_core::tectonics_c1::production_upscale::c1_coarse_normalized_altitude;
-use ymir_core::tectonics_c1::time_loop::{C1TimeLoopConfig, run_with_closures, run_with_closures_terms_flags};
+use ymir_core::tectonics_c1::time_loop::{C1TimeLoopConfig, run_with_closures, run_with_closures_terms_ext};
 
 use crate::bridge::c1::C1RunSpec;
 
@@ -211,6 +211,8 @@ pub struct CascadeUi {
     oo: bool,
     /// F176-A4: the accretion merges a pair only at a continent-continent collision.
     merge_collision: bool,
+    /// F178-A4: the Andean seed at the arc-trench distance.
+    andean: bool,
     /// F171-B/C: the rock (0 = K0 one K, 1 = K1 cover on basement, 2 = K2 with the heterogeneous K).
     rock: u8,
     /// F172-B5 / F173-B5: the sea (0 none, 1 the constant lowstand of F172, 2 the Quaternary curve), the lowstand view, and the
@@ -288,6 +290,7 @@ impl Default for CascadeUi {
             seaward: false,
             oo: false,
             merge_collision: false,
+            andean: false,
             rock: 0,
             sea_mode: 0,
             low_view: false,
@@ -373,9 +376,7 @@ pub fn cascade_history(
     let exclude: &[C1Term] = if sources { &[C1Term::Erosion] } else { &[] };
     // F167-B6: the thickness → altitude mapping, C1's or Airy with an absolute sea level
     let mapping = if airy { Mapping::Airy(Airy::declared()) } else { Mapping::C1 };
-    let h = run_c1_sources_mapped_flags(
-        &mut state, &mut kin, &run, &spec.closures, 10, &run.iso_config, &ss, exclude, mapping, margin.oo, margin.merge_at_collision, margin.arcs_emerge,
-    );
+    let h = run_c1_sources_mapped_ext(&mut state, &mut kin, &run, &spec.closures, 10, &run.iso_config, &ss, exclude, mapping, margin.ext(), margin.arcs_emerge);
     let g = spec.grid_size as i64;
     let n = spec.grid_size;
     let un = h.hist.normalized(None);
@@ -419,7 +420,7 @@ pub fn cascade_history(
             }
         }
     };
-    run_with_closures_terms_flags(&mut st2, &mut kin2, &run, &spec.closures, margin.oo, margin.merge_at_collision, |_, _, _| {
+    run_with_closures_terms_ext(&mut st2, &mut kin2, &run, &spec.closures, margin.ext(), |_, _, _| {
         let v = std::mem::replace(&mut *cur.borrow_mut(), vec![0f64; n * n]);
         steps.borrow_mut().push(v);
     }, &mut on_term);
@@ -535,7 +536,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
             let mut torus_origin: Option<[usize; 2]> = None;
             let mut remedies = Remedies::default();
             let mut chain: Option<Chain> = None;
-            let mut history: Option<((bool, bool, C1Profile, bool, usize, bool, bool, bool), Vec<GridF32>, [usize; 2], Vec<bool>)> = None;
+            let mut history: Option<((bool, bool, C1Profile, bool, usize, bool, bool, bool, bool), Vec<GridF32>, [usize; 2], Vec<bool>)> = None;
             // F172-B5: the sea-level rise -- the chain runs on the field raised by Δ, its results are shown lowered
             let mut sea_shift = 0f32;
             let mut sea_curve: Option<SeaCurve> = None;
@@ -573,7 +574,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                         // F165-C4: driven by C1's history (recorded on demand, the same C1 run as the coarse field)
                         let result = if o.history > 0 {
                             let sources = o.history == 2;
-                            if history.as_ref().is_none_or(|h| h.0 != (sources, o.airy, o.profile, o.select, o.plates, o.seaward, o.oo, o.merge_collision)) {
+                            if history.as_ref().is_none_or(|h| h.0 != (sources, o.airy, o.profile, o.select, o.plates, o.seaward, o.oo, o.merge_collision, o.andean)) {
                                 // F171-A: the selected continent (16 plates falling back to 20 then 24, or the slider's
                                 // count alone), L2 when none qualifies
                                 // F174-B′: the margin seaward (an initial condition; off = Part A bit for bit)
@@ -584,6 +585,8 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                                 }
                                 // F176-A4: the merge only at collision (a C1 flag the profile carries)
                                 margin.merge_at_collision = o.merge_collision;
+                                // F178-A4: the Andean seed at D_gap (a C1 flag the profile carries)
+                                margin.andean_gap = o.andean.then_some(ymir_core::cascade::margin::ANDEAN_GAP_CELLS);
                                 let profile = if o.select {
                                     let _ = etx.send(Evt::Progress(format!("sélection des plaques continentales ({} plaques)", o.plates), 0.0));
                                     let (s, n_used) = if o.plates == 16 {
@@ -608,7 +611,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                                 };
                                 let (s, terms, off, shields) = cascade_history(seed, offset_cells, sources, o.airy, profile, margin);
                                 let _ = etx.send(Evt::Terms(terms));
-                                history = Some(((sources, o.airy, o.profile, o.select, o.plates, o.seaward, o.oo, o.merge_collision), s, off, shields));
+                                history = Some(((sources, o.airy, o.profile, o.select, o.plates, o.seaward, o.oo, o.merge_collision, o.andean), s, off, shields));
                             }
                             torus_origin = o.torus.then(|| history.as_ref().unwrap().2);
                             ccfg.torus = torus_origin;
@@ -995,6 +998,9 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
         );
         ui.checkbox(&mut cu.oo, "Subduction océan-océan (C1)").on_hover_text(
             "F175 (option 5) : à une frontière convergente océan-océan, la plaque dont la cellule de frontière est la plus vieille plonge (égalité : la règle de vitesse) après D_init = 13 km de convergence cumulée (100 km ÷ 7,5, Stern & Gerya 2018 d'après Hall et al. 2003) ; l'arc va sur la plaque qui chevauche (ses continents, sinon son océan) ; la cellule consommée rejoint la plaque qui chevauche ; Davis-Suppe ne s'ensemence plus aux frontières océan-océan. Avec la marge vers le large. Mode histoire",
+        );
+        ui.checkbox(&mut cu.andean, "Graine andine à distance arc-fosse (C1)").on_hover_text(
+            "F178 : le coin continent-océan de Davis-Suppe démarre aussi sur le front continental de la plaque qui chevauche une fosse océan-océan active, à au plus D_gap = 10 cellules (470 km ÷ 7,5 : la plus grande distance arc-fosse observée, Syracuse & Abers 2006 p. 10) ; la formule du coin est inchangée. Avec la subduction océan-océan, la fusion à la collision et la marge vers le large. Mode histoire",
         );
         ui.checkbox(&mut cu.merge_collision, "Fusion seulement à la collision (C1)").on_hover_text(
             "F176 : l'accrétion ne fusionne une paire de plaques qu'après 50 pas de convergence nette comptée sur les seules arêtes continent-continent (la collision) ; une frontière océan-océan ou océan-continent ne fusionne jamais, la subduction la consomme. Avec la subduction océan-océan et la marge vers le large. Mode histoire",
@@ -1582,6 +1588,8 @@ struct PhysOpts {
     oo: bool,
     /// F176: the merge only at collision.
     merge_collision: bool,
+    /// F178: the Andean seed.
+    andean: bool,
     /// F172 / F173: the sea (0 none, 1 constant, 2 the curve).
     sea_mode: u8,
 }
@@ -1589,7 +1597,7 @@ struct PhysOpts {
 impl Default for PhysOpts {
     /// P0, F159–F162's level.
     fn default() -> Self {
-        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62, plates: 16, rock: 0, seaward: false, oo: false, merge_collision: false, sea_mode: 0 }
+        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62, plates: 16, rock: 0, seaward: false, oo: false, merge_collision: false, andean: false, sea_mode: 0 }
     }
 }
 
@@ -1609,6 +1617,7 @@ fn phys_opts(cu: &CascadeUi) -> PhysOpts {
         seaward: cu.seaward,
         oo: cu.oo,
         merge_collision: cu.merge_collision,
+        andean: cu.andean,
         sea_mode: cu.sea_mode,
     }
 }

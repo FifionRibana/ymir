@@ -2306,7 +2306,7 @@ fn f175_tier1_c1() {
             };
             let (a, ida, _) = run(None);
             let (b, idb, _) = run(Some(None));
-            let (c, idc, cons_inf) = run(Some(Some(ymir_core::tectonics_c1::closures::subduction::OoSubductionParams { d_init_cells: f64::INFINITY })));
+            let (c, idc, cons_inf) = run(Some(Some(ymir_core::tectonics_c1::closures::subduction::OoSubductionParams { d_init_cells: f64::INFINITY, arc_band: None })));
             let bitwise = a.iter().zip(&b).all(|(x, y)| x.to_bits() == y.to_bits()) && ida == idb;
             let dmax = a.iter().zip(&c).map(|(x, y)| (x - y).abs()).fold(0f64, f64::max);
             let dmean = a.iter().zip(&c).map(|(x, y)| (x - y).abs()).sum::<f64>() / a.len() as f64;

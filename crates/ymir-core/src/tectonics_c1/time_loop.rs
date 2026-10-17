@@ -70,6 +70,7 @@ use super::closures::rifting::{
     DivergenceTracker, RiftingParams, apply_rifting_split, apply_rifting_thinning,
 };
 use super::closures::subduction::{OoSubductionParams, OoTracker, SubductionParams, apply_oo_subduction_step, apply_subduction_step};
+use super::andean_seed::andean_seeds;
 use super::distance_field::wedge_distance_intra_plate_typed;
 use super::kinematics::PlateKinematics;
 use super::state::C1State;
@@ -553,7 +554,7 @@ pub fn run_with_closures_observed<F>(
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
-    run_inner(state, kinematics, config, closures, on_step, None, None, false);
+    run_inner(state, kinematics, config, closures, on_step, None, C1Ext::default());
 }
 
 /// ADR Finding 166-A1 -- the terms of C1's step that change `s`, in their order.
@@ -591,7 +592,7 @@ pub fn run_with_closures_terms<F>(
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
-    run_inner(state, kinematics, config, closures, on_step, Some(on_term), None, false);
+    run_inner(state, kinematics, config, closures, on_step, Some(on_term), C1Ext::default());
 }
 
 /// ADR Finding 175 -- [`run_with_closures_terms`] with **the ocean-ocean subduction path** (option 5) when `oo` is `Some`:
@@ -609,7 +610,7 @@ pub fn run_with_closures_terms_oo<F>(
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
-    run_inner(state, kinematics, config, closures, on_step, Some(on_term), oo, false);
+    run_inner(state, kinematics, config, closures, on_step, Some(on_term), C1Ext { oo, ..C1Ext::default() });
 }
 
 /// ADR Finding 176 -- [`run_with_closures_terms_oo`] with the accretion « merge at collision » flag: the convergence tracker
@@ -628,7 +629,33 @@ pub fn run_with_closures_terms_flags<F>(
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
-    run_inner(state, kinematics, config, closures, on_step, Some(on_term), oo, merge_at_collision);
+    run_inner(state, kinematics, config, closures, on_step, Some(on_term), C1Ext { oo, merge_at_collision, andean_gap: None });
+}
+
+/// ADR Finding 178 -- the continent profile's C1 flags in one carrier: option 5 (`oo`), the merge at collision (F176) and
+/// **the Andean seed** (`andean_gap`, cells of 64²; [`andean_seeds`]): Davis-Suppe's continent-ocean wedge also starts on the
+/// overriding plate's continental front within `andean_gap` of an active ocean-ocean trench. The default is
+/// [`run_with_closures_terms`] bit for bit; `andean_gap: None` is [`run_with_closures_terms_flags`] bit for bit.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct C1Ext {
+    pub oo: Option<OoSubductionParams>,
+    pub merge_at_collision: bool,
+    pub andean_gap: Option<usize>,
+}
+
+/// ADR Finding 178 -- [`run_with_closures_terms_flags`] with every flag of [`C1Ext`].
+pub fn run_with_closures_terms_ext<F>(
+    state: &mut C1State,
+    kinematics: &mut PlateKinematics,
+    config: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    ext: C1Ext,
+    on_step: F,
+    on_term: &mut dyn FnMut(C1Term, &[f64], &[f64]),
+) where
+    F: FnMut(usize, &C1State, &PlateKinematics),
+{
+    run_inner(state, kinematics, config, closures, on_step, Some(on_term), ext);
 }
 
 fn run_inner<F>(
@@ -638,11 +665,11 @@ fn run_inner<F>(
     closures: &C1Closures,
     mut on_step: F,
     mut on_term: Option<&mut dyn FnMut(C1Term, &[f64], &[f64])>,
-    oo: Option<OoSubductionParams>,
-    merge_at_collision: bool,
+    ext: C1Ext,
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
+    let C1Ext { oo, merge_at_collision, andean_gap } = ext;
     let nx = state.nx();
     let ny = state.ny();
     let n_cells = nx * ny;
@@ -733,9 +760,28 @@ fn run_inner<F>(
             // F175: the velocity-based upper flags (the O-O tie-break) and, with the flag, A7's cut of the O-O seeds
             let upper_vel = bi.upper_plate_mask.clone();
             let oo_cleared = if oo.is_some() { clear_oo_seeds(&mut bi, &state.plate_id, &state.plate_type) } else { 0 };
+            // F178-A1: the Andean seeds -- the overriding plate's continental front within the arc-trench gap of an active O-O
+            // trench (the D_init tracker as this step's Davis-Suppe stage sees it) joins the upper-plate and O-C seed masks
+            let andean = andean_gap.map(|gap| {
+                andean_seeds(&state.plate_id, &state.plate_type, &state.age, &bi, &upper_vel, kinematics, &oo_tracker, gap)
+            });
+            if let Some(sd) = &andean {
+                for (k, &on) in sd.data().iter().enumerate() {
+                    if on {
+                        bi.upper_plate_mask.set(k % nx, k / nx, true);
+                    }
+                }
+            }
             // #155 1b-i: type the wedge for geometry routing (per step,
             // as plate_type may have changed via Track D events).
-            let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
+            let mut oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
+            if let Some(sd) = &andean {
+                for (k, &on) in sd.data().iter().enumerate() {
+                    if on {
+                        oc_seed.set(k % nx, k / nx, true);
+                    }
+                }
+            }
             let (wd, oc_wedge) = wedge_distance_intra_plate_typed(
                 &state.plate_id,
                 &bi.upper_plate_mask,
@@ -1028,6 +1074,7 @@ fn run_inner<F>(
                 &oo_tracker,
                 dt,
                 &mut subduction_stats,
+                oo.and_then(|o| o.arc_band),
             );
             subduction_stats.oo_active_pairs = oo_tracker.active.len();
             subduction_stats.oo_new_pairs = oo_new_pairs;

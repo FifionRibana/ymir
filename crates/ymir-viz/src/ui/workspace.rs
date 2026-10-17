@@ -7042,7 +7042,12 @@ mod f123_viz_guard {
         for (label, slope, valley) in states {
             verdicts.push((label, run(label, slope, valley)));
         }
-        let say = |v: &GuardStatus| if matches!(v, GuardStatus::Match { .. }) { "= banc" } else { "≠ / non gardé" };
+        // ADR Finding 178-0.1: the exact verdict -- « non gardé » (no reference under this digest) apart from « ≠ » (a mismatch)
+        let say = |v: &GuardStatus| match v {
+            GuardStatus::Match { .. } => "= banc".to_string(),
+            GuardStatus::Mismatch { bench, viz, .. } => format!("≠ (banc {bench}, viz {viz})"),
+            GuardStatus::NoReference { viz } => format!("non gardé (aucune référence sous cette empreinte ; viz {viz})"),
+        };
         for (label, (f, l)) in &verdicts {
             eprintln!("   {label:<22} field {} · lakes {}", say(f), say(l));
         }

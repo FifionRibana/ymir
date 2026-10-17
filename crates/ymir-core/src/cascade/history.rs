@@ -31,7 +31,7 @@ use crate::tectonics_c1::production_upscale::{
 use crate::tectonics_c1::state::C1State;
 pub use crate::tectonics_c1::time_loop::C1Term;
 use crate::tectonics_c1::closures::subduction::OoSubductionParams;
-use crate::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures_observed, run_with_closures_terms_flags};
+use crate::tectonics_c1::time_loop::{C1Closures, C1Ext, C1TimeLoopConfig, run_with_closures_observed, run_with_closures_terms_ext};
 use crate::tectonics_v2::boundaries::plate_type::{PlateType, PlateTypeField};
 use crate::tectonics_v2::field::Field2D;
 use std::cell::RefCell;
@@ -263,6 +263,25 @@ pub fn run_c1_sources_mapped_flags(
     merge_at_collision: bool,
     arcs_emerge: bool,
 ) -> C1Sources {
+    run_c1_sources_mapped_ext(state, kin, cfg, closures, every, iso, ss, exclude, mapping, C1Ext { oo, merge_at_collision, andean_gap: None }, arcs_emerge)
+}
+
+/// ADR Finding 178 -- [`run_c1_sources_mapped_flags`] with every C1 flag of [`C1Ext`] (option 5, the merge at collision, the
+/// Andean seed). `andean_gap: None` is [`run_c1_sources_mapped_flags`] bit for bit.
+#[allow(clippy::too_many_arguments)]
+pub fn run_c1_sources_mapped_ext(
+    state: &mut C1State,
+    kin: &mut PlateKinematics,
+    cfg: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    every: usize,
+    iso: &IsostasyConfig,
+    ss: &SteinSteinParams,
+    exclude: &[C1Term],
+    mapping: Mapping,
+    ext: C1Ext,
+    arcs_emerge: bool,
+) -> C1Sources {
     let (nx, ny) = (state.nx(), state.ny());
     let n = nx * ny;
     let arcs = RefCell::new(vec![0f64; n]);
@@ -298,13 +317,12 @@ pub fn run_c1_sources_mapped_flags(
     let mut raw = vec![src_alt(state, &removed.borrow())];
     let mut steps = vec![0usize];
     let mut suture = vec![false; n];
-    run_with_closures_terms_flags(
+    run_with_closures_terms_ext(
         state,
         kin,
         cfg,
         closures,
-        oo,
-        merge_at_collision,
+        ext,
         |step, st, k| {
             let b = classify_boundaries(&st.plate_id, k);
             for (s, t) in suture.iter_mut().zip(b.boundary_type.data()) {

@@ -7,7 +7,7 @@
 //! témoin for ~40 % and 55–60 % land at the end of the history-driven physics level, then frozen for every seed.
 //! Declared in `docs/reports/relief_method/f168_continent_size/f168_declared.md`.
 
-use crate::cascade::history::{Airy, C1Term, Mapping, run_c1_sources_mapped, run_c1_sources_mapped_flags};
+use crate::cascade::history::{Airy, C1Term, Mapping, run_c1_sources_mapped, run_c1_sources_mapped_ext};
 use crate::cascade::margin::{self, Margin};
 use crate::cascade::physio::{Circumnavigation, circumnavigation};
 use crate::tectonics::isostasy::IsostasyConfig;
@@ -200,7 +200,7 @@ fn end_land(mut st: C1State, m: &Margin) -> (f32, Circumnavigation) {
     let cfg = c1_run_config();
     let ss = SteinSteinParams::default();
     let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
-    let src = run_c1_sources_mapped_flags(&mut st, &mut kin, &cfg, &C1Closures::default(), 10, &cfg.iso_config, &ss, &[C1Term::Erosion], Mapping::Airy(Airy::declared()), m.oo, m.merge_at_collision, m.arcs_emerge);
+    let src = run_c1_sources_mapped_ext(&mut st, &mut kin, &cfg, &C1Closures::default(), 10, &cfg.iso_config, &ss, &[C1Term::Erosion], Mapping::Airy(Airy::declared()), m.ext(), m.arcs_emerge);
     let last = src.hist.normalized(None).pop().unwrap();
     let land: Vec<bool> = last.data.iter().map(|&v| v > 0.5).collect();
     (land.iter().filter(|&&b| b).count() as f32 / land.len() as f32, circumnavigation(&land, 64))

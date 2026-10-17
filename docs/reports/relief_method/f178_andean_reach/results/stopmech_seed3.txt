@@ -1,0 +1,3 @@
+   seed 3 F176: the active 0–3 band 187 cells · mean Σ Δs (s units; 1 = 35 km of crust): Davis-Suppe +0.35 · equilibrium height -0.00 · erosion -0.69 · transport +0.01 · subduction +0.01 · rift -0.00 · s at t₀ 0.62 → C1's s at the end 0.29 · the cascade's s_src (s minus the erosion) 0.98
+   seed 3 F178: the active 0–3 band 164 cells · mean Σ Δs (s units; 1 = 35 km of crust): Davis-Suppe +5.80 · equilibrium height -0.07 · erosion -4.72 · transport +0.00 · subduction +0.01 · rift +0.00 · s at t₀ 0.63 → C1's s at the end 1.65 · the cascade's s_src (s minus the erosion) 6.37
+   seed 3: land F178 − F176: +622 cells, −34 · of the new land: continental type 79 %, in the seaward band at t₀ 97 %, mean s at t₀ 0.55 (sea level 0.915), with a C-O wedge increment 100 %

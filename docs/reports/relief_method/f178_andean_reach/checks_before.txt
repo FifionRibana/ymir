@@ -1,0 +1,38 @@
+# F178 checks BEFORE (HEAD 4593d8b)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2m 34s
+test result: ok. 659 passed; 0 failed; 8 ignored; 0 measured; 0 filtered out; finished in 4.37s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 33 passed; 0 failed; 18 ignored; 0 measured; 0 filtered out; finished in 2.65s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+# the 6/6 guard through run_hd (ymir-viz f123_viz_guard); F178: the exact verdict per state and the panic line kept
+warning: field `spec` is never read
+warning: field `elapsed` is never read
+warning: field `params` is never read
+warning: field `altitude_norm` is never read
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+[HD volcanism] crater lakes: 2 acidic | 5 dry craters
+[HD timing] geology (5.98s: history 0.87 · rocks 2.36 · context 2.32 · zoning 0.08) · rules v0 intégré (4d82bec83252)
+   livré: field Match { label: "livré · cadrage canonique (viz)" } · lakes Match { label: "livré · cadrage canonique (viz) · 45° / 40°" }
+[HD volcanism] crater lakes: 2 acidic | 5 dry craters
+[HD timing] geology (5.89s: history 0.86 · rocks 2.42 · context 2.27 · zoning 0.08) · rules v0 intégré (4d82bec83252)
+   A1+B2: field Match { label: "A1+B2 · cadrage canonique (viz)" } · lakes Match { label: "A1+B2 · cadrage canonique (viz) · 45° / 40°" }
+[HD volcanism] crater lakes: 2 acidic | 5 dry craters
+[HD timing] geology (5.78s: history 0.89 · rocks 2.32 · context 2.24 · zoning 0.08) · rules v0 intégré (4d82bec83252)
+   C1 nue: field Match { label: "C1 nue · cadrage canonique (viz)" } · lakes Match { label: "C1 nue · cadrage canonique (viz) · 45° / 40°" }
+[HD volcanism] crater lakes: 1 acidic | 6 dry craters
+[HD timing] geology (2.10s: history 0.35 · rocks 0.69 · context 0.91 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+   C2 /10 col (défaut): field Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" } · lakes Match { label: "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°" }
+[HD volcanism] crater lakes: 1 acidic | 6 dry craters
+[HD timing] geology (2.23s: history 0.31 · rocks 0.70 · context 1.03 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+   C2 /3: field Match { label: "C2 /3 · cadrage canonique (viz)" } · lakes Match { label: "C2 /3 · cadrage canonique (viz) · 45° / 40°" }
+[HD volcanism] crater lakes: 1 acidic | 6 dry craters
+[HD timing] geology (2.17s: history 0.29 · rocks 0.71 · context 1.01 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+   C2 /10 niveau mer: field Match { label: "C2 /10 niveau mer · cadrage canonique (viz)" } · lakes Match { label: "C2 /10 niveau mer · cadrage canonique (viz) · 45° / 40°" }
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes = banc
+   C1 nue                 field = banc · lakes = banc
+   C2 /10 col (défaut)    field = banc · lakes = banc
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes = banc
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 50 filtered out; finished in 253.32s
+# done

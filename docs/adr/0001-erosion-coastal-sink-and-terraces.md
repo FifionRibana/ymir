@@ -23147,3 +23147,74 @@ not measured, and B2 shows no Andean relief on 4 seeds.
   - deposition stays F178's subject as announced in F177's brief.
 - **Still open**: the guard's printout (show the exact verdict); the five other states recomputed fresh (~45 min); tiers 2–4
   of F177 (~10 min) on request.
+
+## Finding 178 — the Andean seed at the arc-trench distance (one closure changed: where Davis-Suppe's continent-ocean wedge starts, behind the continent profile's flag; no solver): with D_gap = 10 cells (470 km, the largest arc-trench distance, Syracuse & Abers 2006 p. 10) the wedge reaches the active coasts of 15 / 15 seeds, but the circumnavigation is lost on 4 — the declared stop fires after tier 1: the « continental front » a walk from the trench finds is the seaward band's submerged shelf, which rises (+6–15 % land), and the cascade's sources mode piles up the Davis-Suppe that C1's erosion balanced (s_src 4.9–6.4 on the active coasts against 0.7–1.7); the guard reads Match on all six states; production unchanged
+
+**Status: built and measured on C1; the stop fired, tiers 2–3 not run; nothing adopted, nothing committed without the feu
+vert.** Report: `docs/reports/relief_method/f178_andean_reach/finding_178.md`. Declared: `f178_declared.md`. Predictions:
+`f178_predictions.md`.
+
+**Part 0.1, the guard**:
+- At HEAD the six states read `Match` on the field and on the lakes (the exact verdicts, now kept by the checks); nothing to
+  re-register.
+- `f123_viz_guard` now prints « ≠ (banc, viz) » apart from « non gardé (aucune référence) ».
+- F175 had bumped `ALGO_TECTONICS` « so the guard 6/6 exercises the new code », although the output was unchanged; the bump
+  moved the digest, hence its `NoReference`.
+
+**Part 0.2, the sources**:
+- Syracuse & Abers 2006, p. 10: arc-trench distances from 85–90 km to 470 km (Alaska), middle 50 % 180–275 km; no median
+  given.
+- England et al. 2004: slab depths of 65–130 km and dips, no arc-trench distance; not used for D_gap.
+- **D_gap = 470 km ÷ 7.5 = 10 cells.** Sensitivity at 3 and 5 cells (the middle-50 % bounds). A2 at walk depths 4–5.
+
+**Built**:
+- `tectonics_c1/andean_seed.rs` (`overriding_trench_cells`, `andean_seeds`), seeded after A7 behind `C1Ext::andean_gap`
+  (`Margin::seaward_oo_collision_andean()`, `ANDEAN_GAP_CELLS`).
+- A2 (`OoSubductionParams::arc_band`, measured only).
+- Permanent controls (`the_andean_seed_controls`): off = F176 bit for bit; a reach of 0 and an all-continental world
+  unchanged; production's C1 hash unchanged.
+- The viz box « Graine andine à distance arc-fosse (C1) ».
+
+**Measured (tier 1, C1, the 15 seeds of F176's selection)**:
+- A1 median « any » 25.0 % and « majority » 18.3 % (F176: 27.4 / 17.9 %); 15 / 15 continents with an active margin; the C-O
+  wedge positive on the active coasts of 15 / 15 (F176: 12).
+- The net tectonic uplift on the active 0–6 cells is 12–22 km (F176: 0.4–4.7 km), and 7.6–15.4 km on the passive ones.
+- The land rises from 50–57.5 % to 55–70 %; **the circumnavigation is lost on 4 seeds (23, 3, 4, 10)**; r* is 0 on 6 more.
+- A2 changes the active uplift by −0.4 to +7.5 %. The reach at 3 cells loses 1 seed, at 5 cells 3.
+
+**The mechanism (measured)**:
+- (a) Under the seaward margin, the walk's first continental-type cells are the band's submerged shelf (s₀ 0.53–0.60). Of the
+  land F178 adds, 97–100 % lies in the band at t₀, and 99–100 % carries the C-O wedge. The A1 coast is the type boundary, not
+  the shoreline.
+- (b) On the active coasts, Davis-Suppe adds +4.4 to +5.8 in s over the run while C1's erosion removes 3.8–4.9. The cascade's
+  sources mode (F166, s_src = s − the erosion term) keeps the whole wedge: s_src reaches 4.9–6.4. F176's O-C seeds show the
+  same pumping, ten times weaker.
+
+**Predictions**:
+- The reviewer's: T1, T6 and T7 held; T3 refuted; T2, T5 and W₁₀ (T4) not measured; no seed above 70 % (held).
+- Mine: the land, the circumnavigation and T3's count refuted.
+
+**Open, for the author** (nothing chosen):
+- (a) The front: the first continental-type cells or the first emerged ones?
+- (b) The sources mode against C1's erosion: this also touches F176.
+- (c) Should the new seed be skipped like a boundary cell?
+- (d) Tiers 2–3 on request.
+
+**At commit (2026-10-18), decided**: the author's words: « Feu vert pour commiter le F178, drapeau coupé. Entrent : le banc, la graine derrière le drapeau, le contrôle, et le seul bloc de workspace.rs qui touche l'affichage de la garde. Entre aussi la correction de f175_cascade.rs (arc_band: None). config.rs et le reste de workspace.rs restent dehors. »
+- **F178 is committed with its flag off**: `Margin::andean_gap = None` everywhere by default, so production, F176 and F177 are
+  unchanged bit for bit (`the_andean_seed_controls`; production's C1 hash). `Margin::seaward_oo_collision_andean()` and the
+  viz box « Graine andine à distance arc-fosse (C1) » are only used on request.
+- Committed:
+  - the bench (`f178_cascade.rs`);
+  - the seed behind its flag (`andean_seed.rs`, `C1Ext`, `run_with_closures_terms_ext`, `run_c1_sources_mapped_ext`);
+  - variant A2's band, measured only and off by default;
+  - the permanent control, and the viz box;
+  - the single hunk of `workspace.rs` that prints the guard's exact verdict;
+  - the fix of `f175_cascade.rs` (`arc_band: None`).
+  The rest of `workspace.rs` and `config.rs` stay out.
+- **The reviewer's error, recorded (the author's; the same family as F174 B′)**: the reviewer defined the seed's front as « the
+  first continental cells reached » without checking that, under the seaward margin, these are the submerged shelf's cells
+  (s ≈ 0.55). Nor did the reviewer check how Davis-Suppe treats a seed at d = 0: a boundary seed is skipped, while a front cell
+  receives h_max.
+- **Still open** (nothing chosen): the front (continental type or emerged); the sources mode against C1's erosion (it touches
+  F176 too); the seed at d = 0; tiers 2–3 on request.

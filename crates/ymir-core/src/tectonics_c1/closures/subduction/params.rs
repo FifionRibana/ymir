@@ -84,13 +84,17 @@ impl Default for SubductionParams {
 pub struct OoSubductionParams {
     /// D_init: the cumulative convergence a plate pair's ocean-ocean boundary needs before it subducts, in cells of 64².
     pub d_init_cells: f64,
+    /// ADR Finding 178-A2 (a variant, measured only): the O-O arc on the overriding plate's cells at walk depths `lo..=hi` from
+    /// the consumed cell (the middle 50 % of arc-trench distances, Syracuse & Abers 2006 p. 10) instead of within
+    /// `arc_distance`; `None` is F175's rule.
+    pub arc_band: Option<(usize, usize)>,
 }
 
 impl OoSubductionParams {
     /// 100 km of convergence (Stern & Gerya 2018 p. 44, after Hall et al. 2003) ÷ 7.5 (the layout's compression) = 13.3 km
     /// on the map = 2.13 cells of 64² (6.25 km).
     pub fn declared() -> Self {
-        Self { d_init_cells: 100.0 / 7.5 / 6.25 }
+        Self { d_init_cells: 100.0 / 7.5 / 6.25, arc_band: None }
     }
     /// D_init in C1's domain units (the domain is 1; a 64² cell is 1/64).
     pub fn d_init_domain(&self) -> f64 {

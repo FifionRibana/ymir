@@ -136,7 +136,17 @@ pub struct Margin {
     pub merge_at_collision: bool,
     /// ADR Finding 176-B (measured only): under Airy, the arc-loaded oceanic cells read at 0.2 + their arc mass.
     pub arcs_emerge: bool,
+    /// ADR Finding 178-A1: the Andean seed's reach (cells of 64²): Davis-Suppe's continent-ocean wedge also starts on the
+    /// overriding plate's continental front within this walk depth of an active ocean-ocean trench (a C1 closure flag).
+    pub andean_gap: Option<usize>,
 }
+
+/// ADR Finding 178 -- D_gap: the largest arc-trench distance observed, 470 km (Alaska; Syracuse & Abers 2006, p. 10) ÷ 7.5 =
+/// 62.7 km on the map ÷ 6.25 km = 10.03 → a walk depth of 10 cells of 64².
+pub const ANDEAN_GAP_CELLS: usize = 10;
+/// ADR Finding 178-A2 (measured only) -- the middle 50 % of arc-trench distances, 180–275 km (Syracuse & Abers 2006, p. 10)
+/// ÷ 7.5 ÷ 6.25 = 3.84–5.87 cells → the walk depths 4–5.
+pub const ARC_BAND_CELLS: (usize, usize) = (4, 5);
 
 impl Margin {
     pub fn off() -> Self {
@@ -144,15 +154,23 @@ impl Margin {
     }
     /// F174-B's main choice: a rim of 2.5 cells and the declared ramp.
     pub fn declared() -> Self {
-        Self { w_rim: 2.5, ramp: Some(Ramp::declared()), hetero: None, seaward: false, oo: None, merge_at_collision: false, arcs_emerge: false }
+        Self { w_rim: 2.5, ramp: Some(Ramp::declared()), hetero: None, seaward: false, oo: None, merge_at_collision: false, arcs_emerge: false, andean_gap: None }
     }
     /// F174-B′'s choice: the declared ramp seaward.
     pub fn seaward() -> Self {
-        Self { w_rim: 0.0, ramp: Some(Ramp::declared()), hetero: None, seaward: true, oo: None, merge_at_collision: false, arcs_emerge: false }
+        Self { w_rim: 0.0, ramp: Some(Ramp::declared()), hetero: None, seaward: true, oo: None, merge_at_collision: false, arcs_emerge: false, andean_gap: None }
     }
     /// F176's choice: the seaward margin, option 5, and the merge at collision.
     pub fn seaward_oo_collision() -> Self {
         Self { merge_at_collision: true, ..Self::seaward_oo() }
+    }
+    /// F178's choice: F176's, with the Andean seed at D_gap ([`ANDEAN_GAP_CELLS`]).
+    pub fn seaward_oo_collision_andean() -> Self {
+        Self { andean_gap: Some(ANDEAN_GAP_CELLS), ..Self::seaward_oo_collision() }
+    }
+    /// The C1 flags this margin carries.
+    pub fn ext(&self) -> crate::tectonics_c1::time_loop::C1Ext {
+        crate::tectonics_c1::time_loop::C1Ext { oo: self.oo, merge_at_collision: self.merge_at_collision, andean_gap: self.andean_gap }
     }
     /// F175's choice: the seaward margin with the ocean-ocean subduction path.
     pub fn seaward_oo() -> Self {
@@ -471,7 +489,7 @@ mod tests {
         let a = p.init_state(64, 42);
         let b = p.init_state_margin(64, 42, &Margin::off());
         assert_eq!(bits(&a), bits(&b));
-        let zero = Margin { w_rim: 0.0, ramp: Some(Ramp::declared().scaled(0.0)), hetero: None, seaward: false, oo: None, merge_at_collision: false, arcs_emerge: false };
+        let zero = Margin { w_rim: 0.0, ramp: Some(Ramp::declared().scaled(0.0)), hetero: None, seaward: false, oo: None, merge_at_collision: false, arcs_emerge: false, andean_gap: None };
         assert!(zero.is_off());
         assert_eq!(bits(&a), bits(&p.init_state_margin(64, 42, &zero)));
     }
@@ -598,7 +616,7 @@ mod tests {
         let (off, s_off, ..) = run(Some(None));
         assert_eq!(plain, off, "the O-O path off is C1 bit for bit");
         assert_eq!(s_off.oo_cells_consumed + s_off.oo_seeds_cleared, 0);
-        let (_, s_inf, ..) = run(Some(Some(OoSubductionParams { d_init_cells: f64::INFINITY })));
+        let (_, s_inf, ..) = run(Some(Some(OoSubductionParams { d_init_cells: f64::INFINITY, arc_band: None })));
         assert_eq!(s_inf.oo_cells_consumed, 0, "D_init infinite: no O-O consumption");
         assert_eq!(s_inf.oo_reassigned, 0);
         let (_, s_on, st, kin) = run(Some(Some(OoSubductionParams::declared())));
@@ -641,6 +659,38 @@ mod tests {
         assert_eq!(run(Some((oo, false)), true).0, run(Some((oo, true)), true).0, "no oceanic boundary: the flag changes nothing");
         let (with, without) = (run(Some((oo, true)), false).1, run(Some((oo, false)), false).1);
         assert!(with >= without, "plates at the end with / without the flag: {with} / {without}");
+    }
+
+    /// F178-A3 (permanent): the Andean seed off is F176 bit for bit; a reach of 0 (no continent within reach of any trench) and a
+    /// world with no oceanic boundary (every cell continental) are the same with and without the seed; at D_gap the seed acts.
+    #[test]
+    fn the_andean_seed_controls() {
+        use crate::tectonics_c1::time_loop::{C1Closures, C1Ext, C1Term, run_with_closures_terms_ext, run_with_closures_terms_flags};
+        let p = C1Profile::Selected { plates: 16, k: 8, start: 3, compact: true };
+        let mut cfg = crate::cascade::profile::c1_run_config();
+        cfg.n_steps = 120;
+        let oo = Some(OoSubductionParams::declared());
+        let run = |ext: Option<C1Ext>, all_cont: bool| {
+            let mut st = p.init_state_margin(64, 42, &Margin::seaward());
+            if all_cont {
+                for k in 0..64 * 64 {
+                    st.plate_type.set(k % 64, k / 64, PlateType::Continental);
+                }
+            }
+            let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+            let mut on_term = |_: C1Term, _: &[f64], _: &[f64]| {};
+            match ext {
+                None => run_with_closures_terms_flags(&mut st, &mut kin, &cfg, &C1Closures::default(), oo, true, |_, _, _| {}, &mut on_term),
+                Some(e) => run_with_closures_terms_ext(&mut st, &mut kin, &cfg, &C1Closures::default(), e, |_, _, _| {}, &mut on_term),
+            }
+            bits(&st)
+        };
+        let ext = |gap: Option<usize>| Some(C1Ext { oo, merge_at_collision: true, andean_gap: gap });
+        let f176 = run(None, false);
+        assert_eq!(f176, run(ext(None), false), "the seed off is F176 bit for bit");
+        assert_eq!(f176, run(ext(Some(0)), false), "no continent within reach: the seed changes nothing");
+        assert_eq!(run(ext(None), true), run(ext(Some(ANDEAN_GAP_CELLS)), true), "no oceanic boundary: the seed changes nothing");
+        assert_ne!(f176, run(ext(Some(ANDEAN_GAP_CELLS)), false), "at D_gap the seed acts on a real world");
     }
 
     /// F174-B5 (permanent): the default selection with the margin off is `select_continent_default` bit for bit.
