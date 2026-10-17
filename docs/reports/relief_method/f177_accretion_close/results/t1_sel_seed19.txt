@@ -1,0 +1,11 @@
+   seed 19 sel_seed19 (Selected { plates: 16, k: 6, start: 12, compact: true }): A1 active 37 / passive 188 (of which 3 × 3 active 0) / enclosed 0 → share 16.4 % · mixed ties 29 · continents 1 with an active margin 1 (newly active, F176's reading: 1) · groups per continent (id, groups, cells) [(0, 5, 33)] · walk depth: median 5 cells, all active (3 × 3 at 1) median 5 cells (31.25 km world, 234 km terrestrial) · histogram (cells 0..11+) [0, 0, 1, 2, 14, 13, 4, 2, 1, 0, 0, 0]
+      B2: active band 725 cells, Δh_src 1083 m, of which the C-O wedge 145 m (10 % of the positive sources) · passive band 2109 cells, Δh_src 691 m (C-O 52 m, 6 %) · ratio active / passive 1.57
+      B4: channels ≤ 2 cells 14 (rift 9, trapped 0, band 4, other 1; length km 225 / 0 / 75 / 19) · one-cell-wide groups 9 (rift 7, trapped 0, band 2, other 0) · land 64² raw > 0 vs snaps > 0.5 differ on 0 cells
+      B4 channels: (21,27) 7 cells 25 km band remnant; (45,31) 2 cells 12 km band remnant; (60,2) 1 cells 6 km rift; (39,5) 16 cells 50 km rift; (3,11) 3 cells 19 km other; (9,14) 13 cells 38 km rift; (20,19) 7 cells 25 km band remnant; (16,42) 7 cells 38 km rift; (12,47) 1 cells 6 km rift; (11,49) 1 cells 6 km rift; (1,52) 8 cells 31 km rift; (5,52) 2 cells 12 km rift; (24,55) 2 cells 12 km band remnant; (52,60) 6 cells 38 km rift
+      B5: plates at the end 12 (< 1 % 7, 1–5 % 2, > 5 % 3) · sizes [1824, 1729, 284, 92, 62, 33, 31, 23, 12, 4, 1, 1] · merges 7 · splits 3
+      C1 CPU 38.9 s
+#A1 0.16444445 37 188 0 0 29 1 1 1 5 5
+#HIST 0 0 1 2 14 13 4 2 1 0 0 0
+#B2 725 1083.1619215835824 144.56580962420165 0.10073829217227484 2109 690.9833862201041 51.579397561383374 0.06297179180823577
+#B4 14 9 0 4 1 9 7 0 2 0
+#B5 12 7 2 3 7 3

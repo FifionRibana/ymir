@@ -1,0 +1,3654 @@
+//! ADR Finding 177 -- closing the accretion: the active margin measured by the closures' own rules (A1), the uplift at the coasts,
+//! the attribution of the new relief, the channels, the plates, the transect. No closure modified. F176's helpers are kept (the
+//! tests stripped). Declared in `docs/reports/relief_method/f177_accretion_close/f177_declared.md`; by tiers, resumable (the
+//! results in `docs/reports/relief_method/f177_accretion_close/results/`).
+//!
+//! Run: cargo test -p ymir-core --release --test f177_cascade -- --ignored --exact f177_tier1_c1 --nocapture
+//!      … f177_tier2_attribution, f177_tier3_formations, f177_tier4_transect
+#![allow(dead_code)]
+
+mod common;
+
+use common::cascade_bench::*;
+use common::{CANONICAL_ORIGIN, PSEED, pct, sorted};
+use std::path::PathBuf;
+use std::time::Instant;
+use ymir_core::cascade::amplify::restrict;
+use ymir_core::cascade::amplify::{AmpConfig, Chain, KHetero, Variant, Warp, WarpPlace, ocean_mask, ocean_mask_t};
+use ymir_core::cascade::history::{
+    Airy, C1Sources, C1Term, HistoryRun, Mapping, SeaCurve, SeaLow, T_F166_YEARS, Timing, physics_history, physics_history_rock,
+    physics_history_sea, run_c1_sources_mapped,
+    step_durations,
+};
+use ymir_core::cascade::hydro::hydrology;
+use ymir_core::cascade::measure::octave_km;
+use ymir_core::cascade::physio::{
+    CLASS_NAMES, Circumnavigation, Coast, MOUNTAIN, MacroStats, PLAIN, PLATEAU, RELIEF_RADIUS_KM, circumnavigation, classify, coast,
+    coast_torus, edt, hovius, local_relief, macro_stats, periodic_components, slope_deg,
+};
+use ymir_core::cascade::planform::{Planform, WINDOWS_KM, flat_map, planform};
+use ymir_core::cascade::predict::{Predict, predictability};
+use ymir_core::cascade::profile::{C1Profile, Selection, c1_run_config, select_continent_default, select_continent_plates};
+use ymir_core::cascade::{CascadeConfig, Rebound, Rock, roll, upsample_to};
+use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+use ymir_core::grid::GridF32;
+use ymir_core::tectonics_c1::boundary_classification::{BoundaryType, classify_boundaries, retarget_upper_plate_continental};
+use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
+use ymir_core::tectonics_c1::kinematics::PlateKinematics;
+use ymir_core::tectonics_c1::land_topology::land_topology;
+use ymir_core::tectonics_c1::state::C1State;
+use ymir_core::tectonics_c1::time_loop::{C1Closures, run_with_closures_terms};
+use ymir_core::tectonics_v2::boundaries::plate_type::PlateType;
+
+const SEEDS: [u64; 4] = [PSEED, 42, 1, 9];
+const CELL: f32 = 1.5625;
+const N_PHYS: usize = 300;
+const VALID_P: [bool; 7] = [true, true, false, false, true, false, true];
+const AGES: [(&str, Option<f64>); 4] = [("B0", None), ("young 20 Myr", Some(20.0e6)), ("intermediate 100 Myr", Some(100.0e6)), ("old 300 Myr", Some(300.0e6))];
+/// F170-A1: the plate counts and their k brackets (⌈0.35 N⌉ … ⌊0.75 N⌋).
+const PLATES: [(usize, std::ops::RangeInclusive<usize>); 2] = [(12, 5..=9), (16, 6..=12)];
+
+/// F170-A4: the convergent + suture cells of a C1 end state (64²), × 6.25 km, per 10 000 km² of end land.
+fn suture_density(w: &World) -> (usize, f32, f32) {
+    let (_, conv, _) = collision_cells(&w.st, &w.kin);
+    let near = (0..4096).filter(|&i| conv[i] || w.src.hist.suture[i]).count();
+    let land = w.snaps.last().unwrap().data.iter().filter(|&&v| v > 0.5).count() as f32 * 6.25 * 6.25;
+    (near, land, near as f32 * 6.25 / (land / 1.0e4))
+}
+
+fn out() -> PathBuf {
+    root().join("docs/reports/relief_method/f173_sea_curve/images")
+}
+fn n2m() -> f32 {
+    2.0 * 1.13 * SteinSteinParams::default().depth_scale_m as f32
+}
+fn out15(a: f32, b: f32) -> bool {
+    !(a.is_finite() && b.is_finite() && b != 0.0) || a > 1.5 * b || a < b / 1.5
+}
+fn up_u8(m: &[u8], n: usize, f: usize) -> Vec<u8> {
+    let nn = n * f;
+    (0..nn * nn).map(|k| m[(k / nn / f) * n + (k % nn) / f]).collect()
+}
+fn up_mask(m: &[bool], n: usize, f: usize) -> Vec<bool> {
+    let nn = n * f;
+    (0..nn * nn).map(|k| m[(k / nn / f) * n + (k % nn) / f]).collect()
+}
+fn up_f(m: &[f32], n: usize, f: usize) -> Vec<f32> {
+    let nn = n * f;
+    (0..nn * nn).map(|k| m[(k / nn / f) * n + (k % nn) / f]).collect()
+}
+fn roll_mask(m: &[bool], n: usize, off: [usize; 2]) -> Vec<bool> {
+    (0..n * n).map(|k| m[((k / n + off[1]) % n) * n + (k % n + off[0]) % n]).collect()
+}
+fn roll_u8(m: &[u8], n: usize, off: [usize; 2]) -> Vec<u8> {
+    (0..n * n).map(|k| m[((k / n + off[1]) % n) * n + (k % n + off[0]) % n]).collect()
+}
+fn rolln(g: &GridF32, off64: [usize; 2]) -> GridF32 {
+    let f = g.width / 64;
+    roll(g, [off64[0] * f, off64[1] * f])
+}
+fn peak_m(z: &GridF32) -> f32 {
+    z.data.iter().copied().fold(f32::MIN, f32::max)
+}
+/// The land on the torus (the ocean = the largest periodic sea component).
+fn land_t(z: &GridF32) -> Vec<bool> {
+    ocean_mask_t(z, Some([0, 0])).iter().map(|o| !o).collect()
+}
+fn land_w(z: &GridF32) -> Vec<bool> {
+    ocean_mask(z).iter().map(|o| !o).collect()
+}
+fn cpu_secs() -> f64 {
+    let pid = std::process::id();
+    let o = std::process::Command::new("powershell").args(["-NoProfile", "-Command", &format!("(Get-Process -Id {pid}).TotalProcessorTime.TotalSeconds")]).output();
+    o.ok().and_then(|o| String::from_utf8_lossy(&o.stdout).trim().replace(',', ".").parse().ok()).unwrap_or(f64::NAN)
+}
+struct Clock {
+    wall: Instant,
+    cpu: f64,
+}
+impl Clock {
+    fn start() -> Self {
+        Clock { wall: Instant::now(), cpu: cpu_secs() }
+    }
+    fn stop(&self) -> (f64, f64) {
+        (self.wall.elapsed().as_secs_f64(), cpu_secs() - self.cpu)
+    }
+}
+fn fmt_cost(c: (f64, f64)) -> String {
+    format!("{:.1} s wall / {:.1} s CPU", c.0, c.1)
+}
+fn class_png(classes: &[u8], w: usize, h: usize, scale: u32) -> image::RgbaImage {
+    let pal = [[40u8, 70, 120], [120, 170, 90], [200, 180, 110], [170, 120, 70], [235, 235, 235]];
+    let mut img = image::RgbaImage::new(w as u32 * scale, h as u32 * scale);
+    for y in 0..h as u32 * scale {
+        for x in 0..w as u32 * scale {
+            // north up: row 0 of the image is the grid's last row
+            let gy = h - 1 - (y / scale) as usize;
+            let c = pal[classes[gy * w + (x / scale) as usize] as usize];
+            img.put_pixel(x, y, image::Rgba([c[0], c[1], c[2], 255]));
+        }
+    }
+    img
+}
+fn print_macro(tag: &str, m: &MacroStats) {
+    eprintln!(
+        "   {tag:<26} plain {:5.1} % · plateau {:5.1} % · hill {:5.1} % · mountain {:5.1} % · land {:.0} km² · deciles {}",
+        100.0 * m.fractions[0],
+        100.0 * m.fractions[1],
+        100.0 * m.fractions[2],
+        100.0 * m.fractions[3],
+        m.land_km2,
+        m.deciles.iter().map(|v| format!("{v:.0}")).collect::<Vec<_>>().join("/")
+    );
+}
+fn cheb_periodic(src: &[bool], n: usize) -> Vec<u32> {
+    let mut d = vec![u32::MAX; n * n];
+    let mut front: Vec<usize> = (0..n * n).filter(|&k| src[k]).collect();
+    for &k in &front {
+        d[k] = 0;
+    }
+    let mut lvl = 0;
+    while !front.is_empty() {
+        lvl += 1;
+        let mut next = Vec::new();
+        for &k in &front {
+            let (x, y) = (k % n, k / n);
+            for dy in [n - 1, 0, 1] {
+                for dx in [n - 1, 0, 1] {
+                    let j = ((y + dy) % n) * n + (x + dx) % n;
+                    if d[j] == u32::MAX {
+                        d[j] = lvl;
+                        next.push(j);
+                    }
+                }
+            }
+        }
+        front = next;
+    }
+    d
+}
+fn edt_periodic(land: &[bool], n: usize) -> Vec<f32> {
+    let t = 3 * n;
+    let tiled: Vec<bool> = (0..t * t).map(|k| land[((k / t) % n) * n + (k % t) % n]).collect();
+    let d = edt(&tiled, t, t);
+    (0..n * n).map(|k| d[(k / n + n) * t + k % n + n]).collect()
+}
+fn viz_offset(z64_norm: &GridF32) -> [usize; 2] {
+    let (cx, cy) = land_topology(z64_norm, 0.5).center_cell;
+    [(cx + 64 - 32) % 64, (cy + 64 - 32) % 64]
+}
+fn fmt_circ(c: &Circumnavigation, km: f32) -> String {
+    match (c.wraps, c.sea_r) {
+        (true, _) => format!("WRAPS (main {} cells)", c.main_cells),
+        (false, Some(r)) => format!("circumnavigable (main {} cells) · r* {r} → sea loop ≥ {:.1} km", c.main_cells, (2 * r + 1) as f32 * km),
+        (false, None) => format!("no land (main {} cells)", c.main_cells),
+    }
+}
+
+struct Tex {
+    r: Reading,
+    p: Predict,
+    pf: Planform,
+}
+fn tex(g: &GridF32, cell_km: f32, excl: &[bool]) -> Tex {
+    let (r, _) = read_cell(g, Some(excl), cell_km);
+    Tex { r, p: predictability(g, cell_km, Some(excl)), pf: planform(g, cell_km, Some(excl)) }
+}
+fn elements(a: &Tex, c: &Tex, cell_km: f32, ctrl_ok: bool) -> Vec<(String, f32, f32, bool)> {
+    let mut v = Vec::new();
+    v.push(("facets".into(), a.r.facets as f32, c.r.facets as f32, !(ctrl_ok && a.r.facets > 1.5 * c.r.facets && a.r.facet_cells > 20)));
+    v.push(("walls 28°".into(), a.r.walls28 as f32, c.r.walls28 as f32, !(a.r.walls28 > 1.5 * c.r.walls28 && a.r.walls28_cells > 20)));
+    for (n, x, y) in [("slope p50", a.r.slope_p50, c.r.slope_p50), ("slope p90", a.r.slope_p90, c.r.slope_p90), ("λ km", a.r.lambda_km, c.r.lambda_km)] {
+        v.push((n.to_string(), x, y, !out15(x, y)));
+    }
+    for j in 0..a.r.octaves.len().min(c.r.octaves.len()) {
+        let (lo, hi) = octave_km(j, cell_km);
+        if lo >= 0.39 && hi <= 12.6 {
+            v.push((format!("octave {lo:.2}–{hi:.2} km"), a.r.octaves[j], c.r.octaves[j], !out15(a.r.octaves[j], c.r.octaves[j])));
+        }
+    }
+    for (i, ((n, x, _), (_, y, _))) in a.p.values().iter().zip(c.p.values().iter()).enumerate() {
+        if VALID_P[i] {
+            v.push((n.to_string(), *x, *y, !out15(*x, *y)));
+        }
+    }
+    for i in 0..3 {
+        v.push((format!("S_{} − 1", WINDOWS_KM[i]), a.pf.excess(i), c.pf.excess(i), !out15(a.pf.excess(i), c.pf.excess(i))));
+    }
+    v.push(("A_dir".into(), a.pf.a_dir, c.pf.a_dir, !out15(a.pf.a_dir, c.pf.a_dir)));
+    v.push(("F".into(), a.pf.flat, c.pf.flat, !out15(a.pf.flat, c.pf.flat)));
+    v
+}
+
+/// The frozen chain (F164's setting) to 2 048².
+fn frozen(pi_table: &[(usize, f32)], torus: Option<[usize; 2]>) -> AmpConfig {
+    AmpConfig {
+        talus_fine_scale: 0.25,
+        n1_recal_depth: 2,
+        n1_pi_m: pi_table.to_vec(),
+        warp: Some(Warp { amp: 0.5, corr: 4.0, place: WarpPlace::All }),
+        n1_k: vec![(512, 5.623e2), (1024, 1.0e3), (2048, 3.162e2)],
+        torus,
+        ..AmpConfig::declared(PSEED, Variant::N1, 1.0)
+    }
+}
+fn chain(pm: &GridF32, d5: &[bool], cfg: AmpConfig) -> (GridF32, Vec<bool>, (f64, f64)) {
+    let clk = Clock::start();
+    let mut ch = Chain::new(pm.clone(), cfg).with_d5(d5.to_vec());
+    for _ in 0..3 {
+        ch.next_level(&|| false).unwrap();
+        let keep = ch.levels.len() - 1;
+        ch.levels.drain(..keep);
+    }
+    let last = ch.levels.last().unwrap();
+    (last.result(), last.d5.clone(), clk.stop())
+}
+fn base_cfg(seed: u64, rough_a: f32, torus: Option<[usize; 2]>) -> CascadeConfig {
+    CascadeConfig { seed, roughness_m: rough_a, mfd_exponent: Some(6.0), torus, ..CascadeConfig::declared(SteinSteinParams::default().depth_scale_m as f32) }
+}
+
+struct Run {
+    zm: GridF32,
+    d5: Vec<bool>,
+    classes: Vec<u8>,
+    m: MacroStats,
+    cost: (f64, f64),
+    rebound: Vec<f32>,
+}
+fn hist_run(snaps: &[GridF32], cfg: &CascadeConfig, age: Option<f64>) -> Run {
+    let clk = Clock::start();
+    let run = HistoryRun { t_years: T_F166_YEARS, steps: N_PHYS, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: age, sea_low: None };
+    let l = physics_history(snaps, 256, cfg, &run, &mut |_| {}, &|| false).unwrap();
+    let cost = clk.stop();
+    let k = n2m();
+    let zm = to_m(&l.rec.z, k);
+    let oc = ocean_mask_t(&zm, cfg.torus.map(|o| [o[0] * 4 % 256, o[1] * 4 % 256]));
+    let d5 = (0..65536).map(|i| !oc[i] && zm.data[i] <= 0.0).collect();
+    let classes = classify(&zm.data, 256, 256, CELL);
+    let m = macro_stats(&zm.data, &classes, 256, 256, CELL);
+    Run { zm, d5, classes, m, cost, rebound: l.rec.sum_rebound.iter().map(|v| v * k).collect() }
+}
+
+/// C1 under a profile, its Airy sources' record, in C1's own frame.
+struct World {
+    src: C1Sources,
+    st: C1State,
+    kin: PlateKinematics,
+    snaps: Vec<GridF32>,
+    cost: (f64, f64),
+}
+fn world(seed: u64, p: C1Profile) -> World {
+    let cfg = c1_run_config();
+    let mut st = p.init_state(64, seed);
+    let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+    let clk = Clock::start();
+    let src = run_c1_sources_mapped(&mut st, &mut kin, &cfg, &C1Closures::default(), 10, &cfg.iso_config, &SteinSteinParams::default(), &[C1Term::Erosion], Mapping::Airy(Airy::declared()));
+    let cost = clk.stop();
+    let snaps = src.hist.normalized(None);
+    World { src, st, kin, snaps, cost }
+}
+
+/// B1: the chronology of one C1 run -- per step and per term the Σ Δs per cell (f32), and the C-C collision cells at
+/// each snapshot (every 10 steps).
+struct Chrono {
+    /// [term][step] -> per-cell Δs
+    per_step: Vec<Vec<Vec<f32>>>,
+    collisions: Vec<(usize, usize)>,
+}
+const CHRONO_TERMS: [C1Term; 4] = [C1Term::DavisSuppe, C1Term::Subduction, C1Term::RiftThinning, C1Term::Transport];
+fn chrono(seed: u64, p: C1Profile) -> Chrono {
+    let cfg = c1_run_config();
+    let mut st = p.init_state(64, seed);
+    let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+    let cur = std::cell::RefCell::new(vec![vec![0f32; 4096]; 4]);
+    let per_step = std::cell::RefCell::new(vec![Vec::new(); 4]);
+    let mut collisions = Vec::new();
+    let mut on_term = |t: C1Term, a: &[f64], b: &[f64]| {
+        if let Some(i) = CHRONO_TERMS.iter().position(|x| *x == t) {
+            let mut c = cur.borrow_mut();
+            for k in 0..4096 {
+                c[i][k] += (b[k] - a[k]) as f32;
+            }
+        }
+    };
+    run_with_closures_terms(
+        &mut st,
+        &mut kin,
+        &cfg,
+        &C1Closures::default(),
+        |step, s, kn| {
+            let mut c = cur.borrow_mut();
+            let mut ps = per_step.borrow_mut();
+            for i in 0..4 {
+                ps[i].push(std::mem::replace(&mut c[i], vec![0f32; 4096]));
+            }
+            if (step + 1) % 10 == 0 {
+                collisions.push((step + 1, collision_cells(s, kn).0));
+            }
+        },
+        &mut on_term,
+    );
+    Chrono { per_step: per_step.into_inner(), collisions }
+}
+/// F165's rule: Convergent cells with a continental cell on both sides; and the convergent mask.
+fn collision_cells(st: &C1State, kin: &PlateKinematics) -> (usize, Vec<bool>, usize) {
+    let n = 64;
+    let mut bi = classify_boundaries(&st.plate_id, kin);
+    retarget_upper_plate_continental(&mut bi, &st.plate_id, &st.plate_type);
+    let cont = |i: usize, j: usize| st.plate_type.get(i, j) == PlateType::Continental;
+    let mut coll = 0;
+    let mut conv = vec![false; n * n];
+    for j in 0..n {
+        for i in 0..n {
+            if bi.boundary_type.get(i, j) == BoundaryType::Convergent {
+                conv[j * n + i] = true;
+                let me_ = st.plate_id.get(i, j);
+                let nb = [((i + 1) % n, j), ((i + n - 1) % n, j), (i, (j + 1) % n), (i, (j + n - 1) % n)];
+                if cont(i, j) && nb.iter().any(|&(x, y)| st.plate_id.get(x, y) != me_ && cont(x, y)) {
+                    coll += 1;
+                }
+            }
+        }
+    }
+    (coll, conv, bi.upper_plate_count())
+}
+
+/// A line plot of profiles (x km, z m).
+fn profile_png(series: &[(Vec<f32>, [u8; 3])], km_per_px: f32, path: &std::path::Path) {
+    let (w, h) = (900u32, 360u32);
+    let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([250, 250, 250, 255]));
+    let zmax = series.iter().flat_map(|s| s.0.iter()).copied().fold(500f32, f32::max);
+    let zmin = series.iter().flat_map(|s| s.0.iter()).copied().fold(0f32, f32::min).max(-1000.0);
+    let py = |z: f32| (h as f32 - 20.0 - (z - zmin) / (zmax - zmin) * (h as f32 - 40.0)) as i64;
+    let mut put = |x: i64, y: i64, c: [u8; 3]| {
+        if x >= 0 && y >= 0 && (x as u32) < w && (y as u32) < h {
+            img.put_pixel(x as u32, y as u32, image::Rgba([c[0], c[1], c[2], 255]));
+        }
+    };
+    for x in 20..w as i64 - 20 {
+        put(x, py(0.0), [0, 0, 0]);
+        put(x, py(1000.0), [210, 210, 210]);
+        put(x, py(2000.0), [210, 210, 210]);
+    }
+    let _ = km_per_px;
+    for (s, c) in series {
+        for (i, &z) in s.iter().enumerate() {
+            let x = 20 + (i as f32 / (s.len() - 1).max(1) as f32 * (w as f32 - 40.0)) as i64;
+            for d in -1..=1 {
+                put(x, py(z) + d, *c);
+            }
+        }
+    }
+    img.save(path).unwrap();
+}
+
+
+// ════════════════════════════════════════ F171 ════════════════════════════════════════
+
+/// F171-B2: the declared rock values.
+const RHO_K: f32 = 10.0;
+const COVER_M: f32 = 1500.0;
+
+/// The cover map at 256² (m): d_c, or 0 on C1's cratonic shields (the init state's mask, nearest cell).
+fn cover_map(seed: u64, p: C1Profile, d_c: f32) -> Vec<f32> {
+    let st0 = p.init_state(64, seed);
+    up_mask(st0.cratonic_mask.data(), 64, 4).iter().map(|&s| if s { 0.0 } else { d_c }).collect()
+}
+/// The physics level under a rock law.
+fn hist_rock(snaps: &[GridF32], cfg: &CascadeConfig, age: Option<f64>, rock: Option<&Rock>) -> (Run, Vec<f32>) {
+    let clk = Clock::start();
+    let run = HistoryRun { t_years: T_F166_YEARS, steps: N_PHYS, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: age, sea_low: None };
+    let l = physics_history_rock(snaps, 256, cfg, &run, rock, &mut |_| {}, &|| false).unwrap();
+    let cost = clk.stop();
+    let k = n2m();
+    let zm = to_m(&l.rec.z, k);
+    let oc = ocean_mask_t(&zm, Some([0, 0]));
+    let d5 = (0..65536).map(|i| !oc[i] && zm.data[i] <= 0.0).collect();
+    let classes = classify(&zm.data, 256, 256, CELL);
+    let m = macro_stats(&zm.data, &classes, 256, 256, CELL);
+    (Run { zm, d5, classes, m, cost, rebound: l.rec.sum_rebound.iter().map(|v| v * k).collect() }, l.rec.e_cum_m)
+}
+fn chain_k(pm: &GridF32, d5: &[bool], cfg: AmpConfig, ln_k: Option<Vec<f32>>) -> (GridF32, Vec<bool>, (f64, f64)) {
+    let clk = Clock::start();
+    let mut ch = Chain::new(pm.clone(), cfg).with_d5(d5.to_vec());
+    if let Some(l) = ln_k {
+        ch = ch.with_ln_k(l);
+    }
+    for _ in 0..3 {
+        ch.next_level(&|| false).unwrap();
+        let keep = ch.levels.len() - 1;
+        ch.levels.drain(..keep);
+    }
+    let last = ch.levels.last().unwrap();
+    (last.result(), last.d5.clone(), clk.stop())
+}
+
+/// 0 = sea, 1 = cover, 2 = basement, 3 = shield.
+fn rock_at_surface(land: &[bool], cover: &[f32], e_cum: &[f32]) -> Vec<u8> {
+    (0..land.len())
+        .map(|i| {
+            if !land[i] {
+                0
+            } else if cover[i] <= 0.0 {
+                3
+            } else if !e_cum.is_empty() && e_cum[i] >= cover[i] {
+                2
+            } else {
+                1
+            }
+        })
+        .collect()
+}
+
+/// F171-D (declared): the lithological knickpoints on the 256² Strahler ≥ 3 network at the cover / basement contacts.
+/// Returns (count, median height m, the knickpoints (cell, height)).
+fn knickpoints(z: &GridF32, rock: &[u8]) -> (usize, f32, Vec<(usize, f32)>) {
+    let n = 256;
+    let hy = hydrology(z, CELL);
+    let recv = |k: usize| -> Option<usize> {
+        let d = hy.dir[k];
+        if d == DIR_NONE {
+            return None;
+        }
+        let (x, y) = ((k % n) as i32 + D8_DX[d as usize], (k / n) as i32 + D8_DY[d as usize]);
+        Some(y.rem_euclid(n as i32) as usize * n + x.rem_euclid(n as i32) as usize)
+    };
+    // the main donor (the largest area) of each cell
+    let mut main_donor = vec![usize::MAX; n * n];
+    for k in 0..n * n {
+        if let Some(r) = recv(k) {
+            if main_donor[r] == usize::MAX || hy.acc_km2[k] > hy.acc_km2[main_donor[r]] {
+                main_donor[r] = k;
+            }
+        }
+    }
+    let hard = |r: u8| r >= 2;
+    let dist = |a: usize, b: usize| {
+        let (dx, dy) = ((a % n) as i32 - (b % n) as i32, (a / n) as i32 - (b / n) as i32);
+        let (dx, dy) = (dx.rem_euclid(n as i32).min((-dx).rem_euclid(n as i32)), dy.rem_euclid(n as i32).min((-dy).rem_euclid(n as i32)));
+        ((dx * dx + dy * dy) as f32).sqrt() * CELL * 1000.0
+    };
+    // the mean slope and the drop over 3 cells from `start`, following `next`
+    let reach = |start: usize, next: &dyn Fn(usize) -> Option<usize>| -> Option<(f32, f32)> {
+        let (mut c, mut len, mut drop) = (start, 0f32, 0f32);
+        for _ in 0..3 {
+            let nx = next(c)?;
+            len += dist(c, nx);
+            drop += (z.data[c] - z.data[nx]).abs();
+            c = nx;
+        }
+        Some((drop / len.max(1.0), drop))
+    };
+    let mut found = Vec::new();
+    for k in 0..n * n {
+        if hy.strahler[k] < 3 || rock[k] == 0 {
+            continue;
+        }
+        let Some(r) = recv(k) else { continue };
+        if rock[r] == 0 || hard(rock[k]) == hard(rock[r]) {
+            continue;
+        }
+        // upstream of k (main donors) and downstream of r (receivers)
+        let up = reach(k, &|c| { let d = main_donor[c]; (d != usize::MAX).then_some(d) });
+        let dn = reach(r, &|c| recv(c));
+        let (Some((su, hu)), Some((sd, hd))) = (up, dn) else { continue };
+        let (s_hard, s_soft, h) = if hard(rock[r]) { (sd, su, hd) } else { (su, sd, hu) };
+        if s_hard >= 2.0 * s_soft.max(1e-6) {
+            found.push((k, h));
+        }
+    }
+    let hs = sorted(found.iter().map(|f| f.1).collect());
+    (found.len(), pct(&hs, 0.5), found)
+}
+
+
+// ════════════════════════════════════════ F172 ════════════════════════════════════════
+
+const DELTA_M: f32 = 134.0;
+
+/// The physics level under the rock law and (optionally) the lowstand.
+fn hist_k2(snaps: &[GridF32], cfg: &CascadeConfig, age: Option<f64>, rock: &Rock, sea: Option<SeaLow>) -> (Run, Vec<f32>) {
+    let clk = Clock::start();
+    let run = HistoryRun { t_years: T_F166_YEARS, steps: N_PHYS, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: age, sea_low: sea };
+    let l = physics_history_rock(snaps, 256, cfg, &run, Some(rock), &mut |_| {}, &|| false).unwrap();
+    let cost = clk.stop();
+    let k = n2m();
+    let zm = to_m(&l.rec.z, k);
+    let oc = ocean_mask_t(&zm, Some([0, 0]));
+    let d5 = (0..65536).map(|i| !oc[i] && zm.data[i] <= 0.0).collect();
+    let classes = classify(&zm.data, 256, 256, CELL);
+    let m = macro_stats(&zm.data, &classes, 256, 256, CELL);
+    (Run { zm, d5, classes, m, cost, rebound: l.rec.sum_rebound.iter().map(|v| v * k).collect() }, l.rec.e_cum_m)
+}
+fn shifted(g: &GridF32, d: f32) -> GridF32 {
+    GridF32 { width: g.width, height: g.height, data: g.data.iter().map(|v| v + d).collect() }
+}
+/// The frozen chain run on the field raised by Δ (its sea at the real −Δ), lowered by Δ at the end.
+fn chain_low(zm: &GridF32, amp: AmpConfig, ln_k: Option<Vec<f32>>, delta: f32) -> (GridF32, Vec<bool>, (f64, f64)) {
+    let zr = shifted(zm, delta);
+    let oc = ocean_mask_t(&zr, Some([0, 0]));
+    let d5: Vec<bool> = (0..zr.data.len()).map(|i| !oc[i] && zr.data[i] <= 0.0).collect();
+    let (g, d5o, c) = chain_k(&zr, &d5, amp, ln_k);
+    (shifted(&g, -delta), d5o, c)
+}
+
+/// Spearman's rank correlation (ties averaged).
+fn spearman(a: &[f32], b: &[f32]) -> f32 {
+    let rank = |v: &[f32]| -> Vec<f32> {
+        let mut idx: Vec<usize> = (0..v.len()).collect();
+        idx.sort_by(|&i, &j| v[i].partial_cmp(&v[j]).unwrap());
+        let mut r = vec![0f32; v.len()];
+        let mut i = 0;
+        while i < idx.len() {
+            let mut j = i;
+            while j + 1 < idx.len() && v[idx[j + 1]] == v[idx[i]] {
+                j += 1;
+            }
+            for k in i..=j {
+                r[idx[k]] = (i + j) as f32 / 2.0;
+            }
+            i = j + 1;
+        }
+        r
+    };
+    let (ra, rb) = (rank(a), rank(b));
+    let n = a.len() as f32;
+    let (ma, mb) = (ra.iter().sum::<f32>() / n, rb.iter().sum::<f32>() / n);
+    let cov: f32 = ra.iter().zip(&rb).map(|(x, y)| (x - ma) * (y - mb)).sum();
+    let va: f32 = ra.iter().map(|x| (x - ma).powi(2)).sum();
+    let vb: f32 = rb.iter().map(|y| (y - mb).powi(2)).sum();
+    cov / (va * vb).sqrt().max(1e-12)
+}
+
+/// A1: the perimeter's boundary shares (convergent, divergent, transform, none) at 64², and Σ Δs_DS by the distance to the
+/// coast (cells 0–7, ≥ 8).
+fn perimeter(w: &World) -> ([f32; 4], Vec<(f32, usize)>) {
+    let n = 64;
+    let land: Vec<bool> = w.snaps.last().unwrap().data.iter().map(|&v| v > 0.5).collect();
+    let mut bi = classify_boundaries(&w.st.plate_id, &w.kin);
+    retarget_upper_plate_continental(&mut bi, &w.st.plate_id, &w.st.plate_type);
+    let mut counts = [0usize; 4];
+    for j in 0..n {
+        for i in 0..n {
+            let k = j * n + i;
+            if !land[k] {
+                continue;
+            }
+            let nb4 = [((i + 1) % n, j), ((i + n - 1) % n, j), (i, (j + 1) % n), (i, (j + n - 1) % n)];
+            if !nb4.iter().any(|&(x, y)| !land[y * n + x]) {
+                continue;
+            }
+            let mut best = 3usize;
+            for dy in [n - 1, 0, 1] {
+                for dx in [n - 1, 0, 1] {
+                    let b = bi.boundary_type.get((i + dx) % n, (j + dy) % n);
+                    let c = match b {
+                        BoundaryType::Convergent => 0,
+                        BoundaryType::Divergent => 1,
+                        BoundaryType::Internal => 3,
+                        _ => 2,
+                    };
+                    best = best.min(c);
+                }
+            }
+            counts[best] += 1;
+        }
+    }
+    let tot = counts.iter().sum::<usize>().max(1) as f32;
+    let ds = &w.src.terms.iter().find(|x| x.0 == C1Term::DavisSuppe).unwrap().1;
+    let dist = edt_periodic(&land, 64);
+    let mut bins = vec![(0f32, 0usize); 9];
+    for k in 0..4096 {
+        if land[k] {
+            let b = ((dist[k] - 0.5).max(0.0).floor() as usize).min(8);
+            bins[b].0 += ds[k] as f32;
+            bins[b].1 += 1;
+        }
+    }
+    ([counts[0] as f32 / tot, counts[1] as f32 / tot, counts[2] as f32 / tot, counts[3] as f32 / tot], bins.iter().map(|&(s, c)| (if c > 0 { s / c as f32 } else { f32::NAN }, c)).collect())
+}
+
+/// A2: (f10, f20, f_in, R, rampart) on a 256² field.
+fn rampart(zm: &GridF32, classes: &[u8]) -> (f32, f32, f32, f32, bool) {
+    let land = land_t(zm);
+    let d = edt_periodic(&land, 256);
+    let share = |f: &dyn Fn(usize) -> bool| -> f32 {
+        let cells: Vec<usize> = (0..65536).filter(|&i| land[i] && f(i)).collect();
+        cells.iter().filter(|&&i| classes[i] == MOUNTAIN).count() as f32 / cells.len().max(1) as f32
+    };
+    let (f10, f20, fin) = (share(&|i| d[i] * CELL <= 10.0), share(&|i| d[i] * CELL <= 20.0), share(&|i| d[i] * CELL > 20.0));
+    let r = f20 / fin.max(0.05);
+    (f10, f20, fin, r, f20 >= 0.40 && r >= 2.0)
+}
+
+/// C: the drowned valleys at 2 048² (the declared detector): (count, lengths p50 / p90 / max km, Spearman(length, area), the
+/// five longest (length km, area km²)).
+fn drowned_valleys(g: &GridF32, delta: f32) -> (usize, f32, f32, f32, f32, Vec<(f32, f32)>) {
+    let n = 2048;
+    let ocean = ocean_mask_t(g, Some([0, 0]));
+    let dmask: Vec<bool> = (0..n * n).map(|k| ocean[k] && g.data[k] > -delta).collect();
+    let low: Vec<bool> = (0..n * n).map(|k| ocean[k] && g.data[k] <= -delta).collect();
+    let hy = hydrology(g, DOMAIN_KM / n as f32);
+    let mut seen = vec![false; n * n];
+    let mut out: Vec<(f32, f32)> = Vec::new();
+    let ckm = DOMAIN_KM / n as f32;
+    for s in 0..n * n {
+        if !dmask[s] || seen[s] {
+            continue;
+        }
+        // the component
+        let mut comp = vec![s];
+        seen[s] = true;
+        let mut i = 0;
+        while i < comp.len() {
+            let k = comp[i];
+            i += 1;
+            let (x, y) = (k % n, k / n);
+            for dy in [n - 1, 0, 1] {
+                for dx in [n - 1, 0, 1] {
+                    let j = ((y + dy) % n) * n + (x + dx) % n;
+                    if dmask[j] && !seen[j] {
+                        seen[j] = true;
+                        comp.push(j);
+                    }
+                }
+            }
+        }
+        // the geodesic BFS from the cells adjacent to the lowstand ocean
+        let mut dist: std::collections::HashMap<usize, u32> = std::collections::HashMap::new();
+        let mut q = std::collections::VecDeque::new();
+        let mut area = 0f32;
+        for &k in &comp {
+            let (x, y) = (k % n, k / n);
+            let mut by_low = false;
+            for dy in [n - 1, 0, 1] {
+                for dx in [n - 1, 0, 1] {
+                    let j = ((y + dy) % n) * n + (x + dx) % n;
+                    if low[j] {
+                        by_low = true;
+                    }
+                    if !ocean[j] {
+                        area = area.max(hy.acc_km2[j]);
+                    }
+                }
+            }
+            if by_low {
+                dist.insert(k, 0);
+                q.push_back(k);
+            }
+        }
+        let inset: std::collections::HashSet<usize> = comp.iter().copied().collect();
+        let mut maxd = 0u32;
+        while let Some(k) = q.pop_front() {
+            let dk = dist[&k];
+            maxd = maxd.max(dk);
+            let (x, y) = (k % n, k / n);
+            for (dx, dy) in [(1usize, 0usize), (n - 1, 0), (0, 1), (0, n - 1)] {
+                let j = ((y + dy) % n) * n + (x + dx) % n;
+                if inset.contains(&j) && !dist.contains_key(&j) {
+                    dist.insert(j, dk + 1);
+                    q.push_back(j);
+                }
+            }
+        }
+        let len = maxd as f32 * ckm;
+        if len >= 2.0 {
+            out.push((len, area));
+        }
+    }
+    let ls = sorted(out.iter().map(|o| o.0).collect());
+    let sp = if out.len() >= 3 { spearman(&out.iter().map(|o| o.0).collect::<Vec<_>>(), &out.iter().map(|o| o.1).collect::<Vec<_>>()) } else { f32::NAN };
+    out.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+    (out.len(), pct(&ls, 0.5), pct(&ls, 0.9), ls.last().copied().unwrap_or(0.0), sp, out.into_iter().take(5).collect())
+}
+
+/// The land components ≥ 1 km² (periodic 8-connected) of a mask at 2 048².
+fn islands(land: &[bool]) -> usize {
+    let (_, comps) = periodic_components(land, 2048);
+    let min_cells = (1.0 / (DOMAIN_KM / 2048.0).powi(2)).ceil() as usize;
+    comps.iter().filter(|c| c.0 >= min_cells).count()
+}
+
+/// B4: the shelf -- for each coastal sea cell the distance to the nearest cell ≤ −Δ (km): (median, p90), and the mean depth
+/// by the distance from the coast (0–20 km, 1 km bins).
+fn shelf(g: &GridF32, delta: f32) -> (f32, f32, Vec<f32>) {
+    let n = 2048;
+    let ckm = DOMAIN_KM / n as f32;
+    let ocean = ocean_mask_t(g, Some([0, 0]));
+    let land: Vec<bool> = ocean.iter().map(|o| !o).collect();
+    // distance to the cells ≤ −Δ (EDT of their complement), and to the land
+    let notdeep: Vec<bool> = (0..n * n).map(|k| !(ocean[k] && g.data[k] <= -delta)).collect();
+    let dd = edt(&notdeep, n, n);
+    let dl = edt(&ocean, n, n);
+    let mut w = Vec::new();
+    for k in 0..n * n {
+        if !ocean[k] {
+            continue;
+        }
+        let (x, y) = (k % n, k / n);
+        let nb = [y * n + (x + 1) % n, y * n + (x + n - 1) % n, ((y + 1) % n) * n + x, ((y + n - 1) % n) * n + x];
+        if nb.iter().any(|&j| land[j]) {
+            w.push(dd[k] * ckm);
+        }
+    }
+    let w = sorted(w);
+    let mut prof = vec![(0f64, 0usize); 21];
+    for k in 0..n * n {
+        if ocean[k] {
+            let b = (dl[k] * ckm).floor() as usize;
+            if b <= 20 {
+                prof[b].0 += g.data[k] as f64;
+                prof[b].1 += 1;
+            }
+        }
+    }
+    (pct(&w, 0.5), pct(&w, 0.9), prof.iter().map(|&(s, c)| if c > 0 { (s / c as f64) as f32 } else { f32::NAN }).collect())
+}
+
+
+// ════════════════════════════════════════ F173 ════════════════════════════════════════
+
+const PANEL: [u64; 5] = [8, 18, 19, 23, 29];
+
+fn load_curve() -> SeaCurve {
+    let p = root().join("data/sealevel/spratt2016.txt");
+    let text = std::fs::read_to_string(&p).expect("data/sealevel/spratt2016.txt (NOAA study 19982)");
+    SeaCurve::from_noaa_spratt2016(&text).unwrap()
+}
+fn hist_curve(snaps: &[GridF32], cfg: &CascadeConfig, age: Option<f64>, rock: &Rock, curve: &SeaCurve) -> (Run, Vec<f32>) {
+    let clk = Clock::start();
+    let run = HistoryRun { t_years: T_F166_YEARS, steps: N_PHYS, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: age, sea_low: None };
+    let l = physics_history_sea(snaps, 256, cfg, &run, Some(rock), Some(curve), &mut |_| {}, &|| false).unwrap();
+    let cost = clk.stop();
+    let k = n2m();
+    let zm = to_m(&l.rec.z, k);
+    let oc = ocean_mask_t(&zm, Some([0, 0]));
+    let d5 = (0..65536).map(|i| !oc[i] && zm.data[i] <= 0.0).collect();
+    let classes = classify(&zm.data, 256, 256, CELL);
+    let m = macro_stats(&zm.data, &classes, 256, 256, CELL);
+    eprintln!("      (curve: {} physics steps)", l.rec.steps);
+    (Run { zm, d5, classes, m, cost, rebound: l.rec.sum_rebound.iter().map(|v| v * k).collect() }, l.rec.e_cum_m)
+}
+/// C2: (W10, W_in, rampart_W) on a 256² field.
+fn wall_index(zm: &GridF32) -> (f32, f32, bool) {
+    let land = land_t(zm);
+    let d = edt_periodic(&land, 256);
+    let sl = slope_deg(&zm.data, 256, 256, CELL);
+    let share = |f: &dyn Fn(usize) -> bool| -> f32 {
+        let c: Vec<usize> = (0..65536).filter(|&i| land[i] && f(i)).collect();
+        c.iter().filter(|&&i| sl[i] >= 8.0).count() as f32 / c.len().max(1) as f32
+    };
+    let (w10, win) = (share(&|i| d[i] * CELL <= 10.0), share(&|i| d[i] * CELL > 20.0));
+    (w10, win, w10 >= 0.30 && w10 >= 2.0 * win)
+}
+/// C2's 2 048² reference: the share of the land within 10 km of the coast (the 256² EDT) whose slope exceeds 28°.
+fn walls_coast_2048(zm256: &GridF32, g: &GridF32) -> f32 {
+    let land = land_t(zm256);
+    let d = edt_periodic(&land, 256);
+    let lg = land_t(g);
+    let sl = slope_deg(&g.data, 2048, 2048, DOMAIN_KM / 2048.0);
+    let (mut n, mut w) = (0usize, 0usize);
+    for k in 0..2048 * 2048 {
+        let c = (k / 2048 / 8) * 256 + (k % 2048) / 8;
+        if lg[k] && d[c] * CELL <= 10.0 {
+            n += 1;
+            if sl[k] > 28.0 {
+                w += 1;
+            }
+        }
+    }
+    w as f32 / n.max(1) as f32
+}
+fn pearson(a: &[f32], b: &[f32]) -> f32 {
+    let n = a.len() as f32;
+    let (ma, mb) = (a.iter().sum::<f32>() / n, b.iter().sum::<f32>() / n);
+    let cov: f32 = a.iter().zip(b).map(|(x, y)| (x - ma) * (y - mb)).sum();
+    let va: f32 = a.iter().map(|x| (x - ma).powi(2)).sum();
+    let vb: f32 = b.iter().map(|y| (y - mb).powi(2)).sum();
+    cov / (va * vb).sqrt().max(1e-12)
+}
+
+/// C1: the coastal prism's history -- for today's land within 2 cells of the coast, Σ Δs_DS per step attributed by the
+/// boundary within Chebyshev 2 at that step (C-O, C-C, none) and by the plate count at that step (≥ 10, 7–9, ≤ 6).
+fn coastal_prism_history(seed: u64, p: C1Profile, end_land: &[bool]) -> ([f64; 3], [f64; 3]) {
+    let n = 64;
+    let dist = edt_periodic(end_land, 64);
+    let coastal: Vec<bool> = (0..4096).map(|k| end_land[k] && dist[k] <= 2.0).collect();
+    let cfg = c1_run_config();
+    let mut st = p.init_state(64, seed);
+    let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+    let cur = std::cell::RefCell::new(vec![0f64; 4096]);
+    let by_type = std::cell::RefCell::new([0f64; 3]);
+    let by_plates = std::cell::RefCell::new([0f64; 3]);
+    let mut on_term = |t: C1Term, a: &[f64], b: &[f64]| {
+        if t == C1Term::DavisSuppe {
+            let mut c = cur.borrow_mut();
+            for k in 0..4096 {
+                c[k] += b[k] - a[k];
+            }
+        }
+    };
+    run_with_closures_terms(
+        &mut st,
+        &mut kin,
+        &cfg,
+        &C1Closures::default(),
+        |_, s, kn| {
+            let ds = std::mem::replace(&mut *cur.borrow_mut(), vec![0f64; 4096]);
+            let mut bi = classify_boundaries(&s.plate_id, kn);
+            retarget_upper_plate_continental(&mut bi, &s.plate_id, &s.plate_type);
+            let plates = s.plate_id.data().iter().copied().collect::<std::collections::BTreeSet<u16>>().len();
+            let pb = if plates >= 10 { 0 } else if plates >= 7 { 1 } else { 2 };
+            let oceanic = |i: usize, j: usize| s.plate_type.get(i, j) == PlateType::Oceanic;
+            let mut bt = by_type.borrow_mut();
+            let mut bp = by_plates.borrow_mut();
+            for k in 0..4096 {
+                if !coastal[k] || ds[k] == 0.0 {
+                    continue;
+                }
+                let (i, j) = (k % n, k / n);
+                let mut ty = 2usize;
+                for dy in 0..5usize {
+                    for dx in 0..5usize {
+                        let (x, y) = ((i + n + dx - 2) % n, (j + n + dy - 2) % n);
+                        if bi.boundary_type.get(x, y) == BoundaryType::Convergent {
+                            let nb = [((x + 1) % n, y), ((x + n - 1) % n, y), (x, (y + 1) % n), (x, (y + n - 1) % n)];
+                            let co = oceanic(x, y) || nb.iter().any(|&(a, b)| oceanic(a, b));
+                            ty = ty.min(if co { 0 } else { 1 });
+                        }
+                    }
+                }
+                bt[ty] += ds[k];
+                bp[pb] += ds[k];
+            }
+        },
+        &mut on_term,
+    );
+    (by_type.into_inner(), by_plates.into_inner())
+}
+
+// ════════════════════════════════════════ F174 ════════════════════════════════════════
+
+const AGES174: [(&str, Option<f64>); 2] = [("B0", None), ("old 300 Myr", Some(300.0e6))];
+const WINDOWS: [(&str, bool); 8] = [
+    ("galicia_rias_baixas", true),
+    ("dalmatia_split", true),
+    ("bretagne_nord", true),
+    ("corsica_west", true),
+    ("landes_mimizan", false),
+    ("vendee_sables", false),
+    ("jutland_west", false),
+    ("golfe_du_lion_agde", false),
+];
+const WCELL_KM: f32 = 50.0 / 256.0;
+
+fn out174() -> PathBuf {
+    root().join("docs/reports/relief_method/f174_margin/images")
+}
+
+/// The 4-connected sea component of the largest size in a window (`true` = sea), no wrap.
+fn largest_sea_4(sea: &[bool], w: usize, h: usize) -> Vec<bool> {
+    let mut lab = vec![u32::MAX; w * h];
+    let mut sizes = Vec::new();
+    let mut stack = Vec::new();
+    for s in 0..w * h {
+        if !sea[s] || lab[s] != u32::MAX {
+            continue;
+        }
+        let id = sizes.len() as u32;
+        lab[s] = id;
+        stack.push(s);
+        let mut c = 0usize;
+        while let Some(k) = stack.pop() {
+            c += 1;
+            let (x, y) = (k % w, k / w);
+            let mut push = |j: usize| {
+                if sea[j] && lab[j] == u32::MAX {
+                    lab[j] = id;
+                    stack.push(j);
+                }
+            };
+            if x > 0 {
+                push(k - 1);
+            }
+            if x + 1 < w {
+                push(k + 1);
+            }
+            if y > 0 {
+                push(k - w);
+            }
+            if y + 1 < h {
+                push(k + w);
+            }
+        }
+        sizes.push(c);
+    }
+    let Some(best) = (0..sizes.len()).max_by_key(|&i| (sizes[i], std::cmp::Reverse(i))) else { return vec![false; w * h] };
+    lab.iter().map(|&l| l == best as u32).collect()
+}
+
+/// A2: `physio::coast`'s four measures on a WINDOW: the window's border is never a coast (only the land/sea edges between two
+/// in-window cells count, a coastline cell needs an in-window sea neighbour, the crack contours stop at the border).
+fn coast_window(land: &[bool], w: usize, h: usize, block: usize) -> Coast {
+    let (wi, hi) = (w as i64, h as i64);
+    let inside = |x: i64, y: i64| x >= 0 && y >= 0 && x < wi && y < hi;
+    let is_land = |x: i64, y: i64| land[y as usize * w + x as usize];
+    let sea_nb = |x: i64, y: i64| inside(x, y) && !is_land(x, y);
+    let cl: Vec<bool> = (0..w * h)
+        .map(|k| {
+            let (x, y) = ((k % w) as i64, (k / w) as i64);
+            land[k] && (sea_nb(x - 1, y) || sea_nb(x + 1, y) || sea_nb(x, y - 1) || sea_nb(x, y + 1))
+        })
+        .collect();
+    let mut pts = Vec::new();
+    for s in [2usize, 4, 8, 16, 32, 64] {
+        let (bw, bh) = (w.div_ceil(s), h.div_ceil(s));
+        let mut hit = vec![false; bw * bh];
+        for k in 0..w * h {
+            if cl[k] {
+                hit[(k / w / s) * bw + (k % w) / s] = true;
+            }
+        }
+        pts.push((s as f64, hit.iter().filter(|&&b| b).count() as f64));
+    }
+    let lx: Vec<f64> = pts.iter().map(|p| (1.0 / p.0).ln()).collect();
+    let ly: Vec<f64> = pts.iter().map(|p| p.1.max(1.0).ln()).collect();
+    let (mx, my) = (lx.iter().sum::<f64>() / 6.0, ly.iter().sum::<f64>() / 6.0);
+    let num: f64 = lx.iter().zip(&ly).map(|(a, b)| (a - mx) * (b - my)).sum();
+    let den: f64 = lx.iter().map(|a| (a - mx).powi(2)).sum();
+    let length_ratio = (pts[0].1 * pts[0].0) / (pts[4].1 * pts[4].0).max(1.0);
+    use std::collections::HashMap;
+    let mut out_edges: HashMap<(i64, i64), Vec<(i64, i64)>> = HashMap::new();
+    let (mut edges, mut on_lattice) = (0usize, 0usize);
+    let b = block as i64;
+    for y in 0..hi {
+        for x in 0..wi {
+            if !is_land(x, y) {
+                continue;
+            }
+            let mut add = |a: (i64, i64), c: (i64, i64), lattice: bool| {
+                out_edges.entry(a).or_default().push(c);
+                edges += 1;
+                if lattice {
+                    on_lattice += 1;
+                }
+            };
+            if sea_nb(x, y - 1) {
+                add((x, y), (x + 1, y), y % b == 0);
+            }
+            if sea_nb(x + 1, y) {
+                add((x + 1, y), (x + 1, y + 1), (x + 1) % b == 0);
+            }
+            if sea_nb(x, y + 1) {
+                add((x + 1, y + 1), (x, y + 1), (y + 1) % b == 0);
+            }
+            if sea_nb(x - 1, y) {
+                add((x, y + 1), (x, y), x % b == 0);
+            }
+        }
+    }
+    let (mut all, mut al) = (0f64, 0f64);
+    // the open contours (cut by the border) are followed from their heads (no incoming edge) first, then the loops
+    let mut indeg: HashMap<(i64, i64), usize> = HashMap::new();
+    for v in out_edges.values() {
+        for &c in v {
+            *indeg.entry(c).or_default() += 1;
+        }
+    }
+    let mut starts: Vec<(i64, i64)> = out_edges.keys().copied().filter(|k| !indeg.contains_key(k)).collect();
+    starts.sort();
+    let mut rest: Vec<(i64, i64)> = out_edges.keys().copied().collect();
+    rest.sort();
+    starts.extend(rest);
+    for s in starts {
+        while let Some(first) = out_edges.get_mut(&s).and_then(|v| v.pop()) {
+            let mut path = vec![s, first];
+            let mut cur = first;
+            let mut prev_dir = (first.0 - s.0, first.1 - s.1);
+            while cur != s {
+                let Some(v) = out_edges.get_mut(&cur) else { break };
+                if v.is_empty() {
+                    break;
+                }
+                let left = (-prev_dir.1, prev_dir.0);
+                let pick = v.iter().position(|&n| (n.0 - cur.0, n.1 - cur.1) == left).unwrap_or(0);
+                let nxt = v.swap_remove(pick);
+                prev_dir = (nxt.0 - cur.0, nxt.1 - cur.1);
+                path.push(nxt);
+                cur = nxt;
+            }
+            if path.len() < 33 {
+                continue;
+            }
+            let mut i = 0;
+            while i + 8 < path.len() {
+                let (dx, dy) = ((path[i + 8].0 - path[i].0) as f32, (path[i + 8].1 - path[i].1) as f32);
+                let len = (dx * dx + dy * dy).sqrt() as f64;
+                if len > 0.0 {
+                    let phi = dy.abs().atan2(dx.abs()).to_degrees() % 45.0;
+                    all += len;
+                    if phi.min(45.0 - phi) <= 5.0 {
+                        al += len;
+                    }
+                }
+                i += 8;
+            }
+        }
+    }
+    Coast {
+        dimension: (num / den.max(1e-12)) as f32,
+        length_ratio: length_ratio as f32,
+        aligned: if all > 0.0 { (al / all) as f32 } else { f32::NAN },
+        block_index: if edges > 0 { (on_lattice as f32 / edges as f32) * block as f32 } else { f32::NAN },
+        edges,
+    }
+}
+
+/// The coastline cells (land with a 4-neighbour sea) of a window, no wrap, the border never a coast.
+fn coast_cells_window(land: &[bool], w: usize, h: usize) -> Vec<bool> {
+    (0..w * h)
+        .map(|k| {
+            let (x, y) = (k % w, k / w);
+            land[k] && ((x > 0 && !land[k - 1]) || (x + 1 < w && !land[k + 1]) || (y > 0 && !land[k - w]) || (y + 1 < h && !land[k + w]))
+        })
+        .collect()
+}
+/// The coastline cells on the torus.
+fn coast_cells_t(land: &[bool], n: usize) -> Vec<bool> {
+    (0..n * n)
+        .map(|k| {
+            let (x, y) = (k % n, k / n);
+            land[k] && (!land[y * n + (x + 1) % n] || !land[y * n + (x + n - 1) % n] || !land[((y + 1) % n) * n + x] || !land[((y + n - 1) % n) * n + x])
+        })
+        .collect()
+}
+
+/// The disk offsets within `r` cells.
+fn disk(r: f32) -> Vec<(i64, i64)> {
+    let ri = r.ceil() as i64;
+    let mut v = Vec::new();
+    for dy in -ri..=ri {
+        for dx in -ri..=ri {
+            if ((dx * dx + dy * dy) as f32) <= r * r {
+                v.push((dx, dy));
+            }
+        }
+    }
+    v
+}
+/// A2's rule: for each listed coastline cell, the p90 of the land altitude within 5 km; `true` = rocky (> 200 m). `per` wraps
+/// (our worlds' torus); otherwise only the in-window cells count.
+fn rocky_cells(z: &[f32], land: &[bool], w: usize, h: usize, cells: &[usize], cell_km: f32, per: bool) -> Vec<bool> {
+    let off = disk(5.0 / cell_km);
+    let (wi, hi) = (w as i64, h as i64);
+    cells
+        .iter()
+        .map(|&k| {
+            let (x, y) = ((k % w) as i64, (k / w) as i64);
+            let mut v: Vec<f32> = Vec::with_capacity(off.len());
+            for &(dx, dy) in &off {
+                let (mut a, mut b) = (x + dx, y + dy);
+                if per {
+                    a = a.rem_euclid(wi);
+                    b = b.rem_euclid(hi);
+                } else if a < 0 || b < 0 || a >= wi || b >= hi {
+                    continue;
+                }
+                let j = b as usize * w + a as usize;
+                if land[j] {
+                    v.push(z[j]);
+                }
+            }
+            if v.is_empty() {
+                return false;
+            }
+            let i = ((v.len() - 1) as f32 * 0.9).round() as usize;
+            let (_, p90, _) = v.select_nth_unstable_by(i, |a, b| a.partial_cmp(b).unwrap());
+            *p90 > 200.0
+        })
+        .collect()
+}
+
+/// A real window: (altitude m, land = not the largest 4-connected sea component).
+fn load_window(name: &str) -> (Vec<f32>, Vec<bool>) {
+    let g = load_grid(&root().join(format!("data/coasts/{name}_256.bin"))).unwrap();
+    assert_eq!((g.width, g.height), (256, 256));
+    let sea: Vec<bool> = g.data.iter().map(|&v| v <= 0.0).collect();
+    let ocean = largest_sea_4(&sea, 256, 256);
+    (g.data.clone(), ocean.iter().map(|o| !o).collect())
+}
+
+#[derive(Clone, Debug, Default)]
+struct Band {
+    lo: [f32; 4],
+    hi: [f32; 4],
+}
+fn meas(c: &Coast) -> [f32; 4] {
+    [c.dimension, c.length_ratio, c.aligned, c.block_index]
+}
+fn in_band(b: &Band, m: &[f32; 4]) -> usize {
+    (0..4).filter(|&i| m[i] >= b.lo[i] && m[i] <= b.hi[i]).count()
+}
+fn fm(m: &[f32; 4]) -> String {
+    format!("{:.3} / {:.3} / {:.3} / {:.3}", m[0], m[1], m[2], m[3])
+}
+
+/// A2 on one of our worlds (2 048², m, sea at 0): the 64 windows of 256², eligible ≥ 128 coastline cells and a type by the
+/// rule (≥ 80 %); per type the median of each measure, and the count of windows.
+fn world_windows(g: &GridF32) -> ([Option<[f32; 4]>; 2], [usize; 3]) {
+    let n = 2048;
+    let land = land_t(g);
+    let cl = coast_cells_t(&land, n);
+    let mut per_type: [Vec<[f32; 4]>; 2] = [Vec::new(), Vec::new()];
+    let mut counts = [0usize; 3];
+    for wy in 0..8 {
+        for wx in 0..8 {
+            let idx: Vec<usize> = (0..256 * 256).map(|k| (wy * 256 + k / 256) * n + wx * 256 + k % 256).collect();
+            let wl: Vec<bool> = idx.iter().map(|&k| land[k]).collect();
+            let wcl = coast_cells_window(&wl, 256, 256);
+            let cells: Vec<usize> = (0..256 * 256).filter(|&k| wcl[k]).map(|k| idx[k]).collect();
+            if cells.len() < 128 {
+                continue;
+            }
+            let _ = &cl;
+            let rk = rocky_cells(&g.data, &land, n, n, &cells, WCELL_KM, true);
+            let share = rk.iter().filter(|&&b| b).count() as f32 / rk.len() as f32;
+            let ty = if share >= 0.8 { 0 } else if share <= 0.2 { 1 } else { 2 };
+            counts[ty] += 1;
+            if ty < 2 {
+                per_type[ty].push(meas(&coast_window(&wl, 256, 256, 32)));
+            }
+        }
+    }
+    let med = |v: &Vec<[f32; 4]>| -> Option<[f32; 4]> {
+        if v.is_empty() {
+            return None;
+        }
+        let mut o = [0f32; 4];
+        for i in 0..4 {
+            let mut c: Vec<f32> = v.iter().map(|m| m[i]).filter(|x| x.is_finite()).collect();
+            c.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            o[i] = if c.is_empty() { f32::NAN } else { c[c.len() / 2] };
+        }
+        Some(o)
+    };
+    ([med(&per_type[0]), med(&per_type[1])], counts)
+}
+
+/// A1: the final coastline's distance (cells of 256²) to the C1 contour, both on an n² torus: (≤ 1, ≤ 2, ≤ 5 shares, p50, p90).
+fn inherited(final_land: &[bool], c1_land: &[bool], n: usize) -> (f32, f32, f32, f32, f32, Vec<f32>) {
+    let fc = coast_cells_t(final_land, n);
+    let cc = coast_cells_t(c1_land, n);
+    let not_c1: Vec<bool> = cc.iter().map(|c| !c).collect();
+    let d = edt_periodic(&not_c1, n);
+    let f = (n / 256) as f32;
+    let mut v: Vec<f32> = (0..n * n).filter(|&k| fc[k]).map(|k| d[k] / f).collect();
+    let tot = v.len().max(1) as f32;
+    let s = |t: f32| v.iter().filter(|&&x| x <= t).count() as f32 / tot;
+    let (a, b, c) = (s(1.0), s(2.0), s(5.0));
+    let dmap: Vec<f32> = (0..n * n).map(|k| if fc[k] { d[k] / f } else { -1.0 }).collect();
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let q = |p: f32| if v.is_empty() { f32::NAN } else { v[((v.len() - 1) as f32 * p).round() as usize] };
+    (a, b, c, q(0.5), q(0.9), dmap)
+}
+
+/// The land of a normalised field (the cascade's sea at 0.5) on the torus.
+fn land_norm_t(z: &GridF32) -> Vec<bool> {
+    land_t(&shifted(z, -0.5))
+}
+
+/// A1's image: north up, a 2 048² field downsampled ×2: land grey, the C1 contour black, the final coast coloured by its
+/// distance (green ≤ 1, yellow ≤ 2, orange ≤ 5, red > 5 cells of 256²).
+fn a1_png(final_land: &[bool], c1_land: &[bool], dmap: &[f32], n: usize, path: &std::path::Path) {
+    let cc = coast_cells_t(c1_land, n);
+    let m = n / 2;
+    let mut img = image::RgbaImage::new(m as u32, m as u32);
+    for y in 0..m {
+        for x in 0..m {
+            let mut px = [40u8, 70, 140, 255];
+            let mut best: Option<f32> = None;
+            let mut c1 = false;
+            let mut land = 0;
+            for dy in 0..2 {
+                for dx in 0..2 {
+                    let k = (2 * y + dy) * n + 2 * x + dx;
+                    if final_land[k] {
+                        land += 1;
+                    }
+                    if cc[k] {
+                        c1 = true;
+                    }
+                    if dmap[k] >= 0.0 {
+                        best = Some(best.map_or(dmap[k], |b: f32| b.max(dmap[k])));
+                    }
+                }
+            }
+            if land >= 2 {
+                px = [200, 200, 190, 255];
+            }
+            if c1 {
+                px = [0, 0, 0, 255];
+            }
+            if let Some(d) = best {
+                px = if d <= 1.0 { [30, 170, 60, 255] } else if d <= 2.0 { [230, 210, 40, 255] } else if d <= 5.0 { [240, 130, 20, 255] } else { [220, 30, 30, 255] };
+            }
+            img.put_pixel(x as u32, (m - 1 - y) as u32, image::Rgba(px));
+        }
+    }
+    img.save(path).unwrap();
+}
+
+/// The physics level under K2 with `steps` steps (A3).
+fn hist_k2n(snaps: &[GridF32], cfg: &CascadeConfig, age: Option<f64>, rock: &Rock, steps: usize) -> (Run, Vec<f32>) {
+    let clk = Clock::start();
+    let run = HistoryRun { t_years: T_F166_YEARS, steps, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: age, sea_low: None };
+    let l = physics_history_rock(snaps, 256, cfg, &run, Some(rock), &mut |_| {}, &|| false).unwrap();
+    let cost = clk.stop();
+    let k = n2m();
+    let zm = to_m(&l.rec.z, k);
+    let oc = ocean_mask_t(&zm, Some([0, 0]));
+    let d5 = (0..65536).map(|i| !oc[i] && zm.data[i] <= 0.0).collect();
+    let classes = classify(&zm.data, 256, 256, CELL);
+    let m = macro_stats(&zm.data, &classes, 256, 256, CELL);
+    (Run { zm, d5, classes, m, cost, rebound: l.rec.sum_rebound.iter().map(|v| v * k).collect() }, l.rec.e_cum_m)
+}
+
+/// A3: the share of `a`'s order-≥ 3 cells with no order-≥ 3 cell of `b` within its 3 × 3 (periodic).
+fn displaced(a: &[u8], b: &[u8], n: usize) -> f32 {
+    let mut tot = 0usize;
+    let mut moved = 0usize;
+    for k in 0..n * n {
+        if a[k] < 3 {
+            continue;
+        }
+        tot += 1;
+        let (x, y) = (k % n, k / n);
+        let mut hit = false;
+        for dy in [n - 1, 0, 1] {
+            for dx in [n - 1, 0, 1] {
+                if b[((y + dy) % n) * n + (x + dx) % n] >= 3 {
+                    hit = true;
+                }
+            }
+        }
+        if !hit {
+            moved += 1;
+        }
+    }
+    moved as f32 / tot.max(1) as f32
+}
+
+/// A4: per C1 step, the perimeter's shares (convergent, divergent, transform, none) and the same-plate share.
+fn perimeter_series(seed: u64, p: C1Profile) -> Vec<([f32; 4], f32, usize)> {
+    let n = 64;
+    let cfg = c1_run_config();
+    let mut st = p.init_state(64, seed);
+    let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+    let series = std::cell::RefCell::new(Vec::new());
+    run_with_closures_terms(
+        &mut st,
+        &mut kin,
+        &cfg,
+        &C1Closures::default(),
+        |_, s, kn| {
+            let mut bi = classify_boundaries(&s.plate_id, kn);
+            retarget_upper_plate_continental(&mut bi, &s.plate_id, &s.plate_type);
+            let cont = |i: usize, j: usize| s.plate_type.get(i, j) == PlateType::Continental;
+            let mut counts = [0usize; 4];
+            let mut same = 0usize;
+            for j in 0..n {
+                for i in 0..n {
+                    if !cont(i, j) {
+                        continue;
+                    }
+                    let nb4 = [((i + 1) % n, j), ((i + n - 1) % n, j), (i, (j + 1) % n), (i, (j + n - 1) % n)];
+                    let oc: Vec<(usize, usize)> = nb4.iter().copied().filter(|&(x, y)| !cont(x, y)).collect();
+                    if oc.is_empty() {
+                        continue;
+                    }
+                    if oc.iter().any(|&(x, y)| s.plate_id.get(x, y) == s.plate_id.get(i, j)) {
+                        same += 1;
+                    }
+                    let mut best = 3usize;
+                    for dy in [n - 1, 0, 1] {
+                        for dx in [n - 1, 0, 1] {
+                            let c = match bi.boundary_type.get((i + dx) % n, (j + dy) % n) {
+                                BoundaryType::Convergent => 0,
+                                BoundaryType::Divergent => 1,
+                                BoundaryType::Internal => 3,
+                                _ => 2,
+                            };
+                            best = best.min(c);
+                        }
+                    }
+                    counts[best] += 1;
+                }
+            }
+            let tot = counts.iter().sum::<usize>().max(1) as f32;
+            let plates = s.plate_id.data().iter().copied().collect::<std::collections::BTreeSet<u16>>().len();
+            series.borrow_mut().push(([counts[0] as f32 / tot, counts[1] as f32 / tot, counts[2] as f32 / tot, counts[3] as f32 / tot], same as f32 / tot, plates));
+        },
+        &mut |_, _, _| {},
+    );
+    series.into_inner()
+}
+
+/// The windows' montage (north up), real coasts: the land shaded by altitude, the sea blue.
+fn window_png(z: &[f32], land: &[bool], path: &std::path::Path) {
+    let mx = z.iter().copied().fold(1f32, f32::max);
+    let mut img = image::RgbaImage::new(256, 256);
+    for k in 0..65536 {
+        let (x, y) = (k % 256, k / 256);
+        let v = (z[k].max(0.0) / mx).sqrt();
+        let px = if land[k] { [(60.0 + 180.0 * v) as u8, (140.0 + 100.0 * v) as u8, (60.0 + 160.0 * v) as u8, 255] } else { [30, 60, 140, 255] };
+        img.put_pixel(x as u32, 255 - y as u32, image::Rgba(px));
+    }
+    img.save(path).unwrap();
+}
+
+// ════════════════════════════════════════ F174 B/C ════════════════════════════════════════
+
+use ymir_core::cascade::margin::{Hetero, Margin, Ramp};
+use ymir_core::cascade::profile::select_continent_default_margin;
+
+/// The variants of Part B (the main margin first after Part A's « off »).
+fn variants() -> Vec<(&'static str, Margin)> {
+    let m = Margin::declared();
+    vec![
+        ("A (off)", Margin::off()),
+        ("margin", m),
+        ("w_rim x0.5", Margin { w_rim: m.w_rim * 0.5, ..m }),
+        ("w_rim x2", Margin { w_rim: m.w_rim * 2.0, ..m }),
+        ("w_n x2", Margin { ramp: Some(Ramp::declared().scaled(2.0)), ..m }),
+        ("w_n /2", Margin { ramp: Some(Ramp::declared().scaled(0.5)), ..m }),
+        ("B-hetero", Margin { hetero: Some(Hetero::declared()), ..m }),
+    ]
+}
+
+/// C1 under a profile and a margin, its Airy sources' record.
+fn world_m(seed: u64, p: C1Profile, m: &Margin) -> World {
+    let cfg = c1_run_config();
+    let mut st = p.init_state_margin(64, seed, m);
+    let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+    let clk = Clock::start();
+    let src = run_c1_sources_mapped(&mut st, &mut kin, &cfg, &C1Closures::default(), 10, &cfg.iso_config, &SteinSteinParams::default(), &[C1Term::Erosion], Mapping::Airy(Airy::declared()));
+    let cost = clk.stop();
+    let snaps = src.hist.normalized(None);
+    World { src, st, kin, snaps, cost }
+}
+fn cover_map_m(seed: u64, p: C1Profile, m: &Margin, d_c: f32) -> Vec<f32> {
+    let st0 = p.init_state_margin(64, seed, m);
+    up_mask(st0.cratonic_mask.data(), 64, 4).iter().map(|&s| if s { 0.0 } else { d_c }).collect()
+}
+
+/// B1's verification, per C1 step: (active share, rim-consumed share, plates); and the last step's perimeter map
+/// (0 none, 1 continental, 2 passive perimeter, 3 active perimeter).
+fn margin_series(seed: u64, p: C1Profile, m: &Margin) -> (Vec<(f32, f32, usize)>, Vec<u8>, (f32, f32)) {
+    let n = 64;
+    let cfg = c1_run_config();
+    let mut st = p.init_state_margin(64, seed, m);
+    let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+    let series = std::cell::RefCell::new(Vec::new());
+    let last = std::cell::RefCell::new(vec![0u8; n * n]);
+    let classify_step = |s: &C1State, kn: &PlateKinematics| -> ((f32, f32, usize), Vec<u8>) {
+        let mut bi = classify_boundaries(&s.plate_id, kn);
+        retarget_upper_plate_continental(&mut bi, &s.plate_id, &s.plate_type);
+        let cont = |i: usize, j: usize| s.plate_type.get(i, j) == PlateType::Continental;
+        let mut map = vec![0u8; n * n];
+        let (mut per, mut act, mut cons) = (0usize, 0usize, 0usize);
+        for j in 0..n {
+            for i in 0..n {
+                if !cont(i, j) {
+                    continue;
+                }
+                map[j * n + i] = 1;
+                let nb4 = [((i + 1) % n, j), ((i + n - 1) % n, j), (i, (j + 1) % n), (i, (j + n - 1) % n)];
+                let oc: Vec<(usize, usize)> = nb4.iter().copied().filter(|&(x, y)| !cont(x, y)).collect();
+                if oc.is_empty() {
+                    continue;
+                }
+                per += 1;
+                if oc.iter().any(|&(x, y)| s.plate_id.get(x, y) != s.plate_id.get(i, j)) {
+                    cons += 1;
+                }
+                let mut a = false;
+                for dy in [n - 1, 0, 1] {
+                    for dx in [n - 1, 0, 1] {
+                        if bi.boundary_type.get((i + dx) % n, (j + dy) % n) == BoundaryType::Convergent {
+                            a = true;
+                        }
+                    }
+                }
+                if a {
+                    act += 1;
+                }
+                map[j * n + i] = if a { 3 } else { 2 };
+            }
+        }
+        let plates = s.plate_id.data().iter().copied().collect::<std::collections::BTreeSet<u16>>().len();
+        ((act as f32 / per.max(1) as f32, cons as f32 / per.max(1) as f32, plates), map)
+    };
+    let t0 = classify_step(&st, &kin).0;
+    run_with_closures_terms(
+        &mut st,
+        &mut kin,
+        &cfg,
+        &C1Closures::default(),
+        |_, s, kn| {
+            let (v, map) = classify_step(s, kn);
+            series.borrow_mut().push(v);
+            *last.borrow_mut() = map;
+        },
+        &mut |_, _, _| {},
+    );
+    (series.into_inner(), last.into_inner(), (t0.0, t0.1))
+}
+
+/// The shelf (2 048², m, sea at 0): per coastline cell the steepest-descent path through the ocean; the break is the first
+/// point ≥ 1 km out whose next-1-km mean slope is ≥ 3 × the mean slope since the coast. (median width km, p90 width, median
+/// break depth m, share with a shelf).
+fn shelf_break(g: &GridF32) -> (f32, f32, f32, f32) {
+    let n = g.width;
+    let ck = DOMAIN_KM / n as f32;
+    let land = land_t(g);
+    let cl = coast_cells_t(&land, n);
+    let z = &g.data;
+    let idx = |x: i64, y: i64| (y.rem_euclid(n as i64) as usize) * n + x.rem_euclid(n as i64) as usize;
+    let mut widths = Vec::new();
+    let mut depths = Vec::new();
+    let mut with = 0usize;
+    let mut tot = 0usize;
+    for k in 0..n * n {
+        if !cl[k] {
+            continue;
+        }
+        tot += 1;
+        let (mut x, mut y) = ((k % n) as i64, (k / n) as i64);
+        let mut s = vec![0f32];
+        let mut zz = vec![z[k].max(0.0)];
+        let mut cur = f32::INFINITY; // the first step goes to the lowest ocean neighbour
+        loop {
+            let mut best: Option<(i64, i64, f32, f32)> = None;
+            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)] {
+                let j = idx(x + dx, y + dy);
+                if land[j] {
+                    continue;
+                }
+                let v = z[j];
+                if v < cur && best.is_none_or(|b| v < b.2) {
+                    best = Some((x + dx, y + dy, v, if dx != 0 && dy != 0 { std::f32::consts::SQRT_2 } else { 1.0 }));
+                }
+            }
+            let Some((nx, ny, v, l)) = best else { break };
+            x = nx;
+            y = ny;
+            cur = v;
+            s.push(s.last().unwrap() + l * ck);
+            zz.push(v);
+            if *s.last().unwrap() > 60.0 || v < -3000.0 {
+                break;
+            }
+        }
+        let mut found: Option<(f32, f32)> = None;
+        let mut jj = 0usize;
+        for i in 1..s.len() {
+            if s[i] < 1.0 {
+                continue;
+            }
+            jj = jj.max(i);
+            while jj < s.len() && s[jj] < s[i] + 1.0 {
+                jj += 1;
+            }
+            if jj >= s.len() {
+                break;
+            }
+            let before = (zz[0] - zz[i]) / s[i];
+            let after = (zz[i] - zz[jj]) / (s[jj] - s[i]);
+            if after > 0.0 && after >= 3.0 * before {
+                found = Some((s[i], -zz[i]));
+                break;
+            }
+        }
+        match found {
+            Some((w, d)) => {
+                with += 1;
+                widths.push(w);
+                depths.push(d);
+            }
+            None => widths.push(0.0),
+        }
+    }
+    widths.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    depths.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let q = |v: &Vec<f32>, p: f32| if v.is_empty() { f32::NAN } else { v[((v.len() - 1) as f32 * p).round() as usize] };
+    (q(&widths, 0.5), q(&widths, 0.9), q(&depths, 0.5), with as f32 / tot.max(1) as f32)
+}
+
+/// A1 with the distance field kept: (≤ 1, ≤ 2, ≤ 5 shares, p50, p90, the coast-cell distance map, the full distance field in
+/// cells of 256²).
+fn inherited_full(final_land: &[bool], c1_land: &[bool], n: usize) -> (f32, f32, f32, f32, f32, Vec<f32>, Vec<f32>) {
+    let fc = coast_cells_t(final_land, n);
+    let cc = coast_cells_t(c1_land, n);
+    let not_c1: Vec<bool> = cc.iter().map(|c| !c).collect();
+    let f = (n / 256) as f32;
+    let d: Vec<f32> = edt_periodic(&not_c1, n).iter().map(|v| v / f).collect();
+    let mut v: Vec<f32> = (0..n * n).filter(|&k| fc[k]).map(|k| d[k]).collect();
+    let tot = v.len().max(1) as f32;
+    let s = |t: f32| v.iter().filter(|&&x| x <= t).count() as f32 / tot;
+    let (a, b, c) = (s(1.0), s(2.0), s(5.0));
+    let dmap: Vec<f32> = (0..n * n).map(|k| if fc[k] { d[k] } else { -1.0 }).collect();
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let q = |p: f32| if v.is_empty() { f32::NAN } else { v[((v.len() - 1) as f32 * p).round() as usize] };
+    (a, b, c, q(0.5), q(0.9), dmap, d)
+}
+
+/// The dendritic sea arms: 8-connected components (periodic) of the ocean lying inside C1's land by ≥ 2 cells of 256², ≥ 1
+/// km²; (count, penetration p50, max, km).
+fn sea_arms(final_land: &[bool], c1_land: &[bool], d256: &[f32], n: usize) -> (usize, f32, f32) {
+    let ck = DOMAIN_KM / n as f32;
+    let cell256 = DOMAIN_KM / 256.0;
+    let m: Vec<bool> = (0..n * n).map(|k| !final_land[k] && c1_land[k] && d256[k] >= 2.0).collect();
+    let mut lab = vec![u32::MAX; n * n];
+    let mut pens = Vec::new();
+    let mut stack = Vec::new();
+    let min_cells = (1.0 / (ck * ck)).ceil() as usize;
+    for s in 0..n * n {
+        if !m[s] || lab[s] != u32::MAX {
+            continue;
+        }
+        lab[s] = 0;
+        stack.push(s);
+        let (mut cnt, mut pen) = (0usize, 0f32);
+        while let Some(k) = stack.pop() {
+            cnt += 1;
+            pen = pen.max(d256[k] * cell256);
+            let (x, y) = (k % n, k / n);
+            for dy in [n - 1, 0, 1] {
+                for dx in [n - 1, 0, 1] {
+                    let j = ((y + dy) % n) * n + (x + dx) % n;
+                    if m[j] && lab[j] == u32::MAX {
+                        lab[j] = 0;
+                        stack.push(j);
+                    }
+                }
+            }
+        }
+        if cnt >= min_cells {
+            pens.push(pen);
+        }
+    }
+    pens.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let p50 = if pens.is_empty() { 0.0 } else { pens[pens.len() / 2] };
+    (pens.len(), p50, pens.last().copied().unwrap_or(0.0))
+}
+
+/// The coast by the rock at the coastline: 256² windows of the 2 048² field, typed by the 256² surface rock (nearest ×8):
+/// rocky (basement / shield ≥ 80 %), low (cover ≥ 80 %); per type the median measures and the window count; and the median
+/// seaside slope (°) of the land coastline cells.
+fn rock_windows(g: &GridF32, rock256: &[u8]) -> ([Option<[f32; 4]>; 2], [usize; 3], f32) {
+    let n = 2048;
+    let land = land_t(g);
+    let cl = coast_cells_t(&land, n);
+    let rk = |k: usize| rock256[((k / n) / 8) * 256 + (k % n) / 8];
+    let mut per_type: [Vec<[f32; 4]>; 2] = [Vec::new(), Vec::new()];
+    let mut counts = [0usize; 3];
+    for wy in 0..8 {
+        for wx in 0..8 {
+            let idx: Vec<usize> = (0..256 * 256).map(|k| (wy * 256 + k / 256) * n + wx * 256 + k % 256).collect();
+            let wl: Vec<bool> = idx.iter().map(|&k| land[k]).collect();
+            let wcl = coast_cells_window(&wl, 256, 256);
+            let cells: Vec<usize> = (0..256 * 256).filter(|&k| wcl[k]).map(|k| idx[k]).collect();
+            if cells.len() < 128 {
+                continue;
+            }
+            let typed: Vec<u8> = cells.iter().map(|&k| rk(k)).filter(|&r| r > 0).collect();
+            if typed.is_empty() {
+                counts[2] += 1;
+                continue;
+            }
+            let hard = typed.iter().filter(|&&r| r >= 2).count() as f32 / typed.len() as f32;
+            let ty = if hard >= 0.8 { 0 } else if hard <= 0.2 { 1 } else { 2 };
+            counts[ty] += 1;
+            if ty < 2 {
+                per_type[ty].push(meas(&coast_window(&wl, 256, 256, 32)));
+            }
+        }
+    }
+    let med = |v: &Vec<[f32; 4]>| -> Option<[f32; 4]> {
+        if v.is_empty() {
+            return None;
+        }
+        let mut o = [0f32; 4];
+        for i in 0..4 {
+            let mut c: Vec<f32> = v.iter().map(|m| m[i]).filter(|x| x.is_finite()).collect();
+            c.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            o[i] = if c.is_empty() { f32::NAN } else { c[c.len() / 2] };
+        }
+        Some(o)
+    };
+    let sl = slope_deg(&g.data, n, n, DOMAIN_KM / n as f32);
+    let mut ss: Vec<f32> = (0..n * n).filter(|&k| cl[k]).map(|k| sl[k]).collect();
+    ss.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let sm = if ss.is_empty() { f32::NAN } else { ss[ss.len() / 2] };
+    let _ = &cl;
+    ([med(&per_type[0]), med(&per_type[1])], counts, sm)
+}
+
+/// An altitude / bathymetry image (north up), 2 048² downsampled by `step`: the sea blue by depth (0 to −5 500 m), the land
+/// green → brown → white (0 to 3 000 m).
+fn alt_png(g: &GridF32, step: usize) -> image::RgbaImage {
+    let n = g.width;
+    let m = n / step;
+    let land = land_t(g);
+    let mut img = image::RgbaImage::new(m as u32, m as u32);
+    for y in 0..m {
+        for x in 0..m {
+            let k = (y * step) * n + x * step;
+            let z = g.data[k];
+            let px = if !land[k] {
+                let t = (-z / 5500.0).clamp(0.0, 1.0).sqrt();
+                [(150.0 - 130.0 * t) as u8, (200.0 - 160.0 * t) as u8, (240.0 - 120.0 * t) as u8, 255]
+            } else {
+                let t = (z / 3000.0).clamp(0.0, 1.0);
+                if t < 0.4 {
+                    let u = t / 0.4;
+                    [(70.0 + 110.0 * u) as u8, (140.0 + 20.0 * u) as u8, (60.0 + 30.0 * u) as u8, 255]
+                } else {
+                    let u = (t - 0.4) / 0.6;
+                    [(180.0 + 70.0 * u) as u8, (160.0 + 90.0 * u) as u8, (90.0 + 160.0 * u) as u8, 255]
+                }
+            };
+            img.put_pixel(x as u32, (m - 1 - y) as u32, image::Rgba(px));
+        }
+    }
+    img
+}
+/// The 64² perimeter map (north up, ×6): continental grey, passive perimeter green, active red, ocean blue.
+fn perim_png(map: &[u8]) -> image::RgbaImage {
+    let mut img = image::RgbaImage::new(384, 384);
+    for k in 0..4096 {
+        let (x, y) = (k % 64, k / 64);
+        let c = match map[k] {
+            1 => [190, 190, 180, 255],
+            2 => [30, 170, 60, 255],
+            3 => [220, 30, 30, 255],
+            _ => [40, 70, 140, 255],
+        };
+        for dy in 0..6 {
+            for dx in 0..6 {
+                img.put_pixel((x * 6 + dx) as u32, ((63 - y) * 6 + dy) as u32, image::Rgba(c));
+            }
+        }
+    }
+    img
+}
+/// A 25 km crop (128² cells of 195 m, ×2, north up) of a field, around the 128-aligned block with the most coastline cells.
+fn coast_crop(g: &GridF32) -> image::RgbaImage {
+    let n = g.width;
+    let land = land_t(g);
+    let cl = coast_cells_t(&land, n);
+    let b = n / 128;
+    let mut best = (0usize, 0usize, 0usize);
+    for by in 0..b {
+        for bx in 0..b {
+            let c = (0..128 * 128).filter(|&k| cl[(by * 128 + k / 128) * n + bx * 128 + k % 128]).count();
+            if c > best.0 {
+                best = (c, bx, by);
+            }
+        }
+    }
+    let sub = GridF32 { width: 128, height: 128, data: (0..128 * 128).map(|k| g.data[(best.2 * 128 + k / 128) * n + best.1 * 128 + k % 128]).collect() };
+    image::imageops::resize(&alt_png_plain(&sub), 256, 256, image::imageops::FilterType::Nearest)
+}
+/// [`alt_png`] without the torus ocean (the sea = z ≤ 0), at full resolution.
+fn alt_png_plain(g: &GridF32) -> image::RgbaImage {
+    let n = g.width;
+    let mut img = image::RgbaImage::new(n as u32, n as u32);
+    for k in 0..n * n {
+        let (x, y) = (k % n, k / n);
+        let z = g.data[k];
+        let px = if z <= 0.0 {
+            let t = (-z / 5500.0).clamp(0.0, 1.0).sqrt();
+            [(150.0 - 130.0 * t) as u8, (200.0 - 160.0 * t) as u8, (240.0 - 120.0 * t) as u8, 255]
+        } else {
+            let t = (z / 3000.0).clamp(0.0, 1.0);
+            [(70.0 + 180.0 * t) as u8, (140.0 + 110.0 * t) as u8, (60.0 + 190.0 * t) as u8, 255]
+        };
+        img.put_pixel(x as u32, (n - 1 - y) as u32, image::Rgba(px));
+    }
+    img
+}
+/// A transect image: altitude (top, −5 500 … +2 500 m) and s (bottom, 0 … 2), each series a colour.
+fn transect_png(z: &[(Vec<f32>, [u8; 3])], s: &[(Vec<f32>, [u8; 3])], path: &std::path::Path) {
+    let (w, h) = (900u32, 560u32);
+    let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([250, 250, 250, 255]));
+    let mut put = |x: i64, y: i64, c: [u8; 3]| {
+        if x >= 0 && y >= 0 && (x as u32) < w && (y as u32) < h {
+            img.put_pixel(x as u32, y as u32, image::Rgba([c[0], c[1], c[2], 255]));
+        }
+    };
+    let pz = |v: f32| (20.0 + (2500.0 - v.clamp(-5500.0, 2500.0)) / 8000.0 * 300.0) as i64;
+    let ps = |v: f32| (360.0 + (2.0 - v.clamp(0.0, 2.0)) / 2.0 * 180.0) as i64;
+    for x in 20..w as i64 - 20 {
+        put(x, pz(0.0), [0, 0, 0]);
+        put(x, pz(-2000.0), [210, 210, 210]);
+        put(x, pz(-4000.0), [210, 210, 210]);
+        put(x, ps(1.0), [0, 0, 0]);
+        put(x, ps(0.2), [210, 210, 210]);
+        put(x, ps(0.915), [160, 160, 230]);
+    }
+    for (series, f) in [(z, &pz as &dyn Fn(f32) -> i64), (s, &ps as &dyn Fn(f32) -> i64)] {
+        for (v, c) in series {
+            for (i, &q) in v.iter().enumerate() {
+                let x = 20 + (i as f32 / (v.len() - 1).max(1) as f32 * (w as f32 - 40.0)) as i64;
+                for d in -1..=1 {
+                    put(x, f(q) + d, *c);
+                }
+            }
+        }
+    }
+    img.save(path).unwrap();
+}
+/// A transect through a 64² perimeter cell `k` toward its ocean (the 4-direction with an oceanic neighbour), 60 km each side:
+/// the 2 048² altitude and C1's final s (nearest).
+fn transect(g: &GridF32, s64: &[f64], plate_type: &[PlateType], k: usize) -> (Vec<f32>, Vec<f32>) {
+    let (i, j) = (k % 64, k / 64);
+    let dirs = [(1i64, 0i64), (-1, 0), (0, 1), (0, -1)];
+    let dir = dirs
+        .iter()
+        .copied()
+        .find(|&(dx, dy)| plate_type[(((j as i64 + dy).rem_euclid(64)) as usize) * 64 + ((i as i64 + dx).rem_euclid(64)) as usize] == PlateType::Oceanic)
+        .unwrap_or((1, 0));
+    let n = g.width as i64;
+    let (cx, cy) = ((i as i64 * 32 + 16) as f32, (j as i64 * 32 + 16) as f32);
+    let ck = DOMAIN_KM / n as f32;
+    let steps = (120.0 / ck) as i64;
+    let mut zs = Vec::new();
+    let mut ss = Vec::new();
+    for t in 0..=steps {
+        let u = (t as f32 - steps as f32 / 2.0) as f32;
+        let (x, y) = ((cx + u * dir.0 as f32).round() as i64, (cy + u * dir.1 as f32).round() as i64);
+        let (x, y) = (x.rem_euclid(n), y.rem_euclid(n));
+        zs.push(g.data[(y * n + x) as usize]);
+        ss.push(s64[((y / 32) * 64 + x / 32) as usize] as f32);
+    }
+    (zs, ss)
+}
+
+
+
+
+
+// ════════════════════════════════════════ F174 B′/C′ ════════════════════════════════════════
+
+use ymir_core::cascade::margin::seaward_conflicts;
+
+/// The land components (8-connected, periodic) of ≥ 1 km² other than the largest: (count, total km²).
+fn islands_off_main(land: &[bool], n: usize) -> (usize, f32) {
+    let ck = DOMAIN_KM / n as f32;
+    let mut lab = vec![u32::MAX; n * n];
+    let mut sizes = Vec::new();
+    let mut stack = Vec::new();
+    for s in 0..n * n {
+        if !land[s] || lab[s] != u32::MAX {
+            continue;
+        }
+        lab[s] = 0;
+        stack.push(s);
+        let mut c = 0usize;
+        while let Some(k) = stack.pop() {
+            c += 1;
+            let (x, y) = (k % n, k / n);
+            for dy in [n - 1, 0, 1] {
+                for dx in [n - 1, 0, 1] {
+                    let j = ((y + dy) % n) * n + (x + dx) % n;
+                    if land[j] && lab[j] == u32::MAX {
+                        lab[j] = 0;
+                        stack.push(j);
+                    }
+                }
+            }
+        }
+        sizes.push(c);
+    }
+    sizes.sort_unstable_by(|a, b| b.cmp(a));
+    let min = (1.0 / (ck * ck)).ceil() as usize;
+    let rest: Vec<usize> = sizes.into_iter().skip(1).filter(|&c| c >= min).collect();
+    (rest.len(), rest.iter().sum::<usize>() as f32 * ck * ck)
+}
+
+/// The plates at t₀ (64², north up, ×6): each plate a colour; Part A's continental cells bright, the annexed band medium
+/// (continental type) or dark (oceanic type), the other oceanic cells pale.
+fn plates_png(a: &C1State, b: &C1State) -> image::RgbaImage {
+    let mut img = image::RgbaImage::new(384, 384);
+    for k in 0..4096 {
+        let pid = b.plate_id.data()[k] as u32;
+        let h = pid.wrapping_mul(2654435761);
+        let base = [(60 + (h % 160)) as f32, (60 + ((h >> 8) % 160)) as f32, (60 + ((h >> 16) % 160)) as f32];
+        let ca = a.plate_type.data()[k] == PlateType::Continental;
+        let cb = b.plate_type.data()[k] == PlateType::Continental;
+        let annexed = a.plate_id.data()[k] != b.plate_id.data()[k];
+        let f = if ca { 1.0 } else if annexed && cb { 0.7 } else if annexed { 0.45 } else { 0.25 };
+        let c = [(base[0] * f + 255.0 * (1.0 - f) * 0.2) as u8, (base[1] * f + 255.0 * (1.0 - f) * 0.2) as u8, (base[2] * f + 255.0 * (1.0 - f) * 0.6) as u8, 255];
+        for d in 0..36 {
+            img.put_pixel(((k % 64) * 6 + d % 6) as u32, ((63 - k / 64) * 6 + d / 6) as u32, image::Rgba(c));
+        }
+    }
+    img
+}
+
+// ════════════════════════════════════════ F175 ════════════════════════════════════════
+
+use ymir_core::cascade::history::{run_c1_sources_mapped_flags, run_c1_sources_mapped_oo};
+use ymir_core::tectonics_c1::boundary_classification::clear_oo_seeds;
+use ymir_core::tectonics_c1::closures::subduction::OoTracker;
+use ymir_core::tectonics_c1::time_loop::{run_with_closures_terms_flags, run_with_closures_terms_oo};
+
+fn out175() -> PathBuf {
+    root().join("docs/reports/relief_method/f175_oo_subduction/images")
+}
+
+/// C1 under a profile, a margin and its O-O flag (`m.oo`), its Airy sources' record.
+fn world_oo(seed: u64, p: C1Profile, m: &Margin) -> World {
+    let cfg = c1_run_config();
+    let mut st = p.init_state_margin(64, seed, m);
+    let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+    let clk = Clock::start();
+    let src = run_c1_sources_mapped_flags(&mut st, &mut kin, &cfg, &C1Closures::default(), 10, &cfg.iso_config, &SteinSteinParams::default(), &[C1Term::Erosion], Mapping::Airy(Airy::declared()), m.oo, m.merge_at_collision, m.arcs_emerge);
+    let cost = clk.stop();
+    let snaps = src.hist.normalized(None);
+    World { src, st, kin, snaps, cost }
+}
+
+/// One initiation (a plate pair becoming subducting), located by a replica of C1's D_init tracker.
+#[derive(Clone, Debug)]
+struct Initiation {
+    step: usize,
+    near_continent: bool,
+    /// The distance (cells of 64²) to the nearest cell consumed at the previous step (either rule); None when none.
+    to_subduction: Option<f32>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct C1Series {
+    active: Vec<f32>,
+    map_t0: Vec<u8>,
+    map_end: Vec<u8>,
+    /// Σ over the run of the stats' O-O fields, and the C-O cells consumed.
+    oo_consumed: usize,
+    oo_mass: f64,
+    oo_arc_cont: f64,
+    oo_arc_ocean: f64,
+    oo_arc_lost: f64,
+    oo_reassigned: usize,
+    oo_age: usize,
+    oo_age_close: usize,
+    oo_tie: usize,
+    oo_seeds_cut: usize,
+    oo_pairs_end: usize,
+    co_consumed: usize,
+    /// The DS seeds an O-O boundary would have had (the A7 cut on a copy), Σ over the run.
+    oo_seeds_potential: usize,
+    initiations: Vec<Initiation>,
+    replica_pairs: usize,
+    fingers_end: usize,
+    /// Σ Δs per cell of the subduction term (arc deposits > 0) and of Davis-Suppe.
+    sub_sum: Vec<f64>,
+    ds_sum: Vec<f64>,
+    andean: usize,
+    andean_cells: usize,
+}
+
+fn perimeter_map(s: &C1State, kn: &PlateKinematics) -> (f32, Vec<u8>) {
+    let n = 64;
+    let mut bi = classify_boundaries(&s.plate_id, kn);
+    retarget_upper_plate_continental(&mut bi, &s.plate_id, &s.plate_type);
+    let cont = |i: usize, j: usize| s.plate_type.get(i, j) == PlateType::Continental;
+    let mut map = vec![0u8; n * n];
+    let (mut per, mut act) = (0usize, 0usize);
+    for j in 0..n {
+        for i in 0..n {
+            if !cont(i, j) {
+                continue;
+            }
+            map[j * n + i] = 1;
+            let nb4 = [((i + 1) % n, j), ((i + n - 1) % n, j), (i, (j + 1) % n), (i, (j + n - 1) % n)];
+            if !nb4.iter().any(|&(x, y)| !cont(x, y)) {
+                continue;
+            }
+            per += 1;
+            let mut a = false;
+            for dy in [n - 1, 0, 1] {
+                for dx in [n - 1, 0, 1] {
+                    if bi.boundary_type.get((i + dx) % n, (j + dy) % n) == BoundaryType::Convergent {
+                        a = true;
+                    }
+                }
+            }
+            act += a as usize;
+            map[j * n + i] = if a { 3 } else { 2 };
+        }
+    }
+    (act as f32 / per.max(1) as f32, map)
+}
+
+/// F175: one C1 run with the margin and its O-O flag, observed per step.
+fn c1_series(seed: u64, p: C1Profile, m: &Margin) -> C1Series {
+    let n = 64;
+    let cfg = c1_run_config();
+    let mut st = p.init_state_margin(64, seed, m);
+    let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+    let dt = 0.5 * cfg.dx.min(cfg.dy) / kin.max_velocity().max(1e-12);
+    let out = std::cell::RefCell::new(C1Series { sub_sum: vec![0.0; n * n], ds_sum: vec![0.0; n * n], ..Default::default() });
+    {
+        let (a0, m0) = perimeter_map(&st, &kin);
+        let mut o = out.borrow_mut();
+        o.active.push(a0);
+        o.map_t0 = m0;
+    }
+    let consumed_prev = std::cell::RefCell::new(vec![false; n * n]);
+    let replica = std::cell::RefCell::new(OoTracker::default());
+    let mut on_term = |t: C1Term, a: &[f64], b: &[f64]| {
+        let mut o = out.borrow_mut();
+        if t == C1Term::Subduction {
+            let mut c = consumed_prev.borrow_mut();
+            for k in 0..n * n {
+                o.sub_sum[k] += b[k] - a[k];
+                c[k] = b[k] < a[k];
+            }
+        }
+        if t == C1Term::DavisSuppe {
+            for k in 0..n * n {
+                o.ds_sum[k] += b[k] - a[k];
+            }
+        }
+    };
+    run_with_closures_terms_flags(
+        &mut st,
+        &mut kin,
+        &cfg,
+        &C1Closures::default(),
+        m.oo,
+        m.merge_at_collision,
+        |step, s, kn| {
+            let mut o = out.borrow_mut();
+            let x = s.last_step_stats.subduction;
+            o.oo_consumed += x.oo_cells_consumed;
+            o.oo_mass += x.oo_mass_consumed;
+            o.oo_arc_cont += x.oo_arc_continental;
+            o.oo_arc_ocean += x.oo_arc_oceanic;
+            o.oo_arc_lost += x.oo_arc_lost;
+            o.oo_reassigned += x.oo_reassigned;
+            o.oo_age += x.oo_age_decided;
+            o.oo_age_close += x.oo_age_close;
+            o.oo_tie += x.oo_tie_decided;
+            o.oo_seeds_cut += x.oo_seeds_cleared;
+            o.oo_pairs_end = x.oo_active_pairs;
+            o.co_consumed += x.cells_consumed;
+            let (a, mp) = perimeter_map(s, kn);
+            o.active.push(a);
+            o.map_end = mp;
+            // the DS seeds an O-O boundary would have (a copy, cut)
+            let mut bi = classify_boundaries(&s.plate_id, kn);
+            retarget_upper_plate_continental(&mut bi, &s.plate_id, &s.plate_type);
+            let mut bi2 = classify_boundaries(&s.plate_id, kn);
+            retarget_upper_plate_continental(&mut bi2, &s.plate_id, &s.plate_type);
+            o.oo_seeds_potential += clear_oo_seeds(&mut bi2, &s.plate_id, &s.plate_type);
+            // the replica of the D_init tracker (the loop's next step reads this state)
+            if let Some(oo) = m.oo {
+                let new = replica.borrow_mut().update(&s.plate_id, &s.plate_type, &bi, kn, dt, oo.d_init_domain(), step + 1);
+                let cont: Vec<bool> = s.plate_type.data().iter().map(|t| *t == PlateType::Continental).collect();
+                let dcont = edt_periodic(&cont, 64);
+                let prev = consumed_prev.borrow();
+                for (pa, pb) in new {
+                    // the pair's O-O contacts
+                    let mut near = false;
+                    let mut best: Option<f32> = None;
+                    for k in 0..n * n {
+                        let (i, j) = (k % n, k / n);
+                        let pid = s.plate_id.get(i, j);
+                        if (pid != pa && pid != pb) || bi.boundary_type.get(i, j) != BoundaryType::Convergent || s.plate_type.get(i, j) != PlateType::Oceanic {
+                            continue;
+                        }
+                        let other = if pid == pa { pb } else { pa };
+                        let nb4 = [((i + 1) % n, j), ((i + n - 1) % n, j), (i, (j + 1) % n), (i, (j + n - 1) % n)];
+                        if !nb4.iter().any(|&(x, y)| s.plate_id.get(x, y) == other) {
+                            continue;
+                        }
+                        if dcont[k] <= 2.0 {
+                            near = true;
+                        }
+                        for q in 0..n * n {
+                            if prev[q] {
+                                let mut dx = ((q % n) as i64 - i as i64).rem_euclid(64);
+                                let mut dy = ((q / n) as i64 - j as i64).rem_euclid(64);
+                                dx = dx.min(64 - dx);
+                                dy = dy.min(64 - dy);
+                                let d = ((dx * dx + dy * dy) as f32).sqrt();
+                                best = Some(best.map_or(d, |b: f32| b.min(d)));
+                            }
+                        }
+                    }
+                    o.initiations.push(Initiation { step: step + 1, near_continent: near, to_subduction: best });
+                }
+                o.replica_pairs = replica.borrow().active.len();
+            }
+        },
+        &mut on_term,
+    );
+    let mut o = out.into_inner();
+    // V5: one-cell fingers (an oceanic cell with ≥ 3 of its 4 neighbours on another plate)
+    o.fingers_end = (0..n * n)
+        .filter(|&k| {
+            let (i, j) = (k % n, k / n);
+            if st.plate_type.get(i, j) != PlateType::Oceanic {
+                return false;
+            }
+            let pid = st.plate_id.get(i, j);
+            [((i + 1) % n, j), ((i + n - 1) % n, j), (i, (j + 1) % n), (i, (j + n - 1) % n)].iter().filter(|&&(x, y)| st.plate_id.get(x, y) != pid).count() >= 3
+        })
+        .count();
+    // the Andean margins: 8-connected groups of ≥ 3 perimeter cells passive at t₀ and active at the end
+    let newly: Vec<bool> = (0..n * n).map(|k| o.map_end[k] == 3 && o.map_t0[k] == 2).collect();
+    let mut seen = vec![false; n * n];
+    for s0 in 0..n * n {
+        if !newly[s0] || seen[s0] {
+            continue;
+        }
+        let mut stack = vec![s0];
+        seen[s0] = true;
+        let mut c = 0;
+        while let Some(k) = stack.pop() {
+            c += 1;
+            let (x, y) = (k % n, k / n);
+            for dy in [n - 1, 0, 1] {
+                for dx in [n - 1, 0, 1] {
+                    let j = ((y + dy) % n) * n + (x + dx) % n;
+                    if newly[j] && !seen[j] {
+                        seen[j] = true;
+                        stack.push(j);
+                    }
+                }
+            }
+        }
+        if c >= 3 {
+            o.andean += 1;
+            o.andean_cells += c;
+        }
+    }
+    o
+}
+
+/// W₁₀ by segment type (256²): the land within 10 km of the coast, typed by its nearest perimeter cell of C1's end map
+/// (active / passive); the share with a slope ≥ 8°. (active, passive, cells active, cells passive).
+fn w10_by_type(zm: &GridF32, map_end: &[u8]) -> (f32, f32, usize, usize) {
+    let land = land_t(zm);
+    let d = edt_periodic(&land, 256);
+    let sl = slope_deg(&zm.data, 256, 256, CELL);
+    let up = |v: u8| -> Vec<bool> { (0..65536).map(|k| map_end[((k / 256) / 4) * 64 + (k % 256) / 4] == v).collect() };
+    let (act, pas) = (up(3), up(2));
+    let da = edt_periodic(&act.iter().map(|b| !b).collect::<Vec<_>>(), 256);
+    let dp = edt_periodic(&pas.iter().map(|b| !b).collect::<Vec<_>>(), 256);
+    let (mut na, mut wa, mut np, mut wp) = (0usize, 0usize, 0usize, 0usize);
+    for k in 0..65536 {
+        if !land[k] || d[k] * CELL > 10.0 {
+            continue;
+        }
+        let steep = sl[k] >= 8.0;
+        if da[k] < dp[k] {
+            na += 1;
+            wa += steep as usize;
+        } else {
+            np += 1;
+            wp += steep as usize;
+        }
+    }
+    (wa as f32 / na.max(1) as f32, wp as f32 / np.max(1) as f32, na, np)
+}
+
+/// The margins at the end (64², north up, ×6): continental grey, passive green, active red, arc deposits (Σ subduction term
+/// > 0.02) orange on the ocean, ocean blue.
+fn margins_png(map_end: &[u8], sub_sum: &[f64]) -> image::RgbaImage {
+    let mut img = image::RgbaImage::new(384, 384);
+    for k in 0..4096 {
+        let c = match map_end[k] {
+            1 => [190, 190, 180, 255],
+            2 => [30, 170, 60, 255],
+            3 => [220, 30, 30, 255],
+            _ if sub_sum[k] > 0.02 => [240, 150, 30, 255],
+            _ => [40, 70, 140, 255],
+        };
+        for d in 0..36 {
+            img.put_pixel(((k % 64) * 6 + d % 6) as u32, ((63 - k / 64) * 6 + d / 6) as u32, image::Rgba(c));
+        }
+    }
+    img
+}
+
+/// The share of the islands' area (≥ 1 km², off the main land, 2 048²) lying on C1's arc deposits (Σ subduction term > 0, 64²).
+fn islands_on_arcs(land: &[bool], sub_sum: &[f64]) -> f32 {
+    let n = 2048;
+    let mut lab = vec![u32::MAX; n * n];
+    let mut comps: Vec<Vec<usize>> = Vec::new();
+    for s0 in 0..n * n {
+        if !land[s0] || lab[s0] != u32::MAX {
+            continue;
+        }
+        let id = comps.len() as u32;
+        lab[s0] = id;
+        let mut stack = vec![s0];
+        let mut cells = Vec::new();
+        while let Some(k) = stack.pop() {
+            cells.push(k);
+            let (x, y) = (k % n, k / n);
+            for dy in [n - 1, 0, 1] {
+                for dx in [n - 1, 0, 1] {
+                    let j = ((y + dy) % n) * n + (x + dx) % n;
+                    if land[j] && lab[j] == u32::MAX {
+                        lab[j] = id;
+                        stack.push(j);
+                    }
+                }
+            }
+        }
+        comps.push(cells);
+    }
+    comps.sort_by_key(|c| std::cmp::Reverse(c.len()));
+    let min = (1.0 / (DOMAIN_KM / n as f32).powi(2)).ceil() as usize;
+    let isl: Vec<&Vec<usize>> = comps.iter().skip(1).filter(|c| c.len() >= min).collect();
+    let tot: usize = isl.iter().map(|c| c.len()).sum();
+    let on: usize = isl.iter().map(|c| c.iter().filter(|&&k| sub_sum[((k / n) / 32) * 64 + (k % n) / 32] > 0.0).count()).sum();
+    on as f32 / tot.max(1) as f32
+}
+
+// ── F175, the bench by tiers (the author's budget rule): each world's lines are written to `results/` as soon as ready, and a
+// rerun reads them back instead of recomputing ──
+
+/// F174 B′'s selected plates (`f174b2_bench_output.txt`): the fixed continent of every tier.
+fn fixed_profile(seed: u64) -> C1Profile {
+    let (k, start) = match seed {
+        8 => (8, 2),
+        18 => (8, 11),
+        19 => (7, 1),
+        23 => (8, 6),
+        29 => (9, 11),
+        _ => unreachable!("the panel"),
+    };
+    C1Profile::Selected { plates: 16, k, start, compact: true }
+}
+fn variants175() -> [(&'static str, Margin); 3] {
+    [("Part A", Margin::off()), ("B′", Margin::seaward()), ("B′ + option 5", Margin::seaward_oo())]
+}
+fn results_dir() -> PathBuf {
+    root().join("docs/reports/relief_method/f175_oo_subduction/results")
+}
+/// The resumable step: `name`'s lines from `results/<name>.txt`, else computed by `f`, written, and returned.
+fn cached(name: &str, f: impl FnOnce() -> String) -> String {
+    let p = results_dir().join(format!("{name}.txt"));
+    if let Ok(s) = std::fs::read_to_string(&p) {
+        return s;
+    }
+    let s = f();
+    std::fs::create_dir_all(results_dir()).unwrap();
+    std::fs::write(&p, &s).unwrap();
+    s
+}
+/// The land components (8-connected, periodic) of a 64² or 256² mask other than the largest with ≥ `min_cells`: (count, cells).
+fn islands_n(land: &[bool], n: usize, min_cells: usize) -> (usize, usize) {
+    let mut lab = vec![false; n * n];
+    let mut sizes = Vec::new();
+    for s0 in 0..n * n {
+        if !land[s0] || lab[s0] {
+            continue;
+        }
+        lab[s0] = true;
+        let mut stack = vec![s0];
+        let mut c = 0;
+        while let Some(k) = stack.pop() {
+            c += 1;
+            let (x, y) = (k % n, k / n);
+            for dy in [n - 1, 0, 1] {
+                for dx in [n - 1, 0, 1] {
+                    let j = ((y + dy) % n) * n + (x + dx) % n;
+                    if land[j] && !lab[j] {
+                        lab[j] = true;
+                        stack.push(j);
+                    }
+                }
+            }
+        }
+        sizes.push(c);
+    }
+    sizes.sort_unstable_by(|a, b| b.cmp(a));
+    let rest: Vec<usize> = sizes.into_iter().skip(1).filter(|&c| c >= min_cells).collect();
+    (rest.len(), rest.iter().sum())
+}
+
+// ════════════════════════════════════════ F176 ════════════════════════════════════════
+
+fn out176() -> PathBuf {
+    root().join("docs/reports/relief_method/f176_accretion/images")
+}
+fn results176() -> PathBuf {
+    root().join("docs/reports/relief_method/f176_accretion/results")
+}
+/// The resumable step (F176's results directory).
+fn cached176(name: &str, f: impl FnOnce() -> String) -> String {
+    let p = results176().join(format!("{name}.txt"));
+    if let Ok(s) = std::fs::read_to_string(&p) {
+        return s;
+    }
+    let s = f();
+    std::fs::create_dir_all(results176()).unwrap();
+    std::fs::write(&p, &s).unwrap();
+    s
+}
+const SCREEN: [u64; 10] = [1, 2, 3, 4, 5, 6, 7, 9, 10, 11];
+fn variants176() -> [(&'static str, Margin); 3] {
+    [("F175", Margin::seaward_oo()), ("F176", Margin::seaward_oo_collision()), ("F176 + B", Margin { arcs_emerge: true, ..Margin::seaward_oo_collision() })]
+}
+fn key176(tier: &str, seed: u64, name: &str) -> String {
+    format!("{tier}_seed{seed}_{}", name.replace(' ', "_").replace('+', "p"))
+}
+
+/// The F176 per-step reading of one C1 run: the active share (3 × 3), the plates, and at the end the « within 3 cells » share,
+/// the Andean groups per continent; plus F175's series (V1–V6) through `c1_series`.
+#[derive(Clone, Debug, Default)]
+struct Margins176 {
+    plates: Vec<usize>,
+    near3_end: f32,
+    continents: usize,
+    continents_andean: usize,
+    andean_groups: usize,
+    andean_km: f32,
+    per_continent: Vec<(usize, usize, f32)>,
+}
+fn margins176(seed: u64, p: C1Profile, m: &Margin, ser: &C1Series) -> Margins176 {
+    let n = 64;
+    let cfg = c1_run_config();
+    let mut st = p.init_state_margin(64, seed, m);
+    let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+    let plates = std::cell::RefCell::new(Vec::new());
+    let last_consumed = std::cell::RefCell::new(vec![usize::MAX; n * n]);
+    let step_now = std::cell::Cell::new(0usize);
+    let mut on_term = |t: C1Term, a: &[f64], b: &[f64]| {
+        if t == C1Term::Subduction {
+            let mut lc = last_consumed.borrow_mut();
+            for k in 0..n * n {
+                if b[k] < a[k] {
+                    lc[k] = step_now.get();
+                }
+            }
+        }
+    };
+    run_with_closures_terms_flags(
+        &mut st,
+        &mut kin,
+        &cfg,
+        &C1Closures::default(),
+        m.oo,
+        m.merge_at_collision,
+        |step, s, _| {
+            step_now.set(step + 1);
+            plates.borrow_mut().push(s.plate_id.data().iter().copied().collect::<std::collections::BTreeSet<u16>>().len());
+        },
+        &mut on_term,
+    );
+    let lc = last_consumed.into_inner();
+    let recent: Vec<bool> = lc.iter().map(|&s| s != usize::MAX && s + 10 >= cfg.n_steps).collect();
+    let d_recent = edt_periodic(&recent.iter().map(|r| !r).collect::<Vec<_>>(), 64);
+    let per: Vec<usize> = (0..n * n).filter(|&k| ser.map_end[k] >= 2).collect();
+    let near3 = per.iter().filter(|&&k| d_recent[k] <= 3.0).count() as f32 / per.len().max(1) as f32;
+    // the continents: 4-connected components of continental cells (map values 1–3) with ≥ 20 cells
+    let cont: Vec<bool> = ser.map_end.iter().map(|&v| v >= 1).collect();
+    let mut comp = vec![usize::MAX; n * n];
+    let mut sizes = Vec::new();
+    for s0 in 0..n * n {
+        if !cont[s0] || comp[s0] != usize::MAX {
+            continue;
+        }
+        let id = sizes.len();
+        comp[s0] = id;
+        let mut stack = vec![s0];
+        let mut c = 0;
+        while let Some(k) = stack.pop() {
+            c += 1;
+            let (x, y) = (k % n, k / n);
+            for j in [y * n + (x + 1) % n, y * n + (x + n - 1) % n, ((y + 1) % n) * n + x, ((y + n - 1) % n) * n + x] {
+                if cont[j] && comp[j] == usize::MAX {
+                    comp[j] = id;
+                    stack.push(j);
+                }
+            }
+        }
+        sizes.push(c);
+    }
+    let big: Vec<usize> = (0..sizes.len()).filter(|&i| sizes[i] >= 20).collect();
+    // the Andean groups (8-connected, ≥ 3 cells passive at t0 and active at the end), assigned to their continent
+    let newly: Vec<bool> = (0..n * n).map(|k| ser.map_end[k] == 3 && ser.map_t0[k] == 2).collect();
+    let mut seen = vec![false; n * n];
+    let mut per_cont: std::collections::BTreeMap<usize, (usize, usize)> = std::collections::BTreeMap::new();
+    for s0 in 0..n * n {
+        if !newly[s0] || seen[s0] {
+            continue;
+        }
+        let mut stack = vec![s0];
+        seen[s0] = true;
+        let mut cells = 0;
+        while let Some(k) = stack.pop() {
+            cells += 1;
+            let (x, y) = (k % n, k / n);
+            for dy in [n - 1, 0, 1] {
+                for dx in [n - 1, 0, 1] {
+                    let j = ((y + dy) % n) * n + (x + dx) % n;
+                    if newly[j] && !seen[j] {
+                        seen[j] = true;
+                        stack.push(j);
+                    }
+                }
+            }
+        }
+        if cells >= 3 && comp[s0] != usize::MAX {
+            let e = per_cont.entry(comp[s0]).or_insert((0, 0));
+            e.0 += 1;
+            e.1 += cells;
+        }
+    }
+    let per_continent: Vec<(usize, usize, f32)> = big.iter().map(|&c| {
+        let (g, cells) = per_cont.get(&c).copied().unwrap_or((0, 0));
+        (sizes[c], g, cells as f32 * 6.25)
+    }).collect();
+    Margins176 {
+        plates: plates.into_inner(),
+        near3_end: near3,
+        continents: big.len(),
+        continents_andean: per_continent.iter().filter(|x| x.1 > 0).count(),
+        andean_groups: per_continent.iter().map(|x| x.1).sum(),
+        andean_km: per_continent.iter().map(|x| x.2).sum(),
+        per_continent,
+    }
+}
+
+/// One C1 line of F176 (world_oo + c1_series + margins176), the margins image saved.
+fn c1_line176(seed: u64, p: C1Profile, name: &str, m: &Margin, img_key: &str) -> String {
+    let clk = Clock::start();
+    let w = world_oo(seed, p, m);
+    let ser = c1_series(seed, p, m);
+    let mg = margins176(seed, p, m, &ser);
+    let cost = clk.stop();
+    let last = w.snaps.last().unwrap();
+    let land64: Vec<bool> = last.data.iter().map(|&v| v > 0.5).collect();
+    let circ = circumnavigation(&land64, 64);
+    let (isl, isl_cells) = islands_n(&land64, 64, 1);
+    let n_init = ser.initiations.len();
+    let near = ser.initiations.iter().filter(|x| x.near_continent).count();
+    let within = ser.initiations.iter().filter(|x| x.to_subduction.is_some_and(|d| d <= 32.0)).count();
+    let cons_err = (ser.oo_arc_cont + ser.oo_arc_ocean + ser.oo_arc_lost - 0.5 * ser.oo_mass).abs();
+    let every: Vec<String> = (0..ser.active.len()).step_by(50).map(|i| format!("{i}:{:.0}/{}", 100.0 * ser.active[i], if i == 0 { 0 } else { mg.plates[i - 1] })).collect();
+    margins_png(&ser.map_end, &ser.sub_sum).save(out176().join(format!("margins_end_{img_key}.png"))).unwrap();
+    format!(
+        "   seed {seed} {name} ({p:?}): C1 end land {:.1} %, circumnavigable {} r* {:?}, islands (64², off the main land) {isl} ({isl_cells} cells) · active at t0 {:.1} % → end {:.1} % (within 3 cells of a recent consumption {:.1} %) · plates 16 → {} · continents (≥ 20 cells) {} of which with ≥ 1 Andean margin {} · Andean groups {} ({:.0} km) · per continent (cells, groups, km) {:?} · C-O cells consumed {} · O-O consumed {} (age-decided {}, |Δage| < 0.01 {}, tie {}), reassigned {}, pairs {} · arc mass continent / ocean / lost {:.3} / {:.3} / {:.3} (error {:.1e}) · DS O-O seeds cut {} · fingers {} · V1 {near} / {n_init} near a continent · V2 {within} / {n_init} within 200 km · C1 CPU {:.1} s\n      the active share / plates (step: % / n) {}\n",
+        100.0 * land64.iter().filter(|&&b| b).count() as f32 / 4096.0, !circ.wraps, circ.sea_r, 100.0 * ser.active[0], 100.0 * ser.active.last().unwrap(), 100.0 * mg.near3_end,
+        mg.plates.last().copied().unwrap_or(0), mg.continents, mg.continents_andean, mg.andean_groups, mg.andean_km, mg.per_continent,
+        ser.co_consumed, ser.oo_consumed, ser.oo_age, ser.oo_age_close, ser.oo_tie, ser.oo_reassigned, ser.oo_pairs_end,
+        ser.oo_arc_cont, ser.oo_arc_ocean, ser.oo_arc_lost, cons_err, ser.oo_seeds_cut, ser.fingers_end, cost.1, every.join(" ")
+    )
+}
+
+
+// ════════════════════════════════════════ F177 ════════════════════════════════════════
+
+use ymir_core::tectonics_c1::boundary_classification::{BoundaryInfo, oc_override_seed_mask};
+use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
+
+fn out177() -> PathBuf {
+    root().join("docs/reports/relief_method/f177_accretion_close/images")
+}
+fn results177() -> PathBuf {
+    root().join("docs/reports/relief_method/f177_accretion_close/results")
+}
+/// The resumable step (F177's results directory).
+fn cached177(name: &str, f: impl FnOnce() -> String) -> String {
+    let p = results177().join(format!("{name}.txt"));
+    if let Ok(s) = std::fs::read_to_string(&p) {
+        return s;
+    }
+    let s = f();
+    std::fs::create_dir_all(results177()).unwrap();
+    std::fs::write(&p, &s).unwrap();
+    s
+}
+/// The numbers of a `#KEY v v v` line of a results text.
+fn data_line(s: &str, key: &str) -> Option<Vec<f64>> {
+    s.lines().find(|l| l.starts_with(&format!("#{key} "))).map(|l| l.split_whitespace().skip(1).filter_map(|x| x.parse().ok()).collect())
+}
+
+const N64: usize = 64;
+const CELL64_KM: f32 = 6.25;
+fn nb4_64(k: usize) -> [usize; 4] {
+    let (x, y) = (k % N64, k / N64);
+    [y * N64 + (x + 1) % N64, y * N64 + (x + N64 - 1) % N64, ((y + 1) % N64) * N64 + x, ((y + N64 - 1) % N64) * N64 + x]
+}
+fn nb8_n(k: usize, n: usize) -> [usize; 8] {
+    let (x, y) = (k % n, k / n);
+    let mut o = [0usize; 8];
+    let mut i = 0;
+    for dy in [n - 1, 0, 1] {
+        for dx in [n - 1, 0, 1] {
+            if dx == 0 && dy == 0 {
+                continue;
+            }
+            o[i] = ((y + dy) % n) * n + (x + dx) % n;
+            i += 1;
+        }
+    }
+    o
+}
+/// 8-connected components of a mask (periodic), each a list of cells.
+fn comps8(mask: &[bool], n: usize) -> Vec<Vec<usize>> {
+    let mut seen = vec![false; n * n];
+    let mut out = Vec::new();
+    for s0 in 0..n * n {
+        if !mask[s0] || seen[s0] {
+            continue;
+        }
+        seen[s0] = true;
+        let mut stack = vec![s0];
+        let mut cells = Vec::new();
+        while let Some(k) = stack.pop() {
+            cells.push(k);
+            for j in nb8_n(k, n) {
+                if mask[j] && !seen[j] {
+                    seen[j] = true;
+                    stack.push(j);
+                }
+            }
+        }
+        out.push(cells);
+    }
+    out
+}
+
+/// The state a C1 step starts from, read as the loop reads it (the boundary, the velocity flag before A7, Davis-Suppe's typed
+/// wedge, the continent-ocean contact cells).
+struct StepInfo {
+    bi: BoundaryInfo,
+    upper_vel: Vec<bool>,
+    oc_wedge: Vec<bool>,
+    co_cell: Vec<bool>,
+    plate_id: Vec<u16>,
+    plate_type: Vec<PlateType>,
+    age: Vec<f64>,
+}
+fn step_info(s: &C1State, kn: &PlateKinematics, ds_max: f64, oo: bool) -> StepInfo {
+    let mut bi = classify_boundaries(&s.plate_id, kn);
+    retarget_upper_plate_continental(&mut bi, &s.plate_id, &s.plate_type);
+    let upper_vel = bi.upper_plate_mask.data().to_vec();
+    if oo {
+        clear_oo_seeds(&mut bi, &s.plate_id, &s.plate_type);
+    }
+    let oc_seed = oc_override_seed_mask(&bi, &s.plate_id, &s.plate_type);
+    let (_, ocw) = wedge_distance_intra_plate_typed(&s.plate_id, &bi.upper_plate_mask, &oc_seed, ds_max);
+    let plate_id: Vec<u16> = s.plate_id.data().to_vec();
+    let plate_type: Vec<PlateType> = s.plate_type.data().to_vec();
+    let co_cell = (0..N64 * N64)
+        .map(|k| plate_type[k] == PlateType::Oceanic && nb4_64(k).iter().any(|&j| plate_id[j] != plate_id[k] && plate_type[j] == PlateType::Continental))
+        .collect();
+    StepInfo { bi, upper_vel, oc_wedge: ocw.data().to_vec(), co_cell, plate_id, plate_type, age: s.age.data().to_vec() }
+}
+
+/// F177's observer of one C1 run: the per-origin Σ Δs > 0 (Andean, collision, O-O arcs), Σ Δs of every term but the erosion,
+/// the rift thinning, the merges' oceanic cells, the rift strips, the replayed D_init tracker, the band at t₀.
+struct Obs {
+    a_sum: Vec<f64>,
+    c_sum: Vec<f64>,
+    o_sum: Vec<f64>,
+    src_sum: Vec<f64>,
+    rift_sum: Vec<f64>,
+    merged_ocean: Vec<bool>,
+    strip: Vec<bool>,
+    merges: usize,
+    splits: usize,
+    s0: Vec<f64>,
+    band: Vec<bool>,
+    tracker: OoTracker,
+    st: C1State,
+    kin: PlateKinematics,
+    st0: C1State,
+    kin0: PlateKinematics,
+    ds_max: f64,
+}
+fn observe(seed: u64, p: C1Profile, m: &Margin) -> Obs {
+    let nn = N64 * N64;
+    let cfg = c1_run_config();
+    let mut st = p.init_state_margin(64, seed, m);
+    let st0 = p.init_state_margin(64, seed, m);
+    let st_off = p.init_state_margin(64, seed, &Margin::off());
+    let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+    let kin0 = PlateKinematics::preset_phase_1_1(st.num_plates);
+    let dt = 0.5 * cfg.dx.min(cfg.dy) / kin.max_velocity().max(1e-12);
+    let ds_max = C1Closures::default().davis_suppe.scaled_to_grid(64).max_distance;
+    let oo = m.oo.is_some();
+    let band: Vec<bool> = (0..nn).map(|k| st.plate_id.data()[k] != st_off.plate_id.data()[k] || st.plate_type.data()[k] != st_off.plate_type.data()[k]).collect();
+    let info0 = step_info(&st, &kin, ds_max, oo);
+    let mut tracker = OoTracker::default();
+    if let Some(o) = m.oo {
+        tracker.update(&st.plate_id, &st.plate_type, &info0.bi, &kin, dt, o.d_init_domain(), 0);
+    }
+    let cur = std::cell::RefCell::new(info0);
+    let tr = std::cell::RefCell::new(tracker);
+    let acc = std::cell::RefCell::new((
+        vec![0f64; nn],
+        vec![0f64; nn],
+        vec![0f64; nn],
+        vec![0f64; nn],
+        vec![0f64; nn],
+        vec![false; nn],
+        vec![false; nn],
+        0usize,
+        0usize,
+    ));
+    let s0 = st.s.data().to_vec();
+    let mut on_term = |t: C1Term, a: &[f64], b: &[f64]| {
+        let mut o = acc.borrow_mut();
+        if t != C1Term::Erosion {
+            for k in 0..nn {
+                o.3[k] += b[k] - a[k];
+            }
+        }
+        match t {
+            C1Term::DavisSuppe => {
+                let c = cur.borrow();
+                for k in 0..nn {
+                    let d = b[k] - a[k];
+                    if d > 0.0 {
+                        if c.oc_wedge[k] {
+                            o.0[k] += d;
+                        } else {
+                            o.1[k] += d;
+                        }
+                    }
+                }
+            }
+            C1Term::Subduction => {
+                let c = cur.borrow();
+                let consumed: Vec<usize> = (0..nn).filter(|&k| b[k] < a[k]).collect();
+                for k in 0..nn {
+                    let d = b[k] - a[k];
+                    if d <= 0.0 || consumed.is_empty() {
+                        continue;
+                    }
+                    let (x, y) = ((k % N64) as i64, (k / N64) as i64);
+                    let mut best = (i64::MAX, false);
+                    for &q in &consumed {
+                        let mut dx = ((q % N64) as i64 - x).rem_euclid(64);
+                        dx = dx.min(64 - dx);
+                        let mut dy = ((q / N64) as i64 - y).rem_euclid(64);
+                        dy = dy.min(64 - dy);
+                        let d2 = dx * dx + dy * dy;
+                        if d2 < best.0 || (d2 == best.0 && c.co_cell[q] && !best.1) {
+                            best = (d2, c.co_cell[q]);
+                        }
+                    }
+                    if best.1 {
+                        o.0[k] += d;
+                    } else {
+                        o.2[k] += d;
+                    }
+                }
+            }
+            C1Term::RiftThinning => {
+                for k in 0..nn {
+                    o.4[k] += b[k] - a[k];
+                }
+            }
+            _ => {}
+        }
+    };
+    run_with_closures_terms_flags(
+        &mut st,
+        &mut kin,
+        &cfg,
+        &C1Closures::default(),
+        m.oo,
+        m.merge_at_collision,
+        |step, s, kn| {
+            {
+                let c = cur.borrow();
+                let mut o = acc.borrow_mut();
+                let now = s.plate_id.data();
+                if s.last_step_stats.accretion.merges_count > 0 {
+                    let present: std::collections::BTreeSet<u16> = now.iter().copied().collect();
+                    let before: std::collections::BTreeSet<u16> = c.plate_id.iter().copied().collect();
+                    for &gone in before.difference(&present) {
+                        let mut cnt: std::collections::BTreeMap<u16, usize> = std::collections::BTreeMap::new();
+                        for k in 0..nn {
+                            if c.plate_id[k] == gone {
+                                *cnt.entry(now[k]).or_insert(0) += 1;
+                            }
+                        }
+                        if let Some((&w, _)) = cnt.iter().max_by_key(|(_, c)| **c) {
+                            o.7 += 1;
+                            for k in 0..nn {
+                                if now[k] == w && s.plate_type.data()[k] == PlateType::Oceanic {
+                                    o.5[k] = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                for &np in &s.last_step_stats.rifting_split.new_plate_ids_created {
+                    o.8 += 1;
+                    for k in 0..nn {
+                        if now[k] == np {
+                            o.6[k] = true;
+                        }
+                    }
+                }
+            }
+            let ni = step_info(s, kn, ds_max, oo);
+            if let Some(o) = m.oo {
+                if step + 1 < cfg.n_steps {
+                    tr.borrow_mut().update(&s.plate_id, &s.plate_type, &ni.bi, kn, dt, o.d_init_domain(), step + 1);
+                }
+            }
+            *cur.borrow_mut() = ni;
+        },
+        &mut on_term,
+    );
+    let (a_sum, c_sum, o_sum, src_sum, rift_sum, merged_ocean, strip, merges, splits) = acc.into_inner();
+    Obs { a_sum, c_sum, o_sum, src_sum, rift_sum, merged_ocean, strip, merges, splits, s0, band, tracker: tr.into_inner(), st, kin, st0, kin0, ds_max }
+}
+
+/// A1 at one state: per cell 0 not a coast, 1 active (walk), 2 passive (walk), 3 active (3 × 3, on a boundary), 4 passive (3 × 3),
+/// 5 enclosed; the walk's depth (cells); the trench cells the active walks reached; the mixed ties.
+struct A1 {
+    cls: Vec<u8>,
+    dist: Vec<u32>,
+    trench: Vec<bool>,
+    mixed: usize,
+}
+fn a1(info: &StepInfo, kn: &PlateKinematics, tracker: &OoTracker) -> A1 {
+    let nn = N64 * N64;
+    let pid = &info.plate_id;
+    let pt = &info.plate_type;
+    let bt = info.bi.boundary_type.data();
+    let is_bnd = |k: usize| nb4_64(k).iter().any(|&j| pid[j] != pid[k]);
+    let mut memo: Vec<Option<bool>> = vec![None; nn];
+    let mut classify_b = |b: usize| -> bool {
+        if let Some(v) = memo[b] {
+            return v;
+        }
+        let v = (|| {
+            if bt[b] != BoundaryType::Convergent {
+                return false;
+            }
+            if nb4_64(b).iter().any(|&j| pid[j] != pid[b] && pt[j] == PlateType::Continental) {
+                return false;
+            }
+            let (vxc, vyc) = kn.velocities[pid[b] as usize];
+            let (x, y) = (b % N64, b / N64);
+            let dirs = [((x + 1) % N64, y, 1.0, 0.0), ((x + N64 - 1) % N64, y, -1.0, 0.0), (x, (y + 1) % N64, 0.0, 1.0), (x, (y + N64 - 1) % N64, 0.0, -1.0)];
+            let mut best: Option<(usize, f64)> = None;
+            for (ni, nj, nxn, nyn) in dirs {
+                let q = nj * N64 + ni;
+                if pid[q] == pid[b] {
+                    continue;
+                }
+                let (vxn, vyn) = kn.velocities[pid[q] as usize];
+                let dot = (vxc - vxn) * nxn + (vyc - vyn) * nyn;
+                if dot > 0.0 && tracker.is_active(pid[b], pid[q]) && best.is_none_or(|(_, d)| dot >= d) {
+                    best = Some((q, dot));
+                }
+            }
+            let Some((q, _)) = best else { return false };
+            let (ac, an) = (info.age[b], info.age[q]);
+            let sinks = if ac != an {
+                ac > an
+            } else {
+                match (info.upper_vel[b], info.upper_vel[q]) {
+                    (false, true) => true,
+                    (true, false) => false,
+                    _ => pid[b] < pid[q],
+                }
+            };
+            !sinks
+        })();
+        memo[b] = Some(v);
+        v
+    };
+    let mut cls = vec![0u8; nn];
+    let mut dist = vec![0u32; nn];
+    let mut trench = vec![false; nn];
+    let mut mixed = 0;
+    for k in 0..nn {
+        if pt[k] != PlateType::Continental || !nb4_64(k).iter().any(|&j| pt[j] == PlateType::Oceanic) {
+            continue;
+        }
+        if is_bnd(k) {
+            let (x, y) = (k % N64, k / N64);
+            let mut conv = false;
+            for dy in [N64 - 1, 0, 1] {
+                for dx in [N64 - 1, 0, 1] {
+                    if bt[((y + dy) % N64) * N64 + (x + dx) % N64] == BoundaryType::Convergent {
+                        conv = true;
+                    }
+                }
+            }
+            cls[k] = if conv { 3 } else { 4 };
+            continue;
+        }
+        let p = pid[k];
+        let mut seen = vec![false; nn];
+        seen[k] = true;
+        let mut frontier: Vec<usize> = nb4_64(k).iter().copied().filter(|&j| pt[j] == PlateType::Oceanic && pid[j] == p).collect();
+        for &j in &frontier {
+            seen[j] = true;
+        }
+        let mut depth = 1u32;
+        loop {
+            let bnds: Vec<usize> = frontier.iter().copied().filter(|&q| is_bnd(q)).collect();
+            if !bnds.is_empty() {
+                let acts: Vec<bool> = bnds.iter().map(|&b| classify_b(b)).collect();
+                let any = acts.iter().any(|&a| a);
+                if any && acts.iter().any(|&a| !a) {
+                    mixed += 1;
+                }
+                cls[k] = if any { 1 } else { 2 };
+                dist[k] = depth;
+                for (b, a) in bnds.iter().zip(&acts) {
+                    if *a {
+                        trench[*b] = true;
+                    }
+                }
+                break;
+            }
+            let mut next = Vec::new();
+            for &q in &frontier {
+                for j in nb4_64(q) {
+                    if !seen[j] && pt[j] == PlateType::Oceanic && pid[j] == p {
+                        seen[j] = true;
+                        next.push(j);
+                    }
+                }
+            }
+            if next.is_empty() {
+                cls[k] = 5;
+                break;
+            }
+            frontier = next;
+            depth += 1;
+        }
+    }
+    A1 { cls, dist, trench, mixed }
+}
+fn is_active_cls(c: u8) -> bool {
+    c == 1 || c == 3
+}
+fn is_passive_cls(c: u8) -> bool {
+    c == 2 || c == 4
+}
+
+/// The continents (4-connected components of continental cells with ≥ 20 cells): the component id per cell (usize::MAX elsewhere)
+/// and the qualifying ids.
+fn continents64(pt: &[PlateType]) -> (Vec<usize>, Vec<usize>) {
+    let nn = N64 * N64;
+    let mut comp = vec![usize::MAX; nn];
+    let mut sizes = Vec::new();
+    for s0 in 0..nn {
+        if pt[s0] != PlateType::Continental || comp[s0] != usize::MAX {
+            continue;
+        }
+        let id = sizes.len();
+        comp[s0] = id;
+        let mut stack = vec![s0];
+        let mut c = 0;
+        while let Some(k) = stack.pop() {
+            c += 1;
+            for j in nb4_64(k) {
+                if pt[j] == PlateType::Continental && comp[j] == usize::MAX {
+                    comp[j] = id;
+                    stack.push(j);
+                }
+            }
+        }
+        sizes.push(c);
+    }
+    let big = (0..sizes.len()).filter(|&i| sizes[i] >= 20).collect();
+    (comp, big)
+}
+/// Per qualifying continent, the groups of ≥ 3 8-connected cells of `mask`: (continent id, groups, cells).
+fn groups_per_continent(mask: &[bool], comp: &[usize], big: &[usize]) -> Vec<(usize, usize, usize)> {
+    let mut per: std::collections::BTreeMap<usize, (usize, usize)> = big.iter().map(|&c| (c, (0, 0))).collect();
+    for g in comps8(mask, N64) {
+        if g.len() >= 3 {
+            if let Some(e) = per.get_mut(&comp[g[0]]) {
+                e.0 += 1;
+                e.1 += g.len();
+            }
+        }
+    }
+    per.into_iter().map(|(c, (g, n))| (c, g, n)).collect()
+}
+
+/// B4: the sea arms ≤ 2 cells wide (the sea cells a 3 × 3 opening removes), the one-cell-wide cells, the channels (8-connected).
+struct Channels {
+    narrow: Vec<bool>,
+    one: Vec<bool>,
+    chans: Vec<Vec<usize>>,
+    ones: Vec<Vec<usize>>,
+}
+fn channels(land: &[bool]) -> Channels {
+    let nn = N64 * N64;
+    let sea: Vec<bool> = land.iter().map(|l| !l).collect();
+    let kept: Vec<bool> = (0..nn).map(|k| sea[k] && nb8_n(k, N64).iter().all(|&j| sea[j])).collect();
+    let opened: Vec<bool> = (0..nn).map(|k| kept[k] || nb8_n(k, N64).iter().any(|&j| kept[j])).collect();
+    let narrow: Vec<bool> = (0..nn).map(|k| sea[k] && !opened[k]).collect();
+    let one: Vec<bool> = (0..nn)
+        .map(|k| {
+            let [e, w, nth, s] = nb4_64(k);
+            sea[k] && ((land[e] && land[w]) || (land[nth] && land[s]))
+        })
+        .collect();
+    Channels { chans: comps8(&narrow, N64), ones: comps8(&one, N64), narrow, one }
+}
+/// The geodesic diameter (cells, 8-connected, two sweeps) of a component.
+fn diameter(cells: &[usize], n: usize) -> usize {
+    let set: std::collections::HashSet<usize> = cells.iter().copied().collect();
+    let sweep = |s: usize| -> (usize, usize) {
+        let mut d: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+        d.insert(s, 0);
+        let mut q = std::collections::VecDeque::from([s]);
+        let mut far = (s, 0);
+        while let Some(k) = q.pop_front() {
+            let dk = d[&k];
+            if dk > far.1 {
+                far = (k, dk);
+            }
+            for j in nb8_n(k, n) {
+                if set.contains(&j) && !d.contains_key(&j) {
+                    d.insert(j, dk + 1);
+                    q.push_back(j);
+                }
+            }
+        }
+        far
+    };
+    let (f, _) = sweep(cells[0]);
+    sweep(f).1 + 1
+}
+/// B4's origin per cell: 1 rift, 2 ocean trapped by a merge, 3 the seaward band's remnant, 4 other.
+fn origin_b4(o: &Obs) -> Vec<u8> {
+    let pid = o.st.plate_id.data();
+    let pt = o.st.plate_type.data();
+    (0..N64 * N64)
+        .map(|k| {
+            if o.rift_sum[k] < 0.0 {
+                1
+            } else if pt[k] == PlateType::Oceanic && !nb4_64(k).iter().any(|&j| pid[j] != pid[k]) && o.merged_ocean[k] {
+                2
+            } else if o.band[k] {
+                3
+            } else {
+                4
+            }
+        })
+        .collect()
+}
+fn majority(cells: &[usize], org: &[u8]) -> u8 {
+    let mut c = [0usize; 5];
+    for &k in cells {
+        c[org[k] as usize] += 1;
+    }
+    (1..5u8).max_by_key(|&i| (c[i as usize], std::cmp::Reverse(i))).unwrap()
+}
+const B4_NAMES: [&str; 5] = ["", "rift", "trapped by a merge", "band remnant", "other"];
+
+/// B3: the origin per C1 cell (1 Andean, 2 collision, 3 O-O arcs, 0 other).
+fn origin64(o: &Obs) -> Vec<u8> {
+    (0..N64 * N64)
+        .map(|k| {
+            let v = [o.a_sum[k], o.c_sum[k], o.o_sum[k]];
+            let (i, &mx) = v.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap().then(b.0.cmp(&a.0))).unwrap();
+            if mx > 0.0 { i as u8 + 1 } else { 0 }
+        })
+        .collect()
+}
+const ORIGIN_NAMES: [&str; 4] = ["other", "Andean (C-O)", "collision (C-C)", "O-O arcs"];
+
+/// The A1 map (64², ×6, north up): continental grey, active walk red, active 3 × 3 dark red, passive green (3 × 3 dark green),
+/// enclosed yellow, the reached trench black, ocean blue.
+fn a1_map_png(a: &A1, pt: &[PlateType]) -> image::RgbaImage {
+    let mut img = image::RgbaImage::new(384, 384);
+    for k in 0..N64 * N64 {
+        let (x, y) = (k % N64, k / N64);
+        let c = if a.trench[k] {
+            [0, 0, 0, 255]
+        } else {
+            match a.cls[k] {
+                1 => [230, 30, 30, 255],
+                3 => [140, 10, 10, 255],
+                2 => [40, 190, 70, 255],
+                4 => [20, 110, 40, 255],
+                5 => [240, 210, 40, 255],
+                _ if pt[k] == PlateType::Continental => [190, 190, 180, 255],
+                _ => [40, 70, 140, 255],
+            }
+        };
+        for dy in 0..6 {
+            for dx in 0..6 {
+                img.put_pixel((x * 6 + dx) as u32, ((63 - y) * 6 + dy) as u32, image::Rgba(c));
+            }
+        }
+    }
+    img
+}
+/// The channels map (64², ×6): land tan, sea blue, channel cells by class (rift magenta, trapped cyan, band yellow, other
+/// white), one-cell-wide cells darker.
+fn channels_png(land: &[bool], ch: &Channels, org: &[u8]) -> image::RgbaImage {
+    let mut cls = vec![0u8; N64 * N64];
+    for c in &ch.chans {
+        let m = majority(c, org);
+        for &k in c {
+            cls[k] = m;
+        }
+    }
+    let mut img = image::RgbaImage::new(384, 384);
+    for k in 0..N64 * N64 {
+        let (x, y) = (k % N64, k / N64);
+        let mut c = if land[k] {
+            [200, 180, 140]
+        } else {
+            match cls[k] {
+                1 => [220, 40, 200],
+                2 => [40, 220, 230],
+                3 => [240, 220, 40],
+                4 => [250, 250, 250],
+                _ => [40, 70, 140],
+            }
+        };
+        if ch.one[k] {
+            c = [c[0] / 2 + 20, c[1] / 2 + 20, c[2] / 2 + 20];
+        }
+        for dy in 0..6 {
+            for dx in 0..6 {
+                img.put_pixel((x * 6 + dx) as u32, ((63 - y) * 6 + dy) as u32, image::Rgba([c[0], c[1], c[2], 255]));
+            }
+        }
+    }
+    img
+}
+/// The relief (256², grey shade, sea blue) with the mountain cells coloured by origin (Andean red, collision blue, O-O arcs
+/// orange, other purple); `form` (if given) overrides: 1 cordillera red, 2 Andean not touching pink, 3 collision blue, 4 separated
+/// collision navy, 5 arc orange, 6 other purple.
+fn origin256_png(zm: &GridF32, classes: &[u8], org64: &[u8], form: Option<&[u8]>) -> image::RgbaImage {
+    let n = 256;
+    let mut img = image::RgbaImage::new(n as u32, n as u32);
+    for k in 0..n * n {
+        let (x, y) = (k % n, k / n);
+        let z = zm.data[k];
+        let mut px = if z <= 0.0 {
+            let t = (-z / 5500.0).clamp(0.0, 1.0).sqrt();
+            [(150.0 - 130.0 * t) as u8, (200.0 - 160.0 * t) as u8, (240.0 - 120.0 * t) as u8]
+        } else {
+            let t = (z / 3000.0).clamp(0.0, 1.0);
+            let g = (110.0 + 130.0 * t) as u8;
+            [g, g, g]
+        };
+        if classes[k] == MOUNTAIN && z > 0.0 {
+            px = match form {
+                Some(f) => match f[k] {
+                    1 => [220, 30, 30],
+                    2 => [240, 150, 170],
+                    3 => [50, 90, 230],
+                    4 => [20, 20, 110],
+                    5 => [240, 150, 30],
+                    _ => [150, 60, 170],
+                },
+                None => match org64[(y / 4) * 64 + x / 4] {
+                    1 => [220, 30, 30],
+                    2 => [50, 90, 230],
+                    3 => [240, 150, 30],
+                    _ => [150, 60, 170],
+                },
+            };
+        }
+        img.put_pixel(x as u32, (n - 1 - y) as u32, image::Rgba([px[0], px[1], px[2], 255]));
+    }
+    img
+}
+fn montage(tiles: &[image::RgbaImage], cols: usize, tw: u32, th: u32) -> image::RgbaImage {
+    let rows = tiles.len().div_ceil(cols);
+    let mut img = image::RgbaImage::from_pixel(cols as u32 * tw, rows as u32 * th, image::Rgba([255, 255, 255, 255]));
+    for (i, t) in tiles.iter().enumerate() {
+        image::imageops::overlay(&mut img, t, ((i % cols) as u32 * tw + 2) as i64, ((i / cols) as u32 * th + 2) as i64);
+    }
+    img
+}
+
+/// One C1 analysis (A1, B1, B2, B4, B5) of a world: the human lines, `#` data lines, and the A1 / channels images.
+fn c1_177(seed: u64, p: C1Profile, m: &Margin, tag: &str) -> String {
+    let clk = Clock::start();
+    let o = observe(seed, p, m);
+    let w = world_oo(seed, p, m);
+    let cost = clk.stop();
+    let nn = N64 * N64;
+    let info_end = step_info(&o.st, &o.kin, o.ds_max, m.oo.is_some());
+    let a = a1(&info_end, &o.kin, &o.tracker);
+    let info_t0 = step_info(&o.st0, &o.kin0, o.ds_max, m.oo.is_some());
+    let a0 = a1(&info_t0, &o.kin0, &OoTracker::default());
+    let pt = o.st.plate_type.data();
+    let (comp, big) = continents64(pt);
+    let in_cont = |k: usize| comp[k] != usize::MAX && big.contains(&comp[k]);
+    let act = (0..nn).filter(|&k| in_cont(k) && is_active_cls(a.cls[k])).count();
+    let pas = (0..nn).filter(|&k| in_cont(k) && is_passive_cls(a.cls[k])).count();
+    let enc = (0..nn).filter(|&k| in_cont(k) && a.cls[k] == 5).count();
+    let act3 = (0..nn).filter(|&k| in_cont(k) && a.cls[k] == 3).count();
+    let share = act as f32 / (act + pas).max(1) as f32;
+    let act_mask: Vec<bool> = (0..nn).map(|k| in_cont(k) && is_active_cls(a.cls[k])).collect();
+    let gpc = groups_per_continent(&act_mask, &comp, &big);
+    let cont_active = gpc.iter().filter(|x| x.1 > 0).count();
+    let newly: Vec<bool> = (0..nn).map(|k| act_mask[k] && is_passive_cls(a0.cls[k])).collect();
+    let gpc_new = groups_per_continent(&newly, &comp, &big);
+    let cont_new = gpc_new.iter().filter(|x| x.1 > 0).count();
+    // the distance distribution (walk depth, active walk cells), cells
+    let mut hist = vec![0usize; 12];
+    let mut dists = Vec::new();
+    for k in 0..nn {
+        if in_cont(k) && a.cls[k] == 1 {
+            hist[(a.dist[k] as usize).min(11)] += 1;
+            dists.push(a.dist[k]);
+        }
+    }
+    dists.sort_unstable();
+    let med_walk = dists.get(dists.len() / 2).copied().unwrap_or(0);
+    // the median over every active cell, the 3 × 3 ones at 1 cell
+    let mut all_d: Vec<u32> = dists.clone();
+    all_d.extend(std::iter::repeat_n(1, act3));
+    all_d.sort_unstable();
+    let med_all = all_d.get(all_d.len() / 2).copied().unwrap_or(0);
+    // B2: the band (continental cells within Davis-Suppe's reach of a coast cell, assigned to the nearest by a 4-connected walk)
+    let airy = Airy::declared();
+    let dh = |k: usize, ds: f64| (airy.altitude_km(o.s0[k] + ds) - airy.altitude_km(o.s0[k])) * 1000.0;
+    let mut lab = vec![0u8; nn];
+    let mut dd = vec![u32::MAX; nn];
+    let mut q = std::collections::VecDeque::new();
+    for k in 0..nn {
+        if in_cont(k) && (is_active_cls(a.cls[k]) || is_passive_cls(a.cls[k])) {
+            lab[k] = if is_active_cls(a.cls[k]) { 1 } else { 2 };
+            dd[k] = 0;
+            q.push_back(k);
+        }
+    }
+    while let Some(k) = q.pop_front() {
+        if dd[k] as f64 + 1.0 > o.ds_max {
+            continue;
+        }
+        for j in nb4_64(k) {
+            if pt[j] == PlateType::Continental && dd[j] == u32::MAX {
+                dd[j] = dd[k] + 1;
+                lab[j] = lab[k];
+                q.push_back(j);
+            }
+        }
+    }
+    let band_stat = |l: u8| -> (usize, f64, f64, f64) {
+        let cells: Vec<usize> = (0..nn).filter(|&k| lab[k] == l).collect();
+        let n = cells.len().max(1) as f64;
+        let mean_dh = cells.iter().map(|&k| dh(k, o.src_sum[k])).sum::<f64>() / n;
+        let mean_a = cells.iter().map(|&k| dh(k, o.a_sum[k])).sum::<f64>() / n;
+        let pos: f64 = cells.iter().map(|&k| o.a_sum[k] + o.c_sum[k] + o.o_sum[k]).sum();
+        let a_share = cells.iter().map(|&k| o.a_sum[k]).sum::<f64>() / pos.max(1e-12);
+        (cells.len(), mean_dh, mean_a, a_share)
+    };
+    let (na, dha, aa, sha) = band_stat(1);
+    let (np, dhp, ap, shp) = band_stat(2);
+    // B4
+    let land64: Vec<bool> = w.src.hist.raw.last().unwrap().data.iter().map(|&v| v > 0.0).collect();
+    let land_f176: Vec<bool> = w.snaps.last().unwrap().data.iter().map(|&v| v > 0.5).collect();
+    let land_diff = (0..nn).filter(|&k| land64[k] != land_f176[k]).count();
+    let ch = channels(&land64);
+    let org = origin_b4(&o);
+    let mut by = [0usize; 5];
+    let mut by_len = [0f32; 5];
+    let mut ones_by = [0usize; 5];
+    let mut chan_list = Vec::new();
+    for c in &ch.chans {
+        let mj = majority(c, &org);
+        by[mj as usize] += 1;
+        let len = diameter(c, N64) as f32 * CELL64_KM;
+        by_len[mj as usize] += len;
+        let (cx, cy) = (c.iter().map(|&k| k % N64).sum::<usize>() / c.len(), c.iter().map(|&k| k / N64).sum::<usize>() / c.len());
+        chan_list.push(format!("({cx},{cy}) {} cells {len:.0} km {}", c.len(), B4_NAMES[mj as usize]));
+    }
+    for c in &ch.ones {
+        ones_by[majority(c, &org) as usize] += 1;
+    }
+    // B5
+    let mut sizes: std::collections::BTreeMap<u16, usize> = std::collections::BTreeMap::new();
+    for &pidv in o.st.plate_id.data() {
+        *sizes.entry(pidv).or_insert(0) += 1;
+    }
+    let mut sz: Vec<usize> = sizes.values().copied().collect();
+    sz.sort_unstable_by(|a, b| b.cmp(a));
+    let small = sz.iter().filter(|&&c| (c as f32) < 0.01 * nn as f32).count();
+    let large = sz.iter().filter(|&&c| (c as f32) > 0.05 * nn as f32).count();
+    let mid = sz.len() - small - large;
+    a1_map_png(&a, pt).save(out177().join(format!("a1_{tag}.png"))).unwrap();
+    channels_png(&land64, &ch, &org).save(out177().join(format!("channels_{tag}.png"))).unwrap();
+    let mut s = format!(
+        "   seed {seed} {tag} ({p:?}): A1 active {act} / passive {pas} (of which 3 × 3 active {act3}) / enclosed {enc} → share {:.1} % · mixed ties {} · continents {} with an active margin {cont_active} (newly active, F176's reading: {cont_new}) · groups per continent (id, groups, cells) {:?} · walk depth: median {med_walk} cells, all active (3 × 3 at 1) median {med_all} cells ({:.2} km world, {:.0} km terrestrial) · histogram (cells 0..11+) {:?}\n      B2: active band {na} cells, Δh_src {dha:.0} m, of which the C-O wedge {aa:.0} m ({:.0} % of the positive sources) · passive band {np} cells, Δh_src {dhp:.0} m (C-O {ap:.0} m, {:.0} %) · ratio active / passive {:.2}\n      B4: channels ≤ 2 cells {} (rift {}, trapped {}, band {}, other {}; length km {:.0} / {:.0} / {:.0} / {:.0}) · one-cell-wide groups {} (rift {}, trapped {}, band {}, other {}) · land 64² raw > 0 vs snaps > 0.5 differ on {land_diff} cells\n      B4 channels: {}\n      B5: plates at the end {} (< 1 % {small}, 1–5 % {mid}, > 5 % {large}) · sizes {:?} · merges {} · splits {}\n      C1 CPU {:.1} s\n",
+        100.0 * share, a.mixed, big.len(), gpc, med_all as f32 * CELL64_KM, med_all as f32 * CELL64_KM * 7.5, hist,
+        100.0 * sha, 100.0 * shp, dha / dhp,
+        ch.chans.len(), by[1], by[2], by[3], by[4], by_len[1], by_len[2], by_len[3], by_len[4], ch.ones.len(), ones_by[1], ones_by[2], ones_by[3], ones_by[4],
+        chan_list.join("; "), sz.len(), sz, o.merges, o.splits, cost.1
+    );
+    s += &format!("#A1 {} {act} {pas} {enc} {act3} {} {} {cont_active} {cont_new} {med_walk} {med_all}\n", share, a.mixed, big.len());
+    s += &format!("#HIST {}\n", hist.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(" "));
+    s += &format!("#B2 {na} {dha} {aa} {sha} {np} {dhp} {ap} {shp}\n");
+    s += &format!("#B4 {} {} {} {} {} {} {} {} {} {}\n", ch.chans.len(), by[1], by[2], by[3], by[4], ch.ones.len(), ones_by[1], ones_by[2], ones_by[3], ones_by[4]);
+    s += &format!("#B5 {} {small} {mid} {large} {} {}\n", sz.len(), o.merges, o.splits);
+    s
+}
+
+/// The selection under F176's rule, cached: (plates, k, start, compact) or None.
+fn selection177(seed: u64) -> Option<C1Profile> {
+    let s = cached177(&format!("sel_seed{seed}"), || {
+        let m = Margin::seaward_oo_collision();
+        let (np, tried) = select_continent_default_margin(seed, &m);
+        match np {
+            Some(np) => {
+                let sel = &tried.last().unwrap().1;
+                let cd = sel.candidates[sel.chosen.unwrap()];
+                match cd.profile() {
+                    C1Profile::Selected { plates, k, start, compact } => format!("#SEL {plates} {k} {start} {}\n   seed {seed}: selection N {np}, land {:.1} %, r* {:?}\n", compact as u8, 100.0 * cd.land, cd.circ.sea_r),
+                    other => format!("#SELX\n   seed {seed}: unexpected profile {other:?}\n"),
+                }
+            }
+            None => "#SELNONE\n".to_string(),
+        }
+    });
+    let v = data_line(&s, "SEL")?;
+    Some(C1Profile::Selected { plates: v[0] as usize, k: v[1] as usize, start: v[2] as u16, compact: v[3] != 0.0 })
+}
+fn panel_and_screen() -> Vec<u64> {
+    PANEL.iter().chain(SCREEN.iter()).copied().collect()
+}
+
+/// F177 tier 1 -- C1: the 15 seeds under F176's selection (A1, B1, B2, B4, B5) and the panel at the fixed continent (B4's straits).
+#[test]
+#[ignore]
+fn f177_tier1_c1() {
+    let t0 = Instant::now();
+    std::fs::create_dir_all(out177()).unwrap();
+    eprintln!("\n==========  F177 tier 1 . C1: A1, the uplift, the channels, the plates  ==========");
+    let seeds = panel_and_screen();
+    // the selections (parallel, cached)
+    std::thread::scope(|sc| {
+        for &seed in &seeds {
+            sc.spawn(move || {
+                let _ = selection177(seed);
+            });
+        }
+    });
+    let m = Margin::seaward_oo_collision();
+    std::thread::scope(|sc| {
+        for &seed in &seeds {
+            let m = m;
+            sc.spawn(move || {
+                if let Some(p) = selection177(seed) {
+                    let tag = format!("sel_seed{seed}");
+                    cached177(&format!("t1_{tag}"), || c1_177(seed, p, &m, &tag));
+                }
+            });
+        }
+        for seed in PANEL {
+            let m = m;
+            sc.spawn(move || {
+                let tag = format!("fixed_seed{seed}");
+                cached177(&format!("t1_{tag}"), || c1_177(seed, fixed_profile(seed), &m, &tag));
+            });
+        }
+    });
+    let mut shares = Vec::new();
+    let (mut conts, mut conts_act, mut conts_new) = (0.0, 0.0, 0.0);
+    let mut hist = vec![0f64; 12];
+    let mut b4 = vec![0f64; 10];
+    let mut b5 = vec![0f64; 6];
+    let mut walk_meds = Vec::new();
+    let mut all_meds = Vec::new();
+    for &seed in &seeds {
+        let sel = std::fs::read_to_string(results177().join(format!("sel_seed{seed}.txt"))).unwrap_or_default();
+        eprint!("{}", sel.lines().filter(|l| !l.starts_with('#')).map(|l| format!("{l}\n")).collect::<String>());
+        let Ok(s) = std::fs::read_to_string(results177().join(format!("t1_sel_seed{seed}.txt"))) else { continue };
+        eprint!("{}", s.lines().filter(|l| !l.starts_with('#')).map(|l| format!("{l}\n")).collect::<String>());
+        let v = data_line(&s, "A1").unwrap();
+        shares.push(v[0] * 100.0);
+        conts += v[6];
+        conts_act += v[7];
+        conts_new += v[8];
+        walk_meds.push(v[9]);
+        all_meds.push(v[10]);
+        for (h, x) in hist.iter_mut().zip(data_line(&s, "HIST").unwrap()) {
+            *h += x;
+        }
+        for (h, x) in b4.iter_mut().zip(data_line(&s, "B4").unwrap()) {
+            *h += x;
+        }
+        for (h, x) in b5.iter_mut().zip(data_line(&s, "B5").unwrap()) {
+            *h += x;
+        }
+    }
+    let med = |v: &mut Vec<f64>| -> f64 {
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        if v.is_empty() { f64::NAN } else { v[v.len() / 2] }
+    };
+    let mut sh = shares.clone();
+    eprintln!(
+        "\n   B1 (15 seeds, the selection): the A1 share median {:.1} %, sorted {:?} · continents with an active margin {conts_act} / {conts} ({:.0} %), newly active (F176's reading) {conts_new} · the walk depth medians (cells) {:?}, all active {:?} · the walk depth histogram (cells 0..11+) {:?}\n   B4 (15 seeds): channels ≤ 2 cells {} (rift {}, trapped {}, band {}, other {}) · one-cell-wide groups {} (rift {}, trapped {}, band {}, other {})\n   B5 (15 seeds): plates {} (< 1 % {}, 1–5 % {}, > 5 % {}) · merges {} · splits {}",
+        med(&mut sh), shares.iter().map(|x| (x * 10.0).round() / 10.0).collect::<Vec<_>>(), 100.0 * conts_act / conts.max(1.0), walk_meds, all_meds, hist,
+        b4[0], b4[1], b4[2], b4[3], b4[4], b4[5], b4[6], b4[7], b4[8], b4[9], b5[0], b5[1], b5[2], b5[3], b5[4], b5[5]
+    );
+    for seed in PANEL {
+        if let Ok(s) = std::fs::read_to_string(results177().join(format!("t1_fixed_seed{seed}.txt"))) {
+            eprint!("{}", s.lines().filter(|l| !l.starts_with('#')).map(|l| format!("{l}\n")).collect::<String>());
+        }
+    }
+    // the A1 maps of the panel (the selection), the channels maps of the panel (the fixed continent)
+    let tiles: Vec<image::RgbaImage> = PANEL.iter().filter_map(|s| image::open(out177().join(format!("a1_sel_seed{s}.png"))).ok().map(|i| i.to_rgba8())).collect();
+    montage(&tiles, 5, 388, 388).save(out177().join("a1_panel_selection.png")).unwrap();
+    let tiles: Vec<image::RgbaImage> = PANEL.iter().filter_map(|s| image::open(out177().join(format!("channels_fixed_seed{s}.png"))).ok().map(|i| i.to_rgba8())).collect();
+    montage(&tiles, 5, 388, 388).save(out177().join("channels_panel_fixed.png")).unwrap();
+    let tiles: Vec<image::RgbaImage> = panel_and_screen().iter().filter_map(|s| image::open(out177().join(format!("channels_sel_seed{s}.png"))).ok().map(|i| i.to_rgba8())).collect();
+    montage(&tiles, 5, 388, 388).save(out177().join("channels_15_selection.png")).unwrap();
+    eprintln!("   tier 1: {:.0} s", t0.elapsed().as_secs_f64());
+}
+
+/// The physics level at 256², young, for one world: (Run, the world).
+fn physics_young(seed: u64, p: C1Profile, m: &Margin, rough_a: f32) -> (Run, World) {
+    let kh = KHetero::declared();
+    let w = world_oo(seed, p, m);
+    let cover = cover_map_m(seed, p, m, COVER_M);
+    let ln_k = kh.band(256, CELL, 0, kh.resolved(CELL), PSEED, Some([0, 0]));
+    let rock = Rock { rho_k: RHO_K, cover_m: cover, ln_k: Some(ln_k) };
+    let cfg = base_cfg(seed, rough_a, Some([0, 0]));
+    let (r, _) = hist_k2n(&w.snaps, &cfg, AGES[1].1, &rock, N_PHYS);
+    (r, w)
+}
+fn rough_a177() -> f32 {
+    let c128 = load_grid(&root().join("data/corsica/corse_128.bin")).unwrap();
+    0.5 * read_cell(&c128, None, CELL).0.octaves[0]
+}
+
+/// F177 tier 2 -- B3 on the panel at the fixed continent: the mountain cells at young by origin, F175 against F176.
+#[test]
+#[ignore]
+fn f177_tier2_attribution() {
+    let t0 = Instant::now();
+    std::fs::create_dir_all(out177()).unwrap();
+    eprintln!("\n==========  F177 tier 2 . B3: the mountain gain by origin, the panel at the fixed continent, young  ==========");
+    let rough_a = rough_a177();
+    let km2 = CELL * CELL;
+    for seed in PANEL {
+        let p = fixed_profile(seed);
+        for (name, m) in [("F175", Margin::seaward_oo()), ("F176", Margin::seaward_oo_collision())] {
+            let key = format!("t2_seed{seed}_{name}");
+            let s = cached177(&key, || {
+                let o = observe(seed, p, &m);
+                let org = origin64(&o);
+                let (r, _) = physics_young(seed, p, &m, rough_a);
+                let mut cnt = [0usize; 4];
+                for k in 0..65536 {
+                    if r.classes[k] == MOUNTAIN && r.zm.data[k] > 0.0 {
+                        cnt[org[((k / 256) / 4) * 64 + (k % 256) / 4] as usize] += 1;
+                    }
+                }
+                let tot: usize = cnt.iter().sum();
+                origin256_png(&r.zm, &r.classes, &org, None).save(out177().join(format!("origin_seed{seed}_{name}.png"))).unwrap();
+                format!(
+                    "   seed {seed} {name} young: mountain {:.1} % of the land ({:.0} km²) · by origin: Andean {:.0} · collision {:.0} · O-O arcs {:.0} · other {:.0} km² · C1 cells by origin (A / C / O / other) {} / {} / {} / {}\n#B3 {} {} {} {} {}\n",
+                    100.0 * r.m.fractions[3], tot as f32 * km2, cnt[1] as f32 * km2, cnt[2] as f32 * km2, cnt[3] as f32 * km2, cnt[0] as f32 * km2,
+                    org.iter().filter(|&&v| v == 1).count(), org.iter().filter(|&&v| v == 2).count(), org.iter().filter(|&&v| v == 3).count(), org.iter().filter(|&&v| v == 0).count(),
+                    tot, cnt[1], cnt[2], cnt[3], cnt[0]
+                )
+            });
+            eprint!("{}", s.lines().filter(|l| !l.starts_with('#')).map(|l| format!("{l}\n")).collect::<String>());
+        }
+    }
+    let mut collision_major = 0;
+    for seed in PANEL {
+        let g = |name: &str| data_line(&std::fs::read_to_string(results177().join(format!("t2_seed{seed}_{name}.txt"))).unwrap(), "B3").unwrap();
+        let (a, b) = (g("F175"), g("F176"));
+        let d: Vec<f64> = (0..5).map(|i| (b[i] - a[i]) * km2 as f64).collect();
+        let pos: f64 = d[1..].iter().filter(|x| **x > 0.0).sum();
+        if d[0] > 0.0 && d[2] > 0.5 * d[0] {
+            collision_major += 1;
+        }
+        eprintln!(
+            "   seed {seed} the gain F176 − F175: total {:+.0} km² · Andean {:+.0} · collision {:+.0} · O-O arcs {:+.0} · other {:+.0} km² · collision's share of the net gain {:.0} % (of the positive gains {:.0} %)",
+            d[0], d[1], d[2], d[3], d[4], 100.0 * d[2] / d[0], 100.0 * d[2].max(0.0) / pos.max(1e-9)
+        );
+    }
+    eprintln!("   T3: collision gives > half of a positive gain on {collision_major} / 5 seeds");
+    let mut tiles = Vec::new();
+    for seed in PANEL {
+        for name in ["F175", "F176"] {
+            if let Ok(i) = image::open(out177().join(format!("origin_seed{seed}_{name}.png"))) {
+                tiles.push(i.to_rgba8());
+            }
+        }
+        if let Ok(i) = image::open(out177().join(format!("channels_fixed_seed{seed}.png"))) {
+            tiles.push(image::imageops::resize(&i.to_rgba8(), 256, 256, image::imageops::FilterType::Nearest));
+        }
+    }
+    montage(&tiles, 3, 260, 260).save(out177().join("attribution_panel_F175_F176_channels.png")).unwrap();
+    eprintln!("   tier 2: {:.0} s", t0.elapsed().as_secs_f64());
+}
+
+/// F177 tier 3 -- the formations on the 15 seeds under F176's selection, young.
+#[test]
+#[ignore]
+fn f177_tier3_formations() {
+    let t0 = Instant::now();
+    std::fs::create_dir_all(out177()).unwrap();
+    eprintln!("\n==========  F177 tier 3 . the formations, 15 seeds, the selection, young  ==========");
+    let rough_a = rough_a177();
+    let km2 = CELL * CELL;
+    let m = Margin::seaward_oo_collision();
+    for seed in panel_and_screen() {
+        let Some(p) = selection177(seed) else { continue };
+        let s = cached177(&format!("t3_seed{seed}"), || {
+            let o = observe(seed, p, &m);
+            let org = origin64(&o);
+            let info_end = step_info(&o.st, &o.kin, o.ds_max, true);
+            let a = a1(&info_end, &o.kin, &o.tracker);
+            let (r, w) = physics_young(seed, p, &m, rough_a);
+            let n = 256;
+            let org256 = |k: usize| org[((k / n) / 4) * 64 + (k % n) / 4];
+            let mtn: Vec<bool> = (0..n * n).map(|k| r.classes[k] == MOUNTAIN && r.zm.data[k] > 0.0).collect();
+            // the land components at 256² (8-connected); the largest
+            let land: Vec<bool> = r.zm.data.iter().map(|&z| z > 0.0).collect();
+            let lc = comps8(&land, n);
+            let mut lab = vec![usize::MAX; n * n];
+            for (i, c) in lc.iter().enumerate() {
+                for &k in c {
+                    lab[k] = i;
+                }
+            }
+            let main = (0..lc.len()).max_by_key(|&i| lc[i].len()).unwrap_or(0);
+            // B4's channels at the end of C1 (for the separated highlands' nearest channel)
+            let land64: Vec<bool> = w.src.hist.raw.last().unwrap().data.iter().map(|&v| v > 0.0).collect();
+            let ch = channels(&land64);
+            let org4 = origin_b4(&o);
+            let mut chan_cls = vec![0u8; N64 * N64];
+            for c in &ch.chans {
+                let mj = majority(c, &org4);
+                for &k in c {
+                    chan_cls[k] = mj;
+                }
+            }
+            let mut form = vec![0u8; n * n];
+            // the Andean groups and the cordilleras
+            let and_mask: Vec<bool> = (0..n * n).map(|k| mtn[k] && org256(k) == 1).collect();
+            let mut cords = Vec::new();
+            for g in comps8(&and_mask, n) {
+                let mut touched = std::collections::BTreeSet::new();
+                for &k in &g {
+                    let mut cand = vec![k];
+                    cand.extend(nb8_n(k, n));
+                    for c in cand {
+                        let c64 = ((c / n) / 4) * 64 + (c % n) / 4;
+                        if is_active_cls(a.cls[c64]) {
+                            touched.insert(c64);
+                        }
+                    }
+                }
+                let f = if touched.is_empty() { 2 } else { 1 };
+                for &k in &g {
+                    form[k] = f;
+                }
+                if f == 1 {
+                    cords.push((g.len(), touched.len()));
+                }
+            }
+            // collision (separated or not), arcs, other
+            let mut sep_classes = Vec::new();
+            let col_mask: Vec<bool> = (0..n * n).map(|k| mtn[k] && org256(k) == 2).collect();
+            for g in comps8(&col_mask, n) {
+                let sep = lab[g[0]] != main;
+                for &k in &g {
+                    form[k] = if sep { 4 } else { 3 };
+                }
+                if sep {
+                    // the nearest channel cell (64²) to the group
+                    let mut best = (i64::MAX, 0u8);
+                    for &k in &g {
+                        let (x, y) = (((k % n) / 4) as i64, ((k / n) / 4) as i64);
+                        for q in 0..N64 * N64 {
+                            if chan_cls[q] == 0 {
+                                continue;
+                            }
+                            let mut dx = ((q % N64) as i64 - x).rem_euclid(64);
+                            dx = dx.min(64 - dx);
+                            let mut dy = ((q / N64) as i64 - y).rem_euclid(64);
+                            dy = dy.min(64 - dy);
+                            if dx * dx + dy * dy < best.0 {
+                                best = (dx * dx + dy * dy, chan_cls[q]);
+                            }
+                        }
+                    }
+                    sep_classes.push((g.len(), B4_NAMES[best.1 as usize], ((best.0 as f32).sqrt() * CELL64_KM) as i32));
+                }
+            }
+            for k in 0..n * n {
+                if mtn[k] && form[k] == 0 {
+                    form[k] = if org256(k) == 3 { 5 } else { 6 };
+                }
+            }
+            let area = |f: u8| form.iter().filter(|&&v| v == f).count() as f32 * km2;
+            let (cord_km2, and_other, col, sep, arc, oth) = (area(1), area(2), area(3), area(4), area(5), area(6));
+            let cord_len: f32 = cords.iter().map(|c| c.1 as f32 * CELL64_KM).sum();
+            let only_collision = cord_km2 + and_other + arc + oth == 0.0 && col + sep > 0.0;
+            origin256_png(&r.zm, &r.classes, &org, Some(&form)).save(out177().join(format!("formations_seed{seed}.png"))).unwrap();
+            format!(
+                "   seed {seed} ({p:?}) young: mountain {:.1} % of the land · Andean cordilleras {} (lengths along the coast km {:?}; total {cord_len:.0} km world, {:.0} km terrestrial; {cord_km2:.0} km²) · Andean not touching an active coast {and_other:.0} km² · collisional highland {col:.0} km² · separated {sep:.0} km² (groups: cells, nearest channel class, km {:?}) · arc mountain on the band {arc:.0} km² · other {oth:.0} km² · collision the only formation: {only_collision}\n#F {} {cord_len} {cord_km2} {and_other} {col} {sep} {arc} {oth} {}\n",
+                100.0 * r.m.fractions[3], cords.len(), cords.iter().map(|c| c.1 as f32 * CELL64_KM).collect::<Vec<_>>(), cord_len * 7.5, sep_classes,
+                cords.len(), only_collision as u8
+            )
+        });
+        eprint!("{}", s.lines().filter(|l| !l.starts_with('#')).map(|l| format!("{l}\n")).collect::<String>());
+    }
+    let mut with_cord = 0;
+    let mut only = 0;
+    let mut n = 0;
+    for seed in panel_and_screen() {
+        if let Ok(s) = std::fs::read_to_string(results177().join(format!("t3_seed{seed}.txt"))) {
+            let v = data_line(&s, "F").unwrap();
+            n += 1;
+            if v[0] > 0.0 {
+                with_cord += 1;
+            }
+            if v[8] > 0.0 {
+                only += 1;
+            }
+        }
+    }
+    eprintln!("   (v): seeds with ≥ 1 Andean cordillera {with_cord} / {n} (≥ 5 required) · seeds whose only mountain formation is the collisional / separated highland {only} (0 required)");
+    let tiles: Vec<image::RgbaImage> = panel_and_screen().iter().filter_map(|s| image::open(out177().join(format!("formations_seed{s}.png"))).ok().map(|i| i.to_rgba8())).collect();
+    montage(&tiles, 5, 260, 260).save(out177().join("formations_15.png")).unwrap();
+    eprintln!("   tier 3: {:.0} s", t0.elapsed().as_secs_f64());
+}
+
+/// A transect image without a clamp: the altitude's range from the data (top), s (bottom, 0 … max).
+fn transect_png_free(z: &[(Vec<f32>, [u8; 3])], s: &[(Vec<f32>, [u8; 3])], path: &std::path::Path) -> (f32, f32) {
+    let (w, h) = (900u32, 600u32);
+    let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([250, 250, 250, 255]));
+    let zmin = z.iter().flat_map(|(v, _)| v.iter().copied()).fold(f32::INFINITY, f32::min);
+    let zmax = z.iter().flat_map(|(v, _)| v.iter().copied()).fold(f32::NEG_INFINITY, f32::max);
+    let smax = s.iter().flat_map(|(v, _)| v.iter().copied()).fold(0f32, f32::max).max(1.0);
+    let (lo, hi) = (zmin - 100.0, zmax + 100.0);
+    let mut put = |x: i64, y: i64, c: [u8; 3]| {
+        if x >= 0 && y >= 0 && (x as u32) < w && (y as u32) < h {
+            img.put_pixel(x as u32, y as u32, image::Rgba([c[0], c[1], c[2], 255]));
+        }
+    };
+    let pz = |v: f32| (20.0 + (hi - v) / (hi - lo) * 340.0) as i64;
+    let ps = |v: f32| (400.0 + (smax - v) / smax * 180.0) as i64;
+    for x in 20..w as i64 - 20 {
+        put(x, pz(0.0), [0, 0, 0]);
+        let mut t = (lo / 1000.0).ceil() * 1000.0;
+        while t < hi {
+            put(x, pz(t), [215, 215, 215]);
+            t += 1000.0;
+        }
+        put(x, ps(1.0), [0, 0, 0]);
+        put(x, ps(0.915), [160, 160, 230]);
+    }
+    for (series, f) in [(z, &pz as &dyn Fn(f32) -> i64), (s, &ps as &dyn Fn(f32) -> i64)] {
+        for (v, c) in series {
+            for (i, &q) in v.iter().enumerate() {
+                let x = 20 + (i as f32 / (v.len() - 1).max(1) as f32 * (w as f32 - 40.0)) as i64;
+                for d in -1..=1 {
+                    put(x, f(q) + d, *c);
+                }
+            }
+        }
+    }
+    img.save(path).unwrap();
+    (zmin, zmax)
+}
+
+/// F177 tier 4 -- B7: F176's tier-4 transect of seed 18 (young, 2 048², the fixed continent), redone without a clamp.
+#[test]
+#[ignore]
+fn f177_tier4_transect() {
+    let t0 = Instant::now();
+    std::fs::create_dir_all(out177()).unwrap();
+    eprintln!("\n==========  F177 tier 4 . B7: the transect of seed 18 without a clamp  ==========");
+    let seed = 18;
+    let m = Margin::seaward_oo_collision();
+    let p = fixed_profile(seed);
+    let c128 = load_grid(&root().join("data/corsica/corse_128.bin")).unwrap();
+    let corse_oct = |nc: usize| -> f32 {
+        let g = load_grid(&root().join(format!("data/corsica/corse_{nc}.bin"))).unwrap();
+        read_cell(&g, None, 200.0 / nc as f32).0.octaves[0]
+    };
+    let pi_table: Vec<(usize, f32)> = [512usize, 1024, 2048].iter().map(|&n| (n, 0.15 * corse_oct(n / 2))).collect();
+    let rough_a = 0.5 * read_cell(&c128, None, CELL).0.octaves[0];
+    let kh = KHetero::declared();
+    let s = cached177("t4_seed18", || {
+        let w = world_oo(seed, p, &m);
+        let ser = c1_series(seed, p, &m);
+        let cover = cover_map_m(seed, p, &m, COVER_M);
+        let ln_k = kh.band(256, CELL, 0, kh.resolved(CELL), PSEED, Some([0, 0]));
+        let rock = Rock { rho_k: RHO_K, cover_m: cover, ln_k: Some(ln_k.clone()) };
+        let cfg = base_cfg(seed, rough_a, Some([0, 0]));
+        let amp = AmpConfig { k_hetero: Some(kh), ..frozen(&pi_table, Some([0, 0])) };
+        let (r, _) = hist_k2n(&w.snaps, &cfg, AGES[1].1, &rock, N_PHYS);
+        let (g, _, _) = chain_low(&r.zm, amp, Some(ln_k), 0.0);
+        let act = (0..4096).find(|&k| ser.map_end[k] == 3 && ser.map_t0[k] == 2).or_else(|| (0..4096).find(|&k| ser.map_end[k] == 3));
+        let pas = (0..4096).find(|&k| ser.map_end[k] == 2);
+        let s64 = w.st.s.data().to_vec();
+        let pt = w.st.plate_type.data().to_vec();
+        let mut zs = Vec::new();
+        let mut ss = Vec::new();
+        let mut desc = Vec::new();
+        for (name, cell, col) in [("passive", pas, [30u8, 140, 60]), ("Andean", act, [220, 30, 30])] {
+            if let Some(k) = cell {
+                let (a, b) = transect(&g, &s64, &pt, k);
+                let mx = a.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+                let at_max = a.iter().filter(|&&v| (v - mx).abs() < 1.0).count();
+                let mut run = 0;
+                let mut best = 0;
+                for wv in a.windows(2) {
+                    if (wv[1] - wv[0]).abs() < 0.01 {
+                        run += 1;
+                        best = best.max(run);
+                    } else {
+                        run = 0;
+                    }
+                }
+                desc.push(format!("{name} (cell {k}): max {mx:.0} m, samples within 1 m of the max {at_max} of {}, the longest run of equal values (|Δ| < 0.01 m) {best} samples", a.len()));
+                zs.push((a, col));
+                ss.push((b, col));
+            }
+        }
+        let (zmin, zmax) = transect_png_free(&zs, &ss, &out177().join("transect_seed18_noclip.png"));
+        let peak = g.data.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        format!("   seed 18 F176 young (2 048²): the transect's range {zmin:.0} … {zmax:.0} m · {} · the world's 2 048² maximum {peak:.0} m\n", desc.join(" · "))
+    });
+    eprint!("{s}");
+    eprintln!("   tier 4: {:.0} s", t0.elapsed().as_secs_f64());
+}
+
+/// F177-B2's stop, its mechanism (C1 only, the 15 seeds under the selection): on the active band, the mean Δh by origin (Andean /
+/// collision / O-O arcs / the rest), and the active coasts by kind: on a boundary (3 × 3), walk within the arc's reach
+/// (`arc_distance` = 3 cells), walk beyond it.
+#[test]
+#[ignore]
+fn f177_b2_mechanism() {
+    let m = Margin::seaward_oo_collision();
+    let arc_d = C1Closures::default().subduction.arc_distance as u32;
+    let seeds = panel_and_screen();
+    std::thread::scope(|sc| {
+        for &seed in &seeds {
+            sc.spawn(move || {
+                let Some(p) = selection177(seed) else { return };
+                cached177(&format!("b2mech_seed{seed}"), || {
+                    let o = observe(seed, p, &m);
+                    let info = step_info(&o.st, &o.kin, o.ds_max, true);
+                    let a = a1(&info, &o.kin, &o.tracker);
+                    let pt = o.st.plate_type.data();
+                    let (comp, big) = continents64(pt);
+                    let nn = N64 * N64;
+                    let in_cont = |k: usize| comp[k] != usize::MAX && big.contains(&comp[k]);
+                    let airy = Airy::declared();
+                    let dh = |k: usize, ds: f64| (airy.altitude_km(o.s0[k] + ds) - airy.altitude_km(o.s0[k])) * 1000.0;
+                    let mut lab = vec![0u8; nn];
+                    let mut dd = vec![u32::MAX; nn];
+                    let mut q = std::collections::VecDeque::new();
+                    for k in 0..nn {
+                        if in_cont(k) && (is_active_cls(a.cls[k]) || is_passive_cls(a.cls[k])) {
+                            lab[k] = if is_active_cls(a.cls[k]) { 1 } else { 2 };
+                            dd[k] = 0;
+                            q.push_back(k);
+                        }
+                    }
+                    while let Some(k) = q.pop_front() {
+                        if dd[k] as f64 + 1.0 > o.ds_max {
+                            continue;
+                        }
+                        for j in nb4_64(k) {
+                            if pt[j] == PlateType::Continental && dd[j] == u32::MAX {
+                                dd[j] = dd[k] + 1;
+                                lab[j] = lab[k];
+                                q.push_back(j);
+                            }
+                        }
+                    }
+                    let cells: Vec<usize> = (0..nn).filter(|&k| lab[k] == 1).collect();
+                    let nc = cells.len().max(1) as f64;
+                    let mean = |f: &dyn Fn(usize) -> f64| cells.iter().map(|&k| f(k)).sum::<f64>() / nc;
+                    let (ma, mc, mo) = (mean(&|k| dh(k, o.a_sum[k])), mean(&|k| dh(k, o.c_sum[k])), mean(&|k| dh(k, o.o_sum[k])));
+                    let tot = mean(&|k| dh(k, o.src_sum[k]));
+                    let act: Vec<usize> = (0..nn).filter(|&k| in_cont(k) && is_active_cls(a.cls[k])).collect();
+                    let on_b = act.iter().filter(|&&k| a.cls[k] == 3).count();
+                    let within = act.iter().filter(|&&k| a.cls[k] == 1 && a.dist[k] <= arc_d).count();
+                    let beyond = act.iter().filter(|&&k| a.cls[k] == 1 && a.dist[k] > arc_d).count();
+                    // the coast cells of the active band that received any O-O arc, any C-O deposit or wedge
+                    let coast_oo = act.iter().filter(|&&k| o.o_sum[k] > 0.0).count();
+                    let coast_a = act.iter().filter(|&&k| o.a_sum[k] > 0.0).count();
+                    format!(
+                        "   seed {seed}: active band {} cells: Δh_src {tot:.0} m = Andean {ma:.0} + collision {mc:.0} + O-O arcs {mo:.0} + the rest {:.0} m · active coast cells {}: on a boundary (3 × 3) {on_b}, walk within the arc's reach (≤ {arc_d} cells) {within}, beyond it {beyond} · active coast cells with an O-O arc deposit {coast_oo}, with a C-O wedge or arc {coast_a}\n#B2M {tot} {ma} {mc} {mo} {} {on_b} {within} {beyond} {coast_oo} {coast_a}\n",
+                        cells.len(), tot - ma - mc - mo, act.len(), act.len()
+                    )
+                });
+            });
+        }
+    });
+    for seed in panel_and_screen() {
+        if let Ok(s) = std::fs::read_to_string(results177().join(format!("b2mech_seed{seed}.txt"))) {
+            eprint!("{}", s.lines().filter(|l| !l.starts_with('#')).map(|l| format!("{l}\n")).collect::<String>());
+        }
+    }
+}

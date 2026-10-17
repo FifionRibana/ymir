@@ -23067,3 +23067,83 @@ load and an island-arc source. **Not in this brief**: the guard's stale downstre
 - The measure of the active share, open at F176, was settled by F177's A1.
 
 
+## Finding 177 — closing the accretion (measures only, no closure modified): the guard has no stale cache (F175 read its `NoReference` as a mismatch); per A1 — the active margin decided by the closures' own rules — the active share is 27.4 % (9.0–54.4 %, Bradley-Leat ~20–23 %) and 15 / 15 continents have an active margin, but the active margins get no Andean uplift: the continent-ocean wedge gives 0 m on 4 of 15 seeds and the active bands rise by collision — the declared B2 stop fires after tier 1; the straits that isolate the white highlands are one-cell rift strips; production unchanged
+
+**Status: measured; the B2 stop fired, tiers 2–4 not run; nothing adopted, nothing committed without the feu vert** (F176 stays
+uncommitted, no feu vert in the brief). Report: `docs/reports/relief_method/f177_accretion_close/finding_177.md`. Declared:
+`f177_declared.md`. Predictions: `f177_predictions.md`.
+
+**The author's criterion (the complement, verbatim)**: « Oui c'est totalement accepté, si et seulement si ce n'est pas la seule
+formation qui persiste. Sur certaines seeds je dois récupérer des cordillères et autre formations. » (It concerns the highland
+separated from the continent by a strait.)
+- **The reviewer's error, recorded**: F176's active share had no defined instrument (8.4 % by the 3 × 3 rule against ~31 %
+  « within 3 cells »), and its units were mixed (« 19 km on the map » against « 47 km real »). F177 fixes one convention: world
+  km with the terrestrial equivalent (× 7.5); a C1 cell is 6.25 km (46.9 km).
+
+**Part 0, the guard (queued since F175's commit)**:
+- The guard finds its reference by digest. Bumping `ALGO_TECTONICS` changes the digest, so every state reads `NoReference`,
+  which `f123_viz_guard` prints « ≠ / non gardé » like a mismatch.
+- « livré » recomputed at unchanged digests from an empty cache: **field `Match`, lakes `Match`** (544 s).
+- **No stale cache, no commit to blame; F175's « all six different » is withdrawn** (an error of F175's reading, recorded).
+- Proposed, not done: the guard prints the variant.
+
+**A2 (comparison, not a target)**:
+- Leat & Larter 2003 p. 1: intra-oceanic arcs « some 40% of the subduction margins », 17 000 of 43 500 km.
+- Bradley 2008 p. 2: 53,000 km of convergent boundaries, no source and no definition. Bird 2003 Table 3: subduction zones
+  51,310 km, so Bradley's total excludes the collisions (an inference).
+- Active continental margins: ~20–23 % of the continental margins.
+- Variant B closed by the sources: the island-arc crust is ~20 km (Nishizawa et al. 2006), i.e. −2.6 km under F167's Airy.
+
+**Measured (tier 1, C1; the 15 seeds under F176's selection)**:
+- **B1**: the A1 median **27.4 %**, 15 / 15 continents with an active margin; the coast → trench distance median 3 cells = 18.75
+  km world (141 km terrestrial), 1–8 cells; 288 of 743 walk-active cells decided on a mixed tie.
+- **B2**: on the active band, Δh_src comes from collision on every seed (423–2 524 m). **The continent-ocean wedge gives 0 m on
+  seeds 23, 29, 6, 7** and ≤ 157 m on five more; the O-O arcs ≤ 67 m. Active ≥ 2 × passive on 3 / 15.
+  - **The mechanism**: Davis-Suppe's O-C seed needs the continent to touch the subducting plate (`oc_override_seed_mask`); with
+    the seaward band between them, the boundary is O-O, whose seeds option 5's A7 cuts (`clear_oo_seeds`); the O-O arc reaches 3
+    cells (`arc_distance`) while 340 of 853 active coasts have their trench beyond.
+  - **The correction's physical source** (hypotheses, not in `docs/refs`): the arc-trench gap (England, Engdahl & Thatcher 2004;
+    Syracuse & Abers 2006; Gill 1981); retro-arc shortening (Isacks 1988; Oncken et al. 2006). For the author's next finding.
+- **B4**: one-cell-wide channel groups 278, **rift 73 %**, band remnant 21 %, trapped by a merge 1 %, other 5 %. The straits
+  that isolate the white highlands (seeds 18, 19, 23, 29) are rift channels. The split makes the rift strip — the continental
+  cells of plate a 4-adjacent to b, one cell wide — a new plate (`find_rift_strip`).
+- **B5**: 212 plates over 15 worlds (39 % < 1 %, 38 % 1–5 %, 23 % > 5 %; Bird 2003: 75 / 12 / 13 %); 157 merges, 137 splits.
+- **B6**: no document states that the rifting was set assuming the merges compensate. Its splits were « rare by design (0–3 /
+  seed at 300 steps) » beside merges that collapsed the plates, so the balance rested on the merges in practice. Here the splits
+  run at ~9 per world.
+- **B7**: from the code, the flat top at 2.5 km is the plot's clamp (`v.clamp(-5500.0, 2500.0)`).
+
+**The rules**: the B2 stop fired. Tiers 2–4 (B3's attribution, the formations and condition (v), the unclipped transect) were
+not run; they are resumable (~10 min). **Adoption is not proposed**: (iii) 15 « other » one-cell groups, (iv) no B3 maps, (v)
+not measured, and B2 shows no Andean relief on 4 seeds.
+
+**Predictions**:
+- The reviewer's: T1, T2 and T6 (from the code) held; T4 and T5 refuted; T3 and T7 not measured.
+- Mine: Part 0, T1's range, T2 and the continents held; « B2's defect not found », « no seed above 50 % » and the one-cell
+  channels' origin refuted.
+
+**Open, for the author** (nothing chosen):
+- (a) B2's defect and its correction.
+- (b) The one-cell rift strips: physical or an artefact?
+- (c) The guard's printout; the five other states fresh.
+- (d) Tiers 2–4 on request.
+- (e) F176's commit.
+
+**At commit (2026-10-18), decided**: the author's words: « Feu vert pour commiter le F176 puis le F177 (config.rs et workspace.rs restent dehors ; le test ignoré de hd.rs peut entrer). »
+- **F177 is committed as measures only**: the `f177_cascade` bench, and the ignored test `f177_fresh_guard` in
+  `crates/ymir-viz/src/bridge/c1/hd.rs`, which is test-only. No closure was modified; production is unchanged and the guard
+  stays « banc » 6/6.
+- **The reviewer's errors, recorded (the author's)**:
+  1. **F174 B′**: « la bande vers le large a été conçue sans vérifier la condition de la fermeture continent-océan (le continent
+     doit toucher la plaque qui plonge). Avec la fosse au large, cette fermeture ne s'allume plus : c'est la cause du défaut
+     B2 ».
+  2. **F175**: « l'affichage « ≠ / non gardé » a été lu comme un cache périmé, sans demander le verdict exact de la garde ».
+- **Question (b), the author's answer (verbatim)**: « la largeur d'une cellule (47 km terrestres) est plausible pour un fossé de
+  rift à son ouverture. En revanche, la règle « le ruban devient une plaque » est suspecte. Elle est mise en file d'attente pour
+  un finding à part, après les cordillères. »
+- **Queued, in this order**:
+  - the cordilleras: B2's defect, the next finding, written by the author;
+  - then the rift rule « the strip becomes a plate » (`find_rift_strip`), in a finding of its own;
+  - deposition stays F178's subject as announced in F177's brief.
+- **Still open**: the guard's printout (show the exact verdict); the five other states recomputed fresh (~45 min); tiers 2–4
+  of F177 (~10 min) on request.

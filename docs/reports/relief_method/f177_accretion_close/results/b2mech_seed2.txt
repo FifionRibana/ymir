@@ -1,0 +1,2 @@
+   seed 2: active band 789 cells: Δh_src 1000 m = Andean 783 + collision 491 + O-O arcs 14 + the rest -289 m · active coast cells 47: on a boundary (3 × 3) 13, walk within the arc's reach (≤ 3 cells) 24, beyond it 10 · active coast cells with an O-O arc deposit 20, with a C-O wedge or arc 11
+#B2M 999.6206508247597 782.8707677836143 491.36304141046537 14.190567841217211 47 13 24 10 20 11

@@ -1,0 +1,6 @@
+# F177 Part 0 -- the state « livré » recomputed at unchanged digests from an EMPTY cache (the ymir-viz test binary run from an empty directory; test f177_fresh_guard in hd.rs)
+cwd C:\Users\obruneau\AppData\Local\Temp\claude\d--Personnel-Projects-ymir\329cbe43-8860-4e8e-b0c0-bb326cabefed\scratchpad\fresh_guard · cache .ymir_cache · entries before 0
+[HD] bench guard (f61ef23f4f4e9d94): Match { label: "livré · cadrage canonique (viz)" }
+[HD] lake guard (d62d1040f7a0cb38): Match { label: "livré · cadrage canonique (viz) · 45° / 40°" }
+F177-0 livré, fresh (544 s): field Match { label: "livré · cadrage canonique (viz)" } · lakes Match { label: "livré · cadrage canonique (viz) · 45° / 40°" }
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 50 filtered out; finished in 544.68s

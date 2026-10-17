@@ -1496,3 +1496,79 @@ fn export_ymir_container(
     writer.finish()?;
     Ok(())
 }
+
+/// ADR Finding 177, Part 0 — the guard's « stale cache » (F175), re-examined. The guard looks its
+/// reference up BY DIGEST, so bumping an `ALGO_*` gives `NoReference`, which `f123_viz_guard` prints
+/// as « ≠ / non gardé » like a mismatch. This bench recomputes the « livré » state at UNCHANGED
+/// digests with an EMPTY cache: run the test binary from an empty working directory (the cache is
+/// `.ymir_cache/` under the cwd). Test-only, read-only for the repo's caches.
+///
+/// Run: <the ymir-viz test exe> f177_fresh_guard --ignored --nocapture   (cwd = an empty dir)
+#[cfg(test)]
+mod f177_fresh_guard {
+    use super::*;
+    use crossbeam_channel::bounded;
+    use ymir_core::tectonics_c1::closures::fracture::FractureConfig;
+    use ymir_core::tectonics_c1::closures::infiltration::InfiltrationConfig;
+    use ymir_core::tectonics_c1::closures::lithology::LithologyConfig;
+    use ymir_core::tectonics_c1::closures::volcanism::VolcanismConfig;
+
+    const PSEED: u64 = 10_481_999_410_520_546_993;
+
+    #[test]
+    #[ignore]
+    fn f177_fresh_guard() {
+        let cwd = std::env::current_dir().unwrap();
+        let dir = default_cache_dir();
+        let pre = std::fs::read_dir(&dir).map(|r| r.count()).unwrap_or(0);
+        eprintln!("cwd {} · cache {} · entries before {pre}", cwd.display(), dir.display());
+        assert_eq!(pre, 0, "the cache must start empty (run from an empty directory)");
+        let spec = C1RunSpec { seed: PSEED, ..C1RunSpec::default() };
+        // f123_viz_guard's literal, state « livré » (slope None, valley None)
+        let params = HdParams {
+            target_size: 8192,
+            latitude_deg: 45.0,
+            domain_km: 400.0,
+            manual_offset: Some([6.0 / 64.0, 37.0 / 64.0]),
+            stream_power: true,
+            closures: true,
+            cross_rill: false,
+            slope_floor_s_eq: None,
+            valley_construction: None,
+            cross_rill_d: 0.40,
+            mfd: true,
+            mfd_p: 2.0,
+            base_level_m: None,
+            base_level_off: false,
+            geo_scale_ratio: 7.5,
+            latitude_span_deg: Some(40.0),
+            export_dir: None,
+            volcanism: Some(VolcanismConfig { enabled: true, ..Default::default() }),
+            lithology: Some(LithologyConfig {
+                enabled: true,
+                soft_multiplier: 10.0,
+                volcanic_multiplier: 3.0,
+                rift_age_threshold: 1.0,
+            }),
+            fracture: Some(FractureConfig { enabled: true, amplitude: 6.0, decay_km: 25.0, ..Default::default() }),
+            infiltration: Some(InfiltrationConfig { enabled: true, ..Default::default() }),
+            emit_tectonic_labels: false,
+            geology_rules: None,
+        };
+        let (tx, rx) = bounded(256);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let t0 = Instant::now();
+        std::thread::spawn(move || run_hd(&spec, &params, &tx, &cancel));
+        while let Ok(e) = rx.recv() {
+            match e {
+                C1Event::HdCompleted { result, .. } => {
+                    eprintln!("F177-0 livré, fresh ({:.0} s): field {:?} · lakes {:?}", t0.elapsed().as_secs_f64(), result.bench_guard, result.lake_guard);
+                    return;
+                }
+                C1Event::HdFailed { error } => panic!("HD run failed: {error}"),
+                _ => {}
+            }
+        }
+        panic!("the HD worker hung up")
+    }
+}

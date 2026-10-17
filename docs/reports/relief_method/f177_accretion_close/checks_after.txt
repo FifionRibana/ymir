@@ -1,0 +1,22 @@
+# F177 checks AFTER (F176 uncommitted + F177: the f177_cascade bench, the f177_fresh_guard test in hd.rs; no production code)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.34s
+test result: ok. 659 passed; 0 failed; 8 ignored; 0 measured; 0 filtered out; finished in 2.75s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 33 passed; 0 failed; 18 ignored; 0 measured; 0 filtered out; finished in 2.46s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+# the 6/6 guard through run_hd (ymir-viz f123_viz_guard)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+[HD timing] geology (5.87s: history 0.89 · rocks 2.34 · context 2.33 · zoning 0.08) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (6.01s: history 0.80 · rocks 2.50 · context 2.38 · zoning 0.08) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (5.80s: history 0.86 · rocks 2.35 · context 2.29 · zoning 0.07) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (5.79s: history 0.88 · rocks 2.32 · context 2.29 · zoning 0.08) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (5.75s: history 0.83 · rocks 2.40 · context 2.24 · zoning 0.08) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (5.65s: history 0.81 · rocks 2.35 · context 2.18 · zoning 0.08) · rules v0 intégré (4d82bec83252)
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes = banc
+   C1 nue                 field = banc · lakes = banc
+   C2 /10 col (défaut)    field = banc · lakes = banc
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes = banc
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 50 filtered out; finished in 337.78s
+# done

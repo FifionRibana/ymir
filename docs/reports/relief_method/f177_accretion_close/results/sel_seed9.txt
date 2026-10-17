@@ -1,0 +1,2 @@
+#SEL 16 7 6 1
+   seed 9: selection N 16, land 50.6 %, r* Some(3)
