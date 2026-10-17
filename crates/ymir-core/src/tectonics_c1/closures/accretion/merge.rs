@@ -63,6 +63,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 use crate::tectonics_v2::voronoi::PlateIdField;
+use crate::tectonics_v2::boundaries::plate_type::{PlateType, PlateTypeField};
 
 use crate::tectonics_c1::kinematics::PlateKinematics;
 
@@ -109,6 +110,17 @@ impl ConvergenceTracker {
     /// `v_rel · n̂` convention as
     /// [`crate::tectonics_c1::boundary_classification::classify_boundaries`].
     pub fn update(&mut self, plate_id: &PlateIdField, kinematics: &PlateKinematics) {
+        self.update_filtered(plate_id, kinematics, None);
+    }
+
+    /// ADR Finding 176-A1 -- [`Self::update`] counting **only the edges whose two cells are continental** (a collision): a pair
+    /// without a continent-continent edge never becomes net-convergent, so an ocean-ocean or ocean-continent boundary never
+    /// merges and its subduction continues. Used only with the continent profile's « merge at collision » flag.
+    pub fn update_collision(&mut self, plate_id: &PlateIdField, plate_type: &PlateTypeField, kinematics: &PlateKinematics) {
+        self.update_filtered(plate_id, kinematics, Some(plate_type));
+    }
+
+    fn update_filtered(&mut self, plate_id: &PlateIdField, kinematics: &PlateKinematics, collision_only: Option<&PlateTypeField>) {
         let nx = plate_id.nx();
         let ny = plate_id.ny();
         let idx_x = PeriodicIndex::new(nx);
@@ -141,6 +153,12 @@ impl ConvergenceTracker {
                     let pid_n = plate_id.get(ni, nj);
                     if pid_n == pid_c {
                         continue;
+                    }
+                    // F176-A1: with the flag, only the continent-continent edges count
+                    if let Some(pt) = collision_only {
+                        if pt.get(i, j) != PlateType::Continental || pt.get(ni, nj) != PlateType::Continental {
+                            continue;
+                        }
                     }
                     let pair = if pid_c < pid_n { (pid_c, pid_n) } else { (pid_n, pid_c) };
                     // Canonical perspective: compute v_rel = v_a − v_b

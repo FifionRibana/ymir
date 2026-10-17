@@ -1,0 +1,22 @@
+# F176 checks after (merge at collision behind the flag, viz box)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.27s
+test result: ok. 659 passed; 0 failed; 8 ignored; 0 measured; 0 filtered out; finished in 2.35s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 33 passed; 0 failed; 17 ignored; 0 measured; 0 filtered out; finished in 1.79s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+# the 6/6 guard through run_hd (ymir-viz f123_viz_guard)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+[HD timing] geology (1.95s: history 0.25 · rocks 0.66 · context 0.84 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (1.98s: history 0.23 · rocks 0.68 · context 0.88 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (1.99s: history 0.24 · rocks 0.66 · context 0.89 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (1.97s: history 0.23 · rocks 0.65 · context 0.89 · zoning 0.03) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.02s: history 0.26 · rocks 0.67 · context 0.86 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (1.97s: history 0.25 · rocks 0.69 · context 0.83 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes = banc
+   C1 nue                 field = banc · lakes = banc
+   C2 /10 col (défaut)    field = banc · lakes = banc
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes = banc
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 49 filtered out; finished in 112.69s
+# done

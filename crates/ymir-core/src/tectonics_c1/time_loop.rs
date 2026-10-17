@@ -553,7 +553,7 @@ pub fn run_with_closures_observed<F>(
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
-    run_inner(state, kinematics, config, closures, on_step, None, None);
+    run_inner(state, kinematics, config, closures, on_step, None, None, false);
 }
 
 /// ADR Finding 166-A1 -- the terms of C1's step that change `s`, in their order.
@@ -591,7 +591,7 @@ pub fn run_with_closures_terms<F>(
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
-    run_inner(state, kinematics, config, closures, on_step, Some(on_term), None);
+    run_inner(state, kinematics, config, closures, on_step, Some(on_term), None, false);
 }
 
 /// ADR Finding 175 -- [`run_with_closures_terms`] with **the ocean-ocean subduction path** (option 5) when `oo` is `Some`:
@@ -609,7 +609,26 @@ pub fn run_with_closures_terms_oo<F>(
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
-    run_inner(state, kinematics, config, closures, on_step, Some(on_term), oo);
+    run_inner(state, kinematics, config, closures, on_step, Some(on_term), oo, false);
+}
+
+/// ADR Finding 176 -- [`run_with_closures_terms_oo`] with the accretion « merge at collision » flag: the convergence tracker
+/// counts only continent-continent edges ([`ConvergenceTracker::update_collision`]), so ocean-ocean and ocean-continent
+/// boundaries never merge. `merge_at_collision = false` is [`run_with_closures_terms_oo`] bit for bit.
+#[allow(clippy::too_many_arguments)]
+pub fn run_with_closures_terms_flags<F>(
+    state: &mut C1State,
+    kinematics: &mut PlateKinematics,
+    config: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    oo: Option<OoSubductionParams>,
+    merge_at_collision: bool,
+    on_step: F,
+    on_term: &mut dyn FnMut(C1Term, &[f64], &[f64]),
+) where
+    F: FnMut(usize, &C1State, &PlateKinematics),
+{
+    run_inner(state, kinematics, config, closures, on_step, Some(on_term), oo, merge_at_collision);
 }
 
 fn run_inner<F>(
@@ -620,6 +639,7 @@ fn run_inner<F>(
     mut on_step: F,
     mut on_term: Option<&mut dyn FnMut(C1Term, &[f64], &[f64])>,
     oo: Option<OoSubductionParams>,
+    merge_at_collision: bool,
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
@@ -1036,7 +1056,12 @@ fn run_inner<F>(
             h(C1Term::RiftThinning, b, state.s.data());
         }
         if let Some(tracker) = convergence_tracker.as_mut() {
-            tracker.update(&state.plate_id, kinematics);
+            // F176-A1: with the flag, only the continent-continent edges drive the merge
+            if merge_at_collision {
+                tracker.update_collision(&state.plate_id, &state.plate_type, kinematics);
+            } else {
+                tracker.update(&state.plate_id, kinematics);
+            }
         }
         if let Some(tracker) = divergence_tracker.as_mut() {
             tracker.update(&state.plate_id, kinematics);

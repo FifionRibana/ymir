@@ -1,0 +1,1 @@
+   seed 18 F176 young (2 048²): the coast 0.978 / 0.882 / 0.313 / 1.283 · islands ≥ 1 km² 0 (0 km²) · transect: passive true · Andean true · chain CPU 484 s

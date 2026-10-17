@@ -31,7 +31,7 @@ use crate::tectonics_c1::production_upscale::{
 use crate::tectonics_c1::state::C1State;
 pub use crate::tectonics_c1::time_loop::C1Term;
 use crate::tectonics_c1::closures::subduction::OoSubductionParams;
-use crate::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures_observed, run_with_closures_terms_oo};
+use crate::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures_observed, run_with_closures_terms_flags};
 use crate::tectonics_v2::boundaries::plate_type::{PlateType, PlateTypeField};
 use crate::tectonics_v2::field::Field2D;
 use std::cell::RefCell;
@@ -242,8 +242,30 @@ pub fn run_c1_sources_mapped_oo(
     mapping: Mapping,
     oo: Option<OoSubductionParams>,
 ) -> C1Sources {
+    run_c1_sources_mapped_flags(state, kin, cfg, closures, every, iso, ss, exclude, mapping, oo, false, false)
+}
+
+/// ADR Finding 176 -- [`run_c1_sources_mapped_oo`] with the accretion « merge at collision » flag and the measured-only variant
+/// B (`arcs_emerge`: under Airy, an oceanic cell that has received arc mass is read at 0.2 + its cumulative arc mass, the
+/// positive part of the subduction term, instead of 0.2). `(false, false)` is [`run_c1_sources_mapped_oo`] bit for bit.
+#[allow(clippy::too_many_arguments)]
+pub fn run_c1_sources_mapped_flags(
+    state: &mut C1State,
+    kin: &mut PlateKinematics,
+    cfg: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    every: usize,
+    iso: &IsostasyConfig,
+    ss: &SteinSteinParams,
+    exclude: &[C1Term],
+    mapping: Mapping,
+    oo: Option<OoSubductionParams>,
+    merge_at_collision: bool,
+    arcs_emerge: bool,
+) -> C1Sources {
     let (nx, ny) = (state.nx(), state.ny());
     let n = nx * ny;
+    let arcs = RefCell::new(vec![0f64; n]);
     let s0 = state.s.data().to_vec();
     let type0: Vec<_> = state.plate_type.data().to_vec();
     let removed = RefCell::new(vec![0f64; n]);
@@ -251,6 +273,20 @@ pub fn run_c1_sources_mapped_oo(
     let src_alt = |st: &C1State, removed: &[f64]| -> GridF32 {
         if let Mapping::Airy(a) = &mapping {
             let s_src = Field2D::from_vec(nx, ny, st.s.data().iter().zip(removed).map(|(s, r)| s - r).collect());
+            if arcs_emerge {
+                // F176-B: the arc-loaded oceanic cells read at 0.2 + their cumulative arc mass
+                let ar = arcs.borrow();
+                let mut pt = st.plate_type.clone();
+                let mut sv = s_src.data().to_vec();
+                for k in 0..n {
+                    let (i, j) = (k % nx, k / nx);
+                    if pt.get(i, j) == PlateType::Oceanic && ar[k] > 0.0 {
+                        pt.set(i, j, PlateType::Continental);
+                        sv[k] = 0.2 + ar[k];
+                    }
+                }
+                return airy_raw(&Field2D::from_vec(nx, ny, sv), &pt, a, ss.depth_scale_m);
+            }
             return airy_raw(&s_src, &st.plate_type, a, ss.depth_scale_m);
         }
         if exclude.is_empty() {
@@ -262,12 +298,13 @@ pub fn run_c1_sources_mapped_oo(
     let mut raw = vec![src_alt(state, &removed.borrow())];
     let mut steps = vec![0usize];
     let mut suture = vec![false; n];
-    run_with_closures_terms_oo(
+    run_with_closures_terms_flags(
         state,
         kin,
         cfg,
         closures,
         oo,
+        merge_at_collision,
         |step, st, k| {
             let b = classify_boundaries(&st.plate_id, k);
             for (s, t) in suture.iter_mut().zip(b.boundary_type.data()) {
@@ -284,6 +321,12 @@ pub fn run_c1_sources_mapped_oo(
             let mut sm = sums.borrow_mut();
             let acc = &mut sm.iter_mut().find(|x| x.0 == term).unwrap().1;
             let ex = exclude.contains(&term);
+            if arcs_emerge && term == C1Term::Subduction {
+                let mut ar = arcs.borrow_mut();
+                for k in 0..n {
+                    ar[k] += (after[k] - before[k]).max(0.0);
+                }
+            }
             let mut rm = removed.borrow_mut();
             for k in 0..n {
                 let d = after[k] - before[k];

@@ -132,6 +132,10 @@ pub struct Margin {
     /// ADR Finding 175: the ocean-ocean subduction path (option 5), a C1 closure flag the continent profile carries to C1
     /// (`run_c1_sources_mapped_oo`); not an initial condition, so [`Margin::is_off`] ignores it.
     pub oo: Option<OoSubductionParams>,
+    /// ADR Finding 176-A1: the accretion merges a pair only on its continent-continent edges (a C1 closure flag).
+    pub merge_at_collision: bool,
+    /// ADR Finding 176-B (measured only): under Airy, the arc-loaded oceanic cells read at 0.2 + their arc mass.
+    pub arcs_emerge: bool,
 }
 
 impl Margin {
@@ -140,11 +144,15 @@ impl Margin {
     }
     /// F174-B's main choice: a rim of 2.5 cells and the declared ramp.
     pub fn declared() -> Self {
-        Self { w_rim: 2.5, ramp: Some(Ramp::declared()), hetero: None, seaward: false, oo: None }
+        Self { w_rim: 2.5, ramp: Some(Ramp::declared()), hetero: None, seaward: false, oo: None, merge_at_collision: false, arcs_emerge: false }
     }
     /// F174-B′'s choice: the declared ramp seaward.
     pub fn seaward() -> Self {
-        Self { w_rim: 0.0, ramp: Some(Ramp::declared()), hetero: None, seaward: true, oo: None }
+        Self { w_rim: 0.0, ramp: Some(Ramp::declared()), hetero: None, seaward: true, oo: None, merge_at_collision: false, arcs_emerge: false }
+    }
+    /// F176's choice: the seaward margin, option 5, and the merge at collision.
+    pub fn seaward_oo_collision() -> Self {
+        Self { merge_at_collision: true, ..Self::seaward_oo() }
     }
     /// F175's choice: the seaward margin with the ocean-ocean subduction path.
     pub fn seaward_oo() -> Self {
@@ -463,7 +471,7 @@ mod tests {
         let a = p.init_state(64, 42);
         let b = p.init_state_margin(64, 42, &Margin::off());
         assert_eq!(bits(&a), bits(&b));
-        let zero = Margin { w_rim: 0.0, ramp: Some(Ramp::declared().scaled(0.0)), hetero: None, seaward: false, oo: None };
+        let zero = Margin { w_rim: 0.0, ramp: Some(Ramp::declared().scaled(0.0)), hetero: None, seaward: false, oo: None, merge_at_collision: false, arcs_emerge: false };
         assert!(zero.is_off());
         assert_eq!(bits(&a), bits(&p.init_state_margin(64, 42, &zero)));
     }
@@ -602,6 +610,37 @@ mod tests {
         retarget_upper_plate_continental(&mut bi, &st.plate_id, &st.plate_type);
         clear_oo_seeds(&mut bi, &st.plate_id, &st.plate_type);
         assert_eq!(clear_oo_seeds(&mut bi, &st.plate_id, &st.plate_type), 0, "a second cut finds nothing");
+    }
+
+    /// F176-A3 (permanent): the merge flag off is F175 (and production) bit for bit; a world with no oceanic boundary (every
+    /// cell continental) is the same with and without the flag; with the flag, the oceanic plates of a real world merge less.
+    #[test]
+    fn the_merge_at_collision_controls() {
+        use crate::tectonics_c1::time_loop::{C1Closures, C1Term, run_with_closures_terms_flags, run_with_closures_terms_oo};
+        let p = C1Profile::Selected { plates: 16, k: 8, start: 3, compact: true };
+        let mut cfg = crate::cascade::profile::c1_run_config();
+        cfg.n_steps = 120;
+        let run = |flags: Option<(Option<OoSubductionParams>, bool)>, all_cont: bool| {
+            let mut st = p.init_state_margin(64, 42, &Margin::seaward());
+            if all_cont {
+                for k in 0..64 * 64 {
+                    st.plate_type.set(k % 64, k / 64, PlateType::Continental);
+                }
+            }
+            let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+            let mut on_term = |_: C1Term, _: &[f64], _: &[f64]| {};
+            match flags {
+                None => run_with_closures_terms_oo(&mut st, &mut kin, &cfg, &C1Closures::default(), Some(OoSubductionParams::declared()), |_, _, _| {}, &mut on_term),
+                Some((oo, m)) => run_with_closures_terms_flags(&mut st, &mut kin, &cfg, &C1Closures::default(), oo, m, |_, _, _| {}, &mut on_term),
+            }
+            let plates = st.plate_id.data().iter().copied().collect::<std::collections::BTreeSet<u16>>().len();
+            (bits(&st), plates)
+        };
+        let oo = Some(OoSubductionParams::declared());
+        assert_eq!(run(None, false).0, run(Some((oo, false)), false).0, "the flag off is F175 bit for bit");
+        assert_eq!(run(Some((oo, false)), true).0, run(Some((oo, true)), true).0, "no oceanic boundary: the flag changes nothing");
+        let (with, without) = (run(Some((oo, true)), false).1, run(Some((oo, false)), false).1);
+        assert!(with >= without, "plates at the end with / without the flag: {with} / {without}");
     }
 
     /// F174-B5 (permanent): the default selection with the margin off is `select_continent_default` bit for bit.

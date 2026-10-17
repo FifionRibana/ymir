@@ -1,0 +1,1 @@
+   seed 29 F176: oceanic cells with a net arc deposit 492 · net arc per cell p50 / p99 / max 0.018 / 0.480 / 0.585 (s units; 0.715 to emerge) · above 0.715: 0

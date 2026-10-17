@@ -1,0 +1,2 @@
+   seed 29 F176 young 20 Myr: W10 0.238 (W_in 0.066, rampart false) · active / passive 0.201 / 0.245 (1117 / 6507 cells) · islands (256²) 0 (0 km²) · lakes 9 (952 km²) · macro plain 12.1 · plateau 3.5 · hill 22.3 · mountain 62.1 % · land 90852 km² · median 632 m · physics CPU 23 s
+   seed 29 F176 old 300 Myr: W10 0.138 (W_in 0.008, rampart false) · active / passive 0.198 / 0.128 (1120 / 6704 cells) · islands (256²) 0 (0 km²) · lakes 8 (2830 km²) · macro plain 28.5 · plateau 4.5 · hill 34.8 · mountain 32.3 % · land 91335 km² · median 272 m · physics CPU 23 s

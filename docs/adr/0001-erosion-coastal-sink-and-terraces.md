@@ -22998,3 +22998,72 @@ the coasts active); (e) the stale cache: find the step, bump it, re-baseline the
   against the F175 tree); the gap is downstream. To be diagnosed in F176's Part 0.
 - **Queued**: (a) the accretion merge against the ocean-ocean consumption; (b) emerged arcs (reading the s of arc-loaded cells
   in Airy); (c) the polarity decided by less than 0.01 of age difference.
+
+## Finding 176 — the accretion merges a pair only at collision (behind the continent profile's flag, one closure changed as declared, no solver), with option 5 and the seaward margin: the plates no longer collapse (9–14 at the end on the panel, against 2–3), the O-O consumption reaches the continents and every continent of 15 seeds has an Andean margin (1–5 groups, 19–169 km), but the median active share at the end is 8.4 % (2.5–15.8 %), under the 10–50 % band — the success fails on that criterion alone; emerged arcs (variant B) change nothing (the arc load reaches 0.26–0.59 of the 0.715 needed); production unchanged
+
+**Status: built, measured by tiers; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f176_accretion/finding_176.md`. Declared: `f176_declared.md`. Predictions: `f176_predictions.md`.
+
+**The author's words (the brief, verbatim)**: « Oui mais il faut des closures ou se baser sur des résultats pas faire du callage
+juste pour faire réapparaitre les côtes andines. La variabilité est portée par la seed car effectivement tous les continents ne
+portent pas de côte andine, mais il en faut tout de même et la seed ne peut pas le décider seul. Avant notre travail récent, il y
+avait une côte andine sur chaque continent. »
+- **The reviewer's error, recorded**: at F175's commit the reviewer proposed to close the margins workstream and accept all-passive
+  coasts — « remplacer le biais du tout actif par celui du rien actif ».
+
+**Part 0, the inventory** (file:line in `f176_declared.md`):
+- The accretion (`closures/accretion/merge.rs`) counts net convergent steps per plate pair and merges at 50 consecutive ones,
+  whatever the boundary's type; it came with Issue #132 (Track D Stage E2) and a collision rationale (« ≈ 33 Ma … consistent with
+  collision-zone timescales »).
+- The C-O rule takes over once a band is consumed (an oceanic convergent cell next to another plate's continent is consumed
+  beneath it).
+- **The terrestrial reference** (a comparison, not a target): Bradley 2008 (`docs/refs/Brad_08.pdf`, p. 2) — 105 000 km of passive
+  margins, 53 000 km of convergent plate boundaries, so active continental margins are at most 34 % of the continental margins'
+  length (the convergent total includes intra-oceanic subduction). No source in `docs/refs` splits the 53 000 km; the author is
+  asked for one. Variant B's continental-arc crust: Christensen & Mooney 1995 (38.7 ± 9.6 km, Table 3); no island-arc source.
+
+**Built** (`ConvergenceTracker::update_collision`, `run_with_closures_terms_flags`, `run_c1_sources_mapped_flags`,
+`Margin::merge_at_collision`, `Margin::arcs_emerge`, `Margin::seaward_oo_collision()`):
+- A1: with the flag, the tracker counts only continent-continent edges; an O-O or O-C boundary never merges; the threshold (50)
+  and the merge unchanged.
+- A3, the controls (permanent, `the_merge_at_collision_controls`): the flag off is F175 bit for bit; an all-continental world is
+  identical with and without the flag; a real world keeps at least as many plates with it. C1's production hash unchanged (seeds
+  42, 8, the old témoin); no cache key touched, no `ALGO_*` bump.
+- A4, the viz: « Fusion seulement à la collision (C1) ».
+- Variant B (measured only): an arc-loaded oceanic cell is read under Airy at s = 0.2 + its cumulative arc load.
+
+**Measured** (the bench by tiers, ~10.5 min wall against ~22 announced):
+- **Tier 1 (C1, the panel at the fixed continent)**: plates at the end 9 / 14 / 13 / 10 / 10 (F175 3 / 2 / 2 / 2 / 3); active at the
+  end 0.0 / 15.3 / 8.5 / 5.5 / 10.2 % (« within 3 cells » 27–38 %); Andean groups 0 / 7 / 3 / 2 / 3; the C-O consumption 149–2 173
+  cells (F175 100–320); one-cell fingers 12–31 (F175 0–10); r* falls to 0 on seeds 18 and 23 at the fixed continent.
+- **Tier 2 (15 seeds, the selection redone under F176)**: a continent on 15 / 15 (land 50.0–57.5 %, r* 1–4, circumnavigable 15 /
+  15); continents with ≥ 1 Andean margin 15 / 15; the active share at the end median 8.4 %, 2.5–15.8 %, ≥ 10 % on 4; « within 3
+  cells » median ~31 %, 18–48 %; plates at the end 10–24.
+- **Tier 3 (256², the panel)**: the mountain share at young F175 → F176 71.5 → 53.2, 22.6 → 54.9, 40.3 → 36.4, 48.8 → 53.5, 43.2 →
+  62.1 %; W₁₀ at young 0.08–0.28, no rampart; W₁₀ active ≥ 2 × passive on 1 seed (19); no arc island.
+- **Tier 4 (2 048², seed 18, young)**: the coast as smooth (dimension 0.978, length ratio 0.882); the Andean transect carries a
+  ~2.5 km coastal range, the passive one stays low.
+- **Variant B**: no effect (islands 0; the land within 0.03 %): the arc load per oceanic cell reaches 0.26–0.59 in s units, under
+  the 0.715 a cell needs to emerge, spread over 324–628 cells.
+
+**The success**: the Andean margins ✓ (100 % ≥ 70 %), the controls ✓, the median active share ✗ (8.4 % < 10 %) — not met; the
+profile is unchanged. **The stops**: none fires (0 selection failures, 0 circumnavigation losses, no seed above 70 % active).
+
+**Predictions**: the reviewer's T1, T2, T5 held; T3 refuted on the median (held on the ceiling); T4 and T6 refuted. Mine: T1, T3's
+median range, T5, T6 refuted held; T2 « 40–70 % », T3's « ≥ 10 % on 8–11 seeds », T4 and the mountain range refuted.
+
+**Open, for the author** (nothing chosen): (a) the 3 × 3 measure (a trench within ~47 km) against the « within 3 cells » reading
+(~31 %, the order of Bradley's ≤ 34 %); (b) a source splitting the convergent boundaries into ocean-continent and intra-oceanic;
+(c) plates above 16 at the end on two seeds (rifting without merges); (d) the fingers rising; (e) emerged arcs need a concentrated
+load and an island-arc source. **Not in this brief**: the guard's stale downstream cache (queued at F175's commit for F176's Part
+0) is still to diagnose.
+
+**At commit (2026-10-18), decided**: the author's words: « Feu vert pour commiter le F176 puis le F177 (config.rs et workspace.rs restent dehors ; le test ignoré de hd.rs peut entrer). »
+- **F176 is committed behind its flag, off by default**: `Margin::merge_at_collision = false`, so production, F175 and every
+  existing profile are unchanged bit for bit (the permanent control `the_merge_at_collision_controls`).
+  `Margin::seaward_oo_collision()` is only used on request, with the viz box « Fusion seulement à la collision (C1) ».
+- Variant B (`Margin::arcs_emerge`) is committed as measured: off by default, with no effect. F177 closed it on the sources (an
+  island-arc crust of ~20 km is submerged).
+- The measure of the active share, open at F176, was settled by F177's A1.
+
+
