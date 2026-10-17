@@ -414,6 +414,36 @@ pub fn oc_override_seed_mask(
     mask
 }
 
+/// ADR Finding 175-A7 -- clear Davis-Suppe's upper-plate seed on every **ocean-ocean** convergent cell (an oceanic convergent
+/// cell with no 4-neighbour of another plate that is continental), after [`retarget_upper_plate_continental`]. Continent-ocean
+/// and continent-continent seeds are untouched. Returns the number of seeds cleared. Called only with the O-O subduction flag.
+pub fn clear_oo_seeds(boundary: &mut BoundaryInfo, plate_id: &PlateIdField, plate_type: &PlateTypeField) -> usize {
+    let nx = plate_id.nx();
+    let ny = plate_id.ny();
+    let idx_x = PeriodicIndex::new(nx);
+    let idx_y = PeriodicIndex::new(ny);
+    let mut cleared = 0;
+    for j in 0..ny {
+        for i in 0..nx {
+            if !matches!(boundary.boundary_type.get(i, j), BoundaryType::Convergent) || !boundary.upper_plate_mask.get(i, j) {
+                continue;
+            }
+            if !matches!(plate_type.get(i, j), PlateType::Oceanic) {
+                continue;
+            }
+            let pid_c = plate_id.get(i, j);
+            let touches_continent = [(idx_x.next(i), j), (idx_x.prev(i), j), (i, idx_y.next(j)), (i, idx_y.prev(j))]
+                .into_iter()
+                .any(|(ni, nj)| plate_id.get(ni, nj) != pid_c && matches!(plate_type.get(ni, nj), PlateType::Continental));
+            if !touches_continent {
+                boundary.upper_plate_mask.set(i, j, false);
+                cleared += 1;
+            }
+        }
+    }
+    cleared
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

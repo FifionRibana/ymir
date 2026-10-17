@@ -1,0 +1,24 @@
+# F175 checks AFTER (HEAD b080a3b + F175)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 7.58s
+test result: ok. 658 passed; 0 failed; 8 ignored; 0 measured; 0 filtered out; finished in 2.65s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 33 passed; 0 failed; 17 ignored; 0 measured; 0 filtered out; finished in 1.80s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+# the 6/6 guard through run_hd (ymir-viz f123_viz_guard)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+[HD timing] geology (2.21s: history 0.27 · rocks 0.84 · context 0.88 · zoning 0.05) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (2.05s: history 0.24 · rocks 0.76 · context 0.85 · zoning 0.04) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (5.70s: history 0.84 · rocks 2.34 · context 2.22 · zoning 0.09) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (5.78s: history 0.87 · rocks 2.34 · context 2.22 · zoning 0.08) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (6.03s: history 0.87 · rocks 2.42 · context 2.34 · zoning 0.08) · rules v0 intégré (4d82bec83252)
+[HD timing] geology (5.87s: history 0.85 · rocks 2.38 · context 2.29 · zoning 0.12) · rules v0 intégré (4d82bec83252)
+   livré                  field ≠ / non gardé · lakes ≠ / non gardé
+   A1+B2                  field ≠ / non gardé · lakes ≠ / non gardé
+   C1 nue                 field ≠ / non gardé · lakes ≠ / non gardé
+   C2 /10 col (défaut)    field ≠ / non gardé · lakes ≠ / non gardé
+   C2 /3                  field ≠ / non gardé · lakes ≠ / non gardé
+   C2 /10 niveau mer      field ≠ / non gardé · lakes ≠ / non gardé
+thread 'ui::workspace::f123_viz_guard::f123_viz_guard' (16080) panicked at crates\ymir-viz\src\ui\workspace.rs:7051:13:
+test ui::workspace::f123_viz_guard::f123_viz_guard ... FAILED
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 49 filtered out; finished in 3189.24s
+# done

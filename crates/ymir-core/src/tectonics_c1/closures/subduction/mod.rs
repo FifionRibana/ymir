@@ -96,5 +96,5 @@
 pub mod params;
 pub mod source_term;
 
-pub use params::SubductionParams;
-pub use source_term::{SubductionStats, apply_subduction_step};
+pub use params::{OoSubductionParams, SubductionParams};
+pub use source_term::{OoTracker, SubductionStats, apply_oo_subduction_step, apply_subduction_step};

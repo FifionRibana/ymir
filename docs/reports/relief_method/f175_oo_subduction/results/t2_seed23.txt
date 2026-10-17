@@ -1,0 +1,1 @@
+   seed 23: found, N 20, Selected { plates: 20, k: 9, start: 16, compact: true }, land 55.6 %, r* Some(3) (B′'s fixed Selected { plates: 16, k: 8, start: 6, compact: true }) · 127 s wall

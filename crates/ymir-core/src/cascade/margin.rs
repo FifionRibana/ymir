@@ -22,6 +22,7 @@
 
 use super::amplify::noise01_t;
 use crate::tectonics_c1::boundary_classification::classify_boundaries;
+use crate::tectonics_c1::closures::subduction::OoSubductionParams;
 use crate::tectonics_c1::init_r7::{Phase2InitParams, init_age_field_ridge_aligned};
 use crate::tectonics_c1::kinematics::PlateKinematics;
 use crate::tectonics_c1::state::C1State;
@@ -128,6 +129,9 @@ pub struct Margin {
     pub hetero: Option<Hetero>,
     /// B′: the ramp seaward (`w_rim` unused).
     pub seaward: bool,
+    /// ADR Finding 175: the ocean-ocean subduction path (option 5), a C1 closure flag the continent profile carries to C1
+    /// (`run_c1_sources_mapped_oo`); not an initial condition, so [`Margin::is_off`] ignores it.
+    pub oo: Option<OoSubductionParams>,
 }
 
 impl Margin {
@@ -136,11 +140,15 @@ impl Margin {
     }
     /// F174-B's main choice: a rim of 2.5 cells and the declared ramp.
     pub fn declared() -> Self {
-        Self { w_rim: 2.5, ramp: Some(Ramp::declared()), hetero: None, seaward: false }
+        Self { w_rim: 2.5, ramp: Some(Ramp::declared()), hetero: None, seaward: false, oo: None }
     }
     /// F174-B′'s choice: the declared ramp seaward.
     pub fn seaward() -> Self {
-        Self { w_rim: 0.0, ramp: Some(Ramp::declared()), hetero: None, seaward: true }
+        Self { w_rim: 0.0, ramp: Some(Ramp::declared()), hetero: None, seaward: true, oo: None }
+    }
+    /// F175's choice: the seaward margin with the ocean-ocean subduction path.
+    pub fn seaward_oo() -> Self {
+        Self { oo: Some(OoSubductionParams::declared()), ..Self::seaward() }
     }
     pub fn is_off(&self) -> bool {
         self.w_rim <= 0.0 && self.ramp.is_none_or(|r| r.total_km() <= 0.0) && self.hetero.is_none()
@@ -455,7 +463,7 @@ mod tests {
         let a = p.init_state(64, 42);
         let b = p.init_state_margin(64, 42, &Margin::off());
         assert_eq!(bits(&a), bits(&b));
-        let zero = Margin { w_rim: 0.0, ramp: Some(Ramp::declared().scaled(0.0)), hetero: None, seaward: false };
+        let zero = Margin { w_rim: 0.0, ramp: Some(Ramp::declared().scaled(0.0)), hetero: None, seaward: false, oo: None };
         assert!(zero.is_off());
         assert_eq!(bits(&a), bits(&p.init_state_margin(64, 42, &zero)));
     }
@@ -544,6 +552,56 @@ mod tests {
         assert!((r.g_seaward(r.taper_km()) * 0.8 + 0.2 - 10.0 / 35.0).abs() < 1e-12);
         assert_eq!(r.g_seaward(r.seaward_km()), 0.0);
         assert_eq!(r.g_seaward(-r.landward_km()), 1.0);
+    }
+
+    /// F175-A8 (permanent): the O-O path off (`None`) is `run_with_closures_terms` bit for bit; with D_init infinite nothing
+    /// is consumed ocean-ocean (A7 still cuts the O-O seeds); with the declared D_init the O-O path consumes, conserves the
+    /// arc mass, and A7 leaves no O-O seed.
+    #[test]
+    fn the_oo_subduction_path_controls() {
+        use crate::tectonics_c1::boundary_classification::{classify_boundaries, clear_oo_seeds, retarget_upper_plate_continental};
+        use crate::tectonics_c1::closures::subduction::SubductionStats;
+        use crate::tectonics_c1::time_loop::{C1Closures, C1Term, run_with_closures_terms, run_with_closures_terms_oo};
+        let p = C1Profile::Selected { plates: 16, k: 8, start: 3, compact: true };
+        let mut cfg = crate::cascade::profile::c1_run_config();
+        cfg.n_steps = 80;
+        let run = |oo: Option<Option<OoSubductionParams>>| {
+            let mut st = p.init_state_margin(64, 42, &Margin::seaward());
+            let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+            let mut sum = SubductionStats::default();
+            let mut on_step = |_: usize, s: &C1State, _: &PlateKinematics| {
+                let x = s.last_step_stats.subduction;
+                sum.oo_cells_consumed += x.oo_cells_consumed;
+                sum.oo_mass_consumed += x.oo_mass_consumed;
+                sum.oo_arc_continental += x.oo_arc_continental;
+                sum.oo_arc_oceanic += x.oo_arc_oceanic;
+                sum.oo_arc_lost += x.oo_arc_lost;
+                sum.oo_reassigned += x.oo_reassigned;
+                sum.oo_seeds_cleared += x.oo_seeds_cleared;
+            };
+            let mut on_term = |_: C1Term, _: &[f64], _: &[f64]| {};
+            match oo {
+                None => run_with_closures_terms(&mut st, &mut kin, &cfg, &C1Closures::default(), &mut on_step, &mut on_term),
+                Some(o) => run_with_closures_terms_oo(&mut st, &mut kin, &cfg, &C1Closures::default(), o, &mut on_step, &mut on_term),
+            }
+            (bits(&st), sum, st, kin)
+        };
+        let (plain, ..) = run(None);
+        let (off, s_off, ..) = run(Some(None));
+        assert_eq!(plain, off, "the O-O path off is C1 bit for bit");
+        assert_eq!(s_off.oo_cells_consumed + s_off.oo_seeds_cleared, 0);
+        let (_, s_inf, ..) = run(Some(Some(OoSubductionParams { d_init_cells: f64::INFINITY })));
+        assert_eq!(s_inf.oo_cells_consumed, 0, "D_init infinite: no O-O consumption");
+        assert_eq!(s_inf.oo_reassigned, 0);
+        let (_, s_on, st, kin) = run(Some(Some(OoSubductionParams::declared())));
+        assert!(s_on.oo_cells_consumed > 0, "the declared D_init consumes");
+        let placed = s_on.oo_arc_continental + s_on.oo_arc_oceanic + s_on.oo_arc_lost;
+        assert!((placed - 0.5 * s_on.oo_mass_consumed).abs() <= 1e-9 * s_on.oo_mass_consumed.max(1.0), "the arc mass is conserved");
+        // A7 on the end state: no O-O seed is left
+        let mut bi = classify_boundaries(&st.plate_id, &kin);
+        retarget_upper_plate_continental(&mut bi, &st.plate_id, &st.plate_type);
+        clear_oo_seeds(&mut bi, &st.plate_id, &st.plate_type);
+        assert_eq!(clear_oo_seeds(&mut bi, &st.plate_id, &st.plate_type), 0, "a second cut finds nothing");
     }
 
     /// F174-B5 (permanent): the default selection with the margin off is `select_continent_default` bit for bit.

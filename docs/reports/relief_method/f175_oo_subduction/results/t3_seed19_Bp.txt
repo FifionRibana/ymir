@@ -1,0 +1,4 @@
+   seed 19 B′ young 20 Myr: W10 0.202 (W_in 0.053, rampart false) · by segment active / passive 0.000 / 0.202 (0 / 6429 cells) · islands (256², ≥ 1 cell, off the main land) 0 (0 km²) · land cells on arc deposits 0 · lakes 5 (2441 km²) · physics CPU 25 s
+      macro: plain 19.8 · plateau 5.5 · hill 16.3 · mountain 58.4 % · land 91707 km² · median 808 m
+   seed 19 B′ old 300 Myr: W10 0.006 (W_in 0.000, rampart false) · by segment active / passive 0.000 / 0.006 (0 / 6290 cells) · islands (256², ≥ 1 cell, off the main land) 0 (0 km²) · land cells on arc deposits 0 · lakes 0 (-0 km²) · physics CPU 24 s
+      macro: plain 24.5 · plateau 3.1 · hill 35.7 · mountain 36.6 % · land 92456 km² · median 228 m

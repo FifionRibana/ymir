@@ -22925,3 +22925,76 @@ nothing implemented.
 - **The author's decisions, verbatim**: on option 5, « Ca demanderait de faire de la biblio pour ça + calage sur base des
   publications et expériences. Mais pourquoi pas. »; on the order, « oui ok pour l'ordre » (F175 = option 5, F176 = deposition).
   The instruction stands: no solver; option 5 is a change of an existing closure, behind a flag.
+
+## Finding 175 — option 5, an ocean-ocean subduction closure in C1 (behind the continent profile's flag, no solver, A1–A7 only), with the seaward margin: the O-O path consumes 6 600–20 700 cell-steps per world and removes the band's Davis-Suppe dome (seed 8's mountain at young 89.7 → 71.5 %), but the trench almost never reaches a coast (0–4.4 % of the perimeter active at the end, 0–1 Andean margin per seed) because the accretion merge (50 steps) outruns the consumption (≥ 19 steps per band cell), and 87–99 % of the arc mass lands on oceanic cells, invisible under Airy — the success fails on 0 / 5; a bench budget rule is adopted; production unchanged
+
+**Status: built, measured by tiers; nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f175_oo_subduction/finding_175.md`. Declared: `f175_declared.md`. Predictions: `f175_predictions.md`.
+- F174 B′, C′ and D committed (`b080a3b`).
+
+**The bench budget rule (the author's, permanent, for every finding from now on)**:
+- before launching a bench, announce its estimated cost (CPU and wall time);
+- if the estimate exceeds 45 minutes of wall time, reduce the bench by tiers before launching it, and explain the choice;
+- a bench must be resumable: each world's results are written as soon as they are ready, and a rerun skips the worlds done;
+- the 2 048² cascade only serves what needs it (texture, coast detail), on 1 or 2 representative worlds.
+- **The reviewer's error, recorded**: the first F175 bench (100 worlds at 2 048², four ages, 3–5 h) was disproportionate; it was
+  interrupted on seed 8 and discarded. The tiered bench ran in ~12.6 min wall (C1 21 s; the selection 127 s; the physics level
+  472 s; two cascades 140 s).
+
+**Built** (`OoSubductionParams`, `Margin::oo`, `run_with_closures_terms_oo`, `run_c1_sources_mapped_oo`, `OoTracker`,
+`apply_oo_subduction_step`, `clear_oo_seeds`; `C1Closures` untouched since its `Debug` is in the tectonic cache key; C1's
+production output bit for bit, checked by a hash at HEAD and in the F175 tree, so `ALGO_TECTONICS` is not bumped):
+- A1 the older boundary cell sinks (ties: the velocity flag, then the lower plate id), the existing rate; A2 the arc on the
+  overriding plate (its continent, else its ocean); A3 the existing floor-triggered reassignment to the overriding plate, the type
+  kept oceanic; A4 D_init = 100 km ÷ 7.5 = 2.13 cells of 64² of cumulative convergence per pair (Stern & Gerya 2018 p. 44, after
+  Hall et al. 2003), no rate threshold; A5 the existing C-O rule at the continent; A6 no spontaneous collapse; A7 Davis-Suppe's
+  seeds cleared on O-O convergent cells.
+- Controls (permanent, and per seed): the flag off is C1 bit for bit; D_init infinite consumes nothing O-O and differs from B′ by
+  A7 alone; the arc mass conserved; a second A7 cut finds nothing.
+- The viz: « Subduction océan-océan (C1) », « Marges à la fin ».
+
+**Measured** (the panel, the fixed continent = F174 B′'s plates):
+- **Tier 1 (C1)**: active at the end 4.4 / 2.3 / 0 / 0 / 0 % (Part A 0–30.9 %, B′ 0–1.9 %); Andean margins 1 / 1 / 0 / 0 / 0;
+  22–31 initiations per world, 100 % within 2 cells of a continent (V1, against the note's ≤ 15 %), 96–100 % within 200 km of a
+  previous consumption (V2), 59–78 % in the first 25 steps (V3); V4 by construction, but 10–36 % of the polarity decisions rest
+  on |Δage| < 0.01 (the advected age); V5: the arc mass conserved, fingers above B′ on 2 seeds; r* 1–4 (circumnavigable 5 / 5);
+  87–99 % of the arc mass on oceanic cells; Davis-Suppe on the band −55 to −69 %.
+- **Tier 2**: the selection with option 5 finds a continent on 5 / 5.
+- **Tier 3 (256²)**: the mountain share at young with option 5 71.5 / 22.6 / 40.3 / 48.8 / 43.2 % (seed 8: −18.2 points against
+  B′; none above 80 %); W₁₀ at young 0.021–0.139; active against passive only on seed 8 (0.621 / 0.120); no island.
+- **Tier 4 (2 048², seeds 8 and 18)**: the coast as smooth (dimension 0.979 / 0.985); no shelf (median 0 km); 0 / 2 islands, not
+  on arc deposits; the Andean transect higher and steeper than the passive one.
+
+**The success**: 0 / 5 (the active share). **The stops**: the selection 0 failures, the circumnavigation 0 losses. **A point
+stopped (a closure change beyond A1–A7)**: the accretion closure merges a converging pair after 50 consecutive steps, while the
+O-O consumption needs ≥ 19 steps per distal band cell (the CFL bounds Δs ≤ 0.5 × dx per step) and the band is ~3 cells deep — the
+merge removes the boundary before the trench reaches the continent (a reading of the code and the numbers, a hypothesis to
+check). Island arcs would need arc-loaded oceanic cells to emerge (a promotion rule or a mapping change, declared in A2).
+
+**Predictions**: the reviewer's S1, S2, S4, S5 refuted, S3 refuted on the islands (held on the circumnavigation), S6 and S7 held.
+Mine: S3's islands absent, S6, S7, V3, V4 and the conservation held; S1's size, the ties, S2's range, S4, S5, V1, V2, V5 and the
+success refuted.
+
+**A stale cache, found by this round (not caused by it)**: with `ALGO_TECTONICS` bumped, the guard recomputed every cached state
+(3 189 s) and found all six fields and lakes different; C1's production hash is identical at HEAD and in the F175 tree (seeds 42,
+8, the old témoin), so the guard's references match cached products the current code no longer reproduces. The bump was reverted;
+the stale step is not identified.
+
+**Open, for the author** (nothing chosen): (a) the merge against the O-O consumption; (b) island arcs; (c) the advected age as
+the polarity criterion; (d) keeping option 5 behind its flag (it removes the band's dome at +3 s of C1 per world, but does not make
+the coasts active); (e) the stale cache: find the step, bump it, re-baseline the guard.
+
+**At commit (2026-10-17), decided (the reviewer's proposals, not contested by the author)**:
+- **Option 5 is committed behind its flag, off by default** (`Margin::oo = None`; `Margin::seaward_oo()` only on request).
+- It **removes Davis-Suppe's dome at ocean-ocean boundaries** (seed 8: 89.7 → 71.5 % mountain at young; no world above 80 %),
+  for +3 s of C1 per world.
+- It **does not make the coasts active** (0–4.4 % of the perimeter): the accretion closure merges the plates before the trench
+  reaches the continent, so active margins would need a change to a second closure.
+- **The reviewer's error, recorded**: the success criterion « 10–60 % of the perimeter active » assumed option 5 alone would
+  suffice. The reviewer proposes to close the margins workstream and accept passive margins — **the author's decision is
+  awaited**.
+- **The budget rule applied**: the bench ran by tiers (~13 min wall, resumable).
+- **Outside F175**: the guard's references match a cache the current code no longer reproduces. C1's hash is identical (HEAD
+  against the F175 tree); the gap is downstream. To be diagnosed in F176's Part 0.
+- **Queued**: (a) the accretion merge against the ocean-ocean consumption; (b) emerged arcs (reading the s of arc-loaded cells
+  in Airy); (c) the polarity decided by less than 0.01 of age difference.

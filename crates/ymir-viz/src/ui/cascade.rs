@@ -30,7 +30,7 @@ use egui::Color32 as C;
 use ymir_core::cascade::amplify::{AmpConfig, AmpLevel, Budget, Chain, KHetero, Variant, Warp, WarpPlace};
 use ymir_core::cascade::history::{
     Airy, C1Term, HistoryRun, Mapping, SeaCurve, SeaLow, T_F165_YEARS, T_F166_YEARS, Timing, isostatic_datum, land_altitude_m,
-    physics_history_sea, run_c1_sources_mapped,
+    physics_history_sea, run_c1_sources_mapped_oo,
 };
 use ymir_core::cascade::hydro::{Hydro, draw, hydrology};
 use ymir_core::cascade::physio::{MOUNTAIN, classify};
@@ -47,7 +47,7 @@ use ymir_core::tectonics_c1::init_r7::init_c1_state_phase_2_r7;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::land_topology::land_topology;
 use ymir_core::tectonics_c1::production_upscale::c1_coarse_normalized_altitude;
-use ymir_core::tectonics_c1::time_loop::{C1TimeLoopConfig, run_with_closures, run_with_closures_terms};
+use ymir_core::tectonics_c1::time_loop::{C1TimeLoopConfig, run_with_closures, run_with_closures_terms_oo};
 
 use crate::bridge::c1::C1RunSpec;
 
@@ -207,6 +207,8 @@ pub struct CascadeUi {
     plates: usize,
     /// F174-B′6: the margin seaward (an initial condition of the continent profile).
     seaward: bool,
+    /// F175-A9: the ocean-ocean subduction closure (option 5) in C1.
+    oo: bool,
     /// F171-B/C: the rock (0 = K0 one K, 1 = K1 cover on basement, 2 = K2 with the heterogeneous K).
     rock: u8,
     /// F172-B5 / F173-B5: the sea (0 none, 1 the constant lowstand of F172, 2 the Quaternary curve), the lowstand view, and the
@@ -282,6 +284,7 @@ impl Default for CascadeUi {
             select: false,
             plates: 16,
             seaward: false,
+            oo: false,
             rock: 0,
             sea_mode: 0,
             low_view: false,
@@ -367,7 +370,7 @@ pub fn cascade_history(
     let exclude: &[C1Term] = if sources { &[C1Term::Erosion] } else { &[] };
     // F167-B6: the thickness → altitude mapping, C1's or Airy with an absolute sea level
     let mapping = if airy { Mapping::Airy(Airy::declared()) } else { Mapping::C1 };
-    let h = run_c1_sources_mapped(&mut state, &mut kin, &run, &spec.closures, 10, &run.iso_config, &ss, exclude, mapping);
+    let h = run_c1_sources_mapped_oo(&mut state, &mut kin, &run, &spec.closures, 10, &run.iso_config, &ss, exclude, mapping, margin.oo);
     let g = spec.grid_size as i64;
     let n = spec.grid_size;
     let un = h.hist.normalized(None);
@@ -398,14 +401,20 @@ pub fn cascade_history(
     let mut kin2 = PlateKinematics::preset_phase_1_1(st2.num_plates);
     let cur = std::cell::RefCell::new(vec![0f64; n * n]);
     let steps = std::cell::RefCell::new(Vec::<Vec<f64>>::new());
+    let sub_sum = std::cell::RefCell::new(vec![0f64; n * n]);
     let mut on_term = |t: C1Term, a: &[f64], b: &[f64]| {
         if t == C1Term::DavisSuppe {
             for (c, (x, y)) in cur.borrow_mut().iter_mut().zip(a.iter().zip(b)) {
                 *c += y - x;
             }
         }
+        if t == C1Term::Subduction {
+            for (c, (x, y)) in sub_sum.borrow_mut().iter_mut().zip(a.iter().zip(b)) {
+                *c += y - x;
+            }
+        }
     };
-    run_with_closures_terms(&mut st2, &mut kin2, &run, &spec.closures, |_, _, _| {
+    run_with_closures_terms_oo(&mut st2, &mut kin2, &run, &spec.closures, margin.oo, |_, _, _| {
         let v = std::mem::replace(&mut *cur.borrow_mut(), vec![0f64; n * n]);
         steps.borrow_mut().push(v);
     }, &mut on_term);
@@ -445,6 +454,32 @@ pub fn cascade_history(
         })
         .collect();
     terms.push(("Plaques à t₀ (bande)".to_string(), rolled(&plates_t0)));
+    // F175-A9: the margins at the end (3 = active perimeter, 2 = passive perimeter, 1 = continent, ½ = arc deposits on the
+    // ocean, 0 = ocean)
+    {
+        use ymir_core::tectonics_c1::boundary_classification::{BoundaryType, classify_boundaries, retarget_upper_plate_continental};
+        let mut bi = classify_boundaries(&st2.plate_id, &kin2);
+        retarget_upper_plate_continental(&mut bi, &st2.plate_id, &st2.plate_type);
+        let sub = sub_sum.borrow().clone();
+        let margins: Vec<f64> = (0..n * n)
+            .map(|k| {
+                let (x, y) = (k % n, k / n);
+                if !cont(&st2, k) {
+                    return if sub[k] > 0.02 { 0.5 } else { 0.0 };
+                }
+                let nb = [y * n + (x + 1) % n, y * n + (x + n - 1) % n, ((y + 1) % n) * n + x, ((y + n - 1) % n) * n + x];
+                if !nb.iter().any(|&j| !cont(&st2, j)) {
+                    return 1.0;
+                }
+                let active = (0..9).any(|d| {
+                    let (dx, dy) = (d % 3 + n - 1, d / 3 + n - 1);
+                    bi.boundary_type.get((x + dx) % n, (y + dy) % n) == BoundaryType::Convergent
+                });
+                if active { 3.0 } else { 2.0 }
+            })
+            .collect();
+        terms.push(("Marges à la fin (actives 3, passives 2, arcs ½)".to_string(), rolled(&margins)));
+    }
     let sh0 = pb.cratonic_mask.data().to_vec();
     let shields = (0..n * n).map(|k| sh0[((k / n + off[1]) % n) * n + (k % n + off[0]) % n]).collect();
     (snaps, terms, off, shields)
@@ -495,7 +530,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
             let mut torus_origin: Option<[usize; 2]> = None;
             let mut remedies = Remedies::default();
             let mut chain: Option<Chain> = None;
-            let mut history: Option<((bool, bool, C1Profile, bool, usize, bool), Vec<GridF32>, [usize; 2], Vec<bool>)> = None;
+            let mut history: Option<((bool, bool, C1Profile, bool, usize, bool, bool), Vec<GridF32>, [usize; 2], Vec<bool>)> = None;
             // F172-B5: the sea-level rise -- the chain runs on the field raised by Δ, its results are shown lowered
             let mut sea_shift = 0f32;
             let mut sea_curve: Option<SeaCurve> = None;
@@ -533,11 +568,15 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                         // F165-C4: driven by C1's history (recorded on demand, the same C1 run as the coarse field)
                         let result = if o.history > 0 {
                             let sources = o.history == 2;
-                            if history.as_ref().is_none_or(|h| h.0 != (sources, o.airy, o.profile, o.select, o.plates, o.seaward)) {
+                            if history.as_ref().is_none_or(|h| h.0 != (sources, o.airy, o.profile, o.select, o.plates, o.seaward, o.oo)) {
                                 // F171-A: the selected continent (16 plates falling back to 20 then 24, or the slider's
                                 // count alone), L2 when none qualifies
                                 // F174-B′: the margin seaward (an initial condition; off = Part A bit for bit)
-                                let margin = if o.seaward { Margin::seaward() } else { Margin::off() };
+                                let mut margin = if o.seaward { Margin::seaward() } else { Margin::off() };
+                                // F175-A9: the O-O subduction closure (a C1 flag the profile carries)
+                                if o.oo {
+                                    margin.oo = Margin::seaward_oo().oo;
+                                }
                                 let profile = if o.select {
                                     let _ = etx.send(Evt::Progress(format!("sélection des plaques continentales ({} plaques)", o.plates), 0.0));
                                     let (s, n_used) = if o.plates == 16 {
@@ -562,7 +601,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                                 };
                                 let (s, terms, off, shields) = cascade_history(seed, offset_cells, sources, o.airy, profile, margin);
                                 let _ = etx.send(Evt::Terms(terms));
-                                history = Some(((sources, o.airy, o.profile, o.select, o.plates, o.seaward), s, off, shields));
+                                history = Some(((sources, o.airy, o.profile, o.select, o.plates, o.seaward, o.oo), s, off, shields));
                             }
                             torus_origin = o.torus.then(|| history.as_ref().unwrap().2);
                             ccfg.torus = torus_origin;
@@ -946,6 +985,9 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
         );
         ui.checkbox(&mut cu.seaward, "Marge vers le large").on_hover_text(
             "F174-B′ : à t₀, la rampe de Péron-Pinvidic et al. 2013 (÷ 7,5) placée vers le large : 32 km de croûte sur le bord du continent (la côte reste celle de la partie A), 35 → 32 km à l'intérieur, puis le reste du domaine proximal, l'étranglement et le domaine distal sur une bande d'océan rattachée à la plaque continentale (continentale tant que la croûte dépasse 10 km, océanique au-delà). La sélection et C1 tournent avec. Mode histoire",
+        );
+        ui.checkbox(&mut cu.oo, "Subduction océan-océan (C1)").on_hover_text(
+            "F175 (option 5) : à une frontière convergente océan-océan, la plaque dont la cellule de frontière est la plus vieille plonge (égalité : la règle de vitesse) après D_init = 13 km de convergence cumulée (100 km ÷ 7,5, Stern & Gerya 2018 d'après Hall et al. 2003) ; l'arc va sur la plaque qui chevauche (ses continents, sinon son océan) ; la cellule consommée rejoint la plaque qui chevauche ; Davis-Suppe ne s'ensemence plus aux frontières océan-océan. Avec la marge vers le large. Mode histoire",
         );
         ui.label(small("Roche :".into())).on_hover_text(
             "F171-B/C : K0 = un K unique (F170) ; K1 = une couverture tendre de 1,5 km sur un socle 10 × plus dur (boucliers à nu dès t₀ ; niveau de physique seulement) ; K2 = K1 × un K hétérogène fixé à la roche (σ_lnK 0,5, fBm de 25 km à 0,39 km), aussi aux niveaux d'amplification",
@@ -1526,6 +1568,8 @@ struct PhysOpts {
     rock: u8,
     /// F174-B′: the margin seaward.
     seaward: bool,
+    /// F175: the O-O subduction closure.
+    oo: bool,
     /// F172 / F173: the sea (0 none, 1 constant, 2 the curve).
     sea_mode: u8,
 }
@@ -1533,7 +1577,7 @@ struct PhysOpts {
 impl Default for PhysOpts {
     /// P0, F159–F162's level.
     fn default() -> Self {
-        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62, plates: 16, rock: 0, seaward: false, sea_mode: 0 }
+        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62, plates: 16, rock: 0, seaward: false, oo: false, sea_mode: 0 }
     }
 }
 
@@ -1551,6 +1595,7 @@ fn phys_opts(cu: &CascadeUi) -> PhysOpts {
         plates: cu.plates,
         rock: cu.rock,
         seaward: cu.seaward,
+        oo: cu.oo,
         sea_mode: cu.sea_mode,
     }
 }

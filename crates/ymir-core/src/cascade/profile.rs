@@ -7,7 +7,8 @@
 //! témoin for ~40 % and 55–60 % land at the end of the history-driven physics level, then frozen for every seed.
 //! Declared in `docs/reports/relief_method/f168_continent_size/f168_declared.md`.
 
-use crate::cascade::history::{Airy, C1Term, Mapping, run_c1_sources_mapped};
+use crate::cascade::history::{Airy, C1Term, Mapping, run_c1_sources_mapped, run_c1_sources_mapped_oo};
+use crate::tectonics_c1::closures::subduction::OoSubductionParams;
 use crate::cascade::margin::{self, Margin};
 use crate::cascade::physio::{Circumnavigation, circumnavigation};
 use crate::tectonics::isostasy::IsostasyConfig;
@@ -196,11 +197,11 @@ pub fn select_continent_default_margin(seed: u64, m: &Margin) -> (Option<usize>,
 }
 
 /// The end land (64², h_src > 0 under the Airy sources' record) and its circumnavigation for one C1 initial state.
-fn end_land(mut st: C1State) -> (f32, Circumnavigation) {
+fn end_land(mut st: C1State, oo: Option<OoSubductionParams>) -> (f32, Circumnavigation) {
     let cfg = c1_run_config();
     let ss = SteinSteinParams::default();
     let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
-    let src = run_c1_sources_mapped(&mut st, &mut kin, &cfg, &C1Closures::default(), 10, &cfg.iso_config, &ss, &[C1Term::Erosion], Mapping::Airy(Airy::declared()));
+    let src = run_c1_sources_mapped_oo(&mut st, &mut kin, &cfg, &C1Closures::default(), 10, &cfg.iso_config, &ss, &[C1Term::Erosion], Mapping::Airy(Airy::declared()), oo);
     let last = src.hist.normalized(None).pop().unwrap();
     let land: Vec<bool> = last.data.iter().map(|&v| v > 0.5).collect();
     (land.iter().filter(|&&b| b).count() as f32 / land.len() as f32, circumnavigation(&land, 64))
@@ -238,7 +239,7 @@ pub fn select_continent_plates_margin(seed: u64, plates: usize, ks: &[usize], mi
                 }
                 let (land, circ) = *memo.entry(set).or_insert_with(|| {
                     margin::apply(&mut st, m, &p.init_params(), seed);
-                    end_land(st)
+                    end_land(st, m.oo)
                 });
                 candidates.push(Candidate { fraction: k as f64 / plates as f64, plates, k, compact, start, rng_rank, land, circ });
             }

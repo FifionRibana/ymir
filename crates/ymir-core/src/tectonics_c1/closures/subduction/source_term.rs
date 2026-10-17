@@ -94,6 +94,7 @@ use crate::tectonics_c1::boundary_classification::{BoundaryInfo, BoundaryType};
 use crate::tectonics_c1::kinematics::PlateKinematics;
 
 use super::params::SubductionParams;
+use crate::tectonics_c1::state::BoolField;
 
 /// Per-step subduction diagnostics. Returned by
 /// `apply_subduction_step` for the Stage E4 mass-balance test.
@@ -122,6 +123,23 @@ pub struct SubductionStats {
     /// consumption). First Track D mutation of `plate_id` /
     /// `plate_type`.
     pub plate_ids_reassigned: usize,
+    /// ADR Finding 175 -- the ocean-ocean path (0 without its flag): cells consumed, Δs consumed, the arc mass placed on
+    /// continental / oceanic cells and lost, the cells reassigned to the overriding plate, the consumptions decided by age /
+    /// by the velocity tie-break, the subducting pairs (after this step) and those that became so at this step, and
+    /// Davis-Suppe's ocean-ocean seeds cleared at this step.
+    pub oo_cells_consumed: usize,
+    pub oo_mass_consumed: f64,
+    pub oo_arc_continental: f64,
+    pub oo_arc_oceanic: f64,
+    pub oo_arc_lost: f64,
+    pub oo_reassigned: usize,
+    pub oo_age_decided: usize,
+    /// F175: the age-decided consumptions whose ages differ by < 0.01 (the advected age's noise, reported).
+    pub oo_age_close: usize,
+    pub oo_tie_decided: usize,
+    pub oo_active_pairs: usize,
+    pub oo_new_pairs: usize,
+    pub oo_seeds_cleared: usize,
 }
 
 /// Apply one forward-Euler step of the subduction closure to the
@@ -326,6 +344,238 @@ fn distribute_arc_mass(
         s.set(*ci, *cj, new_s);
     }
     arc_mass
+}
+
+// ════════════════════════════════════════ ADR Finding 175 — the ocean-ocean path (option 5) ════════════════════════════════════════
+
+/// ADR Finding 175-A4 -- the per-pair cumulative convergence of the ocean-ocean boundaries: a plate pair's O-O boundary
+/// subducts once its cumulative convergence reaches D_init, and stays so.
+#[derive(Clone, Debug, Default)]
+pub struct OoTracker {
+    /// (a, b) with a < b → the cumulative convergence (C1's domain units).
+    pub cumulative: std::collections::BTreeMap<(u16, u16), f64>,
+    /// The subducting pairs and the step each became so.
+    pub active: std::collections::BTreeMap<(u16, u16), usize>,
+}
+
+/// The ocean-ocean contacts of a convergent oceanic cell: its 4-neighbours of another plate, oceanic, with v_rel · n̂ > 0
+/// (`None` when the cell is not an O-O boundary cell: not convergent, not oceanic, or touching a continental cell of another
+/// plate — the continent-ocean rule's).
+fn oo_contacts(
+    i: usize,
+    j: usize,
+    plate_id: &PlateIdField,
+    plate_type: &PlateTypeField,
+    boundary_info: &BoundaryInfo,
+    kinematics: &PlateKinematics,
+    idx_x: &PeriodicIndex,
+    idx_y: &PeriodicIndex,
+) -> Option<Vec<(usize, usize, f64)>> {
+    if !matches!(boundary_info.boundary_type.get(i, j), BoundaryType::Convergent) || plate_type.get(i, j) != PlateType::Oceanic {
+        return None;
+    }
+    let pid_c = plate_id.get(i, j);
+    let (vx_c, vy_c) = kinematics.velocities[pid_c as usize];
+    let mut out = Vec::new();
+    for (ni, nj, nx_n, ny_n) in [
+        (idx_x.next(i), j, 1.0, 0.0),
+        (idx_x.prev(i), j, -1.0, 0.0),
+        (i, idx_y.next(j), 0.0, 1.0),
+        (i, idx_y.prev(j), 0.0, -1.0),
+    ] {
+        let pid_n = plate_id.get(ni, nj);
+        if pid_n == pid_c {
+            continue;
+        }
+        if plate_type.get(ni, nj) == PlateType::Continental {
+            return None;
+        }
+        let (vx_n, vy_n) = kinematics.velocities[pid_n as usize];
+        let dot = (vx_c - vx_n) * nx_n + (vy_c - vy_n) * ny_n;
+        if dot > 0.0 {
+            out.push((ni, nj, dot));
+        }
+    }
+    Some(out)
+}
+
+impl OoTracker {
+    /// ADR Finding 175-A4 -- add this step's convergence: per pair, the mean v_rel · n̂ over its O-O contacts × dt. Returns
+    /// the pairs that became subducting at this step (D ≥ `d_init`, C1's domain units).
+    #[allow(clippy::too_many_arguments)]
+    pub fn update(
+        &mut self,
+        plate_id: &PlateIdField,
+        plate_type: &PlateTypeField,
+        boundary_info: &BoundaryInfo,
+        kinematics: &PlateKinematics,
+        dt: f64,
+        d_init: f64,
+        step: usize,
+    ) -> Vec<(u16, u16)> {
+        let (nx, ny) = (plate_id.nx(), plate_id.ny());
+        let (idx_x, idx_y) = (PeriodicIndex::new(nx), PeriodicIndex::new(ny));
+        let mut sums: std::collections::BTreeMap<(u16, u16), (f64, usize)> = std::collections::BTreeMap::new();
+        for j in 0..ny {
+            for i in 0..nx {
+                let Some(cs) = oo_contacts(i, j, plate_id, plate_type, boundary_info, kinematics, &idx_x, &idx_y) else { continue };
+                let a = plate_id.get(i, j);
+                for (ni, nj, dot) in cs {
+                    let b = plate_id.get(ni, nj);
+                    let e = sums.entry((a.min(b), a.max(b))).or_insert((0.0, 0));
+                    e.0 += dot;
+                    e.1 += 1;
+                }
+            }
+        }
+        let mut new = Vec::new();
+        for (pair, (s, c)) in sums {
+            let d = self.cumulative.entry(pair).or_insert(0.0);
+            *d += s / c as f64 * dt;
+            if *d >= d_init && !self.active.contains_key(&pair) {
+                self.active.insert(pair, step);
+                new.push(pair);
+            }
+        }
+        new
+    }
+    pub fn is_active(&self, a: u16, b: u16) -> bool {
+        self.active.contains_key(&(a.min(b), a.max(b)))
+    }
+}
+
+/// ADR Finding 175-A1–A3 -- one step of the ocean-ocean subduction: at an O-O boundary cell of a subducting pair, the older side
+/// (`age`; ties: `upper_vel`, the velocity-based upper-plate flag read before A7, then the lower plate id) loses
+/// Δs = consumption_rate × v_rel · n̂ × dt; the arc mass goes to the overriding plate's continental cells within `arc_distance`,
+/// else to its oceanic cells (an island arc); a cell under the floor threshold with ≥ 2 convergent neighbours of the overriding
+/// plate joins it, its type staying oceanic. Adds to `stats`' `oo_*` fields.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_oo_subduction_step(
+    s: &mut Field2D,
+    plate_id: &mut PlateIdField,
+    plate_type: &PlateTypeField,
+    age: &Field2D,
+    boundary_info: &BoundaryInfo,
+    upper_vel: &BoolField,
+    kinematics: &PlateKinematics,
+    params: &SubductionParams,
+    tracker: &OoTracker,
+    dt: f64,
+    stats: &mut SubductionStats,
+) {
+    if !params.enabled {
+        return;
+    }
+    let (nx, ny) = (s.nx(), s.ny());
+    let (idx_x, idx_y) = (PeriodicIndex::new(nx), PeriodicIndex::new(ny));
+    for j in 0..ny {
+        for i in 0..nx {
+            let Some(cs) = oo_contacts(i, j, plate_id, plate_type, boundary_info, kinematics, &idx_x, &idx_y) else { continue };
+            let pid_c = plate_id.get(i, j);
+            // the partner: the largest convergence among the subducting pairs
+            let Some(&(ni, nj, dot)) = cs
+                .iter()
+                .filter(|&&(ni, nj, _)| tracker.is_active(pid_c, plate_id.get(ni, nj)))
+                .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap())
+            else {
+                continue;
+            };
+            let pid_n = plate_id.get(ni, nj);
+            // which side sinks
+            let (ac, an) = (age.get(i, j), age.get(ni, nj));
+            let sinks = if ac != an {
+                ac > an
+            } else {
+                match (upper_vel.get(i, j), upper_vel.get(ni, nj)) {
+                    (false, true) => true,
+                    (true, false) => false,
+                    _ => pid_c < pid_n,
+                }
+            };
+            if !sinks {
+                continue;
+            }
+            if ac != an {
+                stats.oo_age_decided += 1;
+                if (ac - an).abs() < 0.01 {
+                    stats.oo_age_close += 1;
+                }
+            } else {
+                stats.oo_tie_decided += 1;
+            }
+            let s_before = s.get(i, j);
+            let delta_s = (params.consumption_rate * dot * dt).min(s_before);
+            let s_after = s_before - delta_s;
+            s.set(i, j, s_after);
+            stats.oo_cells_consumed += 1;
+            stats.oo_mass_consumed += delta_s;
+            // A3: the floor-triggered reassignment to the overriding plate (≥ 2 convergent neighbours of it), type unchanged
+            let n_over = cs.iter().filter(|&&(a, b, _)| plate_id.get(a, b) == pid_n).count();
+            if s_after < params.plate_id_reassign_threshold && n_over >= 2 {
+                plate_id.set(i, j, pid_n);
+                stats.oo_reassigned += 1;
+            }
+            // A2: the arc on the overriding plate
+            let arc_mass = delta_s * params.arc_efficiency;
+            let (placed, on_ocean) = distribute_arc_mass_plate(s, plate_id, plate_type, i, j, pid_n, arc_mass, params.arc_distance, &idx_x, &idx_y);
+            if on_ocean {
+                stats.oo_arc_oceanic += placed;
+            } else {
+                stats.oo_arc_continental += placed;
+            }
+            stats.oo_arc_lost += arc_mass - placed;
+        }
+    }
+}
+
+/// F175-A2: the arc mass on `plate`'s cells within `arc_distance` (BFS, 4-connected, depth ≥ 1): its continental cells if any
+/// are reached, else its oceanic cells. Returns (the mass placed, whether it went to oceanic cells).
+#[allow(clippy::too_many_arguments)]
+fn distribute_arc_mass_plate(
+    s: &mut Field2D,
+    plate_id: &PlateIdField,
+    plate_type: &PlateTypeField,
+    origin_i: usize,
+    origin_j: usize,
+    plate: u16,
+    arc_mass: f64,
+    arc_distance: usize,
+    idx_x: &PeriodicIndex,
+    idx_y: &PeriodicIndex,
+) -> (f64, bool) {
+    if arc_distance == 0 || arc_mass <= 0.0 {
+        return (0.0, false);
+    }
+    let mut visited: HashSet<(usize, usize)> = HashSet::new();
+    let mut queue: VecDeque<(usize, usize, usize)> = VecDeque::new();
+    queue.push_back((origin_i, origin_j, 0));
+    visited.insert((origin_i, origin_j));
+    let (mut cont, mut ocean) = (Vec::new(), Vec::new());
+    while let Some((i, j, depth)) = queue.pop_front() {
+        if depth > 0 && plate_id.get(i, j) == plate {
+            if plate_type.get(i, j) == PlateType::Continental {
+                cont.push((i, j));
+            } else {
+                ocean.push((i, j));
+            }
+        }
+        if depth < arc_distance {
+            for (ni, nj) in [(idx_x.next(i), j), (idx_x.prev(i), j), (i, idx_y.next(j)), (i, idx_y.prev(j))] {
+                if visited.insert((ni, nj)) {
+                    queue.push_back((ni, nj, depth + 1));
+                }
+            }
+        }
+    }
+    let (cells, on_ocean) = if !cont.is_empty() { (cont, false) } else { (ocean, true) };
+    if cells.is_empty() {
+        return (0.0, false);
+    }
+    let per = arc_mass / cells.len() as f64;
+    for (ci, cj) in &cells {
+        s.set(*ci, *cj, s.get(*ci, *cj) + per);
+    }
+    (arc_mass, on_ocean)
 }
 
 #[cfg(test)]

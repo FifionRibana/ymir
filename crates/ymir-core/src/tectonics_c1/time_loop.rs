@@ -56,7 +56,7 @@ use crate::tectonics_v2::workflow::drainage::compute_drainage_targets;
 use crate::tectonics_v2::workflow::phase_a_common::compute_sea_level_ref_s_space;
 
 use super::boundary_classification::{
-    classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
+    classify_boundaries, clear_oo_seeds, oc_override_seed_mask, retarget_upper_plate_continental,
 };
 use super::closures::accretion::{AccretionParams, ConvergenceTracker, apply_accretion_step};
 use super::closures::davis_suppe::source_term::{DavisSuppeParams, apply_davis_suppe_step_routed};
@@ -69,7 +69,7 @@ use super::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymet
 use super::closures::rifting::{
     DivergenceTracker, RiftingParams, apply_rifting_split, apply_rifting_thinning,
 };
-use super::closures::subduction::{SubductionParams, apply_subduction_step};
+use super::closures::subduction::{OoSubductionParams, OoTracker, SubductionParams, apply_oo_subduction_step, apply_subduction_step};
 use super::distance_field::wedge_distance_intra_plate_typed;
 use super::kinematics::PlateKinematics;
 use super::state::C1State;
@@ -553,7 +553,7 @@ pub fn run_with_closures_observed<F>(
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
-    run_inner(state, kinematics, config, closures, on_step, None);
+    run_inner(state, kinematics, config, closures, on_step, None, None);
 }
 
 /// ADR Finding 166-A1 -- the terms of C1's step that change `s`, in their order.
@@ -591,7 +591,25 @@ pub fn run_with_closures_terms<F>(
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
-    run_inner(state, kinematics, config, closures, on_step, Some(on_term));
+    run_inner(state, kinematics, config, closures, on_step, Some(on_term), None);
+}
+
+/// ADR Finding 175 -- [`run_with_closures_terms`] with **the ocean-ocean subduction path** (option 5) when `oo` is `Some`:
+/// the O-O consumption of the older side, the arcs on the overriding plate, the reassignment, the per-pair D_init trigger
+/// ([`apply_oo_subduction_step`], [`OoTracker`]), and Davis-Suppe's O-O seeds cut ([`clear_oo_seeds`]). `None` is
+/// [`run_with_closures_terms`] bit for bit.
+pub fn run_with_closures_terms_oo<F>(
+    state: &mut C1State,
+    kinematics: &mut PlateKinematics,
+    config: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    oo: Option<OoSubductionParams>,
+    on_step: F,
+    on_term: &mut dyn FnMut(C1Term, &[f64], &[f64]),
+) where
+    F: FnMut(usize, &C1State, &PlateKinematics),
+{
+    run_inner(state, kinematics, config, closures, on_step, Some(on_term), oo);
 }
 
 fn run_inner<F>(
@@ -601,6 +619,7 @@ fn run_inner<F>(
     closures: &C1Closures,
     mut on_step: F,
     mut on_term: Option<&mut dyn FnMut(C1Term, &[f64], &[f64])>,
+    oo: Option<OoSubductionParams>,
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
@@ -643,12 +662,15 @@ fn run_inner<F>(
     // Outer cache for the Track-D-disabled path (Phase 1.x +
     // Track A/B regression — `plate_id` is invariant, the cache
     // stays valid for the full run).
-    let outer_cache: Option<(_, _, _)> = if !any_track_d_enabled {
+    let outer_cache: Option<(_, _, _, _, usize)> = if !any_track_d_enabled {
         let mut bi = classify_boundaries(&state.plate_id, kinematics);
         // #155 1a: retarget DS upper plate to the continental side at O-C
         // subductions (continent thickens, not the faster/oceanic plate);
         // C-C/O-O strictly untouched.
         retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
+        // F175: the velocity-based upper flags (the O-O tie-break) and, with the flag, A7's cut of the O-O seeds
+        let upper_vel = bi.upper_plate_mask.clone();
+        let oo_cleared = if oo.is_some() { clear_oo_seeds(&mut bi, &state.plate_id, &state.plate_type) } else { 0 };
         // #155 1b-i: type the wedge so the DS step routes geometry — O-C
         // seeds → margin-peaked ridge, C-C/fallback → rising dome.
         let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
@@ -658,10 +680,12 @@ fn run_inner<F>(
             &oc_seed,
             davis_suppe.max_distance,
         );
-        Some((bi, wd, oc_wedge))
+        Some((bi, wd, oc_wedge, upper_vel, oo_cleared))
     } else {
         None
     };
+    // F175-A4: the per-pair cumulative convergence of the O-O boundaries
+    let mut oo_tracker = OoTracker::default();
 
     // Trackers — internal to the run when Track D is enabled
     // (Q-E1.2 Option (c) confirmed). Dropped at function exit;
@@ -681,11 +705,14 @@ fn run_inner<F>(
         // recompute from the current `plate_id` (which may have
         // been mutated by the previous step's Track D events).
         // When Track D is disabled, reuse the outer cache.
-        let per_step_cache: Option<(_, _, _)> = if any_track_d_enabled {
+        let per_step_cache: Option<(_, _, _, _, usize)> = if any_track_d_enabled {
             let mut bi = classify_boundaries(&state.plate_id, kinematics);
             // #155 1a: retarget DS upper plate to the continental side at O-C
             // (Track-D path: recomputed per step as plate_type may change).
             retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
+            // F175: the velocity-based upper flags (the O-O tie-break) and, with the flag, A7's cut of the O-O seeds
+            let upper_vel = bi.upper_plate_mask.clone();
+            let oo_cleared = if oo.is_some() { clear_oo_seeds(&mut bi, &state.plate_id, &state.plate_type) } else { 0 };
             // #155 1b-i: type the wedge for geometry routing (per step,
             // as plate_type may have changed via Track D events).
             let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
@@ -695,13 +722,13 @@ fn run_inner<F>(
                 &oc_seed,
                 davis_suppe.max_distance,
             );
-            Some((bi, wd, oc_wedge))
+            Some((bi, wd, oc_wedge, upper_vel, oo_cleared))
         } else {
             None
         };
-        let (boundary, wedge_d, oc_wedge): (&_, &_, &_) = match (&per_step_cache, &outer_cache) {
-            (Some((b, w, o)), _) => (b, w, o),
-            (None, Some((b, w, o))) => (b, w, o),
+        let (boundary, wedge_d, oc_wedge, upper_vel, oo_cleared): (&_, &_, &_, &_, &usize) = match (&per_step_cache, &outer_cache) {
+            (Some((b, w, o, u, c)), _) => (b, w, o, u, c),
+            (None, Some((b, w, o, u, c))) => (b, w, o, u, c),
             (None, None) => unreachable!(
                 "boundary cache must be present: either per-step (Track D) or outer (cached)"
             ),
@@ -948,7 +975,13 @@ fn run_inner<F>(
         // is disabled (the `apply_*_step` functions early-return their
         // `Default` stats on `!enabled`).
         let before = on_term.is_some().then(|| state.s.data().to_vec());
-        let subduction_stats = if closures.subduction.enabled {
+        // F175-A4: the D_init tracker reads this step's boundary and the plates as they enter the subduction stage (before
+        // any Track D mutation of this step), so an observer can replay it from the previous step's end state
+        let oo_new_pairs = match oo {
+            Some(o) => oo_tracker.update(&state.plate_id, &state.plate_type, boundary, kinematics, dt, o.d_init_domain(), step).len(),
+            None => 0,
+        };
+        let mut subduction_stats = if closures.subduction.enabled {
             apply_subduction_step(
                 &mut state.s,
                 &mut state.plate_id,
@@ -961,6 +994,25 @@ fn run_inner<F>(
         } else {
             Default::default()
         };
+        // F175-A1–A3: the ocean-ocean path
+        if oo.is_some() {
+            apply_oo_subduction_step(
+                &mut state.s,
+                &mut state.plate_id,
+                &state.plate_type,
+                &state.age,
+                boundary,
+                upper_vel,
+                kinematics,
+                &closures.subduction,
+                &oo_tracker,
+                dt,
+                &mut subduction_stats,
+            );
+            subduction_stats.oo_active_pairs = oo_tracker.active.len();
+            subduction_stats.oo_new_pairs = oo_new_pairs;
+            subduction_stats.oo_seeds_cleared = *oo_cleared;
+        }
 
         if let (Some(h), Some(b)) = (on_term.as_mut(), before.as_ref()) {
             h(C1Term::Subduction, b, state.s.data());

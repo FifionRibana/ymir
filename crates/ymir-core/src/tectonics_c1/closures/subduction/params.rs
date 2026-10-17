@@ -75,3 +75,25 @@ impl Default for SubductionParams {
         }
     }
 }
+
+/// ADR Finding 175 -- **the ocean-ocean subduction path** (option 5; `docs/reports/relief_method/f174_margin/f174_option5_note.md`),
+/// a flag carried by the cascade's continent profile and passed to C1 through `run_with_closures_terms_oo`; never part of
+/// [`SubductionParams`] (whose `Debug` is in the tectonic cache key). Its presence also cuts Davis-Suppe's seeds at
+/// ocean-ocean boundaries (F175-A7).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OoSubductionParams {
+    /// D_init: the cumulative convergence a plate pair's ocean-ocean boundary needs before it subducts, in cells of 64².
+    pub d_init_cells: f64,
+}
+
+impl OoSubductionParams {
+    /// 100 km of convergence (Stern & Gerya 2018 p. 44, after Hall et al. 2003) ÷ 7.5 (the layout's compression) = 13.3 km
+    /// on the map = 2.13 cells of 64² (6.25 km).
+    pub fn declared() -> Self {
+        Self { d_init_cells: 100.0 / 7.5 / 6.25 }
+    }
+    /// D_init in C1's domain units (the domain is 1; a 64² cell is 1/64).
+    pub fn d_init_domain(&self) -> f64 {
+        self.d_init_cells / 64.0
+    }
+}
