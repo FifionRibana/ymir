@@ -183,6 +183,7 @@ pub fn apply_davis_suppe_step(
         params,
         dt,
         None,
+        None,
     );
 }
 
@@ -214,7 +215,25 @@ pub fn apply_davis_suppe_step_routed(
         params,
         dt,
         Some(oc_wedge),
+        None,
     );
+}
+
+/// ADR Finding 179-B3 -- [`apply_davis_suppe_step_routed`] with the cells of `skip` (the Andean seeds at the arc) skipped like
+/// the boundary cells, so their wedge starts at d = 1; the formula is unchanged. `skip = None` is the routed step bit for bit.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_davis_suppe_step_routed_skip(
+    s: &mut Field2D,
+    plate_id: &PlateIdField,
+    boundary: &BoundaryInfo,
+    wedge_distance: &Field2D,
+    kinematics: &PlateKinematics,
+    params: &DavisSuppeParams,
+    dt: f64,
+    oc_wedge: &crate::tectonics_c1::state::BoolField,
+    skip: Option<&crate::tectonics_c1::state::BoolField>,
+) {
+    apply_davis_suppe_step_inner(s, plate_id, boundary, wedge_distance, kinematics, params, dt, Some(oc_wedge), skip);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -227,6 +246,7 @@ fn apply_davis_suppe_step_inner(
     params: &DavisSuppeParams,
     dt: f64,
     oc_wedge: Option<&crate::tectonics_c1::state::BoolField>,
+    skip: Option<&crate::tectonics_c1::state::BoolField>,
 ) {
     if !params.enabled {
         return;
@@ -244,6 +264,10 @@ fn apply_davis_suppe_step_inner(
             // the source term (W4 lock; see module docstring + the
             // `source_term_skips_boundary_cells` test).
             if matches!(boundary.boundary_type.get(i, j), BoundaryType::Convergent) {
+                continue;
+            }
+            // F179-B3: the Andean seeds at the arc are skipped like boundary seeds
+            if skip.is_some_and(|m| m.get(i, j)) {
                 continue;
             }
             let d = wedge_distance.get(i, j);

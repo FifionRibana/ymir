@@ -1,0 +1,29 @@
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+    Finished `release` profile [optimized] target(s) in 17.66s
+     Running tests\f179_cascade.rs (target_f179\release\deps\f179_cascade-87443d335cfd4841.exe)
+running 1 test
+   ── F175 ──
+   F175 collision: pooled pumping factor (cells with a positive net) median 2.92, p90 19.97, max 239857.0 (1754 cells) · steps above the kinematic supply 38 % · excess per family cell 0.059 s (2.1 km)
+   F175 O-C boundary: pooled pumping factor (cells with a positive net) median 5.07, p90 39.53, max 18152.6 (173 cells) · steps above the kinematic supply 44 % · excess per family cell 0.356 s (12.5 km)
+   F175 A3: the collision belts' pooled s_src median 1.04 → bounded 1.00 (−4 %) · the active 0–3 band, median of the seeds' medians 0.82 → 0.72
+   F175 B: land median 53.0 % (range 46.9–59.3) · circumnavigation lost 0 · land added over F176 median 133 cells · A1 any 13.8 %, majority 4.9 % · Andean seeds 0 instances, 0 % on cells emerged at t₀ · walk depth (0..10, 11+) [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+   ── F176 ──
+   F176 collision: pooled pumping factor (cells with a positive net) median 3.55, p90 24.20, max 30604.0 (2234 cells) · steps above the kinematic supply 35 % · excess per family cell 0.087 s (3.0 km)
+   F176 O-C boundary: pooled pumping factor (cells with a positive net) median 6.34, p90 41.71, max 10455.2 (286 cells) · steps above the kinematic supply 54 % · excess per family cell 0.685 s (24.0 km)
+   F176 A3: the collision belts' pooled s_src median 1.11 → bounded 1.06 (−4 %) · the active 0–3 band, median of the seeds' medians 0.87 → 0.76
+   F176 B: land median 51.1 % (range 50.0–57.5) · circumnavigation lost 0 · land added over F176 median 0 cells · A1 any 27.4 %, majority 17.9 % · Andean seeds 0 instances, 0 % on cells emerged at t₀ · walk depth (0..10, 11+) [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+   ── F178 ──
+   F178 collision: pooled pumping factor (cells with a positive net) median 3.28, p90 20.05, max 24776.0 (1594 cells) · steps above the kinematic supply 36 % · excess per family cell 0.077 s (2.7 km)
+   F178 O-C boundary: pooled pumping factor (cells with a positive net) median 6.44, p90 43.37, max 682.2 (79 cells) · steps above the kinematic supply 38 % · excess per family cell 0.694 s (24.3 km)
+   F178 Andean: pooled pumping factor (cells with a positive net) median 9.71, p90 84.78, max 242198.5 (10191 cells) · steps above the kinematic supply 49 % · excess per family cell 2.790 s (97.7 km)
+   F178 A3: the collision belts' pooled s_src median 1.20 → bounded 1.15 (−4 %) · the active 0–3 band, median of the seeds' medians 4.07 → 2.70
+   F178 B: land median 65.3 % (range 54.8–70.4) · circumnavigation lost 4 · land added over F176 median 522 cells · A1 any 25.0 %, majority 18.3 % · Andean seeds 422655 instances, 0 % on cells emerged at t₀ · walk depth (0..10, 11+) [0.0, 5951.0, 18836.0, 103779.0, 103320.0, 61723.0, 37856.0, 31772.0, 25770.0, 17406.0, 16242.0, 0.0]
+   ── F179 ──
+   F179 collision: pooled pumping factor (cells with a positive net) median 3.06, p90 22.08, max 2494.0 (1609 cells) · steps above the kinematic supply 38 % · excess per family cell 0.082 s (2.9 km)
+   F179 O-C boundary: pooled pumping factor (cells with a positive net) median 5.25, p90 39.20, max 3525.6 (99 cells) · steps above the kinematic supply 32 % · excess per family cell 0.899 s (31.5 km)
+   F179 Andean: pooled pumping factor (cells with a positive net) median 9.54, p90 103.80, max 121136.5 (7020 cells) · steps above the kinematic supply 46 % · excess per family cell 1.887 s (66.0 km)
+   F179 A3: the collision belts' pooled s_src median 1.19 → bounded 1.14 (−4 %) · the active 0–3 band, median of the seeds' medians 3.11 → 1.98
+   F179 B: land median 61.5 % (range 53.3–65.7) · circumnavigation lost 1 · land added over F176 median 339 cells · A1 any 24.9 %, majority 18.3 % · Andean seeds 249451 instances, 0 % on cells emerged at t₀ · walk depth (0..10, 11+) [0.0, 765.0, 988.0, 24212.0, 222411.0, 1075.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+   F179: 0 s
+test f179_c1 ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s

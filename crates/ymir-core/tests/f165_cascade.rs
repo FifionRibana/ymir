@@ -8,7 +8,7 @@
 //!      cargo test -p ymir-core --release --test f165_cascade -- --ignored --exact f165_main::f165_a2_physics --nocapture
 
 mod common;
-#[path = "f165/main.rs"]
+#[path = "f165/f165_main.rs"]
 mod f165_main;
 
 use common::cascade_bench::{NOTICE, load_grid, root};

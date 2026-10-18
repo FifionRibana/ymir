@@ -59,7 +59,7 @@ use super::boundary_classification::{
     classify_boundaries, clear_oo_seeds, oc_override_seed_mask, retarget_upper_plate_continental,
 };
 use super::closures::accretion::{AccretionParams, ConvergenceTracker, apply_accretion_step};
-use super::closures::davis_suppe::source_term::{DavisSuppeParams, apply_davis_suppe_step_routed};
+use super::closures::davis_suppe::source_term::{DavisSuppeParams, apply_davis_suppe_step_routed, apply_davis_suppe_step_routed_skip};
 use super::closures::equilibrium_height::params::EquilibriumHeightParams;
 use super::closures::equilibrium_height::source_term::apply_equilibrium_height_step;
 use super::closures::erosion::params::ErosionParams;
@@ -70,7 +70,7 @@ use super::closures::rifting::{
     DivergenceTracker, RiftingParams, apply_rifting_split, apply_rifting_thinning,
 };
 use super::closures::subduction::{OoSubductionParams, OoTracker, SubductionParams, apply_oo_subduction_step, apply_subduction_step};
-use super::andean_seed::andean_seeds;
+use super::andean_seed::{andean_seeds, andean_seeds_arc};
 use super::distance_field::wedge_distance_intra_plate_typed;
 use super::kinematics::PlateKinematics;
 use super::state::C1State;
@@ -629,7 +629,7 @@ pub fn run_with_closures_terms_flags<F>(
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
-    run_inner(state, kinematics, config, closures, on_step, Some(on_term), C1Ext { oo, merge_at_collision, andean_gap: None });
+    run_inner(state, kinematics, config, closures, on_step, Some(on_term), C1Ext { oo, merge_at_collision, andean_gap: None, andean_arc: None });
 }
 
 /// ADR Finding 178 -- the continent profile's C1 flags in one carrier: option 5 (`oo`), the merge at collision (F176) and
@@ -641,6 +641,9 @@ pub struct C1Ext {
     pub oo: Option<OoSubductionParams>,
     pub merge_at_collision: bool,
     pub andean_gap: Option<usize>,
+    /// ADR Finding 179-B: the Andean seed at the arc, (d_arc, D_gap) in cells of 64² ([`andean_seeds_arc`]); the seeds are
+    /// skipped by Davis-Suppe like boundary seeds. When set it replaces `andean_gap`'s front seed.
+    pub andean_arc: Option<(usize, usize)>,
 }
 
 /// ADR Finding 178 -- [`run_with_closures_terms_flags`] with every flag of [`C1Ext`].
@@ -669,7 +672,9 @@ fn run_inner<F>(
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
-    let C1Ext { oo, merge_at_collision, andean_gap } = ext;
+    let C1Ext { oo, merge_at_collision, andean_gap, andean_arc } = ext;
+    // F179-B3: the Andean seeds at the arc of the step, skipped by Davis-Suppe
+    let mut andean_skip: Option<super::state::BoolField> = None;
     let nx = state.nx();
     let ny = state.ny();
     let n_cells = nx * ny;
@@ -762,9 +767,24 @@ fn run_inner<F>(
             let oo_cleared = if oo.is_some() { clear_oo_seeds(&mut bi, &state.plate_id, &state.plate_type) } else { 0 };
             // F178-A1: the Andean seeds -- the overriding plate's continental front within the arc-trench gap of an active O-O
             // trench (the D_init tracker as this step's Davis-Suppe stage sees it) joins the upper-plate and O-C seed masks
-            let andean = andean_gap.map(|gap| {
-                andean_seeds(&state.plate_id, &state.plate_type, &state.age, &bi, &upper_vel, kinematics, &oo_tracker, gap)
-            });
+            let andean = match (andean_arc, andean_gap) {
+                (Some((d_arc, gap)), _) => Some(andean_seeds_arc(
+                    &state.plate_id,
+                    &state.plate_type,
+                    &state.age,
+                    &bi,
+                    &upper_vel,
+                    kinematics,
+                    &oo_tracker,
+                    d_arc,
+                    gap,
+                )),
+                (None, Some(gap)) => Some(andean_seeds(&state.plate_id, &state.plate_type, &state.age, &bi, &upper_vel, kinematics, &oo_tracker, gap)),
+                (None, None) => None,
+            };
+            if andean_arc.is_some() {
+                andean_skip = andean.clone();
+            }
             if let Some(sd) = &andean {
                 for (k, &on) in sd.data().iter().enumerate() {
                     if on {
@@ -885,16 +905,30 @@ fn run_inner<F>(
 
         // 2. Davis-Suppe orogenic source term (Phase 1.2).
         let before = on_term.is_some().then(|| state.s.data().to_vec());
-        apply_davis_suppe_step_routed(
-            &mut state.s,
-            &state.plate_id,
-            boundary,
-            wedge_d,
-            kinematics,
-            &davis_suppe,
-            dt,
-            oc_wedge,
-        );
+        if let Some(skip) = &andean_skip {
+            apply_davis_suppe_step_routed_skip(
+                &mut state.s,
+                &state.plate_id,
+                boundary,
+                wedge_d,
+                kinematics,
+                &davis_suppe,
+                dt,
+                oc_wedge,
+                Some(skip),
+            );
+        } else {
+            apply_davis_suppe_step_routed(
+                &mut state.s,
+                &state.plate_id,
+                boundary,
+                wedge_d,
+                kinematics,
+                &davis_suppe,
+                dt,
+                oc_wedge,
+            );
+        }
         if let (Some(h), Some(b)) = (on_term.as_mut(), before.as_ref()) {
             h(C1Term::DavisSuppe, b, state.s.data());
         }

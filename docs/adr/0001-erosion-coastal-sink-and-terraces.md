@@ -23218,3 +23218,56 @@ vert.** Report: `docs/reports/relief_method/f178_andean_reach/finding_178.md`. D
   receives h_max.
 - **Still open** (nothing chosen): the front (continental type or emerged); the sources mode against C1's erosion (it touches
   F176 too); the seed at d = 0; tiers 2–3 on request.
+
+## Finding 179 — the Davis-Suppe pumping in the cascade's source (a diagnostic) and the Andean seed at the arc (behind the flag, seed skipped like a boundary seed; no solver): Dahlen 1990 and Willett et al. 2001 make the orogenic influx kinematic (ēW = hV; U = V_c h / L), supporting the reviewer's reading; the collision belts pump ×3 but the kinematic bound would cut their s_src by only 4 % (the accepted relief does not rest mostly on pumping), while the continent-ocean seeds exceed the supply on half their steps and the bound would cut the active coasts' s_src by 13 % (F176) to 34–36 % (F178–F179); the seed at the arc loses the circumnavigation on 1 seed (F178: 4), but still sits on the band's submerged shelf (0 % on emerged cells) and the active coasts still rise 9–15 km; the f165 test target repaired (a layout bug); production unchanged
+
+**Status: measured; no adoption (the brief); nothing committed without the feu vert.** Report:
+`docs/reports/relief_method/f179_pumping/finding_179.md`. Declared: `f179_declared.md`. Predictions: `f179_predictions.md`.
+
+**Part 0**:
+- `tests/f165/main.rs` (F165's submodule) was also built by cargo as a test target of its own, where its `super::` paths
+  fail. It is renamed `f165_main.rs`, a test-only fix; every `ymir-core` test compiles.
+- Production reads C1's own s: `cached_product.rs:281` (`run_with_closures`) → `:305` → `production_upscale.rs:455` /
+  `:293`. The sources mode (`cascade/history.rs`) serves only the cascade.
+
+**The bound's sources** (declared before measuring):
+- Dahlen 1990 p. 59 (eq. 1: influx ρhV) and p. 60 (eq. 4: ēW = hV); Willett et al. 2001 p. 459 (U = V_c h / L) and p. 456 (a
+  purely kinematic tectonic model).
+- Mapping: Δs_kin = (v_rel · n̂) dt · 64 · s_in / L, with s_in the incoming cell's whole s (an upper bound of the accreted
+  thickness: C1 has no sediment layer) and L = Davis-Suppe's reach, 30 cells.
+
+**Measured (C1, the 15 seeds × F175 / F176 / F178 / F179)**:
+- **A1, the pumping factor** (median, pooled): collision 2.9–3.6; O-C boundary 5.1–6.4; Andean 9.5–9.7.
+- **A2, the steps above the supply**: collision 35–38 %, O-C 32–54 %, Andean 46–49 %. The excess per cell is collision ~3 km
+  of crust, O-C 24–32 km, Andean 66–98 km.
+- **A3, the bounded s_src**: collision belts −4 % on all profiles; active 0–3 band −13 % (F176), −34 % (F178), −36 % (F179).
+- **Part B, the arc seed** (d_arc = 4, Syracuse & Abers 2006 p. 10, 180 km):
+  - land 53–66 % (F178 55–70, F176 50–57.5); circumnavigation lost on 1 (F178: 4);
+  - active 0–6 cells +9.0–14.6 km (F178 12.3–22.2, F176 0.4–4.7); active ≥ 2 × passive on 10 / 15;
+  - the added land 98 % in the band;
+  - the seeds at depth 4 and **0 % on cells emerged at t₀**: Part A's edge carries s = 0.914, a hair under the emergence at
+    0.915.
+
+**Predictions**:
+- The reviewer's: P1, P4 and P6 held; P2 refuted narrowly (Andean 49 %), P3 refuted (−4 %), P5 refuted (0 %).
+- Mine: P2's « ≥ 80 % », P3's « 20–50 % » and the land refuted.
+
+**Open, for the author (F180)**:
+- (a) The bound's L: Davis-Suppe's 30-cell reach is wide; Dahlen's W is the wedge's actual width.
+- (b) Even the arc's depth falls on the submerged shelf.
+- (c) The f165 fix.
+
+**At commit (2026-10-18), decided**: the author's words: « Feu vert pour commiter le F179 : drapeau coupé, réparation test-only de f165 incluse (renommée en f165_main.rs). »
+- **F179 is committed with its flag off**: `Margin::andean_arc = None` by default, so production, F176, F177 and F178 are
+  unchanged bit for bit (`the_arc_seed_controls`; production's C1 hash). `Margin::seaward_oo_collision_arc()` is only used on
+  request.
+- Committed: the bench (`f179_cascade.rs`), the arc seed (`andean_seeds_arc`, `C1Ext::andean_arc`, the Davis-Suppe skip mask
+  `apply_davis_suppe_step_routed_skip`), the control, and the test-only `f165` repair (`tests/f165/main.rs` → `f165_main.rs`).
+  `config.rs` and `workspace.rs` stay out.
+- **The reviewer's errors, recorded (the author's)**:
+  1. **F178**: D_gap was applied as the radius of a walk leaving the trench in every direction. The seeds then reach coasts that
+     do not face the trench, and the Andean family nearly encircles the continents in C1 (the pumping images, rows F178 and
+     F179). The rampart comes back in C1 unseen, since W₁₀ at 256² was not measured.
+  2. **F179, P5**: the reviewer predicted that a seed at the arc's depth would fall on emerged cells. He had not seen that the
+     B′ ramp puts the continent's edge at s = 0.914, just under the emergence (0.915).
+- **Next**: F180 builds the kinematic bound (the author's brief).

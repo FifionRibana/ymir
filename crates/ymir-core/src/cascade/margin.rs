@@ -139,6 +139,8 @@ pub struct Margin {
     /// ADR Finding 178-A1: the Andean seed's reach (cells of 64²): Davis-Suppe's continent-ocean wedge also starts on the
     /// overriding plate's continental front within this walk depth of an active ocean-ocean trench (a C1 closure flag).
     pub andean_gap: Option<usize>,
+    /// ADR Finding 179-B: the Andean seed at the arc, (d_arc, D_gap) cells of 64² (replaces `andean_gap` when set).
+    pub andean_arc: Option<(usize, usize)>,
 }
 
 /// ADR Finding 178 -- D_gap: the largest arc-trench distance observed, 470 km (Alaska; Syracuse & Abers 2006, p. 10) ÷ 7.5 =
@@ -147,6 +149,9 @@ pub const ANDEAN_GAP_CELLS: usize = 10;
 /// ADR Finding 178-A2 (measured only) -- the middle 50 % of arc-trench distances, 180–275 km (Syracuse & Abers 2006, p. 10)
 /// ÷ 7.5 ÷ 6.25 = 3.84–5.87 cells → the walk depths 4–5.
 pub const ARC_BAND_CELLS: (usize, usize) = (4, 5);
+/// ADR Finding 179-B1 -- d_arc: the lower bound of the middle 50 % of arc-trench distances, 180 km (Syracuse & Abers 2006,
+/// p. 10) ÷ 7.5 ÷ 6.25 = 3.84 → the first whole depth beyond, 4 cells of 64².
+pub const D_ARC_CELLS: usize = 4;
 
 impl Margin {
     pub fn off() -> Self {
@@ -154,11 +159,11 @@ impl Margin {
     }
     /// F174-B's main choice: a rim of 2.5 cells and the declared ramp.
     pub fn declared() -> Self {
-        Self { w_rim: 2.5, ramp: Some(Ramp::declared()), hetero: None, seaward: false, oo: None, merge_at_collision: false, arcs_emerge: false, andean_gap: None }
+        Self { w_rim: 2.5, ramp: Some(Ramp::declared()), hetero: None, seaward: false, oo: None, merge_at_collision: false, arcs_emerge: false, andean_gap: None, andean_arc: None }
     }
     /// F174-B′'s choice: the declared ramp seaward.
     pub fn seaward() -> Self {
-        Self { w_rim: 0.0, ramp: Some(Ramp::declared()), hetero: None, seaward: true, oo: None, merge_at_collision: false, arcs_emerge: false, andean_gap: None }
+        Self { w_rim: 0.0, ramp: Some(Ramp::declared()), hetero: None, seaward: true, oo: None, merge_at_collision: false, arcs_emerge: false, andean_gap: None, andean_arc: None }
     }
     /// F176's choice: the seaward margin, option 5, and the merge at collision.
     pub fn seaward_oo_collision() -> Self {
@@ -168,9 +173,18 @@ impl Margin {
     pub fn seaward_oo_collision_andean() -> Self {
         Self { andean_gap: Some(ANDEAN_GAP_CELLS), ..Self::seaward_oo_collision() }
     }
+    /// F179's choice: F176's, with the Andean seed at the arc ([`D_ARC_CELLS`], within [`ANDEAN_GAP_CELLS`]).
+    pub fn seaward_oo_collision_arc() -> Self {
+        Self { andean_arc: Some((D_ARC_CELLS, ANDEAN_GAP_CELLS)), ..Self::seaward_oo_collision() }
+    }
     /// The C1 flags this margin carries.
     pub fn ext(&self) -> crate::tectonics_c1::time_loop::C1Ext {
-        crate::tectonics_c1::time_loop::C1Ext { oo: self.oo, merge_at_collision: self.merge_at_collision, andean_gap: self.andean_gap }
+        crate::tectonics_c1::time_loop::C1Ext {
+            oo: self.oo,
+            merge_at_collision: self.merge_at_collision,
+            andean_gap: self.andean_gap,
+            andean_arc: self.andean_arc,
+        }
     }
     /// F175's choice: the seaward margin with the ocean-ocean subduction path.
     pub fn seaward_oo() -> Self {
@@ -489,7 +503,7 @@ mod tests {
         let a = p.init_state(64, 42);
         let b = p.init_state_margin(64, 42, &Margin::off());
         assert_eq!(bits(&a), bits(&b));
-        let zero = Margin { w_rim: 0.0, ramp: Some(Ramp::declared().scaled(0.0)), hetero: None, seaward: false, oo: None, merge_at_collision: false, arcs_emerge: false, andean_gap: None };
+        let zero = Margin { w_rim: 0.0, ramp: Some(Ramp::declared().scaled(0.0)), hetero: None, seaward: false, oo: None, merge_at_collision: false, arcs_emerge: false, andean_gap: None, andean_arc: None };
         assert!(zero.is_off());
         assert_eq!(bits(&a), bits(&p.init_state_margin(64, 42, &zero)));
     }
@@ -685,12 +699,33 @@ mod tests {
             }
             bits(&st)
         };
-        let ext = |gap: Option<usize>| Some(C1Ext { oo, merge_at_collision: true, andean_gap: gap });
+        let ext = |gap: Option<usize>| Some(C1Ext { oo, merge_at_collision: true, andean_gap: gap, andean_arc: None });
         let f176 = run(None, false);
         assert_eq!(f176, run(ext(None), false), "the seed off is F176 bit for bit");
         assert_eq!(f176, run(ext(Some(0)), false), "no continent within reach: the seed changes nothing");
         assert_eq!(run(ext(None), true), run(ext(Some(ANDEAN_GAP_CELLS)), true), "no oceanic boundary: the seed changes nothing");
         assert_ne!(f176, run(ext(Some(ANDEAN_GAP_CELLS)), false), "at D_gap the seed acts on a real world");
+    }
+
+    /// F179-B4 (permanent): the seed at the arc off is F176 bit for bit; a reach of 0 changes nothing; at (d_arc, D_gap) it acts.
+    #[test]
+    fn the_arc_seed_controls() {
+        use crate::tectonics_c1::time_loop::{C1Closures, C1Ext, C1Term, run_with_closures_terms_ext};
+        let p = C1Profile::Selected { plates: 16, k: 8, start: 3, compact: true };
+        let mut cfg = crate::cascade::profile::c1_run_config();
+        cfg.n_steps = 120;
+        let oo = Some(OoSubductionParams::declared());
+        let run = |arc: Option<(usize, usize)>| {
+            let mut st = p.init_state_margin(64, 42, &Margin::seaward());
+            let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+            let mut on_term = |_: C1Term, _: &[f64], _: &[f64]| {};
+            let e = C1Ext { oo, merge_at_collision: true, andean_gap: None, andean_arc: arc };
+            run_with_closures_terms_ext(&mut st, &mut kin, &cfg, &C1Closures::default(), e, |_, _, _| {}, &mut on_term);
+            bits(&st)
+        };
+        let f176 = run(None);
+        assert_eq!(f176, run(Some((D_ARC_CELLS, 0))), "a reach of 0: the seed at the arc changes nothing");
+        assert_ne!(f176, run(Some((D_ARC_CELLS, ANDEAN_GAP_CELLS))), "at (d_arc, D_gap) the seed acts on a real world");
     }
 
     /// F174-B5 (permanent): the default selection with the margin off is `select_continent_default` bit for bit.

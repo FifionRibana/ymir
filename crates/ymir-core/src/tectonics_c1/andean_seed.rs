@@ -141,3 +141,100 @@ pub fn andean_seeds(
     }
     seeds
 }
+
+/// ADR Finding 179-B2 -- **the Andean seed at the arc**: for each active trench on which P overrides
+/// ([`overriding_trench_cells`], grouped into 8-connected segments of one plate), a walk (4-connected, periodic) from the
+/// segment through P's cells of any type; d_front = the depth of the first continental cell of P reached; the seeds are P's
+/// continental cells at exactly depth d = max(`d_arc`, d_front), if d ≤ `gap`. No reading of the sea level. `gap = 0` seeds
+/// nothing. Declared in `docs/reports/relief_method/f179_pumping/f179_declared.md` (d_arc = 4: 180 km, the lower bound of the
+/// middle 50 % of arc-trench distances, Syracuse & Abers 2006 p. 10, ÷ 7.5 ÷ 6.25 = 3.84).
+#[allow(clippy::too_many_arguments)]
+pub fn andean_seeds_arc(
+    plate_id: &PlateIdField,
+    plate_type: &PlateTypeField,
+    age: &Field2D,
+    boundary: &BoundaryInfo,
+    upper_vel: &BoolField,
+    kinematics: &PlateKinematics,
+    tracker: &OoTracker,
+    d_arc: usize,
+    gap: usize,
+) -> BoolField {
+    let (nx, ny) = (plate_id.nx(), plate_id.ny());
+    let (idx_x, idx_y) = (PeriodicIndex::new(nx), PeriodicIndex::new(ny));
+    let mut seeds = BoolField::filled(nx, ny, false);
+    if gap == 0 {
+        return seeds;
+    }
+    let trench = overriding_trench_cells(plate_id, plate_type, age, boundary, upper_vel, kinematics, tracker);
+    let n = nx * ny;
+    let mut seen = vec![false; n];
+    for s0 in 0..n {
+        let (i0, j0) = (s0 % nx, s0 / nx);
+        if !trench.get(i0, j0) || seen[s0] {
+            continue;
+        }
+        // the segment: 8-connected trench cells of the same plate
+        let p = plate_id.get(i0, j0);
+        let mut seg = vec![s0];
+        seen[s0] = true;
+        let mut k = 0;
+        while k < seg.len() {
+            let (i, j) = (seg[k] % nx, seg[k] / nx);
+            for (ni, nj) in [
+                (idx_x.next(i), j),
+                (idx_x.prev(i), j),
+                (i, idx_y.next(j)),
+                (i, idx_y.prev(j)),
+                (idx_x.next(i), idx_y.next(j)),
+                (idx_x.next(i), idx_y.prev(j)),
+                (idx_x.prev(i), idx_y.next(j)),
+                (idx_x.prev(i), idx_y.prev(j)),
+            ] {
+                let q = nj * nx + ni;
+                if !seen[q] && trench.get(ni, nj) && plate_id.get(ni, nj) == p {
+                    seen[q] = true;
+                    seg.push(q);
+                }
+            }
+            k += 1;
+        }
+        // the walk through P's cells from the segment, to depth `gap`
+        let mut depth = vec![usize::MAX; n];
+        let mut q = VecDeque::new();
+        for &c in &seg {
+            depth[c] = 0;
+            q.push_back(c);
+        }
+        let mut d_front = usize::MAX;
+        let mut by_depth: Vec<Vec<usize>> = vec![Vec::new(); gap + 1];
+        while let Some(c) = q.pop_front() {
+            let d = depth[c];
+            let (i, j) = (c % nx, c / nx);
+            if d > 0 && plate_type.get(i, j) == PlateType::Continental {
+                d_front = d_front.min(d);
+                by_depth[d].push(c);
+            }
+            if d == gap {
+                continue;
+            }
+            for (ni, nj) in [(idx_x.next(i), j), (idx_x.prev(i), j), (i, idx_y.next(j)), (i, idx_y.prev(j))] {
+                let k2 = nj * nx + ni;
+                if depth[k2] == usize::MAX && plate_id.get(ni, nj) == p {
+                    depth[k2] = d + 1;
+                    q.push_back(k2);
+                }
+            }
+        }
+        if d_front == usize::MAX {
+            continue;
+        }
+        let d = d_arc.max(d_front);
+        if d <= gap {
+            for &c in &by_depth[d] {
+                seeds.set(c % nx, c / nx, true);
+            }
+        }
+    }
+    seeds
+}
