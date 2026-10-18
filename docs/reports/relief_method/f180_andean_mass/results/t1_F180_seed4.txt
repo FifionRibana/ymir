@@ -1,0 +1,10 @@
+   seed 4 F180: the Andean coverage 70.1 % · A1 any 26.1 %, majority 20.1 % · coverage / majority 3.49 · C1 end land 49.4 %, circumnavigable true r* Some(1) · land added over F176 74 cells (92 % in the band, 100 % continental at t₀) · 0–6 cells: active 2373 m (C-O wedge 1734 m), passive 888 m · C1 CPU 54.5 s
+      collision: 1929 cells, s_src median 1.05 · seed-steps 12900 of which bounded 7 % · mass removed 94.25 (s × cells; 1.71 km of crust per family cell)
+      O-C boundary: 28 cells, s_src median 0.06 · seed-steps 525 of which bounded 64 % · mass removed 127.69 (s × cells; 159.61 km of crust per family cell)
+      Andean: 630 cells, s_src median 0.67 · seed-steps 7468 of which bounded 94 % · mass removed 6510.19 (s × cells; 361.68 km of crust per family cell)
+      other: 0 cells, s_src median NaN · seed-steps 0 of which bounded 0 % · mass removed 0.00 (s × cells; 0.00 km of crust per family cell)
+#COV 0.7010869565217391 0.2608695652173913 0.20108695652173914
+#B 0.494384765625 1 1 74 0.918918918918919 1
+#UP 2373.319167156958 1733.9445610142348 887.8628976593436
+#SF 1.0505734422700268 0.055078570275717664 0.6711881006346336 NaN
+#BND 12900 925 94.2540466381665 525 338 127.68958871914613 7468 7019 6510.189257854406 0 0 0

@@ -1,0 +1,2 @@
+   seed 8 F179: the Andean coverage 82.0 % of the coast · A1 any 10.1 %, majority 6.2 % · coverage / majority 13.27
+#COV 0.8202247191011236 0.10112359550561797 0.06179775280898876

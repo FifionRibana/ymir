@@ -141,6 +141,10 @@ pub struct Margin {
     pub andean_gap: Option<usize>,
     /// ADR Finding 179-B: the Andean seed at the arc, (d_arc, D_gap) cells of 64² (replaces `andean_gap` when set).
     pub andean_arc: Option<(usize, usize)>,
+    /// ADR Finding 180-A1: the Andean seed behind the majority-active coasts only, (d_arc, D_gap) (replaces the others).
+    pub andean_active: Option<(usize, usize)>,
+    /// ADR Finding 180-A2: Davis-Suppe's per-seed mass bound, the factor on every supply (1 declared).
+    pub ds_mass_bound: Option<f64>,
 }
 
 /// ADR Finding 178 -- D_gap: the largest arc-trench distance observed, 470 km (Alaska; Syracuse & Abers 2006, p. 10) ÷ 7.5 =
@@ -159,11 +163,11 @@ impl Margin {
     }
     /// F174-B's main choice: a rim of 2.5 cells and the declared ramp.
     pub fn declared() -> Self {
-        Self { w_rim: 2.5, ramp: Some(Ramp::declared()), hetero: None, seaward: false, oo: None, merge_at_collision: false, arcs_emerge: false, andean_gap: None, andean_arc: None }
+        Self { w_rim: 2.5, ramp: Some(Ramp::declared()), hetero: None, seaward: false, oo: None, merge_at_collision: false, arcs_emerge: false, andean_gap: None, andean_arc: None, andean_active: None, ds_mass_bound: None }
     }
     /// F174-B′'s choice: the declared ramp seaward.
     pub fn seaward() -> Self {
-        Self { w_rim: 0.0, ramp: Some(Ramp::declared()), hetero: None, seaward: true, oo: None, merge_at_collision: false, arcs_emerge: false, andean_gap: None, andean_arc: None }
+        Self { w_rim: 0.0, ramp: Some(Ramp::declared()), hetero: None, seaward: true, oo: None, merge_at_collision: false, arcs_emerge: false, andean_gap: None, andean_arc: None, andean_active: None, ds_mass_bound: None }
     }
     /// F176's choice: the seaward margin, option 5, and the merge at collision.
     pub fn seaward_oo_collision() -> Self {
@@ -177,6 +181,10 @@ impl Margin {
     pub fn seaward_oo_collision_arc() -> Self {
         Self { andean_arc: Some((D_ARC_CELLS, ANDEAN_GAP_CELLS)), ..Self::seaward_oo_collision() }
     }
+    /// F180's choice: F179's, with the Andean seed behind the active coasts only and Davis-Suppe's mass bound.
+    pub fn seaward_oo_collision_f180() -> Self {
+        Self { andean_active: Some((D_ARC_CELLS, ANDEAN_GAP_CELLS)), ds_mass_bound: Some(1.0), ..Self::seaward_oo_collision_arc() }
+    }
     /// The C1 flags this margin carries.
     pub fn ext(&self) -> crate::tectonics_c1::time_loop::C1Ext {
         crate::tectonics_c1::time_loop::C1Ext {
@@ -184,6 +192,8 @@ impl Margin {
             merge_at_collision: self.merge_at_collision,
             andean_gap: self.andean_gap,
             andean_arc: self.andean_arc,
+            andean_active: self.andean_active,
+            ds_mass_bound: self.ds_mass_bound,
         }
     }
     /// F175's choice: the seaward margin with the ocean-ocean subduction path.
@@ -503,7 +513,7 @@ mod tests {
         let a = p.init_state(64, 42);
         let b = p.init_state_margin(64, 42, &Margin::off());
         assert_eq!(bits(&a), bits(&b));
-        let zero = Margin { w_rim: 0.0, ramp: Some(Ramp::declared().scaled(0.0)), hetero: None, seaward: false, oo: None, merge_at_collision: false, arcs_emerge: false, andean_gap: None, andean_arc: None };
+        let zero = Margin { w_rim: 0.0, ramp: Some(Ramp::declared().scaled(0.0)), hetero: None, seaward: false, oo: None, merge_at_collision: false, arcs_emerge: false, andean_gap: None, andean_arc: None, andean_active: None, ds_mass_bound: None };
         assert!(zero.is_off());
         assert_eq!(bits(&a), bits(&p.init_state_margin(64, 42, &zero)));
     }
@@ -699,7 +709,7 @@ mod tests {
             }
             bits(&st)
         };
-        let ext = |gap: Option<usize>| Some(C1Ext { oo, merge_at_collision: true, andean_gap: gap, andean_arc: None });
+        let ext = |gap: Option<usize>| Some(C1Ext { oo, merge_at_collision: true, andean_gap: gap, ..C1Ext::default() });
         let f176 = run(None, false);
         assert_eq!(f176, run(ext(None), false), "the seed off is F176 bit for bit");
         assert_eq!(f176, run(ext(Some(0)), false), "no continent within reach: the seed changes nothing");
@@ -719,13 +729,49 @@ mod tests {
             let mut st = p.init_state_margin(64, 42, &Margin::seaward());
             let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
             let mut on_term = |_: C1Term, _: &[f64], _: &[f64]| {};
-            let e = C1Ext { oo, merge_at_collision: true, andean_gap: None, andean_arc: arc };
+            let e = C1Ext { oo, merge_at_collision: true, andean_arc: arc, ..C1Ext::default() };
             run_with_closures_terms_ext(&mut st, &mut kin, &cfg, &C1Closures::default(), e, |_, _, _| {}, &mut on_term);
             bits(&st)
         };
         let f176 = run(None);
         assert_eq!(f176, run(Some((D_ARC_CELLS, 0))), "a reach of 0: the seed at the arc changes nothing");
         assert_ne!(f176, run(Some((D_ARC_CELLS, ANDEAN_GAP_CELLS))), "at (d_arc, D_gap) the seed acts on a real world");
+    }
+
+    /// F180-A3 (permanent): both F180 flags off are F179 bit for bit; an infinite supply is the run without the bound bit for bit;
+    /// with the bound, every seed's increments stay within its supply at every step (the mass control).
+    #[test]
+    fn the_f180_controls() {
+        use crate::tectonics_c1::time_loop::{C1Closures, C1Ext, C1Term, run_with_closures_terms_ext};
+        let p = C1Profile::Selected { plates: 16, k: 8, start: 3, compact: true };
+        let mut cfg = crate::cascade::profile::c1_run_config();
+        cfg.n_steps = 120;
+        let oo = Some(OoSubductionParams::declared());
+        let arc = Some((D_ARC_CELLS, ANDEAN_GAP_CELLS));
+        let run = |active: Option<(usize, usize)>, bound: Option<f64>| {
+            let mut st = p.init_state_margin(64, 42, &Margin::seaward());
+            let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+            let mut on_term = |_: C1Term, _: &[f64], _: &[f64]| {};
+            let worst = std::cell::Cell::new(0f64);
+            let removed = std::cell::Cell::new(0f64);
+            let e = C1Ext { oo, merge_at_collision: true, andean_arc: arc, andean_active: active, ds_mass_bound: bound, ..C1Ext::default() };
+            run_with_closures_terms_ext(&mut st, &mut kin, &cfg, &C1Closures::default(), e, |_, s, _| {
+                let b = &s.last_step_stats.ds_bound;
+                worst.set(worst.get().max(b.max_ratio));
+                removed.set(removed.get() + b.removed.iter().sum::<f64>());
+            }, &mut on_term);
+            (bits(&st), worst.get(), removed.get())
+        };
+        let f179 = run(None, None).0;
+        let active = Some((D_ARC_CELLS, ANDEAN_GAP_CELLS));
+        assert_eq!(f179, run(None, None).0);
+        assert_eq!(run(active, None).0, run(active, Some(f64::INFINITY)).0, "an infinite supply is the run without the bound");
+        let (b, worst, removed) = run(active, Some(1.0));
+        assert!(worst <= 1.0 + 1e-9, "the mass control: Σ increments / S_σ after the bound reaches {worst}");
+        assert!(removed > 0.0 && b != f179, "the bound acts on a real world");
+        let off = run(None, None);
+        assert_eq!(off.0, f179, "both flags off: F179 bit for bit");
+        assert_eq!(off.2, 0.0, "no bound, nothing removed");
     }
 
     /// F174-B5 (permanent): the default selection with the margin off is `select_continent_default` bit for bit.

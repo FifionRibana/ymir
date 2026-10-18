@@ -70,7 +70,8 @@ use super::closures::rifting::{
     DivergenceTracker, RiftingParams, apply_rifting_split, apply_rifting_thinning,
 };
 use super::closures::subduction::{OoSubductionParams, OoTracker, SubductionParams, apply_oo_subduction_step, apply_subduction_step};
-use super::andean_seed::{andean_seeds, andean_seeds_arc};
+use super::andean_seed::{andean_feeds_nearest, andean_seeds, andean_seeds_active, andean_seeds_arc, overriding_trench_partners};
+use super::ds_mass_bound::{DsBoundStats, apply_ds_mass_bound};
 use super::distance_field::wedge_distance_intra_plate_typed;
 use super::kinematics::PlateKinematics;
 use super::state::C1State;
@@ -629,7 +630,7 @@ pub fn run_with_closures_terms_flags<F>(
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
-    run_inner(state, kinematics, config, closures, on_step, Some(on_term), C1Ext { oo, merge_at_collision, andean_gap: None, andean_arc: None });
+    run_inner(state, kinematics, config, closures, on_step, Some(on_term), C1Ext { oo, merge_at_collision, ..C1Ext::default() });
 }
 
 /// ADR Finding 178 -- the continent profile's C1 flags in one carrier: option 5 (`oo`), the merge at collision (F176) and
@@ -644,6 +645,12 @@ pub struct C1Ext {
     /// ADR Finding 179-B: the Andean seed at the arc, (d_arc, D_gap) in cells of 64² ([`andean_seeds_arc`]); the seeds are
     /// skipped by Davis-Suppe like boundary seeds. When set it replaces `andean_gap`'s front seed.
     pub andean_arc: Option<(usize, usize)>,
+    /// ADR Finding 180-A1: the Andean seed behind the majority-active coasts only, (d_arc, D_gap) ([`andean_seeds_active`]);
+    /// skipped by Davis-Suppe like boundary seeds. When set it replaces `andean_arc` and `andean_gap`.
+    pub andean_active: Option<(usize, usize)>,
+    /// ADR Finding 180-A2: Davis-Suppe's per-seed mass bound ([`apply_ds_mass_bound`]), the factor on every supply (1 declared,
+    /// ∞ = no bound).
+    pub ds_mass_bound: Option<f64>,
 }
 
 /// ADR Finding 178 -- [`run_with_closures_terms_flags`] with every flag of [`C1Ext`].
@@ -672,7 +679,9 @@ fn run_inner<F>(
 ) where
     F: FnMut(usize, &C1State, &PlateKinematics),
 {
-    let C1Ext { oo, merge_at_collision, andean_gap, andean_arc } = ext;
+    let C1Ext { oo, merge_at_collision, andean_gap, andean_arc, andean_active, ds_mass_bound } = ext;
+    // F180-A2: the bound's feeds of the step (the Andean seeds' trench cells, the trenches' partners)
+    let mut bound_ctx: Option<(Vec<(usize, usize)>, Vec<Option<(usize, f64)>>)> = None;
     // F179-B3: the Andean seeds at the arc of the step, skipped by Davis-Suppe
     let mut andean_skip: Option<super::state::BoolField> = None;
     let nx = state.nx();
@@ -767,8 +776,24 @@ fn run_inner<F>(
             let oo_cleared = if oo.is_some() { clear_oo_seeds(&mut bi, &state.plate_id, &state.plate_type) } else { 0 };
             // F178-A1: the Andean seeds -- the overriding plate's continental front within the arc-trench gap of an active O-O
             // trench (the D_init tracker as this step's Davis-Suppe stage sees it) joins the upper-plate and O-C seed masks
-            let andean = match (andean_arc, andean_gap) {
-                (Some((d_arc, gap)), _) => Some(andean_seeds_arc(
+            let mut feeds: Vec<(usize, usize)> = Vec::new();
+            let andean = match (andean_active, andean_arc, andean_gap) {
+                (Some((d_arc, gap)), _, _) => {
+                    let set = andean_seeds_active(
+                        &state.plate_id,
+                        &state.plate_type,
+                        &state.age,
+                        &bi,
+                        &upper_vel,
+                        kinematics,
+                        &oo_tracker,
+                        d_arc,
+                        gap,
+                    );
+                    feeds = set.feeds;
+                    Some(set.mask)
+                }
+                (None, Some((d_arc, gap)), _) => Some(andean_seeds_arc(
                     &state.plate_id,
                     &state.plate_type,
                     &state.age,
@@ -779,11 +804,21 @@ fn run_inner<F>(
                     d_arc,
                     gap,
                 )),
-                (None, Some(gap)) => Some(andean_seeds(&state.plate_id, &state.plate_type, &state.age, &bi, &upper_vel, kinematics, &oo_tracker, gap)),
-                (None, None) => None,
+                (None, None, Some(gap)) => Some(andean_seeds(&state.plate_id, &state.plate_type, &state.age, &bi, &upper_vel, kinematics, &oo_tracker, gap)),
+                (None, None, None) => None,
             };
-            if andean_arc.is_some() {
+            if andean_arc.is_some() || andean_active.is_some() {
                 andean_skip = andean.clone();
+            }
+            // F180-A2: the trenches' partners and the Andean seeds' feeds (the walk's trench, else the nearest trench)
+            if ds_mass_bound.is_some() {
+                let partners = overriding_trench_partners(&state.plate_id, &state.plate_type, &state.age, &bi, &upper_vel, kinematics, &oo_tracker);
+                if andean_active.is_none() {
+                    if let Some(sd) = &andean {
+                        feeds = andean_feeds_nearest(&state.plate_id, sd, &partners);
+                    }
+                }
+                bound_ctx = Some((feeds, partners));
             }
             if let Some(sd) = &andean {
                 for (k, &on) in sd.data().iter().enumerate() {
@@ -905,6 +940,7 @@ fn run_inner<F>(
 
         // 2. Davis-Suppe orogenic source term (Phase 1.2).
         let before = on_term.is_some().then(|| state.s.data().to_vec());
+        let ds_s_before = ds_mass_bound.is_some().then(|| state.s.data().to_vec());
         if let Some(skip) = &andean_skip {
             apply_davis_suppe_step_routed_skip(
                 &mut state.s,
@@ -927,6 +963,23 @@ fn run_inner<F>(
                 &davis_suppe,
                 dt,
                 oc_wedge,
+            );
+        }
+        // F180-A2: the per-seed mass bound on the step's Davis-Suppe increments
+        let mut ds_bound_stats = DsBoundStats::default();
+        if let (Some(factor), Some((feeds, partners))) = (ds_mass_bound, bound_ctx.as_ref()) {
+            let s_before = ds_s_before.as_deref().expect("s before Davis-Suppe kept when the bound is on");
+            ds_bound_stats = apply_ds_mass_bound(
+                s_before,
+                &mut state.s,
+                &state.plate_id,
+                &boundary.upper_plate_mask,
+                kinematics,
+                dt,
+                davis_suppe.max_distance,
+                feeds,
+                partners,
+                factor,
             );
         }
         if let (Some(h), Some(b)) = (on_term.as_mut(), before.as_ref()) {
@@ -1185,6 +1238,7 @@ fn run_inner<F>(
             accretion: accretion_stats,
             rifting_thinning: rifting_thinning_stats,
             rifting_split: rifting_split_stats,
+            ds_bound: ds_bound_stats,
         };
 
         // Cratonic-factor staleness (Q-S.2 Option (c) confirmed).

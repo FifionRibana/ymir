@@ -1,0 +1,9 @@
+    Finished `release` profile [optimized] target(s) in 0.15s
+     Running tests\f180_cascade.rs (target_f180\release\deps\f180_cascade-7ce48050ab5f041a.exe)
+running 1 test
+test f180_tier3_cascade has been running for over 60 seconds
+   seed 18 F180 young (2 048²): the transect's range -4939 … 3716 m · passive (cell 3319): max 2163 m · active (cell 3952): max 3716 m · the world's maximum 5632 m
+   seed 7 F180 young (2 048²) (the longest new cordillera; whole map saved): the transect's range -5168 … 4693 m · passive (cell 1856): max 197 m · active (cell 2211): max 4693 m · the world's maximum 5964 m
+   tier 3: 153 s
+test f180_tier3_cascade ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 153.07s

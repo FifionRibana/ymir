@@ -1,0 +1,226 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling cfg-if v1.0.4
+   Compiling serde_core v1.0.228
+   Compiling serde v1.0.228
+   Compiling zerocopy v0.8.48
+   Compiling autocfg v1.5.0
+   Compiling crossbeam-utils v0.8.21
+   Compiling version_check v0.9.5
+   Compiling crc32fast v1.5.0
+   Compiling windows-link v0.2.1
+   Compiling simd-adler32 v0.3.9
+   Compiling getrandom v0.3.4
+   Compiling typenum v1.20.1
+   Compiling zmij v1.0.21
+   Compiling adler2 v2.0.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling either v1.15.0
+   Compiling shlex v1.3.0
+   Compiling serde_json v1.0.149
+   Compiling rayon-core v1.13.0
+   Compiling once_cell v1.21.4
+   Compiling memchr v2.8.0
+   Compiling hashbrown v0.17.0
+   Compiling rand_core v0.6.4
+   Compiling windows-sys v0.61.2
+   Compiling miniz_oxide v0.8.9
+   Compiling equivalent v1.0.2
+   Compiling generic-array v0.14.7
+   Compiling itoa v1.0.18
+   Compiling fdeflate v0.3.7
+   Compiling num-traits v0.2.19
+   Compiling pxfm v0.1.28
+   Compiling bitflags v2.11.0
+   Compiling plotters-backend v0.3.7
+   Compiling cc v1.2.60
+   Compiling regex-syntax v0.8.10
+   Compiling winnow v0.7.15
+   Compiling anstyle v1.0.14
+   Compiling ciborium-io v0.2.2
+   Compiling toml_write v0.1.2
+   Compiling clap_lex v1.1.0
+   Compiling plotters-svg v0.3.7
+   Compiling indexmap v2.14.0
+   Compiling rand_xorshift v0.3.0
+   Compiling rand v0.8.5
+   Compiling crossbeam-epoch v0.9.18
+   Compiling rand_core v0.9.5
+   Compiling flate2 v1.1.9
+   Compiling tracing-core v0.1.36
+   Compiling itertools v0.10.5
+   Compiling arrayref v0.3.9
+   Compiling winapi-util v0.1.11
+   Compiling constant_time_eq v0.4.2
+   Compiling clap_builder v4.6.0
+   Compiling arrayvec v0.7.6
+   Compiling byteorder-lite v0.1.0
+   Compiling cast v0.3.0
+   Compiling bytemuck v1.25.0
+   Compiling crossbeam-deque v0.8.6
+   Compiling same-file v1.0.6
+   Compiling cpufeatures v0.3.0
+   Compiling cpufeatures v0.2.17
+   Compiling pin-project-lite v0.2.17
+   Compiling png v0.18.1
+   Compiling is-terminal v0.4.17
+   Compiling anes v0.1.6
+   Compiling syn v2.0.117
+   Compiling oorandom v11.1.5
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling walkdir v2.5.0
+   Compiling blake3 v1.8.4
+   Compiling digest v0.10.7
+   Compiling regex-automata v0.4.14
+   Compiling noise v0.9.0
+   Compiling plotters v0.3.7
+   Compiling sha2 v0.10.9
+   Compiling rayon v1.11.0
+   Compiling criterion-plot v0.5.0
+   Compiling moxcms v0.8.1
+   Compiling clap v4.6.1
+   Compiling regex v1.12.3
+   Compiling serde_derive v1.0.228
+   Compiling zerocopy-derive v0.8.48
+   Compiling tracing-attributes v0.1.31
+   Compiling image v0.25.10
+   Compiling tracing v0.1.44
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling tinytemplate v1.2.1
+   Compiling bincode v1.3.3
+   Compiling toml_edit v0.22.27
+   Compiling toml v0.8.23
+   Compiling half v2.7.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling ciborium-ll v0.2.2
+   Compiling rand_chacha v0.9.0
+   Compiling ciborium v0.2.2
+   Compiling rand v0.9.3
+   Compiling criterion v0.5.1
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+109 |         let i = rng.gen_range(0..nx);
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+110 |         let j = rng.gen_range(0..ny);
+    |                     ^^^^^^^^^
+
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+819 |     let src_width = std::mem::take(&mut dr.segment_width_m);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+826 |     let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+2205 |     let mut next_id = 1_000_001u32;
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+2275 |         next_id = 1_000_001;
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+--
+   |
+12 | use common::{CANONICAL_ORIGIN, PSEED, pct, sorted};
+   |              ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+  --> crates\ymir-core\tests\f180_cascade.rs:15:5
+   |
+15 | use ymir_core::cascade::amplify::restrict;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  --> crates\ymir-core\tests\f180_cascade.rs:20:5
+   |
+20 |     step_durations,
+   |     ^^^^^^^^^^^^^^
+
+  --> crates\ymir-core\tests\f180_cascade.rs:25:5
+   |
+25 |     CLASS_NAMES, Circumnavigation, Coast, MOUNTAIN, MacroStats, PLAIN, PLATEAU, RELIEF_RADIUS_KM, circumnavigation, classify, coast,
+   |     ^^^^^^^^^^^                                                 ^^^^^  ^^^^^^^  ^^^^^^^^^^^^^^^^                              ^^^^^
+26 |     coast_torus, edt, hovius, local_relief, macro_stats, periodic_components, slope_deg,
+   |     ^^^^^^^^^^^       ^^^^^^  ^^^^^^^^^^^^
+
+  --> crates\ymir-core\tests\f180_cascade.rs:28:58
+   |
+28 | use ymir_core::cascade::planform::{Planform, WINDOWS_KM, flat_map, planform};
+   |                                                          ^^^^^^^^
+
+  --> crates\ymir-core\tests\f180_cascade.rs:30:46
+   |
+30 | use ymir_core::cascade::profile::{C1Profile, Selection, c1_run_config, select_continent_default, select_continent_plates};
+   |                                              ^^^^^^^^^                 ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^
+
+  --> crates\ymir-core\tests\f180_cascade.rs:31:62
+   |
+31 | use ymir_core::cascade::{CascadeConfig, Rebound, Rock, roll, upsample_to};
+   |                                                              ^^^^^^^^^^^
+
+    --> crates\ymir-core\tests\f180_cascade.rs:1783:5
+     |
+1783 | use ymir_core::cascade::margin::seaward_conflicts;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    --> crates\ymir-core\tests\f180_cascade.rs:1841:35
+     |
+1841 | use ymir_core::cascade::history::{run_c1_sources_mapped_flags, run_c1_sources_mapped_oo};
+     |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^
+
+    --> crates\ymir-core\tests\f180_cascade.rs:1844:73
+     |
+1844 | use ymir_core::tectonics_c1::time_loop::{run_with_closures_terms_flags, run_with_closures_terms_oo};
+     |                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    --> crates\ymir-core\tests\f180_cascade.rs:3689:34
+     |
+3689 | use ymir_core::cascade::margin::{ANDEAN_GAP_CELLS, ARC_BAND_CELLS};
+     |                                  ^^^^^^^^^^^^^^^^
+
+    Finished `release` profile [optimized] target(s) in 3m 10s
+     Running tests\f180_cascade.rs (target_f180b\release\deps\f180_cascade-7ce48050ab5f041a.exe)
+
+running 1 test
+
+--
+   seed 8 F179: the Andean coverage 82.0 % of the coast · A1 any 10.1 %, majority 6.2 % · coverage / majority 13.27
+   seed 18 F179: the Andean coverage 100.0 % of the coast · A1 any 30.5 %, majority 19.8 % · coverage / majority 5.05
+   seed 19 F179: the Andean coverage 90.7 % of the coast · A1 any 20.9 %, majority 9.8 % · coverage / majority 9.27
+   seed 23 F179: the Andean coverage 94.4 % of the coast · A1 any 35.9 %, majority 20.2 % · coverage / majority 4.67
+   seed 29 F179: the Andean coverage 100.0 % of the coast · A1 any 24.9 %, majority 18.3 % · coverage / majority 5.47
+   seed 1 F179: the Andean coverage 93.9 % of the coast · A1 any 14.7 %, majority 13.2 % · coverage / majority 7.12
+   seed 2 F179: the Andean coverage 94.5 % of the coast · A1 any 17.0 %, majority 14.2 % · coverage / majority 6.65
+   seed 3 F179: the Andean coverage 94.6 % of the coast · A1 any 23.3 %, majority 13.5 % · coverage / majority 7.03
+   seed 4 F179: the Andean coverage 95.1 % of the coast · A1 any 27.7 %, majority 18.5 % · coverage / majority 5.15
+   seed 5 F179: the Andean coverage 68.4 % of the coast · A1 any 17.6 %, majority 13.4 % · coverage / majority 5.12
+   seed 6 F179: the Andean coverage 91.7 % of the coast · A1 any 25.2 %, majority 18.3 % · coverage / majority 5.02
+   seed 7 F179: the Andean coverage 98.7 % of the coast · A1 any 54.4 %, majority 39.4 % · coverage / majority 2.51
+   seed 9 F179: the Andean coverage 98.0 % of the coast · A1 any 35.4 %, majority 24.2 % · coverage / majority 4.04
+   seed 10 F179: the Andean coverage 88.1 % of the coast · A1 any 23.2 %, majority 15.1 % · coverage / majority 5.82
+   seed 11 F179: the Andean coverage 90.7 % of the coast · A1 any 46.0 %, majority 31.9 % · coverage / majority 2.85
+
+   R0: coverage ≥ 2 × the majority A1 share on 15 / 15 seeds · coverage above 70 % on 14 · ratio median 5.15
+   Part 0: 1 s
+test f180_part0_coverage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.16s

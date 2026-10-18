@@ -213,6 +213,9 @@ pub struct CascadeUi {
     merge_collision: bool,
     /// F178-A4: the Andean seed at the arc-trench distance.
     andean: bool,
+    /// F180-A4: the Andean seed behind the active coasts only, and Davis-Suppe's mass bound.
+    andean_active: bool,
+    ds_bound: bool,
     /// F171-B/C: the rock (0 = K0 one K, 1 = K1 cover on basement, 2 = K2 with the heterogeneous K).
     rock: u8,
     /// F172-B5 / F173-B5: the sea (0 none, 1 the constant lowstand of F172, 2 the Quaternary curve), the lowstand view, and the
@@ -291,6 +294,8 @@ impl Default for CascadeUi {
             oo: false,
             merge_collision: false,
             andean: false,
+            andean_active: false,
+            ds_bound: false,
             rock: 0,
             sea_mode: 0,
             low_view: false,
@@ -536,7 +541,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
             let mut torus_origin: Option<[usize; 2]> = None;
             let mut remedies = Remedies::default();
             let mut chain: Option<Chain> = None;
-            let mut history: Option<((bool, bool, C1Profile, bool, usize, bool, bool, bool, bool), Vec<GridF32>, [usize; 2], Vec<bool>)> = None;
+            let mut history: Option<((bool, bool, C1Profile, bool, usize, bool, bool, bool, bool, bool, bool), Vec<GridF32>, [usize; 2], Vec<bool>)> = None;
             // F172-B5: the sea-level rise -- the chain runs on the field raised by Δ, its results are shown lowered
             let mut sea_shift = 0f32;
             let mut sea_curve: Option<SeaCurve> = None;
@@ -574,7 +579,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                         // F165-C4: driven by C1's history (recorded on demand, the same C1 run as the coarse field)
                         let result = if o.history > 0 {
                             let sources = o.history == 2;
-                            if history.as_ref().is_none_or(|h| h.0 != (sources, o.airy, o.profile, o.select, o.plates, o.seaward, o.oo, o.merge_collision, o.andean)) {
+                            if history.as_ref().is_none_or(|h| h.0 != (sources, o.airy, o.profile, o.select, o.plates, o.seaward, o.oo, o.merge_collision, o.andean, o.andean_active, o.ds_bound)) {
                                 // F171-A: the selected continent (16 plates falling back to 20 then 24, or the slider's
                                 // count alone), L2 when none qualifies
                                 // F174-B′: the margin seaward (an initial condition; off = Part A bit for bit)
@@ -587,6 +592,9 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                                 margin.merge_at_collision = o.merge_collision;
                                 // F178-A4: the Andean seed at D_gap (a C1 flag the profile carries)
                                 margin.andean_gap = o.andean.then_some(ymir_core::cascade::margin::ANDEAN_GAP_CELLS);
+                                // F180-A4: the Andean seed behind the active coasts only, Davis-Suppe's mass bound
+                                margin.andean_active = o.andean_active.then_some((ymir_core::cascade::margin::D_ARC_CELLS, ymir_core::cascade::margin::ANDEAN_GAP_CELLS));
+                                margin.ds_mass_bound = o.ds_bound.then_some(1.0);
                                 let profile = if o.select {
                                     let _ = etx.send(Evt::Progress(format!("sélection des plaques continentales ({} plaques)", o.plates), 0.0));
                                     let (s, n_used) = if o.plates == 16 {
@@ -611,7 +619,7 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                                 };
                                 let (s, terms, off, shields) = cascade_history(seed, offset_cells, sources, o.airy, profile, margin);
                                 let _ = etx.send(Evt::Terms(terms));
-                                history = Some(((sources, o.airy, o.profile, o.select, o.plates, o.seaward, o.oo, o.merge_collision, o.andean), s, off, shields));
+                                history = Some(((sources, o.airy, o.profile, o.select, o.plates, o.seaward, o.oo, o.merge_collision, o.andean, o.andean_active, o.ds_bound), s, off, shields));
                             }
                             torus_origin = o.torus.then(|| history.as_ref().unwrap().2);
                             ccfg.torus = torus_origin;
@@ -998,6 +1006,12 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
         );
         ui.checkbox(&mut cu.oo, "Subduction océan-océan (C1)").on_hover_text(
             "F175 (option 5) : à une frontière convergente océan-océan, la plaque dont la cellule de frontière est la plus vieille plonge (égalité : la règle de vitesse) après D_init = 13 km de convergence cumulée (100 km ÷ 7,5, Stern & Gerya 2018 d'après Hall et al. 2003) ; l'arc va sur la plaque qui chevauche (ses continents, sinon son océan) ; la cellule consommée rejoint la plaque qui chevauche ; Davis-Suppe ne s'ensemence plus aux frontières océan-océan. Avec la marge vers le large. Mode histoire",
+        );
+        ui.checkbox(&mut cu.andean_active, "Graine andine derrière les côtes actives (C1)").on_hover_text(
+            "F180 : le coin continent-océan démarre derrière les seules côtes qu'A1 dit actives à la majorité, sur le parcours d'A1 de la côte à la fosse, à d = max(4, d_front) cellules de la fosse (au plus 10), et la graine est sautée comme une graine de frontière. Remplace la graine à distance arc-fosse. Avec la subduction océan-océan et la marge vers le large. Mode histoire",
+        );
+        ui.checkbox(&mut cu.ds_bound, "Borne de masse de Davis-Suppe (C1)").on_hover_text(
+            "F180 : par graine et par pas, la somme des incréments de Davis-Suppe ne dépasse pas l'apport hV d'une cellule de fosse (Dahlen 1990 p. 59, éq. 1 : v_rel·n̂ · dt · s de la cellule entrante, partagé entre les graines qu'elle alimente) ; au-delà, les incréments de la graine sont réduits en proportion. Toutes les familles. Mode histoire",
         );
         ui.checkbox(&mut cu.andean, "Graine andine à distance arc-fosse (C1)").on_hover_text(
             "F178 : le coin continent-océan de Davis-Suppe démarre aussi sur le front continental de la plaque qui chevauche une fosse océan-océan active, à au plus D_gap = 10 cellules (470 km ÷ 7,5 : la plus grande distance arc-fosse observée, Syracuse & Abers 2006 p. 10) ; la formule du coin est inchangée. Avec la subduction océan-océan, la fusion à la collision et la marge vers le large. Mode histoire",
@@ -1590,6 +1604,9 @@ struct PhysOpts {
     merge_collision: bool,
     /// F178: the Andean seed.
     andean: bool,
+    /// F180: the Andean seed behind the active coasts, the mass bound.
+    andean_active: bool,
+    ds_bound: bool,
     /// F172 / F173: the sea (0 none, 1 constant, 2 the curve).
     sea_mode: u8,
 }
@@ -1597,7 +1614,7 @@ struct PhysOpts {
 impl Default for PhysOpts {
     /// P0, F159–F162's level.
     fn default() -> Self {
-        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62, plates: 16, rock: 0, seaward: false, oo: false, merge_collision: false, andean: false, sea_mode: 0 }
+        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62, plates: 16, rock: 0, seaward: false, oo: false, merge_collision: false, andean: false, andean_active: false, ds_bound: false, sea_mode: 0 }
     }
 }
 
@@ -1618,6 +1635,8 @@ fn phys_opts(cu: &CascadeUi) -> PhysOpts {
         oo: cu.oo,
         merge_collision: cu.merge_collision,
         andean: cu.andean,
+        andean_active: cu.andean_active,
+        ds_bound: cu.ds_bound,
         sea_mode: cu.sea_mode,
     }
 }

@@ -54,4 +54,6 @@ pub struct C1StepStats {
     pub accretion: AccretionStats,
     pub rifting_thinning: RiftingThinningStats,
     pub rifting_split: RiftingSplitStats,
+    /// ADR Finding 180-A2: the Davis-Suppe mass bound's record (default when the bound is off).
+    pub ds_bound: crate::tectonics_c1::ds_mass_bound::DsBoundStats,
 }

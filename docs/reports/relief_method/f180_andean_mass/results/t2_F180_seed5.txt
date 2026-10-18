@@ -1,0 +1,6 @@
+   seed 5 F180 young: physics CPU 26 s
+      formations: Andean cordilleras 6 (lengths km [12.5, 43.75, 37.5, 18.75, 12.5, 12.5]; total 138 km world, 1031 km terrestrial; 7317 km²) · Andean not touching an active coast 78 km² · collisional highland 28120 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 312 km² · collision the only formation: false
+      W10 0.194 (W_in 0.081, rampart false) · active / passive 0.331 / 0.151 (1421 / 4548 cells) · macro plain 23.8 · plateau 1.7 · hill 27.5 · mountain 47.0 % · land 76238 km² · median 313 m
+#F 6 137.5 7316.8945 78.125 28120.117 0 0 312.5 0
+#W 0.19433741 0.33145672 0.15149516 0
+#M 0.23783904 0.016748326 0.27546674 0.46994588 76237.79296875 312.806

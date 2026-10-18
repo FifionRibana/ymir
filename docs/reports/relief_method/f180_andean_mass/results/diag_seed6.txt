@@ -1,0 +1,2 @@
+   seed 6 F180: majority-active coast segments 12 · lengths (cells) median 2, p90 8, max 14 · gaps between neighbouring segments (coast cells) median 1, p90 5 · subducting pairs 14 · polarity changes 0 over 77 overriding trench cells (0.00 per 10 cells; per pair median 0.00) · option 5 decisions on |Δage| < 0.01 40 % · net Andean uplift on the coast: active p10 -2176 · p50 -1087 · p90 3415 m (45 cells) · passive p10 -1587 · p50 -518 · p90 -0 m (185 cells)
+#DG 2 1 0 0.3976537964160355 -1086.8296589376955 -517.8178363005712 0

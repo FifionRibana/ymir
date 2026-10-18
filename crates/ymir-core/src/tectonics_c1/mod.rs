@@ -82,6 +82,7 @@ pub mod closures;
 pub mod debug_labels;
 pub mod andean_seed;
 pub mod distance_field;
+pub mod ds_mass_bound;
 pub mod drainage;
 pub mod hd_assembly;
 pub mod init;

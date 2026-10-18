@@ -1,0 +1,2 @@
+   seed 29 F180 covered active (majority) coast cells 37: the Andean Σ DS in their 3-cell disc 4.974 s (174.1 km of crust; every family 4.985 s) · the distance to the nearest seeded cell median 1.0 cells (p90 5.0)
+   seed 29 F180 covered passive or mixed coast cells 91: the Andean Σ DS in their 3-cell disc 0.961 s (33.6 km of crust; every family 0.991 s) · the distance to the nearest seeded cell median 2.2 cells (p90 10.0)

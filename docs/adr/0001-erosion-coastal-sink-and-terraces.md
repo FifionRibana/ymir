@@ -23271,3 +23271,92 @@ vert.** Report: `docs/reports/relief_method/f178_andean_reach/finding_178.md`. D
   2. **F179, P5**: the reviewer predicted that a seed at the arc's depth would fall on emerged cells. He had not seen that the
      B′ ramp puts the continent's edge at s = 0.914, just under the emergence (0.915).
 - **Next**: F180 builds the kinematic bound (the author's brief).
+
+## Finding 180 — the Andean seed behind the active coasts only (A1) and Davis-Suppe's per-seed mass bound (A2, Dahlen 1990 p. 59, eq. 1), behind the flag (no solver, no iteration): the bound works — the active coasts' tectonic uplift falls from 12 to 4.9 km (median), the passive coasts and the land return to F176's, the collisions' s_src falls 7 %, the mass control holds at every step — but the Andean wedge still covers > 70 % of the coast on 11 of 15 seeds (F179: 14), so the declared coverage stop fires after tier 1: A1 places the seed but Davis-Suppe's wedge spreads isotropically along the coast within the plate; production unchanged
+
+**Status: built and measured on C1; the stop fired, tiers 2–3 not run; nothing adopted, nothing committed without the feu
+vert.** Report: `docs/reports/relief_method/f180_andean_mass/finding_180.md`. Declared: `f180_declared.md`. Predictions:
+`f180_predictions.md`.
+
+**Part 0 (F179 as committed)**: the Andean coverage (the coast cells seeded, or within < 3 cells of an Andean-dominant
+Davis-Suppe cell) is 68–100 % (median 94 %), 2.5–13 × the majority A1 share; R0 held on 15 / 15.
+
+**Built**:
+- A1, `andean_seeds_active`: A1's walk from each majority-active coast to its trench; the seed at d = max(4, d_front) on the
+  path, skipped like a boundary seed.
+- A2, `ds_mass_bound.rs`: per seed and step, Σ increments ≤ S_σ = (v_rel · n̂) dt · 64 · s_in, shared S/k, scaled in one
+  pass; every family; recorded in `C1StepStats::ds_bound`.
+- Permanent controls (`the_f180_controls`): flags off = F179; an infinite supply = no bound; the mass control (Σ / S_σ ≤
+  1 + 10⁻⁹); production's hash.
+- Two viz boxes.
+
+**Measured (tier 1, C1, 15 seeds)**:
+
+| | F176 | F179 | F179 + A1 | F179 + A2 | F180 |
+|---|---|---|---|---|---|
+| coverage, median | 0 % | 94.4 % | 91.8 % | 83.8 % | 75.9 % |
+| seeds above 70 % | — | 14 | 14 | 14 | **11** |
+| land | 51.1 % | 61.5 % | 59.2 % | 51.7 % | 49.7 % |
+| circumnavigation lost | 0 | 1 | 1 | 0 | 1 |
+| active 0–6 cells | 2.4 km | 12.0 km | 13.3 km | 5.0 km | 4.9 km |
+| collision s_src / F176 | 1 | 1.054 | 1.055 | 0.924 | 0.927 |
+
+- A2 bounds the Andean seeds on 63–70 % of their steps.
+- A1 barely moves the coverage.
+
+**The mechanism (measured)**:
+- The covered passive coasts lie 1.4–5 cells (median per seed) from a seeded cell.
+- They receive 8–65 km of crust of Andean Davis-Suppe (the active coasts: 10–235 km).
+- Davis-Suppe's wedge attaches cells to their nearest seed isotropically within the plate up to 30 cells
+  (`wedge_distance_intra_plate_typed`), so it runs along the coast from the active seeds.
+
+**Predictions**:
+- The reviewer's: R0, R2 and R3 held; R1 and R4 refuted; R5 and R6 not measured.
+- Mine: R0–R3, the circumnavigation count and the mass control held; the land refuted (44.8–57.7 %).
+
+**Open, for the author** (nothing chosen):
+- (a) The wedge's direction: inland across the trench's strike rather than isotropic. This is a third change to the chain,
+  and needs a source.
+- (b) Whether the coverage rule should read mass.
+- (c) Tiers 2–3 on request. The bound alone keeps the circumnavigation on 15 / 15.
+
+**Diagnostic (the author's complement; diagnostic only, the stop stays valid, nothing adopted)**:
+- **The reviewer's error, recorded (the author's)**: the rule « Andean coverage > 70 % » measures the presence of the Andean
+  wedge as the dominant family, not the danger it aimed at (the rampart). Tier 1's numbers already said so: the passive coasts
+  (0–6 cells) rise 1.4 km under F180 against 1.6 km under F176, the active ones 4.9 km. The direct measure of the rampart,
+  W₁₀ at 256², had not run.
+- **256², young, 15 seeds** (budget ~30 min announced; 743 s + 153 s):
+  - F180 gives an Andean cordillera on **15 / 15** seeds (F176: 9; 38–606 km, 1–6 per seed); collision is never the only
+    formation;
+  - the panel's W₁₀ at young is 0.06–0.28 (no rampart); the active coasts are ≥ 2 × as steep as the passive ones on 4 panel
+    seeds (active W₁₀ 0.40–0.58 on seeds 8, 23, 29);
+  - the mountain share falls to 25–55 % (F176: 30–83 %), since the bound also cuts the collisions.
+- **2 048²**:
+  - seed 18: active coast peak 3 716 m, passive 2 163 m;
+  - seed 7 (the longest new cordillera, 606 km): active coast ~4.7 km, passive 197 m.
+- **C1**:
+  - the majority-active coast segments are a median of 2 cells long (5–19 per seed), with gaps of 1–14 coast cells;
+  - option 5's polarity changes 0.55 times per 10 overriding trench cells (median; most pairs keep one polarity);
+  - 35 % of its age decisions (median) rest on |Δage| < 0.01;
+  - the net Andean uplift along the coasts (after the bound and C1's erosion) has a median of −0.8 km on active and passive
+    coasts alike, with a positive tail of +2.0 to +8.4 km (p90) on the active coasts of 9 seeds.
+- **Dahlen 1990** poses the wedge in a 2-D section perpendicular to the strike: p. 60 (« x aligned along the top of the wedge
+  and z pointing down »), p. 61 (the force balance « per unit length along strike », eq. 5), p. 59 (the influx per unit length
+  along strike). Nothing built.
+- **The reviewer's predictions**: D1, D2 and D3 held; D4 refuted on the polarity half (0.55 < 1 change per 10 cells; the
+  segments ≤ 3 cells held).
+
+**At commit (2026-10-18), decided**: the author's words: « Feu vert pour commiter le F180 avec son diagnostic, drapeaux coupés. »
+- **F180 is committed with its flags off**: `Margin::andean_active = None` and `Margin::ds_mass_bound = None` by default, so
+  production and F176–F179 are unchanged bit for bit (`the_f180_controls`; production's C1 hash).
+  `Margin::seaward_oo_collision_f180()` and the two viz boxes are only used on request.
+- Committed: the bench (`f180_cascade.rs`, with the diagnostic); the active-coast seed (`andean_seeds_active`,
+  `overriding_trench_partners`, `andean_feeds_nearest`); the mass bound (`ds_mass_bound.rs`, `C1StepStats::ds_bound`); the
+  controls and the viz boxes. `config.rs` and `workspace.rs` stay out.
+- **A note of method (the author's; not an error): two defects compensate each other.**
+  - The trenches are fragmented: the active segments are 2 cells long (median), and 35 % of the polarities are decided on
+    |Δage| < 0.01.
+  - Davis-Suppe's wedge spreads in every direction and stitches these pieces back into continuous cordilleras.
+  - Correcting the wedge alone (Dahlen's 2-D section, p. 60–61) would give comb-like cordilleras. Both must be corrected
+    together, starting with the trenches' coherence.
+  - **Queued after the adoption and the deposition.**

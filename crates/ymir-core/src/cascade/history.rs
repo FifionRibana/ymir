@@ -263,7 +263,7 @@ pub fn run_c1_sources_mapped_flags(
     merge_at_collision: bool,
     arcs_emerge: bool,
 ) -> C1Sources {
-    run_c1_sources_mapped_ext(state, kin, cfg, closures, every, iso, ss, exclude, mapping, C1Ext { oo, merge_at_collision, andean_gap: None, andean_arc: None }, arcs_emerge)
+    run_c1_sources_mapped_ext(state, kin, cfg, closures, every, iso, ss, exclude, mapping, C1Ext { oo, merge_at_collision, ..C1Ext::default() }, arcs_emerge)
 }
 
 /// ADR Finding 178 -- [`run_c1_sources_mapped_flags`] with every C1 flag of [`C1Ext`] (option 5, the merge at collision, the

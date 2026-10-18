@@ -1,0 +1,99 @@
+    Finished `release` profile [optimized] target(s) in 0.15s
+     Running tests\f180_cascade.rs (target_f180\release\deps\f180_cascade-7ce48050ab5f041a.exe)
+running 1 test
+   seed 8 F176 young: physics CPU 28 s
+      formations: Andean cordilleras 2 (lengths km [18.75, 12.5]; total 31 km world, 234 km terrestrial; 603 km²) · Andean not touching an active coast 1504 km² · collisional highland 47390 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 3037 km² · collision the only formation: false
+      W10 0.248 (W_in 0.109, rampart false) · active / passive 0.201 / 0.253 (492 / 4634 cells) · macro plain 12.3 · plateau 5.9 · hill 18.5 · mountain 63.4 % · land 82888 km² · median 693 m
+   seed 18 F176 young: physics CPU 27 s
+      formations: Andean cordilleras 5 (lengths km [81.25, 43.75, 6.25, 56.25, 18.75]; total 206 km world, 1547 km terrestrial; 7913 km²) · Andean not touching an active coast 0 km² · collisional highland 40522 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 161 km² · collision the only formation: false
+      W10 0.349 (W_in 0.050, rampart true) · active / passive 0.382 / 0.322 (3001 / 3606 cells) · macro plain 16.8 · plateau 2.3 · hill 23.3 · mountain 57.5 % · land 84536 km² · median 535 m
+test f180_tier2_physics has been running for over 60 seconds
+   seed 19 F176 young: physics CPU 30 s
+      formations: Andean cordilleras 1 (lengths km [43.75]; total 44 km world, 328 km terrestrial; 488 km²) · Andean not touching an active coast 161 km² · collisional highland 36975 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 1169 km² · collision the only formation: false
+      W10 0.045 (W_in 0.042, rampart false) · active / passive 0.130 / 0.017 (1856 / 5662 cells) · macro plain 31.5 · plateau 1.4 · hill 22.2 · mountain 44.9 % · land 86313 km² · median 241 m
+   seed 23 F176 young: physics CPU 31 s
+      formations: Andean cordilleras 0 (lengths km []; total -0 km world, -0 km terrestrial; 0 km²) · Andean not touching an active coast 708 km² · collisional highland 27017 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 1995 km² · collision the only formation: false
+      W10 0.160 (W_in 0.020, rampart false) · active / passive 0.243 / 0.122 (1966 / 4382 cells) · macro plain 48.4 · plateau 0.4 · hill 20.9 · mountain 30.3 % · land 97937 km² · median 111 m
+   seed 29 F176 young: physics CPU 32 s
+      formations: Andean cordilleras 0 (lengths km []; total -0 km world, -0 km terrestrial; 0 km²) · Andean not touching an active coast 315 km² · collisional highland 53442 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 7 km² · other 1472 km² · collision the only formation: false
+      W10 0.218 (W_in 0.135, rampart false) · active / passive 0.246 / 0.205 (2051 / 4281 cells) · macro plain 17.6 · plateau 1.9 · hill 19.3 · mountain 61.2 % · land 90212 km² · median 727 m
+   seed 1 F176 young: physics CPU 33 s
+      formations: Andean cordilleras 2 (lengths km [75.0, 12.5]; total 88 km world, 656 km terrestrial; 3501 km²) · Andean not touching an active coast 15 km² · collisional highland 52996 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 195 km² · other 364 km² · collision the only formation: false
+      W10 0.146 (W_in 0.069, rampart false) · active / passive 0.484 / 0.116 (545 / 6221 cells) · macro plain 21.1 · plateau 4.8 · hill 14.7 · mountain 59.5 % · land 95955 km² · median 720 m
+   seed 2 F176 young: physics CPU 28 s
+      formations: Andean cordilleras 3 (lengths km [6.25, 6.25, 6.25]; total 19 km world, 141 km terrestrial; 6860 km²) · Andean not touching an active coast 667 km² · collisional highland 27515 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 2732 km² · collision the only formation: false
+      W10 0.177 (W_in 0.077, rampart false) · active / passive 0.178 / 0.177 (1316 / 4949 cells) · macro plain 27.6 · plateau 0.2 · hill 28.3 · mountain 43.9 % · land 86021 km² · median 280 m
+   seed 3 F176 young: physics CPU 30 s
+      formations: Andean cordilleras 1 (lengths km [62.5]; total 62 km world, 469 km terrestrial; 2363 km²) · Andean not touching an active coast 317 km² · collisional highland 52056 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 737 km² · collision the only formation: false
+      W10 0.319 (W_in 0.095, rampart true) · active / passive 0.256 / 0.343 (2293 / 5881 cells) · macro plain 16.4 · plateau 0.3 · hill 24.1 · mountain 59.2 % · land 93743 km² · median 510 m
+   seed 4 F176 young: physics CPU 29 s
+      formations: Andean cordilleras 3 (lengths km [43.75, 18.75, 68.75]; total 131 km world, 984 km terrestrial; 1111 km²) · Andean not touching an active coast 125 km² · collisional highland 39214 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 12 km² · other 3816 km² · collision the only formation: false
+      W10 0.294 (W_in 0.137, rampart false) · active / passive 0.472 / 0.186 (2868 / 4762 cells) · macro plain 26.4 · plateau 0.6 · hill 22.4 · mountain 50.5 % · land 87676 km² · median 355 m
+   seed 5 F176 young: physics CPU 27 s
+      formations: Andean cordilleras 3 (lengths km [25.0, 6.25, 68.75]; total 100 km world, 750 km terrestrial; 4941 km²) · Andean not touching an active coast 354 km² · collisional highland 64041 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 0 km² · collision the only formation: false
+      W10 0.388 (W_in 0.168, rampart true) · active / passive 0.543 / 0.363 (672 / 4256 cells) · macro plain 4.6 · plateau 2.8 · hill 9.2 · mountain 83.4 % · land 83118 km² · median 1560 m
+   seed 6 F176 young: physics CPU 31 s
+      formations: Andean cordilleras 0 (lengths km []; total -0 km world, -0 km terrestrial; 0 km²) · Andean not touching an active coast 149 km² · collisional highland 45593 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 107 km² · other 2725 km² · collision the only formation: false
+      W10 0.118 (W_in 0.130, rampart false) · active / passive 0.296 / 0.061 (1718 / 5343 cells) · macro plain 26.4 · plateau 0.3 · hill 21.5 · mountain 51.8 % · land 93853 km² · median 369 m
+   seed 7 F176 young: physics CPU 28 s
+      formations: Andean cordilleras 0 (lengths km []; total -0 km world, -0 km terrestrial; 0 km²) · Andean not touching an active coast 0 km² · collisional highland 31487 km² · separated 7549 km² (groups: cells, nearest channel, km [(3092, "rift", 0)]) · arc mountain 0 km² · other 269 km² · collision the only formation: false
+      W10 0.208 (W_in 0.040, rampart false) · active / passive 0.189 / 0.232 (5464 / 4242 cells) · macro plain 32.5 · plateau 1.9 · hill 19.3 · mountain 46.4 % · land 84788 km² · median 322 m
+   seed 9 F176 young: physics CPU 28 s
+      formations: Andean cordilleras 2 (lengths km [31.25, 12.5]; total 44 km world, 328 km terrestrial; 735 km²) · Andean not touching an active coast 471 km² · collisional highland 52852 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 1189 km² · collision the only formation: false
+      W10 0.256 (W_in 0.173, rampart false) · active / passive 0.359 / 0.103 (4804 / 3241 cells) · macro plain 16.1 · plateau 0.2 · hill 17.5 · mountain 66.2 % · land 83413 km² · median 826 m
+   seed 10 F176 young: physics CPU 29 s
+      formations: Andean cordilleras 0 (lengths km []; total -0 km world, -0 km terrestrial; 0 km²) · Andean not touching an active coast 1050 km² · collisional highland 24648 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 491 km² · collision the only formation: false
+      W10 0.030 (W_in 0.040, rampart false) · active / passive 0.001 / 0.042 (2294 / 5091 cells) · macro plain 34.3 · plateau 0.5 · hill 34.4 · mountain 30.7 % · land 85256 km² · median 151 m
+   seed 11 F176 young: physics CPU 28 s
+      formations: Andean cordilleras 0 (lengths km []; total -0 km world, -0 km terrestrial; 0 km²) · Andean not touching an active coast 317 km² · collisional highland 44800 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 1079 km² · collision the only formation: false
+      W10 0.197 (W_in 0.172, rampart false) · active / passive 0.310 / 0.113 (2933 / 3937 cells) · macro plain 22.1 · plateau 0.3 · hill 23.2 · mountain 54.4 % · land 84866 km² · median 451 m
+   F176: seeds with ≥ 1 Andean cordillera 9 / 15 · collision the only formation on 0 · W10 young on the panel (seed, global, active, passive) [(8, 0.248, 0.201, 0.253), (18, 0.349, 0.382, 0.322), (19, 0.045, 0.13, 0.017), (23, 0.16, 0.243, 0.122), (29, 0.218, 0.246, 0.205)] · active ≥ 2 × passive on 1 panel seeds · mountain % [(8, 63.4), (18, 57.5), (19, 44.9), (23, 30.3), (29, 61.2), (1, 59.5), (2, 43.9), (3, 59.2), (4, 50.5), (5, 83.4), (6, 51.8), (7, 46.4), (9, 66.2), (10, 30.7), (11, 54.4)]
+   seed 8 F180 young: physics CPU 25 s
+      formations: Andean cordilleras 4 (lengths km [31.25, 6.25, 18.75, 31.25]; total 88 km world, 656 km terrestrial; 4663 km²) · Andean not touching an active coast 1396 km² · collisional highland 36206 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 20 km² · other 2568 km² · collision the only formation: false
+      W10 0.193 (W_in 0.147, rampart false) · active / passive 0.404 / 0.167 (555 / 4539 cells) · macro plain 18.9 · plateau 4.6 · hill 21.1 · mountain 55.4 % · land 80947 km² · median 523 m
+   seed 18 F180 young: physics CPU 22 s
+      formations: Andean cordilleras 4 (lengths km [125.0, 6.25, 6.25, 18.75]; total 156 km world, 1172 km terrestrial; 9749 km²) · Andean not touching an active coast 142 km² · collisional highland 9907 km² · separated 1121 km² (groups: cells, nearest channel, km [(459, "rift", 6)]) · arc mountain 0 km² · other 68 km² · collision the only formation: false
+      W10 0.184 (W_in 0.053, rampart false) · active / passive 0.220 / 0.159 (2684 / 3779 cells) · macro plain 53.8 · plateau 0.5 · hill 18.8 · mountain 26.8 % · land 78228 km² · median 71 m
+   seed 19 F180 young: physics CPU 24 s
+      formations: Andean cordilleras 1 (lengths km [62.5]; total 62 km world, 469 km terrestrial; 2754 km²) · Andean not touching an active coast 1189 km² · collisional highland 18503 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 1328 km² · collision the only formation: false
+      W10 0.064 (W_in 0.033, rampart false) · active / passive 0.127 / 0.030 (2709 / 5059 cells) · macro plain 47.8 · plateau 0.8 · hill 23.2 · mountain 28.1 % · land 84526 km² · median 62 m
+   seed 23 F180 young: physics CPU 31 s
+      formations: Andean cordilleras 4 (lengths km [118.75, 50.0, 62.5, 37.5]; total 269 km world, 2016 km terrestrial; 14609 km²) · Andean not touching an active coast 144 km² · collisional highland 8440 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 29 km² · other 2202 km² · collision the only formation: false
+      W10 0.283 (W_in 0.051, rampart false) · active / passive 0.488 / 0.160 (2502 / 4147 cells) · macro plain 53.1 · plateau 0.0 · hill 21.4 · mountain 25.5 % · land 99626 km² · median 101 m
+   seed 29 F180 young: physics CPU 28 s
+      formations: Andean cordilleras 2 (lengths km [137.5, 106.25]; total 244 km world, 1828 km terrestrial; 12446 km²) · Andean not touching an active coast 581 km² · collisional highland 18276 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 2610 km² · collision the only formation: false
+      W10 0.267 (W_in 0.103, rampart false) · active / passive 0.580 / 0.123 (2172 / 4726 cells) · macro plain 27.3 · plateau 1.1 · hill 33.9 · mountain 37.7 % · land 89956 km² · median 251 m
+   seed 1 F180 young: physics CPU 30 s
+      formations: Andean cordilleras 2 (lengths km [25.0, 75.0]; total 100 km world, 750 km terrestrial; 6963 km²) · Andean not touching an active coast 334 km² · collisional highland 22451 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 2651 km² · collision the only formation: false
+      W10 0.108 (W_in 0.048, rampart false) · active / passive 0.322 / 0.073 (1138 / 6868 cells) · macro plain 42.0 · plateau 1.1 · hill 21.5 · mountain 35.4 % · land 91541 km² · median 204 m
+   seed 2 F180 young: physics CPU 28 s
+      formations: Andean cordilleras 4 (lengths km [6.25, 6.25, 18.75, 6.25]; total 38 km world, 281 km terrestrial; 3262 km²) · Andean not touching an active coast 1360 km² · collisional highland 22224 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 2397 km² · collision the only formation: false
+      W10 0.103 (W_in 0.055, rampart false) · active / passive 0.121 / 0.097 (2022 / 5626 cells) · macro plain 33.4 · plateau 0.2 · hill 30.9 · mountain 35.5 % · land 82490 km² · median 224 m
+   seed 3 F180 young: physics CPU 30 s
+      formations: Andean cordilleras 4 (lengths km [131.25, 12.5, 18.75, 37.5]; total 200 km world, 1500 km terrestrial; 8765 km²) · Andean not touching an active coast 957 km² · collisional highland 15361 km² · separated 925 km² (groups: cells, nearest channel, km [(325, "rift", 0), (16, "rift", 22), (6, "rift", 19), (32, "band remnant", 31)]) · arc mountain 0 km² · other 1108 km² · collision the only formation: false
+      W10 0.138 (W_in 0.082, rampart false) · active / passive 0.207 / 0.093 (3847 / 5879 cells) · macro plain 38.6 · plateau 1.1 · hill 29.2 · mountain 31.1 % · land 87156 km² · median 117 m
+   seed 4 F180 young: physics CPU 30 s
+      formations: Andean cordilleras 4 (lengths km [6.25, 12.5, 50.0, 6.25]; total 75 km world, 562 km terrestrial; 3218 km²) · Andean not touching an active coast 403 km² · collisional highland 23604 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 2 km² · other 2859 km² · collision the only formation: false
+      W10 0.154 (W_in 0.117, rampart false) · active / passive 0.254 / 0.116 (2301 / 6134 cells) · macro plain 33.4 · plateau 0.3 · hill 29.8 · mountain 36.6 % · land 82263 km² · median 186 m
+   seed 5 F180 young: physics CPU 26 s
+      formations: Andean cordilleras 6 (lengths km [12.5, 43.75, 37.5, 18.75, 12.5, 12.5]; total 138 km world, 1031 km terrestrial; 7317 km²) · Andean not touching an active coast 78 km² · collisional highland 28120 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 312 km² · collision the only formation: false
+      W10 0.194 (W_in 0.081, rampart false) · active / passive 0.331 / 0.151 (1421 / 4548 cells) · macro plain 23.8 · plateau 1.7 · hill 27.5 · mountain 47.0 % · land 76238 km² · median 313 m
+   seed 6 F180 young: physics CPU 31 s
+      formations: Andean cordilleras 4 (lengths km [31.25, 193.75, 12.5, 25.0]; total 262 km world, 1969 km terrestrial; 12195 km²) · Andean not touching an active coast 449 km² · collisional highland 21133 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 7 km² · other 2546 km² · collision the only formation: false
+      W10 0.155 (W_in 0.103, rampart false) · active / passive 0.373 / 0.087 (2646 / 8515 cells) · macro plain 30.3 · plateau 2.4 · hill 28.1 · mountain 39.2 % · land 92595 km² · median 211 m
+   seed 7 F180 young: physics CPU 32 s
+      formations: Andean cordilleras 4 (lengths km [68.75, 462.5, 18.75, 56.25]; total 606 km world, 4547 km terrestrial; 26899 km²) · Andean not touching an active coast 22 km² · collisional highland 5686 km² · separated 6929 km² (groups: cells, nearest channel, km [(1615, "rift", 0), (499, "rift", 6), (11, "band remnant", 81), (16, "band remnant", 114), (670, "rift", 6), (2, "band remnant", 76), (1, "band remnant", 31), (3, "band remnant", 6), (10, "rift", 13), (1, "rift", 25), (4, "band remnant", 8), (6, "band remnant", 40)]) · arc mountain 0 km² · other 3826 km² · collision the only formation: false
+      W10 0.322 (W_in 0.188, rampart false) · active / passive 0.456 / 0.146 (5653 / 4309 cells) · macro plain 26.6 · plateau 0.4 · hill 25.9 · mountain 47.2 % · land 91951 km² · median 339 m
+   seed 9 F180 young: physics CPU 25 s
+      formations: Andean cordilleras 2 (lengths km [175.0, 31.25]; total 206 km world, 1547 km terrestrial; 10330 km²) · Andean not touching an active coast 81 km² · collisional highland 26978 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 837 km² · collision the only formation: false
+      W10 0.244 (W_in 0.161, rampart false) · active / passive 0.285 / 0.183 (5305 / 3582 cells) · macro plain 28.8 · plateau 0.7 · hill 20.1 · mountain 50.3 % · land 75957 km² · median 332 m
+   seed 10 F180 young: physics CPU 28 s
+      formations: Andean cordilleras 5 (lengths km [12.5, 25.0, 75.0, 6.25, 12.5]; total 131 km world, 984 km terrestrial; 5403 km²) · Andean not touching an active coast 928 km² · collisional highland 17432 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 2 km² · other 3303 km² · collision the only formation: false
+      W10 0.097 (W_in 0.058, rampart false) · active / passive 0.161 / 0.067 (2424 / 5145 cells) · macro plain 33.5 · plateau 0.5 · hill 34.4 · mountain 31.6 % · land 85542 km² · median 143 m
+   seed 11 F180 young: physics CPU 28 s
+      formations: Andean cordilleras 5 (lengths km [187.5, 31.25, 225.0, 31.25, 56.25]; total 531 km world, 3984 km terrestrial; 23147 km²) · Andean not touching an active coast 381 km² · collisional highland 23679 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 59 km² · other 2151 km² · collision the only formation: false
+      W10 0.412 (W_in 0.159, rampart true) · active / passive 0.664 / 0.241 (3764 / 5568 cells) · macro plain 19.4 · plateau 0.8 · hill 24.3 · mountain 55.4 % · land 89160 km² · median 471 m
+   F180: seeds with ≥ 1 Andean cordillera 15 / 15 · collision the only formation on 0 · W10 young on the panel (seed, global, active, passive) [(8, 0.193, 0.404, 0.167), (18, 0.184, 0.22, 0.159), (19, 0.064, 0.127, 0.03), (23, 0.283, 0.488, 0.16), (29, 0.267, 0.58, 0.123)] · active ≥ 2 × passive on 4 panel seeds · mountain % [(8, 55.4), (18, 26.8), (19, 28.1), (23, 25.5), (29, 37.7), (1, 35.4), (2, 35.5), (3, 31.1), (4, 36.6), (5, 47.0), (6, 39.2), (7, 47.2), (9, 50.3), (10, 31.6), (11, 55.4)]
+   tier 2: 743 s
+test f180_tier2_physics ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 742.75s
