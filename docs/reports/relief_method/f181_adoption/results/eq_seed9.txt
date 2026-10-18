@@ -1,0 +1,2 @@
+   seed 9 F180: majority-active coast cells 49, of which at sea 23 (46.9 %) in 11 groups · of those: continental at t₀ 100 %, re-typed during the run 0 %, in the band at t₀ 100 %, s at the end median 0.200 (p90 0.200) · cells re-typed continental over the whole map 1
+#EQ 49 23 11 1 0 1

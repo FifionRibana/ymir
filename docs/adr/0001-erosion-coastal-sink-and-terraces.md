@@ -23360,3 +23360,72 @@ Davis-Suppe cell) is 68–100 % (median 94 %), 2.5–13 × the majority A1 share
   - Correcting the wedge alone (Dahlen's 2-D section, p. 60–61) would give comb-like cordilleras. Both must be corrected
     together, starting with the trenches' coherence.
   - **Queued after the adoption and the deposition.**
+
+## Finding 181 — the adoption of the active margins in the continent profile (the seaward margin, option 5, the merge at collision, the active-coast seed at the arc, Davis-Suppe's mass bound): decided, its rule holds at the intermediate and old ages (cordilleras on 15 / 15, collision never alone, the panel's W₁₀ ≤ 0.21, the circumnavigation lost on 1 seed), but the cordilleras lower and narrow with age (width 42 → 25 km world, seed 7's coastal range 4.7 → 1.9 km, the mountain share 37 → 16 %), so the plates go to the author before it is made effective; the right-angle « équerres » are blocks re-typed by the continent-ocean reassignment; production unchanged
+
+**Status: Part B and Part C measured; Part A prepared, not applied (no default changed); nothing committed without the feu
+vert.** Report: `docs/reports/relief_method/f181_adoption/finding_181.md`. Declared: `f181_declared.md`. Predictions:
+`f181_predictions.md`.
+
+**The author's words (condition v, verbatim)**: « Non rien ne semble me gêner pour l'instant. Les graines montrent de la
+variabilité. » They concern F180's diagnostic maps (the young profile); « pour l'instant », the adoption remains subject to the
+intermediate and old ages.
+
+**The decision recorded**:
+- F180's coverage rule fired, and F180 adopted nothing.
+- The adoption is decided here, because that rule measured the presence of the Andean wedge, not the rampart (the reviewer's
+  error, recorded at F180), and because the direct measures pass (W₁₀, the active-passive contrast, the formations).
+- It becomes effective only if Part B holds. **Part B holds on the rules, but the aspect changes, so the plates go to the
+  author first** (the complement).
+
+**Measured (256², the 15 seeds; F180 against F176 at the same ages)**:
+
+| | F176 interm. | F176 old | F180 young | F180 interm. | F180 old |
+|---|---|---|---|---|---|
+| cordilleras | 9 / 15 | 9 / 15 | 15 / 15 | 15 / 15 | 15 / 15 |
+| collision alone | 0 | 1 | 0 | 0 | 0 |
+| W₁₀ panel max | 0.31 | 0.27 | 0.28 | 0.21 | 0.19 |
+| mountain % median | 47 | 40 | ~37 | 23 | 16 |
+| cordillera width, km world (terrestrial) | 9 (68) | 5 (36) | 42 (318) | 39 (291) | 25 (188) |
+| circumnavigation lost | 0 | 0 | — | 1 | 1 |
+
+- Active ≥ 2 × passive (W₁₀) on 4 panel seeds at every age.
+- 2 048² old: seed 7's active coast peaks at 1 903 m (young 4 693 m), the passive at 83 m.
+
+**The « équerres » (diagnostic)**:
+- 190 of 644 majority-active coast cells (29.5 %) lie at sea.
+- The right-angle lines (seeds 18, 2) border blocks re-typed continental by the continent-ocean floor reassignment
+  (`subduction/source_term.rs:266–268`, s < 0.05 → continental type with almost no crust), about 5 % of the active cells.
+- The rest are the seaward band's continental cells at sea.
+- Not the rift strip. Nothing corrected.
+
+**Part A, prepared**:
+- the continent profile's defaults would take `Margin::seaward_oo_collision_f180()`, with the viz boxes checked;
+- the old controls keep their flags off;
+- no `ALGO_*` bump: the continent profile runs only in the cascade, which no cache key covers; production's `run_hd` does not
+  use it.
+
+**Predictions**:
+- The reviewer's: E1, E2 and E4 held (for F180); E3 refuted (15.6 %); E5 refuted (the re-typing, not the rift strip).
+- Mine: E1's « 6–10 at old » and the young width refuted.
+
+**Open, for the author**: the plates at the intermediate and old ages (`images/formations_15_F180_age2.png`, `_age3.png`,
+`images/relief_active_15_F180_age2.png`, `_age3.png`, the old transect and map of seed 7), before the adoption is made
+effective.
+
+**At commit (2026-10-18), decided**: the author's words: « Feu vert pour commiter le F181 (le rapport et le banc). La Partie A n'est pas encore appliquée : elle attend la décision de l'auteur sur l'âge par défaut. »
+- F181 is committed as the report and the bench. **Part A is not applied**: it waits for the author's decision on the default
+  age.
+- **The reviewer's errors, recorded (the author's)**:
+  1. **F179**: « the relief accepted since F166 does not rest on pumping » was concluded from a 4–7 % fall in s, without the
+     conversion by Airy. But 0.07 in s is about 400 m. At the old age, the bound takes the median from 202 to 53 m and the
+     mountain from 40 to 16 %.
+  2. **E3**: the prediction « at least 20 % of mountain at the old age » rested on the same error.
+- **Queued**: the continent-ocean reassignment (`subduction/source_term.rs:266–268`) creates a continental type with almost no
+  crust.
+  - **Production passes through this code**: `C1RunSpec::default()` takes `C1Closures::default()`
+    (`crates/ymir-viz/src/bridge/c1/spec.rs:58`), whose subduction is enabled (`subduction/params.rs:70`, `enabled: true`), so
+    `apply_subduction_step` runs in `run_hd`'s C1.
+  - Nothing corrected.
+- **Next, while the author decides**: the attribution of the fall between F176 and F180, the bound against the seed
+  (« F176 + the bound alone », 256², intermediate and old ages).

@@ -1,0 +1,8 @@
+    Finished `release` profile [optimized] target(s) in 0.16s
+     Running tests\f181_cascade.rs (target_f181\release\deps\f181_cascade-87a77351598a1b69.exe)
+running 1 test
+test f181_tier2_old has been running for over 60 seconds
+   seed 7 F180 old (2 048²) (the longest cordillera at the old age; whole map saved): the transect's range -5025 … 1903 m · passive (cell 1856): max 83 m · active (cell 2211): max 1903 m · the world's maximum 4675 m
+   tier 2: 78 s
+test f181_tier2_old ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 78.15s

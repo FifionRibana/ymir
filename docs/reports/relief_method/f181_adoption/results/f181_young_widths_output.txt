@@ -1,0 +1,67 @@
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+    |                     ^^^^^^^^^
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+   |
+   |              ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+   |
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   |     ^^^^^^^^^^^^^^
+   |
+   |     ^^^^^^^^^^^                                                 ^^^^^  ^^^^^^^  ^^^^^^^^^^^^^^^^                              ^^^^^
+   |                       ^^^^^^  ^^^^^^^^^^^^
+   |
+   |                                                          ^^^^^^^^
+   |
+   |                                              ^^^^^^^^^                 ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   |                                                              ^^^^^^^^^^^
+    --> crates\ymir-core\tests\f181_cascade.rs:1783:5
+     |
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    --> crates\ymir-core\tests\f181_cascade.rs:1841:35
+     |
+     |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^
+    --> crates\ymir-core\tests\f181_cascade.rs:1844:73
+     |
+     |                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    Finished `release` profile [optimized] target(s) in 26.03s
+     Running tests\f181_cascade.rs (target_f181\release\deps\f181_cascade-87a77351598a1b69.exe)
+   seed 8 F180 young: cordillera widths (km world) median 7.0 (53 km terrestrial), range 1.6–76.1
+   seed 18 F180 young: cordillera widths (km world) median 50.0 (375 km terrestrial), range 20.3–218.4
+   seed 19 F180 young: cordillera widths (km world) median 44.1 (330 km terrestrial), range 44.1–44.1
+   seed 23 F180 young: cordillera widths (km world) median 35.8 (269 km terrestrial), range 35.1–98.6
+   seed 29 F180 young: cordillera widths (km world) median 49.5 (371 km terrestrial), range 49.5–52.3
+   seed 1 F180 young: cordillera widths (km world) median 65.9 (494 km terrestrial), range 65.9–80.8
+   seed 2 F180 young: cordillera widths (km world) median 22.3 (167 km terrestrial), range 21.5–359.8
+   seed 3 F180 young: cordillera widths (km world) median 26.2 (196 km terrestrial), range 20.9–52.9
+   seed 4 F180 young: cordillera widths (km world) median 43.8 (328 km terrestrial), range 28.3–128.5
+   seed 5 F180 young: cordillera widths (km world) median 42.4 (318 km terrestrial), range 4.0–134.0
+   seed 6 F180 young: cordillera widths (km world) median 42.0 (315 km terrestrial), range 3.1–89.0
+   seed 7 F180 young: cordillera widths (km world) median 40.4 (303 km terrestrial), range 39.1–157.0
+   seed 9 F180 young: cordillera widths (km world) median 46.3 (347 km terrestrial), range 46.3–71.2
+   seed 10 F180 young: cordillera widths (km world) median 17.0 (127 km terrestrial), range 0.2–75.4
+   seed 11 F180 young: cordillera widths (km world) median 46.0 (345 km terrestrial), range 31.9–95.9
+   young: cordillera width median of the seeds 42.4 km world (318 terrestrial)

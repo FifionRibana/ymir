@@ -1,0 +1,97 @@
+# F181 bench output (assembled from results/)
+
+## f181_equerres
+   seed 8 F180: majority-active coast cells 10, of which at sea 0 (0.0 %) in 0 groups · of those: continental at t₀ 0 %, re-typed during the run 0 %, in the band at t₀ 0 %, s at the end median NaN (p90 NaN) · cells re-typed continental over the whole map 0
+   seed 18 F180: majority-active coast cells 69, of which at sea 40 (58.0 %) in 9 groups · of those: continental at t₀ 60 %, re-typed during the run 40 %, in the band at t₀ 75 %, s at the end median 0.200 (p90 0.200) · cells re-typed continental over the whole map 57
+   seed 19 F180: majority-active coast cells 27, of which at sea 18 (66.7 %) in 6 groups · of those: continental at t₀ 100 %, re-typed during the run 0 %, in the band at t₀ 100 %, s at the end median 0.200 (p90 0.200) · cells re-typed continental over the whole map 0
+   seed 23 F180: majority-active coast cells 40, of which at sea 7 (17.5 %) in 4 groups · of those: continental at t₀ 100 %, re-typed during the run 0 %, in the band at t₀ 100 %, s at the end median 0.200 (p90 0.200) · cells re-typed continental over the whole map 0
+   seed 29 F180: majority-active coast cells 37, of which at sea 5 (13.5 %) in 3 groups · of those: continental at t₀ 100 %, re-typed during the run 0 %, in the band at t₀ 100 %, s at the end median 0.200 (p90 0.200) · cells re-typed continental over the whole map 0
+   seed 1 F180: majority-active coast cells 21, of which at sea 4 (19.0 %) in 4 groups · of those: continental at t₀ 100 %, re-typed during the run 0 %, in the band at t₀ 100 %, s at the end median 0.200 (p90 0.200) · cells re-typed continental over the whole map 0
+   seed 2 F180: majority-active coast cells 42, of which at sea 29 (69.0 %) in 6 groups · of those: continental at t₀ 34 %, re-typed during the run 66 %, in the band at t₀ 62 %, s at the end median 0.001 (p90 0.200) · cells re-typed continental over the whole map 64
+   seed 3 F180: majority-active coast cells 50, of which at sea 10 (20.0 %) in 7 groups · of those: continental at t₀ 100 %, re-typed during the run 0 %, in the band at t₀ 100 %, s at the end median 0.200 (p90 0.200) · cells re-typed continental over the whole map 2
+   seed 4 F180: majority-active coast cells 37, of which at sea 19 (51.4 %) in 6 groups · of those: continental at t₀ 100 %, re-typed during the run 0 %, in the band at t₀ 100 %, s at the end median 0.200 (p90 0.200) · cells re-typed continental over the whole map 0
+   seed 5 F180: majority-active coast cells 30, of which at sea 5 (16.7 %) in 2 groups · of those: continental at t₀ 100 %, re-typed during the run 0 %, in the band at t₀ 100 %, s at the end median 0.200 (p90 0.200) · cells re-typed continental over the whole map 0
+   seed 6 F180: majority-active coast cells 45, of which at sea 9 (20.0 %) in 5 groups · of those: continental at t₀ 100 %, re-typed during the run 0 %, in the band at t₀ 100 %, s at the end median 0.200 (p90 0.200) · cells re-typed continental over the whole map 0
+   seed 7 F180: majority-active coast cells 87, of which at sea 10 (11.5 %) in 4 groups · of those: continental at t₀ 100 %, re-typed during the run 0 %, in the band at t₀ 100 %, s at the end median 0.200 (p90 0.200) · cells re-typed continental over the whole map 0
+   seed 9 F180: majority-active coast cells 49, of which at sea 23 (46.9 %) in 11 groups · of those: continental at t₀ 100 %, re-typed during the run 0 %, in the band at t₀ 100 %, s at the end median 0.200 (p90 0.200) · cells re-typed continental over the whole map 1
+   seed 10 F180: majority-active coast cells 28, of which at sea 7 (25.0 %) in 5 groups · of those: continental at t₀ 100 %, re-typed during the run 0 %, in the band at t₀ 100 %, s at the end median 0.174 (p90 0.200) · cells re-typed continental over the whole map 0
+   seed 11 F180: majority-active coast cells 73, of which at sea 4 (5.5 %) in 3 groups · of those: continental at t₀ 100 %, re-typed during the run 0 %, in the band at t₀ 100 %, s at the end median 0.200 (p90 0.200) · cells re-typed continental over the whole map 0
+   the équerres: 75 groups, 190 cells = 29.5 % of the majority-active coast cells · re-typed during the run 18 %, continental at t₀ 82 %
+
+## f181_tier1_ages
+   F176 intermediate 100 Myr: cordilleras on 9 / 15 · collision the only formation on 0 · W10 panel (seed, global, active, passive) [(8, 0.177, 0.058, 0.19), (18, 0.305, 0.327, 0.287), (19, 0.021, 0.046, 0.014), (23, 0.142, 0.271, 0.085), (29, 0.18, 0.206, 0.169)] · active ≥ 2 × passive on 2 · mountain % median 47.4 (range 7.5–79.6) · land median 85234 km² · median altitude 303 m · coast dimension median 1.136 · cordillera width median of the seeds 9.0 km world (68 terrestrial) · 256² circumnavigation lost 0
+   F176 old 300 Myr: cordilleras on 9 / 15 · collision the only formation on 1 · W10 panel (seed, global, active, passive) [(8, 0.158, 0.065, 0.167), (18, 0.274, 0.292, 0.26), (19, 0.013, 0.023, 0.01), (23, 0.136, 0.248, 0.084), (29, 0.165, 0.201, 0.148)] · active ≥ 2 × passive on 2 · mountain % median 40.0 (range 0.3–75.8) · land median 84541 km² · median altitude 202 m · coast dimension median 1.140 · cordillera width median of the seeds 4.8 km world (36 terrestrial) · 256² circumnavigation lost 0
+   F180 intermediate 100 Myr: cordilleras on 15 / 15 · collision the only formation on 0 · W10 panel (seed, global, active, passive) [(8, 0.15, 0.354, 0.125), (18, 0.144, 0.155, 0.136), (19, 0.033, 0.088, 0.003), (23, 0.21, 0.41, 0.09), (29, 0.193, 0.451, 0.087)] · active ≥ 2 × passive on 4 · mountain % median 23.1 (range 10.8–47.7) · land median 84258 km² · median altitude 115 m · coast dimension median 1.180 · cordillera width median of the seeds 38.8 km world (291 terrestrial) · 256² circumnavigation lost 1
+   F180 old 300 Myr: cordilleras on 15 / 15 · collision the only formation on 0 · W10 panel (seed, global, active, passive) [(8, 0.127, 0.368, 0.1), (18, 0.123, 0.128, 0.12), (19, 0.028, 0.077, 0.001), (23, 0.187, 0.371, 0.078), (29, 0.174, 0.395, 0.075)] · active ≥ 2 × passive on 4 · mountain % median 15.6 (range 5.8–40.5) · land median 82288 km² · median altitude 53 m · coast dimension median 1.181 · cordillera width median of the seeds 25.0 km world (188 terrestrial) · 256² circumnavigation lost 1
+   tier 1: 1453 s
+
+## f181_young_widths
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+    |                     ^^^^^^^^^
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir\crates\ymir-core)
+   |
+   |              ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+   |
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   |     ^^^^^^^^^^^^^^
+   |
+   |     ^^^^^^^^^^^                                                 ^^^^^  ^^^^^^^  ^^^^^^^^^^^^^^^^                              ^^^^^
+   |                       ^^^^^^  ^^^^^^^^^^^^
+   |
+   |                                                          ^^^^^^^^
+   |
+   |                                              ^^^^^^^^^                 ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   |                                                              ^^^^^^^^^^^
+    --> crates\ymir-core\tests\f181_cascade.rs:1783:5
+     |
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    --> crates\ymir-core\tests\f181_cascade.rs:1841:35
+     |
+     |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^
+    --> crates\ymir-core\tests\f181_cascade.rs:1844:73
+     |
+     |                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   seed 8 F180 young: cordillera widths (km world) median 7.0 (53 km terrestrial), range 1.6–76.1
+   seed 18 F180 young: cordillera widths (km world) median 50.0 (375 km terrestrial), range 20.3–218.4
+   seed 19 F180 young: cordillera widths (km world) median 44.1 (330 km terrestrial), range 44.1–44.1
+   seed 23 F180 young: cordillera widths (km world) median 35.8 (269 km terrestrial), range 35.1–98.6
+   seed 29 F180 young: cordillera widths (km world) median 49.5 (371 km terrestrial), range 49.5–52.3
+   seed 1 F180 young: cordillera widths (km world) median 65.9 (494 km terrestrial), range 65.9–80.8
+   seed 2 F180 young: cordillera widths (km world) median 22.3 (167 km terrestrial), range 21.5–359.8
+   seed 3 F180 young: cordillera widths (km world) median 26.2 (196 km terrestrial), range 20.9–52.9
+   seed 4 F180 young: cordillera widths (km world) median 43.8 (328 km terrestrial), range 28.3–128.5
+   seed 5 F180 young: cordillera widths (km world) median 42.4 (318 km terrestrial), range 4.0–134.0
+   seed 6 F180 young: cordillera widths (km world) median 42.0 (315 km terrestrial), range 3.1–89.0
+   seed 7 F180 young: cordillera widths (km world) median 40.4 (303 km terrestrial), range 39.1–157.0
+   seed 9 F180 young: cordillera widths (km world) median 46.3 (347 km terrestrial), range 46.3–71.2
+   seed 10 F180 young: cordillera widths (km world) median 17.0 (127 km terrestrial), range 0.2–75.4
+   seed 11 F180 young: cordillera widths (km world) median 46.0 (345 km terrestrial), range 31.9–95.9
+   young: cordillera width median of the seeds 42.4 km world (318 terrestrial)
+
+## f181_tier2_old
+   seed 7 F180 old (2 048²) (the longest cordillera at the old age; whole map saved): the transect's range -5025 … 1903 m · passive (cell 1856): max 83 m · active (cell 2211): max 1903 m · the world's maximum 4675 m
+   tier 2: 78 s

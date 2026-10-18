@@ -1,0 +1,2 @@
+   seed 1 F180 young: cordillera widths (km world) median 65.9 (494 km terrestrial), range 65.9–80.8
+#YW 65.91796875

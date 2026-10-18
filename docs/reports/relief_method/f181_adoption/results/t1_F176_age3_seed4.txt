@@ -1,0 +1,7 @@
+   seed 4 F176 old 300 Myr: physics CPU 32 s · cordillera widths (km world) median 4.6 (34 km terrestrial), range 1.7–6.4 · the coast's dimension 1.206 · the 256² land circumnavigable true r* Some(3)
+      formations: Andean cordilleras 5 (lengths km [25.0, 18.75, 18.75, 18.75, 62.5]; total 144 km world, 1078 km terrestrial; 737 km²) · Andean not touching an active coast 0 km² · collisional highland 25322 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 12 km² · other 1482 km² · collision the only formation: false
+      W10 0.235 (W_in 0.091, rampart false) · active / passive 0.342 / 0.172 (2909 / 4951 cells) · macro plain 45.1 · plateau 0.3 · hill 23.1 · mountain 31.5 % · land 87439 km² · median 157 m
+#F 5 143.75 737.3047 0 25322.266 0 12.207031 1481.9336 0
+#W 0.23473282 0.34169817 0.17188446 0
+#M 0.4512076 0.0026804411 0.2309926 0.31511936 87438.96484375 156.55724
+#X 4.557291666666667 1.20597 1 3
