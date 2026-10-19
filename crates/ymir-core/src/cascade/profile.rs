@@ -78,6 +78,11 @@ impl C1Profile {
     }
 }
 
+/// ADR Finding 181 -- **the continent profile's default age**: intermediate, A = 100 Myr (the author's decision B; under the
+/// mass bound the old profile gives 16 % of mountain and a 53 m median against Europe's 24.8 % and 195 m, the intermediate 23 %
+/// and 115 m). The age slider stays available.
+pub const CONTINENT_DEFAULT_AGE_YEARS: f64 = 100.0e6;
+
 /// ADR Finding 169-A4 -- the land range (share of the torus) the selection accepts.
 pub const SELECT_LAND: (f32, f32) = (0.50, 0.62);
 /// ADR Finding 169-A4 -- the fractions tried, in preference order (the larger land first).
@@ -177,7 +182,9 @@ pub fn k_range(plates: usize) -> Vec<usize> {
 /// ADR Finding 171-A1 -- **the default selection**: 16 plates, then 20, then 24 if nothing qualifies (r* ≥ 1). Returns the
 /// retained plate count (`None` when even 24 fails) and every selection tried.
 pub fn select_continent_default(seed: u64) -> (Option<usize>, Vec<(usize, Selection)>) {
-    select_continent_default_margin(seed, &Margin::off())
+    // ADR Finding 181: the continent profile's default margin (adopted); the old benches call the `_margin` entry with
+    // `Margin::off()` explicitly
+    select_continent_default_margin(seed, &Margin::continent_default())
 }
 
 /// ADR Finding 174-B1 -- [`select_continent_default`] with every candidate's C1 run starting from the margined state;
@@ -211,7 +218,7 @@ fn end_land(mut st: C1State, m: &Margin) -> (f32, Circumnavigation) {
 /// qualifies within [`SELECT_LAND`] and circumnavigable with r* ≥ `min_r`. The chosen one has the largest r*; ties go to the
 /// start plate's rank in C1's RNG draw order, then BFS before compact, then the larger k. Deterministic from the seed.
 pub fn select_continent_plates(seed: u64, plates: usize, ks: &[usize], min_r: usize) -> Selection {
-    select_continent_plates_margin(seed, plates, ks, min_r, &Margin::off())
+    select_continent_plates_margin(seed, plates, ks, min_r, &Margin::continent_default())
 }
 
 /// ADR Finding 174-B1 -- [`select_continent_plates`] from the margined initial states (the memo keyed by the plate set,

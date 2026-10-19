@@ -9,6 +9,10 @@
 
 mod common;
 
+// F181: the margin off explicitly (the continent profile's default margin changed at F181)
+use ymir_core::cascade::margin::Margin as MarginOff181;
+#[allow(unused_imports)]
+use ymir_core::cascade::profile::{select_continent_default_margin as _f181_sel, select_continent_plates_margin as _f181_plates};
 use common::cascade_bench::*;
 use common::{CANONICAL_ORIGIN, PSEED, pct, sorted};
 use std::path::PathBuf;
@@ -782,7 +786,7 @@ fn f172_rise() {
     let mut a2_imgs: Vec<image::RgbaImage> = Vec::new();
     let pal = [[200u8, 50, 40], [40, 90, 200], [40, 150, 60], [140, 140, 140]];
     for (si, seed) in SEEDS.iter().copied().enumerate() {
-        let (np, tried) = select_continent_default(seed);
+        let (np, tried) = _f181_sel(seed, &MarginOff181::off());
         let Some(np) = np else {
             eprintln!("\n   seed {seed}: no continent qualifies even at 24 plates, skipped");
             continue;
@@ -999,7 +1003,7 @@ fn f172_screen() {
     let (mut cost_sel, mut cost_all, mut none) = (0f64, 0f64, 0usize);
     for seed in seeds.iter().copied() {
         let clk = Clock::start();
-        let (np, tried) = select_continent_default(seed);
+        let (np, tried) = _f181_sel(seed, &MarginOff181::off());
         let cs = clk.stop().1;
         cost_sel += cs;
         cost_all += cs;

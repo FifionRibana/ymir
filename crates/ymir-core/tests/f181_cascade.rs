@@ -5576,7 +5576,22 @@ fn f181_tier1_ages() {
     std::fs::create_dir_all(out181()).unwrap();
     eprintln!("\n==========  F181 tier 1 . 256²: F176 and F180 at the intermediate and old ages  ==========");
     let rough_a = rough_a177();
-    for (name, m) in [("F176", Margin::seaward_oo_collision()), ("F180", Margin::seaward_oo_collision_f180())] {
+    ages_runs(&[("F176", Margin::seaward_oo_collision()), ("F180", Margin::seaward_oo_collision_f180())], rough_a);
+    ages_summary(&["F176", "F180"]);
+    for name in ["F176", "F180"] {
+        for ai in 2..4 {
+            for pre in ["formations", "relief_active"] {
+                let tiles: Vec<image::RgbaImage> = seeds179().iter().filter_map(|s| image::open(out181().join(format!("{pre}_{name}_age{ai}_seed{s}.png"))).ok().map(|i| i.to_rgba8())).collect();
+                montage(&tiles, 5, 260, 260).save(out181().join(format!("{pre}_15_{name}_age{ai}.png"))).unwrap();
+            }
+        }
+    }
+    eprintln!("   tier 1: {:.0} s", t0.elapsed().as_secs_f64());
+}
+
+/// The per-seed, per-age 256² runs of the profiles (resumable).
+fn ages_runs(profiles: &[(&str, Margin)], rough_a: f32) {
+    for &(name, m) in profiles {
         for seed in seeds179() {
             let Some(p) = sel176(seed) else { continue };
             if (2..4).all(|ai| results181().join(format!("t1_{name}_age{ai}_seed{seed}.txt")).exists()) {
@@ -5612,7 +5627,11 @@ fn f181_tier1_ages() {
             }
         }
     }
-    for (name, _) in [("F176", 0), ("F180", 0)] {
+}
+
+/// The summary lines of the profiles at the two ages.
+fn ages_summary(names: &[&str]) {
+    for &name in names {
         for ai in 2..4 {
             let (mut cord, mut only, mut n, mut lost, mut steep) = (0, 0, 0, 0, 0);
             let (mut w10p, mut mtn, mut wid, mut med, mut lnd, mut dim) = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -5644,15 +5663,6 @@ fn f181_tier1_ages() {
             );
         }
     }
-    for name in ["F176", "F180"] {
-        for ai in 2..4 {
-            for pre in ["formations", "relief_active"] {
-                let tiles: Vec<image::RgbaImage> = seeds179().iter().filter_map(|s| image::open(out181().join(format!("{pre}_{name}_age{ai}_seed{s}.png"))).ok().map(|i| i.to_rgba8())).collect();
-                montage(&tiles, 5, 260, 260).save(out181().join(format!("{pre}_15_{name}_age{ai}.png"))).unwrap();
-            }
-        }
-    }
-    eprintln!("   tier 1: {:.0} s", t0.elapsed().as_secs_f64());
 }
 
 /// F181 Part C -- the « équerres »: the majority-active coast cells at sea (their C1 cell and its 8 neighbours sea), their groups,
@@ -5821,4 +5831,53 @@ fn f181_young_widths() {
         w.push(data_line(&s, "YW").unwrap()[0]);
     }
     eprintln!("   young: cordillera width median of the seeds {:.1} km world ({:.0} terrestrial)", q_of(&mut w.clone(), 0.5), 7.5 * q_of(&mut w, 0.5));
+}
+
+/// F181 attribution -- « F176 + the bound alone » (no Andean seed) at the intermediate and old ages, and the split of the fall
+/// between F176 and F180 into the bound's part (F176 + bound − F176) and the seed's part (F180 − (F176 + bound)).
+#[test]
+#[ignore]
+fn f181_attribution() {
+    let t0 = Instant::now();
+    eprintln!("
+==========  F181 attribution . F176 + the bound alone, intermediate and old  ==========");
+    let rough_a = rough_a177();
+    let m = Margin { ds_mass_bound: Some(1.0), ..Margin::seaward_oo_collision() };
+    ages_runs(&[("F176B", m)], rough_a);
+    ages_summary(&["F176", "F176B", "F180"]);
+    for ai in 2..4 {
+        let rd = |name: &str, seed: u64| std::fs::read_to_string(results181().join(format!("t1_{name}_age{ai}_seed{seed}.txt"))).ok();
+        // per seed: the mountain share, the median altitude, the global W10
+        let (mut tot, mut bnd, mut sd) = ([Vec::new(), Vec::new(), Vec::new()], [Vec::new(), Vec::new(), Vec::new()], [Vec::new(), Vec::new(), Vec::new()]);
+        let mut cords = [0usize; 3];
+        for seed in seeds179() {
+            let (Some(a), Some(b), Some(c)) = (rd("F176", seed), rd("F176B", seed), rd("F180", seed)) else { continue };
+            let q = |s: &str| -> [f64; 3] {
+                let mv = data_line(s, "M").unwrap();
+                let wv = data_line(s, "W").unwrap();
+                [100.0 * mv[3], mv[5], wv[0]]
+            };
+            let (qa, qb, qc) = (q(&a), q(&b), q(&c));
+            for i in 0..3 {
+                tot[i].push(qc[i] - qa[i]);
+                bnd[i].push(qb[i] - qa[i]);
+                sd[i].push(qc[i] - qb[i]);
+            }
+            for (j, s) in [&a, &b, &c].iter().enumerate() {
+                cords[j] += (data_line(s, "F").unwrap()[0] > 0.0) as usize;
+            }
+        }
+        let names = ["mountain %", "median altitude m", "W10 global"];
+        for i in 0..3 {
+            let (t, b, s) = (q_of(&mut tot[i].clone(), 0.5), q_of(&mut bnd[i].clone(), 0.5), q_of(&mut sd[i].clone(), 0.5));
+            let sumt: f64 = tot[i].iter().sum();
+            let sumb: f64 = bnd[i].iter().sum();
+            eprintln!(
+                "   {} {}: F180 − F176 median {t:+.3} · the bound's part (F176 + bound − F176) median {b:+.3} · the seed's part (F180 − F176 + bound) median {s:+.3} · the bound's share of the summed change {:.0} %",
+                AGES[ai].0, names[i], 100.0 * sumb / sumt
+            );
+        }
+        eprintln!("   {} cordilleras: F176 {} · F176 + bound {} · F180 {} (of 15)", AGES[ai].0, cords[0], cords[1], cords[2]);
+    }
+    eprintln!("   attribution: {:.0} s", t0.elapsed().as_secs_f64());
 }

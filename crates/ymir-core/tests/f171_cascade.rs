@@ -8,6 +8,10 @@
 
 mod common;
 
+// F181: the margin off explicitly (the continent profile's default margin changed at F181)
+use ymir_core::cascade::margin::Margin as MarginOff181;
+#[allow(unused_imports)]
+use ymir_core::cascade::profile::{select_continent_default_margin as _f181_sel, select_continent_plates_margin as _f181_plates};
 use common::cascade_bench::*;
 use common::{CANONICAL_ORIGIN, PSEED, pct, sorted};
 use std::path::PathBuf;
@@ -539,7 +543,7 @@ fn f171_rock() {
     let mut chosen: Vec<Option<(C1Profile, usize)>> = Vec::new();
     for seed in SEEDS {
         let clk = Clock::start();
-        let (np, tried) = select_continent_default(seed);
+        let (np, tried) = _f181_sel(seed, &MarginOff181::off());
         for (n, s) in &tried {
             let best = s.candidates.iter().filter(|c| (0.50..=0.62).contains(&c.land) && !c.circ.wraps).filter_map(|c| c.circ.sea_r).max();
             eprintln!(
@@ -898,7 +902,7 @@ fn f171_rock() {
 fn f171_river() {
     let c128 = load_grid(&root().join("data/corsica/corse_128.bin")).unwrap();
     let rough_a = 0.5 * read_cell(&c128, None, CELL).0.octaves[0];
-    let (_, tried) = select_continent_default(PSEED);
+    let (_, tried) = _f181_sel(PSEED, &MarginOff181::off());
     let s = &tried.last().unwrap().1;
     let p = s.candidates[s.chosen.unwrap()].profile();
     let w = world(PSEED, p);

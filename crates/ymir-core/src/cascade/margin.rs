@@ -181,6 +181,12 @@ impl Margin {
     pub fn seaward_oo_collision_arc() -> Self {
         Self { andean_arc: Some((D_ARC_CELLS, ANDEAN_GAP_CELLS)), ..Self::seaward_oo_collision() }
     }
+    /// ADR Finding 181 -- **the continent profile's default** (adopted): the seaward margin (F174 B′), option 5 (F175), the merge
+    /// at collision (F176), the Andean seed behind the active coasts at the arc (F179–F180 A1) and Davis-Suppe's mass bound
+    /// (F180 A2). The old controls keep [`Margin::off`] or their own flags explicitly.
+    pub fn continent_default() -> Self {
+        Self::seaward_oo_collision_f180()
+    }
     /// F180's choice: F179's, with the Andean seed behind the active coasts only and Davis-Suppe's mass bound.
     pub fn seaward_oo_collision_f180() -> Self {
         Self { andean_active: Some((D_ARC_CELLS, ANDEAN_GAP_CELLS)), ds_mass_bound: Some(1.0), ..Self::seaward_oo_collision_arc() }
@@ -774,12 +780,13 @@ mod tests {
         assert_eq!(off.2, 0.0, "no bound, nothing removed");
     }
 
-    /// F174-B5 (permanent): the default selection with the margin off is `select_continent_default` bit for bit.
+    /// F174-B5, F181 (permanent): the default selection is the selection with the continent profile's default margin
+    /// ([`Margin::continent_default`], adopted at F181) bit for bit.
     #[test]
     #[ignore]
-    fn the_selection_with_the_margin_off_is_the_default() {
+    fn the_default_selection_is_the_continent_default_margin() {
         let (a, sa) = select_continent_default(8);
-        let (b, sb) = select_continent_default_margin(8, &Margin::off());
+        let (b, sb) = select_continent_default_margin(8, &Margin::continent_default());
         assert_eq!(a, b);
         assert_eq!(format!("{:?}", sa.iter().map(|x| (x.0, x.1.chosen, x.1.candidates.len())).collect::<Vec<_>>()), format!("{:?}", sb.iter().map(|x| (x.0, x.1.chosen, x.1.candidates.len())).collect::<Vec<_>>()));
     }

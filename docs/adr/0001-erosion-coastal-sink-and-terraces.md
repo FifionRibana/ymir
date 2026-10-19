@@ -23429,3 +23429,40 @@ effective.
   - Nothing corrected.
 - **Next, while the author decides**: the attribution of the fall between F176 and F180, the bound against the seed
   (« F176 + the bound alone », 256², intermediate and old ages).
+
+**The attribution (after the commit; « F176 + the bound alone », 256², 15 seeds, intermediate and old)**:
+- The bound alone takes the mountain share from 47 / 40 % to 13 / 7 % and the median altitude from 303 / 202 m to 51 / 32 m.
+  It keeps cordilleras on 4 / 15 only, and leaves the collisional highland as the only formation on 4–5 seeds: alone, it would
+  fail (v).
+- Of the change F176 → F180, the bound's part is −28 points of mountain and the seed's +13 (old: −27.6 / +12.7). For the
+  median altitude: −234 / +64 m (intermediate), −154 / +49 m (old).
+- **The fall comes from the bound (~170–180 % of it), and the seed gives back about half.** F176's relief was largely pumped;
+  F180's is the bounded relief plus the Andean cordilleras where the kinematics supplies them.
+
+**The author's decision (verbatim)**: « Je penche pour B aussi. On pourra inspecter plus tard pourquoi C. »
+- **B: the adoption is effective, and the continent profile's default age becomes intermediate (A = 100 Myr).** The age slider
+  stays available.
+- **From « on part sur du vieux » (F168) to intermediate.** Under Davis-Suppe's mass bound, the old profile gives 16 % of
+  mountain and a median altitude of 53 m, against 24.8 % and 195 m for the Europe reference; the intermediate profile gives
+  23 % and 115 m. (« On part sur du vieux » had been a design intent; no code carried it as a default.)
+- **Applied**:
+  - `Margin::continent_default()` = `seaward_oo_collision_f180()`;
+  - `select_continent_default` and `select_continent_plates` take it;
+  - `cascade::profile::CONTINENT_DEFAULT_AGE_YEARS = 100 Myr`;
+  - in the viz, entering a continent profile (L1, L2 or the selection) checks the adopted boxes and sets the age slider to
+    100 Myr, and going back to production clears the boxes;
+  - the old benches (F170–F174) call the `_margin` entries with `Margin::off()` explicitly, so their sense is unchanged;
+  - the ignored F174 control now checks the default selection against `Margin::continent_default()`.
+- **No bench or test assumed a default age** (they pass their ages explicitly); `PhysOpts`'s 5.62 Myr is the P0 level's
+  (F159–F162) and stays.
+- **No `ALGO_*` bump**: the continent profile runs only in the cascade, which no cache key covers. The checks below verify
+  production's hash and the guard.
+- **Queued, in this order**:
+  1. F182, the deposition (its reference profile becomes the new default: F180 at the intermediate age);
+  2. the trenches' coherence (polarity per segment) and the 2-D wedge (Dahlen p. 60–61), together;
+  3. the rift strip that becomes a plate;
+  4. the continent-ocean reassignment that creates a continental type without crust (`subduction/source_term.rs:266–268`;
+     production passes through it, checked at commit);
+  5. C: why are the old continents lower than the Europe reference? A sourced reference on the hypsometry of old continents is
+     needed (the attribution « F176 + the bound alone » above serves it);
+  6. the usual queue.

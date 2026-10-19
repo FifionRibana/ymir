@@ -987,6 +987,13 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
         );
         for (name, p) in [("production", C1Profile::Production), ("continent L1", C1Profile::L1), ("continent L2", C1Profile::L2)] {
             if ui.selectable_label(!cu.select && cu.profile == p, name).clicked() {
+                // F181: entering the continent profile checks its adopted defaults; production clears them
+                let was_continent = cu.select || cu.profile != C1Profile::Production;
+                if p == C1Profile::Production {
+                    continent_defaults(cu, false);
+                } else if !was_continent {
+                    continent_defaults(cu, true);
+                }
                 cu.profile = p;
                 cu.select = false;
             }
@@ -996,6 +1003,10 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
             .on_hover_text("F170-A / F171-A : parmi les groupes de plaques continentales (familles BFS et compacte, chaque plaque de départ, k de 0,35 à 0,75 × le nombre de plaques), celui dont les terres finales font 50–62 % et dont on peut faire le tour par la mer avec r* ≥ 1 (≥ 19 km de mer), avec la plus large mer ; sinon continent L2. À 16 plaques (le défaut), repli à 20 puis 24. Le résultat s'affiche dans la barre de progression. Environ 1 min de calcul")
             .clicked()
         {
+            // F181: entering the continent profile checks its adopted defaults
+            if !cu.select && cu.profile == C1Profile::Production {
+                continent_defaults(cu, true);
+            }
             cu.select = true;
         }
         ui.add_enabled(cu.select, egui::Slider::new(&mut cu.plates, 8..=24).text("Plaques")).on_hover_text(
@@ -1615,6 +1626,20 @@ impl Default for PhysOpts {
     /// P0, F159–F162's level.
     fn default() -> Self {
         Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62, plates: 16, rock: 0, seaward: false, oo: false, merge_collision: false, andean: false, andean_active: false, ds_bound: false, sea_mode: 0 }
+    }
+}
+
+/// ADR Finding 181 -- the continent profile's adopted defaults in the viz (`Margin::continent_default()` and the intermediate age,
+/// `CONTINENT_DEFAULT_AGE_YEARS`); `false` restores production's (every margin box off, the age untouched).
+fn continent_defaults(cu: &mut CascadeUi, on: bool) {
+    cu.seaward = on;
+    cu.oo = on;
+    cu.merge_collision = on;
+    cu.andean_active = on;
+    cu.ds_bound = on;
+    cu.andean = false;
+    if on {
+        cu.age_ma = (ymir_core::cascade::profile::CONTINENT_DEFAULT_AGE_YEARS / 1.0e6) as f32;
     }
 }
 

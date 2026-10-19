@@ -7,6 +7,10 @@
 
 mod common;
 
+// F181: the margin off explicitly (the continent profile's default margin changed at F181)
+use ymir_core::cascade::margin::Margin as MarginOff181;
+#[allow(unused_imports)]
+use ymir_core::cascade::profile::{select_continent_default_margin as _f181_sel, select_continent_plates_margin as _f181_plates};
 use common::cascade_bench::*;
 use common::{CANONICAL_ORIGIN, PSEED, pct, sorted};
 use std::path::PathBuf;
@@ -1417,7 +1421,7 @@ fn f174_measure() {
     let mut p3_cls = true;
     let mut a4_all: Vec<(u64, Vec<([f32; 4], f32, usize)>)> = Vec::new();
     for seed in PANEL {
-        let (np, tried) = select_continent_default(seed);
+        let (np, tried) = _f181_sel(seed, &MarginOff181::off());
         let Some(np) = np else {
             eprintln!("   seed {seed}: no continent, skipped");
             continue;

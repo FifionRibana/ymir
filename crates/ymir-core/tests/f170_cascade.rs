@@ -8,6 +8,10 @@
 
 mod common;
 
+// F181: the margin off explicitly (the continent profile's default margin changed at F181)
+use ymir_core::cascade::margin::Margin as MarginOff181;
+#[allow(unused_imports)]
+use ymir_core::cascade::profile::{select_continent_default_margin as _f181_sel, select_continent_plates_margin as _f181_plates};
 use common::cascade_bench::*;
 use common::{CANONICAL_ORIGIN, PSEED, pct, sorted};
 use std::path::PathBuf;
@@ -432,7 +436,7 @@ fn f170_cascade() {
         let mut sels = Vec::new();
         for seed in SEEDS {
             let clk = Clock::start();
-            let s = select_continent_plates(seed, np, &ks.clone().collect::<Vec<_>>(), 1);
+            let s = _f181_plates(seed, np, &ks.clone().collect::<Vec<_>>(), 1, &MarginOff181::off());
             let c = clk.stop();
             let inr: Vec<_> = s.candidates.iter().filter(|cd| (0.50..=0.62).contains(&cd.land)).collect();
             let best = inr.iter().filter(|cd| !cd.circ.wraps).filter_map(|cd| cd.circ.sea_r).max();

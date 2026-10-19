@@ -9,6 +9,10 @@
 
 mod common;
 
+// F181: the margin off explicitly (the continent profile's default margin changed at F181)
+use ymir_core::cascade::margin::Margin as MarginOff181;
+#[allow(unused_imports)]
+use ymir_core::cascade::profile::{select_continent_default_margin as _f181_sel, select_continent_plates_margin as _f181_plates};
 use common::cascade_bench::*;
 use common::{CANONICAL_ORIGIN, PSEED, pct, sorted};
 use std::path::PathBuf;
@@ -911,7 +915,7 @@ fn f173_measure() {
     let mut crop_rows: Vec<Vec<image::RgbaImage>> = Vec::new();
     let mut attrib: Vec<String> = Vec::new();
     for seed in PANEL {
-        let (np, tried) = select_continent_default(seed);
+        let (np, tried) = _f181_sel(seed, &MarginOff181::off());
         let Some(np) = np else {
             eprintln!("   seed {seed}: no continent, skipped");
             continue;
@@ -1051,7 +1055,7 @@ fn f173_measure() {
     }
     // B4: the curve path with s ≡ 0 against F171 (the old témoin, old age)
     {
-        let (_, tried) = select_continent_default(PSEED);
+        let (_, tried) = _f181_sel(PSEED, &MarginOff181::off());
         let s = &tried.last().unwrap().1;
         let p = s.candidates[s.chosen.unwrap()].profile();
         let w = world(PSEED, p);
@@ -1125,7 +1129,7 @@ fn f173_screen() {
     let mut idx: std::collections::HashMap<(String, String), (f32, f32, bool)> = std::collections::HashMap::new();
     let (mut young_w, mut n) = (0usize, 0usize);
     for seed in seeds.iter().copied() {
-        let (np, tried) = select_continent_default(seed);
+        let (np, tried) = _f181_sel(seed, &MarginOff181::off());
         let Some(_) = np else { continue };
         let s = &tried.last().unwrap().1;
         let p = s.candidates[s.chosen.unwrap()].profile();
