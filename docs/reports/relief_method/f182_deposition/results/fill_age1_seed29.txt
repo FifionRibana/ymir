@@ -1,0 +1,2 @@
+   seed 29 young 20 Myr: without the deposition, eroded 1.447e5 km³ against the ocean 3.391e5 km³ at t₀, 2.799e5 km³ at the end (eroded / (1 − φ) / ocean₀ = 1.15) · with it, the sea under half at step 92 (11.0 Myr), gone at step 148 (14.8 Myr) · land at the end 100 % (without 56 %)
+#V 144681.43521193997 339073.9417925107 279913.36813273054 92 148 100

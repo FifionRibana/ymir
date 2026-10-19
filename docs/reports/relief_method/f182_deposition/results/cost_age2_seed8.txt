@@ -1,0 +1,2 @@
+   intermediate 100 Myr: without 16.3 s wall / 23.2 s CPU · with 48.7 s wall / 201.5 s CPU (marine 22261 sub-steps, 16.8 s wall) · the mass control's worst step 5.83e-14
+#K 16.2709996 23.1875 48.6685265 201.484375 22261 16.788953099999894

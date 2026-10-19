@@ -1,0 +1,25 @@
+# f182_cost
+==========  F182 the cost per world (seed 8, 256², F181's default)  ==========
+   C1: 0.7 s wall / 0.5 s CPU
+   young 20 Myr: without 16.3 s wall / 22.9 s CPU · with 42.0 s wall / 171.9 s CPU (marine 11712 sub-steps, 12.2 s wall) · the mass control's worst step 4.06e-13
+#K 16.2866841 22.90625 41.9744968 171.859375 11712 12.211714100000016
+   intermediate 100 Myr: without 16.3 s wall / 23.2 s CPU · with 48.7 s wall / 201.5 s CPU (marine 22261 sub-steps, 16.8 s wall) · the mass control's worst step 5.83e-14
+#K 16.2709996 23.1875 48.6685265 201.484375 22261 16.788953099999894
+   old 300 Myr: without 16.0 s wall / 22.7 s CPU · with 79.2 s wall / 504.8 s CPU (marine 57448 sub-steps, 46.9 s wall) · the mass control's worst step 9.29e-14
+#K 15.9984819 22.6875 79.2010917 504.8125 57448 46.879025000000006
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 220.90s
+# f182_sea_fill
+   seed 8 young 20 Myr: without the deposition, eroded 1.404e5 km³ against the ocean 4.293e5 km³ at t₀, 3.670e5 km³ at the end (eroded / (1 − φ) / ocean₀ = 0.88) · with it, the sea under half at step 106 (12.1 Myr), gone at step 212 (17.7 Myr) · land at the end 100 % (without 51 %)
+   seed 18 young 20 Myr: without the deposition, eroded 1.059e5 km³ against the ocean 4.012e5 km³ at t₀, 3.583e5 km³ at the end (eroded / (1 − φ) / ocean₀ = 0.71) · with it, the sea under half at step 191 (16.9 Myr), gone at never · land at the end 87 % (without 49 %)
+   seed 19 young 20 Myr: without the deposition, eroded 1.223e5 km³ against the ocean 3.358e5 km³ at t₀, 2.985e5 km³ at the end (eroded / (1 − φ) / ocean₀ = 0.98) · with it, the sea under half at step 67 (8.7 Myr), gone at step 131 (13.8 Myr) · land at the end 100 % (without 53 %)
+   seed 23 young 20 Myr: without the deposition, eroded 1.484e5 km³ against the ocean 2.982e5 km³ at t₀, 2.437e5 km³ at the end (eroded / (1 − φ) / ocean₀ = 1.35) · with it, the sea under half at step 63 (8.3 Myr), gone at step 128 (13.6 Myr) · land at the end 100 % (without 62 %)
+   seed 29 young 20 Myr: without the deposition, eroded 1.447e5 km³ against the ocean 3.391e5 km³ at t₀, 2.799e5 km³ at the end (eroded / (1 − φ) / ocean₀ = 1.15) · with it, the sea under half at step 92 (11.0 Myr), gone at step 148 (14.8 Myr) · land at the end 100 % (without 56 %)
+   seed 8 intermediate 100 Myr: without the deposition, eroded 1.925e5 km³ against the ocean 4.293e5 km³ at t₀, 3.599e5 km³ at the end (eroded / (1 − φ) / ocean₀ = 1.21) · with it, the sea under half at step 23 (28.9 Myr), gone at step 28 (33.9 Myr) · land at the end 100 % (without 51 %)
+   seed 18 intermediate 100 Myr: without the deposition, eroded 1.305e5 km³ against the ocean 4.012e5 km³ at t₀, 3.553e5 km³ at the end (eroded / (1 − φ) / ocean₀ = 0.88) · with it, the sea under half at step 25 (30.9 Myr), gone at step 30 (35.9 Myr) · land at the end 100 % (without 49 %)
+   seed 19 intermediate 100 Myr: without the deposition, eroded 1.586e5 km³ against the ocean 3.358e5 km³ at t₀, 2.949e5 km³ at the end (eroded / (1 − φ) / ocean₀ = 1.28) · with it, the sea under half at step 15 (19.9 Myr), gone at step 20 (25.6 Myr) · land at the end 100 % (without 53 %)
+   seed 23 intermediate 100 Myr: without the deposition, eroded 1.841e5 km³ against the ocean 2.982e5 km³ at t₀, 2.392e5 km³ at the end (eroded / (1 − φ) / ocean₀ = 1.67) · with it, the sea under half at step 14 (18.7 Myr), gone at step 19 (24.5 Myr) · land at the end 100 % (without 62 %)
+   seed 29 intermediate 100 Myr: without the deposition, eroded 1.869e5 km³ against the ocean 3.391e5 km³ at t₀, 2.734e5 km³ at the end (eroded / (1 − φ) / ocean₀ = 1.49) · with it, the sea under half at step 17 (22.2 Myr), gone at step 21 (26.7 Myr) · land at the end 100 % (without 56 %)
+   sea fill: 524 s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 524.25s
+
+[exited with code 0]

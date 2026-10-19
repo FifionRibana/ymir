@@ -23466,3 +23466,111 @@ effective.
   5. C: why are the old continents lower than the Europe reference? A sourced reference on the hypsometry of old continents is
      needed (the attribution « F176 + the bound alone » above serves it);
   6. the usual queue.
+
+## Finding 182 — the sediment deposition at the physics level: Part 0 stopped on G; resumed with G = 1.55 (Guerit et al. 2019), the explicit splitting, the lakes by volume and one marine silt class, built behind the flag with its controls (nothing deposited = F181 bit for bit, the mass control ≤ 4 × 10⁻¹³); the declared stop fires before the tiers: on the closed torus the deposits fill the ocean (the sea gone on 9 / 10 panel worlds in 14–36 Myr; the incision alone erodes 0.71–1.67 times the porous ocean volume); production unchanged
+
+**Status: Part 0 declared; nothing built, nothing measured, nothing committed.** Report:
+`docs/reports/relief_method/f182_deposition/finding_182.md`. Declared: `f182_declared.md`.
+
+- **Today**:
+  - the physics level is detachment-limited: the eroded matter disappears (`stream_power.rs:716 ff.`);
+  - the lakes exist only in the routing (priority flood, `stream_power.rs:645`);
+  - the sea cells are fixed base nodes (`:664`), reset after the hillslope step (`cascade.rs:670`).
+- **The sources**:
+  - Yuan et al. 2019 JGR: the fluvial deposition (eq. 8–9, p. 5–6), G = d* v_s / p₀, solved with a Gauss-Seidel iteration
+    (p. 7–8, up to ~12 iterations). **G is only « of order 1 or greater … (Guerit et al. (2018), pers. comm.) » (p. 6).**
+  - Yuan et al. 2019 EPSL: the marine diffusion (eq. 5, p. 3), silt 300–500 m²/yr (the Ogooué inversion), sand 1–1 000 m²/yr
+    (a range), porosities 0.63 / 0.49 (Table 1, p. 6); an iterative ADI scheme; it cites Guerit et al. 2019.
+- **The scale**: F162-0's convention applies the coefficients unconverted. It is in tension with « Harris ÷ 7.5 » as the shelf
+  reference.
+- **The stability**: an explicit marine diffusion allows 1.2–2.0 kyr per step at 256², while the history's steps last 18.7 kyr
+  – 5.7 Myr. One step is unstable at every age; sub-stepping at the limit would need ~82 000 (intermediate) to ~245 000 (old)
+  sub-steps.
+- **The shelf break, sourced**: Harris et al. 2014, p. 6 (after IHO 2008), « marked increase of slope ».
+- **For the author**: the source of G (Guerit et al. 2019, *Geology*, to verify); the marine time-step strategy; the shelf
+  reference convention; route 1 iterates.
+
+**The resumption (the author's complement to the brief).**
+- **The reviewer's error, recorded (the author's)**: the reviewer took « Harris ÷ 7.5 » as the reference for a shelf built by
+  the deposition, without rereading F162-0's convention. A shelf built by a surface process at the real coefficients is a
+  real-scale feature of the 400 km map, so its reference is Harris unconverted; ÷ 7.5 is the tectonic geometry's reading.
+- **The principle, confirmed by the author**: the tectonic structures read at the signified scale (÷ 7.5); the surface
+  processes (erosion, diffusion, deposition) run at the real scale of the 400 km map, with no conversion. (The author's
+  verbatim answer was not included in the complement; only the principle is recorded here.)
+- **G is sourced**: Guerit et al. 2019 (*Geology* 47(9), 853–856), p. 855, on 68 natural systems: « Excluding these systems,
+  G ranges from ~0 to 3.1 » (three systems with G → ∞ excluded). By the author's rule (a range: the median as the value, the
+  bounds as sensitivity): **G = 1.55**, sensitivity 0 and 3.1.
+- **The route, decided by the author**: the explicit splitting (the implicit incision unchanged, then one upstream-to-downstream
+  pass depositing by Yuan's eq. 13–15 with the current step's quantities; a cell's deposit never exceeds its incoming flux; the
+  lakes fill by volume to their spill). Yuan's Gauss-Seidel method (eq. 19–21) is coded in the bench only, as a reference, never
+  in the cascade.
+- **The marine part, decided by the author**: one class, the silt, K_M = 400 m²/yr (sensitivity 300 and 500), porosity 0.63
+  (Yuan et al. 2019 EPSL, Table 1); the sand is omitted for want of a sourced value (a declared simplification); an explicit
+  scheme in sub-steps, Δt_sub ≤ Δx² / (4 K_M), with no scale conversion; no iteration, no linear system.
+
+**Part A, built** (`crates/ymir-core/src/cascade/deposition.rs`, behind `Drive::dep`; entry `physics_history_dep`).
+Report: `docs/reports/relief_method/f182_deposition/finding_182.md`; declared in `f182_declared.md` Part A.
+- **Fluvial**: the incision unchanged, then one pass upstream → downstream on the incised surface's routing,
+  D_i = min((G / Ñ_i) Q_in, Q_in) (Yuan JGR eq. 13–15; the author's cap), p̃ = 1.
+- **Lakes**: no fluvial deposit inside; at each outlet the sub-basin fills from the bottom up by volume, at most to the spill.
+- **Marine**: the silt, K_M = 400 m²/yr, φ = 0.63; the sand omitted (declared). Explicit sub-steps ≤ Δx² / (4 K_M); fluxes
+  between sea cells only.
+  - **The one declared departure from eq. 5**: the transport moves only the deposited sediment, not C1's bathymetry (an
+    unlimited diffusion would erode the trench and the slope over √(K_M A) ≈ 200 km at 100 Myr).
+- **The hillslope's loss to the sea** becomes a marine source instead of being deleted. **The deposits' load is not flexed**
+  (the rebound reads the incision alone).
+- **The mass control** per step in f64: e + H = land + lakes + stranded + sea solid (measured on the field) + exported.
+- **Yuan's iterative coupling** (eq. 19–21) is coded in `tests/f182_cascade.rs` only, through `Drive::dep_hook`. The cascade's
+  code holds no iteration.
+- **Viz**: the box « Dépôt (niveau de physique) » and the layer « Épaisseur de sédiments ».
+- **Controls** (permanent, `the_deposition_controls` plus two unit tests):
+  - `Deposition::nothing()` is the level without deposition bit for bit;
+  - G = 0 deposits nothing fluvial;
+  - the mass control holds < 10⁻⁹;
+  - the torus exports nothing.
+
+**The cost per world** (seed 8, 256², the marine step then parallel):
+
+| age | without | with | marine sub-steps |
+|---|---|---|---|
+| young | 16 s wall | 42 s | 11 712 |
+| intermediate | 16 s | 49 s | 22 261 |
+| old | 16 s | 79 s | 57 448 |
+
+The worst mass-control step was ≤ 4.1 × 10⁻¹³. The marine step was then made serial (rayon's overhead: CPU ≈ 8 × wall).
+
+**The stop (the brief's: the circumnavigation lost on ≥ 2 seeds)**: the sub-step counts fell short of the ~65 500 the
+intermediate age needs, because the sea vanishes.
+- On the panel (`f182_sea_fill`, young and intermediate), with the deposition the sea falls under half in 8–31 Myr and is
+  gone in 14–36 Myr on 9 / 10 worlds. Seed 18 young keeps 13 %. The land at the end is 87–100 %, against 49–62 % without.
+- **The criterion, independent of the scheme**: without the deposition the incision alone erodes 1.06–1.93 × 10⁵ km³ over the
+  history against an ocean of 2.98–4.29 × 10⁵ km³ at t₀. eroded / (1 − φ) / ocean₀ = 0.71–1.67.
+- On a closed torus that keeps everything (A4), with no load, no compaction and no recycling, the ocean must fill. The shallow
+  margins fill first, and each emerged cell erodes in turn.
+- The mass control held throughout: the stop is the closed budget's physics, not a leak.
+- (v), W₁₀, the lakes, the shelf, the reference and the sensitivity were not measured.
+
+**For the author** (the candidates, none applied):
+1. the deposits' isostatic load (Airy in water; the densities need a source; ~40–60 % of the rise);
+2. the compaction (Yuan EPSL eq. 7, Table 1: the silt's e-folding 1 960 m; the surface φ = 0.63 overstates a km-thick column by
+   up to ~1.7×);
+3. the recycling of the deposits by subduction (C1 renews the floor, the cascade's sea only follows U). This is the only one
+   that removes mass, against A4 « le tore ne perd rien »: a decision;
+4. (out of scope) the cascade's incision runs on C1's sources, which C1's own erosion term already balanced once.
+
+Even 1 + 2 (≈ half) leave a ratio of 0.8 at seed 23 intermediate, and 0.71 already drains seed 18 young's sea to 13 %.
+
+**At commit** -- the author's words (verbatim): « Feu vert pour commiter le F182 tel quel (le dépôt derrière son drapeau, coupé
+par défaut ; contrôles A5 ; rapport avec l'arrêt). Tu peux supprimer target_f182/ si tu n'en as plus besoin, sinon garde-le
+pour le F183. Ajoute à l'ADR une erreur du relecteur : la règle A4 « le tore ne perd rien » ignorait le recyclage des sédiments
+par subduction, et le rapport entre volume érodé et volume de l'océan n'a pas été calculé à l'avance, alors qu'il annonçait
+l'arrêt (0,71 à 1,67 sur le panel). »
+- **The reviewer's error, recorded (the author's)**:
+  - the rule A4 « le tore ne perd rien » ignored the recycling of the sediments by subduction;
+  - the ratio of the eroded volume to the ocean's volume was not computed beforehand, although it announced the stop
+    (0.71–1.67 on the panel).
+- **Committed as is**:
+  - the deposition behind its flag (`Drive::dep`, `None` by default; the viz box unchecked);
+  - the A5 controls;
+  - the report with the stop.
+- Production is unchanged: the C1 hash, the guard 6/6 Match, 665 lib and 33 viz tests.

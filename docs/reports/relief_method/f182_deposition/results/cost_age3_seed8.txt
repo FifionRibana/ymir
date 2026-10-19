@@ -1,0 +1,2 @@
+   old 300 Myr: without 16.0 s wall / 22.7 s CPU · with 79.2 s wall / 504.8 s CPU (marine 57448 sub-steps, 46.9 s wall) · the mass control's worst step 9.29e-14
+#K 15.9984819 22.6875 79.2010917 504.8125 57448 46.879025000000006

@@ -19,6 +19,7 @@
 //! Read-only on its input: [`Cascade::new`] takes the coarse field by value and nothing here touches a tectonic state.
 
 pub mod amplify;
+pub mod deposition;
 pub mod history;
 pub mod hydro;
 pub mod margin;
@@ -225,6 +226,9 @@ pub struct LevelRecord {
     pub secs: [f64; 4],
     /// Land cells the talus moved at the last step (share of land).
     pub talus_last_share: f32,
+    /// ADR Finding 182 -- the deposition's record (`None` without deposition). With it, `sum_erosion` is the incision alone
+    /// and the deposits are this record's.
+    pub sed: Option<deposition::SedRecord>,
 }
 
 impl LevelRecord {
@@ -488,11 +492,16 @@ pub struct Drive<'a> {
     pub rock: Option<&'a Rock>,
     /// ADR Finding 172-B1 -- the base level (norm) of step `i`; `None` = `cfg.sea_level` at every step.
     pub sea: Option<Box<dyn Fn(usize) -> f32 + 'a>>,
+    /// ADR Finding 182 -- the deposition (`None` = none, every level before F182).
+    pub dep: Option<deposition::Deposition>,
+    /// ADR Finding 182 -- the bench's replacement of the fluvial stage (Yuan's iterative reference); `None` = the explicit
+    /// splitting.
+    pub dep_hook: Option<&'a deposition::FluvialHook<'a>>,
 }
 
 impl<'a> Drive<'a> {
     pub fn steady(du: &'a [f32]) -> Self {
-        Self { du: Box::new(move |_| std::borrow::Cow::Borrowed(du)), hold_sea: true, eq_stop: true, rebound: None, dt: None, rock: None, sea: None }
+        Self { du: Box::new(move |_| std::borrow::Cow::Borrowed(du)), hold_sea: true, eq_stop: true, rebound: None, dt: None, rock: None, sea: None, dep: None, dep_hook: None }
     }
 }
 
@@ -559,6 +568,15 @@ fn run_loop(
     let mut e_cum = if drive.rock.is_some() { vec![0f32; cells] } else { Vec::new() };
     let mut secs = [0f64; 4];
     let (mut ratios, mut calm, mut steps, mut equilibrium, mut talus_last) = (Vec::new(), 0usize, 0usize, false, 0f32);
+    // ADR Finding 182: the deposition's state (the sediment thickness, norm, f64) and record
+    assert!(drive.dep.is_none() || !drive.hold_sea, "the deposition runs on a history level only");
+    let mut sed64 = if drive.dep.is_some() { vec![0f64; cells] } else { Vec::new() };
+    let mut srec = drive.dep.map(|_| deposition::SedRecord {
+        fluvial_m: vec![0.0; cells],
+        lake_m: vec![0.0; cells],
+        marine_m: vec![0.0; cells],
+        ..Default::default()
+    });
     while steps < max_steps {
         if cancel() {
             return None;
@@ -616,23 +634,71 @@ fn run_loop(
                 })
                 .collect()
         });
-        z = incise_with_floor_torus(&z, &solver, kf.as_deref(), None, &mut |_, _| {}, tor);
-        // the step that crosses the contact: the remaining cover at K_couv, the excess divided by ρ_K
-        if let Some(r) = drive.rock {
+        // ADR Finding 182: with the deposition, the incision's eroded matter (f64, norm) and the step's pass
+        let mut dep_step: Option<(Vec<f64>, deposition::Pass)> = None;
+        if let Some(dp) = drive.dep {
+            let incise = |f: &GridF32| -> GridF32 {
+                let mut zz = incise_with_floor_torus(f, &solver, kf.as_deref(), None, &mut |_, _| {}, tor);
+                if let Some(r) = drive.rock {
+                    for k in 0..cells {
+                        let rem = r.cover_m[k] - e_cum[k];
+                        let e = (f.data[k] - zz.data[k]) * n2m;
+                        if rem > 0.0 && e > rem {
+                            zz.data[k] += (e - rem) * (1.0 - 1.0 / r.rho_k) / n2m;
+                        }
+                    }
+                }
+                zz
+            };
+            let sea_mask: Vec<bool> = land.iter().map(|&l| !l).collect();
+            let pass = |s: &GridF32, e: &[f64]| deposition::pass(s, e, sea, Some(&sea_mask), dp.g as f64, dp.lakes, tor.is_some());
+            let ctx = deposition::FluvialCtx { before: &z, incise: &incise, pass: &pass, u_dt: mean_du, step: steps };
+            let fo = match drive.dep_hook {
+                Some(hk) => hk(&ctx),
+                None => deposition::splitting(&ctx),
+            };
+            let rec = srec.as_mut().unwrap();
+            rec.iterations.push(fo.iterations);
+            let mut field_res = 0f64;
+            let mut dep_sum = 0f64;
             for k in 0..cells {
-                let rem = r.cover_m[k] - e_cum[k];
-                let e = (before[k] - z.data[k]) * n2m;
-                if rem > 0.0 && e > rem {
-                    z.data[k] += (e - rem) * (1.0 - 1.0 / r.rho_k) / n2m;
+                s_ero[k] -= fo.e[k] as f32;
+                let d = fo.pass.deposit(k);
+                // the deposits as written in z (f32), against the pass's f64
+                field_res += (fo.z.data[k] as f64 - (before[k] as f64 - fo.e[k])) - d;
+                dep_sum += d;
+                // the sediment: the incision removes it first, then the deposit
+                sed64[k] = (sed64[k] - fo.e[k]).max(0.0) + d;
+                rec.fluvial_m[k] += (fo.pass.fluvial[k] + fo.pass.stranded[k]) as f32 * n2m;
+                rec.lake_m[k] += fo.pass.lake[k] as f32 * n2m;
+            }
+            rec.max_field_residual = rec.max_field_residual.max(field_res.abs() / dep_sum.max(1e-30));
+            rec.last_outlets = (fo.pass.outlets, fo.pass.outlets_full);
+            z = fo.z;
+            dep_step = Some((fo.e, fo.pass));
+        } else {
+            z = incise_with_floor_torus(&z, &solver, kf.as_deref(), None, &mut |_, _| {}, tor);
+            // the step that crosses the contact: the remaining cover at K_couv, the excess divided by ρ_K
+            if let Some(r) = drive.rock {
+                for k in 0..cells {
+                    let rem = r.cover_m[k] - e_cum[k];
+                    let e = (before[k] - z.data[k]) * n2m;
+                    if rem > 0.0 && e > rem {
+                        z.data[k] += (e - rem) * (1.0 - 1.0 / r.rho_k) / n2m;
+                    }
                 }
             }
-        }
-        for k in 0..cells {
-            s_ero[k] += z.data[k] - before[k];
+            for k in 0..cells {
+                s_ero[k] += z.data[k] - before[k];
+            }
         }
         // ADR Finding 165-C2: the isostatic rebound of the step's erosion (every cell, never in blocks)
         if let Some(rb) = &drive.rebound {
-            let e: Vec<f32> = (0..cells).map(|k| (before[k] - z.data[k]).max(0.0)).collect();
+            // F182: with the deposition, the incision alone (the deposits' load is not flexed)
+            let e: Vec<f32> = match &dep_step {
+                Some((ei, _)) => ei.iter().map(|&v| v as f32).collect(),
+                None => (0..cells).map(|k| (before[k] - z.data[k]).max(0.0)).collect(),
+            };
             let a = rb.alpha_km as f64;
             let gain = |k: f64| 1.0 / (1.0 + (k * a).powi(4) / 4.0);
             // F169-A1: on a torus the FFT runs in the terrain's frame
@@ -674,6 +740,56 @@ fn run_loop(
                 z.data[k] = if drive.hold_sea { cfg.sea_level } else { before[k] };
             }
             s_dif[k] += z.data[k] - before[k];
+        }
+        // ADR Finding 182 A3–A4: the hillslope's loss to the sea, the marine step, the budget
+        if let (Some(dp), Some((_, ps))) = (drive.dep, &dep_step) {
+            let mut hill = 0f64;
+            for k in 0..cells {
+                if land[k] {
+                    let low = before[k] as f64 - z.data[k] as f64;
+                    hill += low;
+                    sed64[k] = (sed64[k] - low.max(0.0)).max(0.0);
+                }
+            }
+            let hill = hill.max(0.0);
+            let [fl, lk, st, ts] = ps.sums();
+            let rec = srec.as_mut().unwrap();
+            let (solid, exported) = match dp.marine {
+                Some(m) => {
+                    let w = deposition::coast_weights(&z, &land, tor.is_some());
+                    let ws: f64 = w.iter().sum();
+                    let src: Vec<f64> = (0..cells)
+                        .map(|k| if land[k] { 0.0 } else { ps.to_sea[k] + if ws > 0.0 { hill * w[k] / ws } else { 0.0 } })
+                        .collect();
+                    // a sea with no coast takes the loss nowhere: exported
+                    let lost = if ws > 0.0 { 0.0 } else { hill };
+                    let marine: Vec<bool> = land.iter().map(|&l| !l).collect();
+                    let sed0: f64 = (0..cells).filter(|&k| marine[k]).map(|k| sed64[k]).sum();
+                    let thick0: Vec<f64> = sed64.clone();
+                    let t = Instant::now();
+                    let dt_step = solver.dt as f64;
+                    let ns = deposition::marine_step(&mut z, &marine, &src, dt_step, &m, cell_m as f64, &mut sed64, tor.is_some());
+                    rec.marine_substeps += ns;
+                    rec.steps.push((dt_step, ns, src.iter().sum(), marine.iter().filter(|&&b| b).count(), ps.eroded, sed0));
+                    rec.secs_marine += t.elapsed().as_secs_f64();
+                    let sed1: f64 = (0..cells).filter(|&k| marine[k]).map(|k| sed64[k]).sum();
+                    for k in 0..cells {
+                        if marine[k] {
+                            rec.marine_m[k] += ((sed64[k] - thick0[k]) * n2m as f64) as f32;
+                        }
+                    }
+                    ((sed1 - sed0) * (1.0 - m.porosity as f64), lost)
+                }
+                None => (0.0, ts + hill),
+            };
+            let inflow = ps.eroded + hill;
+            let outflow = fl + lk + st + solid + exported;
+            if inflow > 0.0 {
+                rec.max_rel_residual = rec.max_rel_residual.max((inflow - outflow).abs() / inflow);
+            }
+            for (b, v) in rec.budget.iter_mut().zip([ps.eroded, hill, fl, lk, st, solid, exported]) {
+                *b += v;
+            }
         }
         // F171-B1: E_cum += the step's lowering by the erosion alone (incision + hillslope; no uplift, no rebound)
         if !e_cum.is_empty() {
@@ -725,6 +841,11 @@ fn run_loop(
         ratios,
         secs,
         talus_last_share: talus_last,
+        sed: srec.map(|mut r| {
+            // the f64 rounding of the marine fluxes can leave −1e−17: clamped for the record only
+            r.thickness_m = sed64.iter().map(|&v| (v.max(0.0) * n2m as f64) as f32).collect();
+            r
+        }),
     })
 }
 

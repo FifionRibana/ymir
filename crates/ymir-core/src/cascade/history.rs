@@ -580,6 +580,24 @@ pub fn physics_history_sea(
     progress: &mut dyn FnMut(CascadeProgress),
     cancel: &dyn Fn() -> bool,
 ) -> Option<HistoryLevel> {
+    physics_history_dep(snaps, n, cfg, run, rock, curve, None, None, progress, cancel)
+}
+
+/// ADR Finding 182 -- [`physics_history_sea`] with the sediment deposition (`None` = [`physics_history_sea`] exactly);
+/// `dep_hook` replaces the fluvial stage (the bench's reference only). The steady timing takes no deposition.
+#[allow(clippy::too_many_arguments)]
+pub fn physics_history_dep<'h>(
+    snaps: &[GridF32],
+    n: usize,
+    cfg: &CascadeConfig,
+    run: &HistoryRun,
+    rock: Option<&super::Rock>,
+    curve: Option<&SeaCurve>,
+    dep: Option<super::deposition::Deposition>,
+    dep_hook: Option<&'h super::deposition::FluvialHook<'h>>,
+    progress: &mut dyn FnMut(CascadeProgress),
+    cancel: &dyn Fn() -> bool,
+) -> Option<HistoryLevel> {
     let n2m = cfg.norm_to_m();
     let up: Vec<GridF32> = snaps.iter().map(|s| upsample_to(s, n)).collect();
     if run.timing == Timing::Steady {
@@ -670,6 +688,8 @@ pub fn physics_history_sea(
             dt: Some(Box::new(move |s| p2[s.min(total - 1)].2)),
             rock,
             sea: Some(Box::new(move |s| p3[s.min(total - 1)].3)),
+            dep,
+            dep_hook,
         };
         let uplift = GridF32::new(n, n, 0.0);
         let rec = run_loop(z0.clone(), uplift, &cfg_t, n, total, Some(0), &drive, progress, cancel)?;
@@ -706,6 +726,8 @@ pub fn physics_history_sea(
             dt: Some(Box::new(move |i| d[i.min(steps - 1)] as f32)),
             rock,
             sea,
+            dep,
+            dep_hook,
         };
         let uplift = GridF32::new(n, n, 0.0);
         let rec = run_loop(z0.clone(), uplift, &cfg_t, n, run.steps, Some(0), &drive, progress, cancel)?;
@@ -729,6 +751,8 @@ pub fn physics_history_sea(
         dt: None,
         rock,
         sea: sea_fn(&vec![run.t_years / steps as f64; steps]),
+        dep,
+        dep_hook,
     };
     let uplift = GridF32::new(n, n, 0.0);
     let rec = run_loop(z0.clone(), uplift, &cfg_t, n, run.steps, Some(0), &drive, progress, cancel)?;
@@ -1052,6 +1076,38 @@ age_calkaBP	SeaLev_shortPC1	SeaLev_longPC1
         let curved = physics_history_sea(&base, 128, &c, &run0, Some(&rock), Some(&big), &mut |_| {}, &|| false).unwrap();
         assert_eq!(curved.rec.steps, 27 + 3 * 34, "the sub-steps (the steps ending 0, 66.7 and 133.3 kyr before the end)");
         assert_ne!(plain.rec.z.data, curved.rec.z.data);
+    }
+
+    /// ADR Finding 182 A5 (permanent): the deposition's controls -- `Deposition::nothing()` (G = 0, no lake fill, nothing
+    /// deposited at sea) is the level without deposition bit for bit; G = 0 deposits nothing fluvial; the declared deposition
+    /// changes the field and its mass control holds at 10⁻⁹ relative at every step, with no loss on the torus.
+    #[test]
+    fn the_deposition_controls() {
+        use crate::cascade::Rock;
+        use crate::cascade::deposition::{Deposition, Marine};
+        let base = snaps();
+        let c = cfg([0, 0]);
+        let rock = Rock { rho_k: 10.0, cover_m: vec![80.0; 128 * 128], ln_k: None };
+        let run = HistoryRun { t_years: 2.0e6, steps: 30, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: Some(2.0e7), sea_low: None };
+        let go = |d: Option<Deposition>| physics_history_dep(&base, 128, &c, &run, Some(&rock), None, d, None, &mut |_| {}, &|| false).unwrap();
+        let off = go(None);
+        assert!(off.rec.sed.is_none());
+        let zero = go(Some(Deposition::nothing()));
+        assert_eq!(off.rec.z.data, zero.rec.z.data, "nothing deposited = the level without deposition");
+        assert_eq!(off.rec.sum_rebound, zero.rec.sum_rebound);
+        let g0 = go(Some(Deposition { g: 0.0, lakes: true, marine: Some(Marine { k_m2_yr: 0.0, porosity: 0.63 }) }));
+        let r0 = g0.rec.sed.as_ref().unwrap();
+        assert_eq!(r0.budget[2], 0.0, "G = 0: no fluvial deposit");
+        assert!(r0.max_rel_residual < 1e-9, "G = 0: the mass {}", r0.max_rel_residual);
+        let on = go(Some(Deposition::declared()));
+        let r = on.rec.sed.as_ref().unwrap();
+        assert_ne!(off.rec.z.data, on.rec.z.data);
+        assert!(r.max_rel_residual < 1e-9, "the mass control: {}", r.max_rel_residual);
+        let b = r.budget;
+        assert!(b[0] > 0.0 && b[2] > 0.0 && b[5] > 0.0, "{b:?}");
+        assert_eq!(b[6], 0.0, "the torus exports nothing");
+        assert!(r.marine_substeps > 0 && r.iterations.iter().all(|&i| i == 1));
+        assert!(r.thickness_m.iter().all(|&t| t >= 0.0));
     }
 
     /// F169-A1: the torus noise follows the terrain (an origin rolls it exactly) and wraps (no seam).

@@ -30,7 +30,7 @@ use egui::Color32 as C;
 use ymir_core::cascade::amplify::{AmpConfig, AmpLevel, Budget, Chain, KHetero, Variant, Warp, WarpPlace};
 use ymir_core::cascade::history::{
     Airy, C1Term, HistoryRun, Mapping, SeaCurve, SeaLow, T_F165_YEARS, T_F166_YEARS, Timing, isostatic_datum, land_altitude_m,
-    physics_history_sea, run_c1_sources_mapped_ext,
+    physics_history_dep, run_c1_sources_mapped_ext,
 };
 use ymir_core::cascade::hydro::{Hydro, draw, hydrology};
 use ymir_core::cascade::physio::{MOUNTAIN, classify};
@@ -216,6 +216,8 @@ pub struct CascadeUi {
     /// F180-A4: the Andean seed behind the active coasts only, and Davis-Suppe's mass bound.
     andean_active: bool,
     ds_bound: bool,
+    /// F182-A6: the sediment deposition at the physics level (history mode).
+    deposit: bool,
     /// F171-B/C: the rock (0 = K0 one K, 1 = K1 cover on basement, 2 = K2 with the heterogeneous K).
     rock: u8,
     /// F172-B5 / F173-B5: the sea (0 none, 1 the constant lowstand of F172, 2 the Quaternary curve), the lowstand view, and the
@@ -296,6 +298,7 @@ impl Default for CascadeUi {
             andean: false,
             andean_active: false,
             ds_bound: false,
+            deposit: false,
             rock: 0,
             sea_mode: 0,
             low_view: false,
@@ -651,7 +654,9 @@ fn spawn(seed: u64, offset_cells: [i64; 2], ccfg: CascadeConfig) -> Worker {
                                 ln_k_phys = ln_k.clone();
                                 Rock { rho_k: 10.0, cover_m: cover, ln_k }
                             });
-                            physics_history_sea(&snaps, n, &ccfg, &run, rock.as_ref(), curve.as_ref(), &mut prog, &cancel).map(|l| {
+                            // F182-A6: the deposition (Yuan et al. 2019; G = 1.55, the lakes, the marine silt)
+                            let dep = o.deposit.then(ymir_core::cascade::deposition::Deposition::declared);
+                            physics_history_dep(&snaps, n, &ccfg, &run, rock.as_ref(), curve.as_ref(), dep, None, &mut prog, &cancel).map(|l| {
                                 let shown_snaps: Vec<Shown> = l.snapshots.iter().map(|g| shown(to_m(g))).collect();
                                 let _ = etx.send(Evt::Snapshots(shown_snaps));
                                 let cal = PeakCalibration {
@@ -1024,6 +1029,9 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
         ui.checkbox(&mut cu.ds_bound, "Borne de masse de Davis-Suppe (C1)").on_hover_text(
             "F180 : par graine et par pas, la somme des incréments de Davis-Suppe ne dépasse pas l'apport hV d'une cellule de fosse (Dahlen 1990 p. 59, éq. 1 : v_rel·n̂ · dt · s de la cellule entrante, partagé entre les graines qu'elle alimente) ; au-delà, les incréments de la graine sont réduits en proportion. Toutes les familles. Mode histoire",
         );
+        ui.add_enabled(cu.history_mode > 0, egui::Checkbox::new(&mut cu.deposit, "Dépôt (niveau de physique)")).on_hover_text(
+            "F182 : le dépôt des sédiments au niveau de physique (Yuan et al. 2019). Fluvial : après l'incision inchangée, une passe de l'amont vers l'aval dépose (G / Ñ) · Q_entrant (éq. 13–15), jamais plus que le flux entrant ; G = 1,55 (Guerit et al. 2019 p. 855 : ~0 à 3,1 sur les systèmes naturels). Lacs : remplis par volume, du fond, jusqu'au seuil de débordement ; le reste continue. Mer : le silt seul, K_M = 400 m²/an (l'inversion de l'Ogooué, 300–500), porosité 0,63, schéma explicite en sous-pas Δt ≤ Δx² / (4 K_M), sans conversion d'échelle ; la diffusion ne déplace que le sédiment déposé. Ce que le versant perd vers la mer n'est plus effacé. Contrôle de masse à chaque pas. Couche « Épaisseur de sédiments ». Mode histoire",
+        );
         ui.checkbox(&mut cu.andean, "Graine andine à distance arc-fosse (C1)").on_hover_text(
             "F178 : le coin continent-océan de Davis-Suppe démarre aussi sur le front continental de la plaque qui chevauche une fosse océan-océan active, à au plus D_gap = 10 cellules (470 km ÷ 7,5 : la plus grande distance arc-fosse observée, Syracuse & Abers 2006 p. 10) ; la formule du coin est inchangée. Avec la subduction océan-océan, la fusion à la collision et la marge vers le large. Mode histoire",
         );
@@ -1277,7 +1285,30 @@ fn body(ui: &mut egui::Ui, cu: &mut CascadeUi) {
                             cu.view = View::Diff;
                         }
                     }
+                    // F182-A6: the sediment thickness (a level with the deposition only)
+                    if r.sed.is_some() {
+                        let on = cu.sub == 5;
+                        let text = egui::RichText::new("Épaisseur de sédiments").size(11.0).color(if on { INK } else { DIM });
+                        if ui.add(egui::Button::new(text).fill(if on { COPPER } else { C::TRANSPARENT })).clicked() {
+                            cu.sub = 5;
+                            cu.view = View::Diff;
+                        }
+                    }
                 });
+                if let Some(sd) = &r.sed {
+                    let b = sd.budget;
+                    let t = (b[2] + b[3] + b[4] + b[5] + b[6]).max(1e-30);
+                    ui.label(small(format!(
+                        "dépôt : terre {:.1} % · lacs {:.1} % · mer {:.1} % · exporté {:.1} % · contrôle de masse (pire pas) {:.1e} · {} sous-pas marins ({:.1} s)",
+                        100.0 * (b[2] + b[4]) / t,
+                        100.0 * b[3] / t,
+                        100.0 * b[5] / t,
+                        100.0 * b[6] / t,
+                        sd.max_rel_residual,
+                        sd.marine_substeps,
+                        sd.secs_marine
+                    )));
+                }
                 ui.label(small(format!(
                     "calage sur le point culminant {:.0} m : essai U₀ {:.1e} → {:.0} m, U₀ = {:.3e} m/an par km de h_iso · {} pas ({}) · D {:.3} m²/an · \
                      {} cellules intérieures sous 0 m rendues à la terre (D5, profondeur moyenne {:.0} m)",
@@ -1500,6 +1531,8 @@ fn build_image(cu: &mut CascadeUi) -> Option<egui::ColorImage> {
                 1 => r.sum_uplift.iter().map(|v| v * k).collect(),
                 2 => r.sum_erosion.iter().map(|v| v * k).collect(),
                 4 if !r.sum_rebound.is_empty() => r.sum_rebound.iter().map(|v| v * k).collect(),
+                // F182-A6: the sediment thickness (already in m)
+                5 if r.sed.is_some() => r.sed.as_ref().unwrap().thickness_m.clone(),
                 _ => r.sum_diffusion.iter().map(|v| v * k).collect(),
             };
             (to_m(&r.substep_field(SubStep::ALL[cu.sub.min(3)])), Some(d))
@@ -1618,6 +1651,8 @@ struct PhysOpts {
     /// F180: the Andean seed behind the active coasts, the mass bound.
     andean_active: bool,
     ds_bound: bool,
+    /// F182: the deposition at the physics level.
+    deposit: bool,
     /// F172 / F173: the sea (0 none, 1 constant, 2 the curve).
     sea_mode: u8,
 }
@@ -1625,7 +1660,7 @@ struct PhysOpts {
 impl Default for PhysOpts {
     /// P0, F159–F162's level.
     fn default() -> Self {
-        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62, plates: 16, rock: 0, seaward: false, oo: false, merge_collision: false, andean: false, andean_active: false, ds_bound: false, sea_mode: 0 }
+        Self { tau: None, rough_m: 0.0, mfd: Some(2.0), history: 0, airy: false, profile: C1Profile::Production, select: false, torus: false, age_ma: 5.62, plates: 16, rock: 0, seaward: false, oo: false, merge_collision: false, andean: false, andean_active: false, ds_bound: false, deposit: false, sea_mode: 0 }
     }
 }
 
@@ -1662,6 +1697,7 @@ fn phys_opts(cu: &CascadeUi) -> PhysOpts {
         andean: cu.andean,
         andean_active: cu.andean_active,
         ds_bound: cu.ds_bound,
+        deposit: cu.deposit,
         sea_mode: cu.sea_mode,
     }
 }
