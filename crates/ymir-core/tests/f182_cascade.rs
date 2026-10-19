@@ -6298,6 +6298,8 @@ fn summary182(tier: &str, ai: usize, seeds: &[u64]) {
     );
 }
 
+/// ADR Finding 183 (the author's decision) -- **abandoned as a reference**: its convergence is proven only for G / p̃ ≤ 1 (Yuan
+/// et al. 2019 JGR p. 8) and G = 1.55; at F183 it never converged in 50 iterates (300 / 300 steps). The code is kept as a record.
 /// F182 A3 -- Yuan's iterative coupling, the bench's reference (JGR eq. 19–21): each iterate the cascade's incision of the
 /// field plus the previous iterate's deposit (eq. 20's form), the deposit from that iterate's erosion by the cascade's pass,
 /// routed on the iterate's surface without its lake fill; stopped at eq. 21 (max |Δh| < 10⁻³ U Δt), at most 50 iterates;

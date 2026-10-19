@@ -497,11 +497,14 @@ pub struct Drive<'a> {
     /// ADR Finding 182 -- the bench's replacement of the fluvial stage (Yuan's iterative reference); `None` = the explicit
     /// splitting.
     pub dep_hook: Option<&'a deposition::FluvialHook<'a>>,
+    /// ADR Finding 183-A3 -- the recycling: the fraction of each cell's cover subducted at step `i` (C1's consumption); `None` =
+    /// none.
+    pub recycle: Option<Box<dyn Fn(usize) -> Vec<f32> + 'a>>,
 }
 
 impl<'a> Drive<'a> {
     pub fn steady(du: &'a [f32]) -> Self {
-        Self { du: Box::new(move |_| std::borrow::Cow::Borrowed(du)), hold_sea: true, eq_stop: true, rebound: None, dt: None, rock: None, sea: None, dep: None, dep_hook: None }
+        Self { du: Box::new(move |_| std::borrow::Cow::Borrowed(du)), hold_sea: true, eq_stop: true, rebound: None, dt: None, rock: None, sea: None, dep: None, dep_hook: None, recycle: None }
     }
 }
 
@@ -577,6 +580,23 @@ fn run_loop(
         marine_m: vec![0.0; cells],
         ..Default::default()
     });
+    // ADR Finding 183: the cover's solid (norm, f64; `sed64` is its thickness), the cover's load at the last step's end (A1),
+    // the compaction's table (A2) and the porosity of a new deposit
+    let mut solid64 = if drive.dep.is_some() { vec![0f64; cells] } else { Vec::new() };
+    let load_on = drive.dep.is_some_and(|d| d.load.is_some());
+    let mut load_prev = if load_on { vec![0f64; cells] } else { Vec::new() };
+    let ctab = drive.dep.and_then(|d| d.compaction).map(deposition::CompactionTable::new);
+    let p_dep = drive.dep.and_then(|d| d.compaction).map_or(0.0, |c| c.phi0 as f64);
+    let n2m64 = n2m as f64;
+    if let Some(d) = drive.dep {
+        assert!(d.load.is_none() || drive.rebound.is_some(), "the load passes through the rebound's flexure");
+        if let (Some(c), Some(m)) = (d.compaction, d.marine) {
+            assert_eq!(c.phi0, m.porosity, "one surface porosity");
+        }
+    }
+    if let (Some(t), Some(r)) = (&ctab, srec.as_mut()) {
+        r.table_err_m = t.max_err_m;
+    }
     while steps < max_steps {
         if cancel() {
             return None;
@@ -636,6 +656,12 @@ fn run_loop(
         });
         // ADR Finding 182: with the deposition, the incision's eroded matter (f64, norm) and the step's pass
         let mut dep_step: Option<(Vec<f64>, deposition::Pass)> = None;
+        // ADR Finding 183: the step's start stock, the basement's part of the incision, the cover eroded / lowered, the solid
+        // created without A2
+        let s_start: f64 = solid64.iter().sum();
+        let mut eb_vec: Vec<f64> = Vec::new();
+        let (mut c_inc, mut c_hill, mut created) = (0f64, 0f64, 0f64);
+        let mut load_q: Option<Vec<f32>> = None;
         if let Some(dp) = drive.dep {
             let incise = |f: &GridF32| -> GridF32 {
                 let mut zz = incise_with_floor_torus(f, &solver, kf.as_deref(), None, &mut |_, _| {}, tor);
@@ -651,8 +677,23 @@ fn run_loop(
                 zz
             };
             let sea_mask: Vec<bool> = land.iter().map(|&l| !l).collect();
-            let pass = |s: &GridF32, e: &[f64]| deposition::pass(s, e, sea, Some(&sea_mask), dp.g as f64, dp.lakes, tor.is_some());
-            let ctx = deposition::FluvialCtx { before: &z, incise: &incise, pass: &pass, u_dt: mean_du, step: steps };
+            // F183-A2: the eroded matter in solid (the cover first, then the basement); without A2, F182's height
+            let to_solid = |e: &[f64]| -> Vec<f64> {
+                match &ctab {
+                    None => e.to_vec(),
+                    Some(t) => (0..cells)
+                        .map(|k| {
+                            let ec = e[k].min(sed64[k]).max(0.0);
+                            (e[k] - ec) + deposition::cover_removed(Some(t), solid64[k], sed64[k], ec, n2m64)
+                        })
+                        .collect(),
+                }
+            };
+            let pass = |s: &GridF32, e: &[f64]| {
+                let es = to_solid(e);
+                deposition::pass(s, &es, sea, Some(&sea_mask), dp.g as f64, dp.lakes, tor.is_some(), p_dep)
+            };
+            let ctx = deposition::FluvialCtx { before: &z, incise: &incise, pass: &pass, u_dt: mean_du, step: steps, p_dep };
             let fo = match drive.dep_hook {
                 Some(hk) => hk(&ctx),
                 None => deposition::splitting(&ctx),
@@ -661,14 +702,28 @@ fn run_loop(
             rec.iterations.push(fo.iterations);
             let mut field_res = 0f64;
             let mut dep_sum = 0f64;
+            eb_vec = vec![0f64; cells];
             for k in 0..cells {
                 s_ero[k] -= fo.e[k] as f32;
                 let d = fo.pass.deposit(k);
-                // the deposits as written in z (f32), against the pass's f64
-                field_res += (fo.z.data[k] as f64 - (before[k] as f64 - fo.e[k])) - d;
+                // the deposits as written in z (f32), against the pass's f64 (F183: a deposit's thickness is d / (1 − p))
+                field_res += (fo.z.data[k] as f64 - (before[k] as f64 - fo.e[k])) - d / (1.0 - p_dep);
                 dep_sum += d;
+                // F183: the incision takes the cover first, then the basement; the cover's removed solid
+                let h0 = sed64[k];
+                let ec = fo.e[k].min(h0).max(0.0);
+                let c_rm = deposition::cover_removed(ctab.as_ref(), solid64[k], h0, ec, n2m64);
+                c_inc += c_rm;
+                if ctab.is_none() {
+                    created += ec - c_rm;
+                }
+                solid64[k] += d - c_rm;
+                eb_vec[k] = fo.e[k] - ec;
                 // the sediment: the incision removes it first, then the deposit
-                sed64[k] = (sed64[k] - fo.e[k]).max(0.0) + d;
+                sed64[k] = match &ctab {
+                    None => (sed64[k] - fo.e[k]).max(0.0) + d,
+                    Some(_) => h0 - ec + d / (1.0 - p_dep),
+                };
                 rec.fluvial_m[k] += (fo.pass.fluvial[k] + fo.pass.stranded[k]) as f32 * n2m;
                 rec.lake_m[k] += fo.pass.lake[k] as f32 * n2m;
             }
@@ -692,8 +747,9 @@ fn run_loop(
                 s_ero[k] += z.data[k] - before[k];
             }
         }
-        // ADR Finding 165-C2: the isostatic rebound of the step's erosion (every cell, never in blocks)
-        if let Some(rb) = &drive.rebound {
+        // ADR Finding 165-C2: the isostatic rebound of the step's erosion (every cell, never in blocks); F183-A1: with the load,
+        // at the step's end in one balance
+        if let (Some(rb), false) = (&drive.rebound, load_on) {
             // F182: with the deposition, the incision alone (the deposits' load is not flexed)
             let e: Vec<f32> = match &dep_step {
                 Some((ei, _)) => ei.iter().map(|&v| v as f32).collect(),
@@ -748,6 +804,11 @@ fn run_loop(
                 if land[k] {
                     let low = before[k] as f64 - z.data[k] as f64;
                     hill += low;
+                    // F183: the cover the hillslope lowers leaves its solid
+                    let lc = low.max(0.0).min(sed64[k]);
+                    let c_rm = deposition::cover_removed(ctab.as_ref(), solid64[k], sed64[k], lc, n2m64);
+                    c_hill += c_rm;
+                    solid64[k] -= c_rm;
                     sed64[k] = (sed64[k] - low.max(0.0)).max(0.0);
                 }
             }
@@ -764,21 +825,47 @@ fn run_loop(
                     // a sea with no coast takes the loss nowhere: exported
                     let lost = if ws > 0.0 { 0.0 } else { hill };
                     let marine: Vec<bool> = land.iter().map(|&l| !l).collect();
-                    let sed0: f64 = (0..cells).filter(|&k| marine[k]).map(|k| sed64[k]).sum();
-                    let thick0: Vec<f64> = sed64.clone();
                     let t = Instant::now();
                     let dt_step = solver.dt as f64;
-                    let ns = deposition::marine_step(&mut z, &marine, &src, dt_step, &m, cell_m as f64, &mut sed64, tor.is_some());
-                    rec.marine_substeps += ns;
-                    rec.steps.push((dt_step, ns, src.iter().sum(), marine.iter().filter(|&&b| b).count(), ps.eroded, sed0));
-                    rec.secs_marine += t.elapsed().as_secs_f64();
-                    let sed1: f64 = (0..cells).filter(|&k| marine[k]).map(|k| sed64[k]).sum();
-                    for k in 0..cells {
-                        if marine[k] {
-                            rec.marine_m[k] += ((sed64[k] - thick0[k]) * n2m as f64) as f32;
+                    let wm = 1.0 - m.porosity as f64;
+                    let r = if ctab.is_none() {
+                        // F182: the supply is the cover's thickness
+                        let sed0: f64 = (0..cells).filter(|&k| marine[k]).map(|k| sed64[k]).sum();
+                        let thick0: Vec<f64> = sed64.clone();
+                        let ns = deposition::marine_step(&mut z, &marine, &src, dt_step, &m, cell_m as f64, &mut sed64, tor.is_some());
+                        rec.marine_substeps += ns;
+                        rec.steps.push((dt_step, ns, src.iter().sum(), marine.iter().filter(|&&b| b).count(), ps.eroded, sed0));
+                        let sed1: f64 = (0..cells).filter(|&k| marine[k]).map(|k| sed64[k]).sum();
+                        for k in 0..cells {
+                            if marine[k] {
+                                let dt = sed64[k] - thick0[k];
+                                rec.marine_m[k] += (dt * n2m as f64) as f32;
+                                solid64[k] += dt * wm;
+                            }
                         }
-                    }
-                    ((sed1 - sed0) * (1.0 - m.porosity as f64), lost)
+                        ((sed1 - sed0) * wm, lost)
+                    } else {
+                        // F183-A2: the supply is the cover's solid at the surface porosity; the transport moves surface material
+                        let mut sup: Vec<f64> = solid64.iter().map(|&s| s.max(0.0) / wm).collect();
+                        let sup0 = sup.clone();
+                        let sed0: f64 = (0..cells).filter(|&k| marine[k]).map(|k| sup[k]).sum();
+                        let ns = deposition::marine_step(&mut z, &marine, &src, dt_step, &m, cell_m as f64, &mut sup, tor.is_some());
+                        rec.marine_substeps += ns;
+                        rec.steps.push((dt_step, ns, src.iter().sum(), marine.iter().filter(|&&b| b).count(), ps.eroded, sed0));
+                        let mut ds = 0f64;
+                        for k in 0..cells {
+                            if marine[k] {
+                                let dt = sup[k] - sup0[k];
+                                rec.marine_m[k] += (dt * n2m as f64) as f32;
+                                sed64[k] += dt;
+                                solid64[k] += dt * wm;
+                                ds += dt * wm;
+                            }
+                        }
+                        (ds, lost)
+                    };
+                    rec.secs_marine += t.elapsed().as_secs_f64();
+                    r
                 }
                 None => (0.0, ts + hill),
             };
@@ -787,8 +874,58 @@ fn run_loop(
             if inflow > 0.0 {
                 rec.max_rel_residual = rec.max_rel_residual.max((inflow - outflow).abs() / inflow);
             }
-            for (b, v) in rec.budget.iter_mut().zip([ps.eroded, hill, fl, lk, st, solid, exported]) {
+            // ADR Finding 183-A3: the recycling, C1's consumption of the step (all the cover of a consumed area subducts)
+            let mut sub = 0f64;
+            if let (true, Some(rf)) = (dp.recycle, &drive.recycle) {
+                let r = rf(steps);
+                for k in 0..cells {
+                    if r[k] > 0.0 && solid64[k] > 0.0 {
+                        let f = r[k] as f64;
+                        let (ds, dh) = (solid64[k] * f, sed64[k] * f);
+                        solid64[k] -= ds;
+                        sed64[k] -= dh;
+                        z.data[k] = (z.data[k] as f64 - dh) as f32;
+                        sub += ds;
+                    }
+                }
+            }
+            // ADR Finding 183-A2: every cover re-compacts, H = T⁻¹(S)
+            if let Some(t) = &ctab {
+                for k in 0..cells {
+                    if solid64[k] > 0.0 || sed64[k] != 0.0 {
+                        let hn = t.inv(solid64[k].max(0.0) * n2m64) / n2m64;
+                        let dh = hn - sed64[k];
+                        if dh != 0.0 {
+                            z.data[k] = (z.data[k] as f64 + dh) as f32;
+                            rec.compaction_change += dh.abs();
+                        }
+                        sed64[k] = hn;
+                    }
+                }
+            }
+            // ADR Finding 183-A4: the stock control, ΔStock measured on the cover's solid
+            let s_end: f64 = solid64.iter().sum();
+            let stock_out = (s_end - s_start) + c_inc + c_hill + sub + exported;
+            if inflow > 0.0 {
+                rec.max_stock_residual = rec.max_stock_residual.max((inflow - stock_out).abs() / inflow);
+            }
+            for (b, v) in rec.budget.iter_mut().zip([ps.eroded, hill, fl, lk, st, solid, exported, sub, c_inc, c_hill, created]) {
                 *b += v;
+            }
+            // ADR Finding 183-A1: the step's net load, ΔL = Δ(the cover's load) − ρ_c e_b, as a height change −ΔL / ρ_m to flex
+            if let (Some(ld), Some(rb)) = (dp.load, &drive.rebound) {
+                let (rg, rw) = (ld.rho_g as f64, ld.rho_w as f64);
+                let mut q = vec![0f32; cells];
+                for k in 0..cells {
+                    let s = solid64[k].max(0.0);
+                    let h = sed64[k].max(s);
+                    let lc = if z.data[k] <= sea { s * (rg - rw) } else { s * rg + (h - s) * rw };
+                    let dl = lc - load_prev[k];
+                    rec.load_cover_abs += dl.abs();
+                    load_prev[k] = lc;
+                    q[k] = (-(dl - rb.rho_c as f64 * eb_vec[k]) / rb.rho_m as f64) as f32;
+                }
+                load_q = Some(q);
             }
         }
         // F171-B1: E_cum += the step's lowering by the erosion alone (incision + hillslope; no uplift, no rebound)
@@ -797,6 +934,19 @@ fn run_loop(
                 if land[k] {
                     e_cum[k] += ((z_pre[k] - z.data[k] + reb_step[k]) * n2m).max(0.0);
                 }
+            }
+        }
+        // ADR Finding 183-A1: the load's flexure (the rebound's filter), after E_cum so that it is no erosion
+        if let (Some(q), Some(rb)) = (load_q.take(), &drive.rebound) {
+            let a = rb.alpha_km as f64;
+            let gain = |k: f64| 1.0 / (1.0 + (k * a).powi(4) / 4.0);
+            let w = match tor {
+                None => measure::filter_isotropic(&q, n, cfg.cell_km(n), &gain),
+                Some(o) => from_terrain(&measure::filter_isotropic(&to_terrain(&q, n, o), n, cfg.cell_km(n), &gain), n, o),
+            };
+            for k in 0..cells {
+                z.data[k] += w[k];
+                s_reb[k] += w[k];
             }
         }
         secs[3] += t.elapsed().as_secs_f64();
@@ -844,6 +994,7 @@ fn run_loop(
         sed: srec.map(|mut r| {
             // the f64 rounding of the marine fluxes can leave −1e−17: clamped for the record only
             r.thickness_m = sed64.iter().map(|&v| (v.max(0.0) * n2m as f64) as f32).collect();
+            r.solid_m = solid64.iter().map(|&v| (v.max(0.0) * n2m as f64) as f32).collect();
             r
         }),
     })

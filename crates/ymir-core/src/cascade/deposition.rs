@@ -46,6 +46,118 @@ pub struct Deposition {
     pub g: f32,
     pub lakes: bool,
     pub marine: Option<Marine>,
+    /// ADR Finding 183-A1 -- the sediments' load through the rebound's flexure (`None` = F182: the rebound reads the incision).
+    pub load: Option<Load>,
+    /// ADR Finding 183-A2 -- the compaction (`None` = F182: the land deposits without porosity, the marine at φ₀).
+    pub compaction: Option<Compaction>,
+    /// ADR Finding 183-A3 -- the recycling by subduction, read from C1's consumption (`false` = F182).
+    pub recycle: bool,
+}
+
+/// ADR Finding 183-A1 -- the densities of the load (kg/m³).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Load {
+    /// ρ_g, the silt's grains: Sclater & Christie 1980, JGR 85(B7), Table A1a p. 3732, « Shale » (f₀ 0.63, c 0.51 km⁻¹,
+    /// ρ_sg 2.72 g/cm³), the row matching Yuan et al. 2019 EPSL's silt.
+    pub rho_g: f32,
+    /// ρ_w, sea water: Whitehead & Clift 2009, JGR, p. 7 §[24] (1 030 kg/m³).
+    pub rho_w: f32,
+}
+
+impl Load {
+    pub fn declared() -> Self {
+        Self { rho_g: 2720.0, rho_w: 1030.0 }
+    }
+}
+
+/// ADR Finding 183-A2 -- Athy's law (Yuan et al. 2019 EPSL eq. 7, p. 3; Table 1, p. 6): φ(z) = φ₀ e^(−z/z₀).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Compaction {
+    pub phi0: f32,
+    /// z₀ (m); `f32::INFINITY` = no compaction (the A5 control).
+    pub z0_m: f32,
+}
+
+impl Compaction {
+    /// φ₀ = 0.63, z₀ = 1 960 m (Yuan EPSL Table 1, after Sclater & Christie 1980 Table A1a: 1 / 0.51 km⁻¹).
+    pub fn declared() -> Self {
+        Self { phi0: 0.63, z0_m: 1960.0 }
+    }
+    /// T(H) (m): the solid thickness of a column of height H in Athy's equilibrium, H − φ₀ z₀ (1 − e^(−H/z₀)).
+    pub fn solid(&self, h_m: f64) -> f64 {
+        let (p, z0) = (self.phi0 as f64, self.z0_m as f64);
+        if z0.is_infinite() { (1.0 - p) * h_m } else { h_m - p * z0 * (1.0 - (-h_m / z0).exp()) }
+    }
+}
+
+/// ADR Finding 183-A1/A2 -- the solid a lowering `ec` (≤ h) removes from a cover of solid `s` and thickness `h` (norm): with
+/// the compaction, S − T(H − e_c) (the column kept in Athy's equilibrium); without, S e_c / H (proportional).
+pub fn cover_removed(tab: Option<&CompactionTable>, s: f64, h: f64, ec: f64, n2m: f64) -> f64 {
+    if ec <= 0.0 || h <= 0.0 {
+        return 0.0;
+    }
+    match tab {
+        Some(t) => (s - t.c.solid((h - ec) * n2m) / n2m).clamp(0.0, s.max(0.0)),
+        None => s * (ec / h).min(1.0),
+    }
+}
+
+/// ADR Finding 183-A2 -- T⁻¹ as a table computed once: H at uniform solid steps `ds_m`, filled by one monotone sweep of a
+/// fine H grid; read by linear interpolation; beyond the table, the end slope 1 / T'(H_max). No iteration at run time.
+#[derive(Clone, Debug)]
+pub struct CompactionTable {
+    pub c: Compaction,
+    pub ds_m: f64,
+    pub h: Vec<f64>,
+    /// The worst round trip |T(T⁻¹(S)) − S| (m) over the table's mid-points, measured at construction.
+    pub max_err_m: f64,
+}
+
+impl CompactionTable {
+    pub fn new(c: Compaction) -> Self {
+        let (ds, h_max) = (0.5f64, 30_000.0f64);
+        let s_max = c.solid(h_max);
+        let ns = (s_max / ds).floor() as usize + 1;
+        // the fine H grid (0.05 m), swept once
+        let dh = 0.05f64;
+        let mut h = vec![0f64; ns];
+        let (mut hk, mut tk) = (0f64, 0f64);
+        for (j, hj) in h.iter_mut().enumerate().skip(1) {
+            let target = j as f64 * ds;
+            while tk < target {
+                hk += dh;
+                tk = c.solid(hk);
+            }
+            // linear inside the fine cell
+            let (h0, t0) = (hk - dh, c.solid(hk - dh));
+            *hj = h0 + (target - t0) / (tk - t0) * dh;
+        }
+        let mut t = Self { c, ds_m: ds, h, max_err_m: 0.0 };
+        let mut err = 0f64;
+        for j in 0..ns - 1 {
+            let s = (j as f64 + 0.5) * ds;
+            err = err.max((c.solid(t.inv(s)) - s).abs());
+        }
+        t.max_err_m = err;
+        t
+    }
+    /// H = T⁻¹(S) (m).
+    pub fn inv(&self, s_m: f64) -> f64 {
+        if s_m <= 0.0 {
+            return 0.0;
+        }
+        let x = s_m / self.ds_m;
+        let j = x.floor() as usize;
+        if j + 1 < self.h.len() {
+            let f = x - j as f64;
+            self.h[j] + f * (self.h[j + 1] - self.h[j])
+        } else {
+            let hl = *self.h.last().unwrap();
+            let sl = (self.h.len() - 1) as f64 * self.ds_m;
+            let slope = 1.0 - self.c.phi0 as f64 * (-hl / self.c.z0_m as f64).exp();
+            hl + (s_m - sl) / slope
+        }
+    }
 }
 
 impl Deposition {
@@ -54,11 +166,11 @@ impl Deposition {
     pub const G_DECLARED: f32 = 1.55;
     /// The declaration: G = 1.55, the lakes filled, the marine silt.
     pub fn declared() -> Self {
-        Self { g: Self::G_DECLARED, lakes: true, marine: Some(Marine::declared()) }
+        Self { g: Self::G_DECLARED, lakes: true, marine: Some(Marine::declared()), load: None, compaction: None, recycle: false }
     }
     /// Nothing deposited: the F181 level bit for bit (the A5 control).
     pub fn nothing() -> Self {
-        Self { g: 0.0, lakes: false, marine: None }
+        Self { g: 0.0, lakes: false, marine: None, load: None, compaction: None, recycle: false }
     }
 }
 
@@ -95,7 +207,12 @@ impl Pass {
 /// steepest descent on the priority-flood surface (the incision's routing, periodic on a torus), upstream → downstream,
 /// depositing min((G / Ñ_i) · Q_in, Q_in) on every non-lake cell and filling each lake by volume at its outlet. A base node
 /// is a sea cell (`sea_mask`, else `surface ≤ sea`): its flux goes to the sea; a land base node keeps it.
-pub fn pass(surface: &GridF32, e: &[f64], sea: f32, sea_mask: Option<&[bool]>, g: f64, lakes: bool, torus: bool) -> Pass {
+///
+/// ADR Finding 183-A2: `e` and every output are solid volumes; a new deposit's thickness is its solid / (1 − `p_dep`), so a
+/// lake's capacity in solid is its volume × (1 − `p_dep`). `p_dep` = 0 is F182 exactly.
+#[allow(clippy::too_many_arguments)]
+pub fn pass(surface: &GridF32, e: &[f64], sea: f32, sea_mask: Option<&[bool]>, g: f64, lakes: bool, torus: bool, p_dep: f64) -> Pass {
+    let wsol = 1.0 - p_dep;
     let (w, h) = (surface.width, surface.height);
     let n = w * h;
     let flow = compute_flow(surface, &FlowConfig { sea_level: sea, ..Default::default() });
@@ -206,17 +323,19 @@ pub fn pass(surface: &GridF32, e: &[f64], sea: f32, sea_mask: Option<&[bool]>, g
                 // the sub-basin fills from the bottom up to the level L holding f, at most to its spill
                 let cells = &groups[&k];
                 let lvl = |c: usize| flow.filled.data[c] as f64;
-                let cap: f64 = cells.iter().map(|&c| lvl(c) - surface.data[c] as f64).sum();
+                let cap: f64 = cells.iter().map(|&c| lvl(c) - surface.data[c] as f64).sum::<f64>() * wsol;
                 let put = if f >= cap {
                     p.outlets_full += 1;
                     let mut s = 0.0;
                     for &c in cells {
-                        let d = lvl(c) - surface.data[c] as f64;
+                        let d = (lvl(c) - surface.data[c] as f64) * wsol;
                         p.lake[c] = d;
                         s += d;
                     }
                     s
                 } else if f > 0.0 {
+                    // the volume to hold, in thickness
+                    let f = f / wsol;
                     let m = cells.len();
                     let (mut sum, mut level) = (0f64, 0f64);
                     let mut top = m;
@@ -234,7 +353,7 @@ pub fn pass(surface: &GridF32, e: &[f64], sea: f32, sea_mask: Option<&[bool]>, g
                     }
                     let mut s = 0.0;
                     for &c in &cells[..top] {
-                        let d = (level.min(lvl(c)) - surface.data[c] as f64).max(0.0);
+                        let d = (level.min(lvl(c)) - surface.data[c] as f64).max(0.0) * wsol;
                         p.lake[c] = d;
                         s += d;
                     }
@@ -378,6 +497,8 @@ pub struct FluvialCtx<'a> {
     pub pass: &'a dyn Fn(&GridF32, &[f64]) -> Pass,
     pub u_dt: f64,
     pub step: usize,
+    /// ADR Finding 183-A2: the porosity of a new deposit (its thickness = solid / (1 − p)); 0 = F182.
+    pub p_dep: f64,
 }
 
 /// A fluvial stage's result: the field, the gross incision per cell (norm, for the rebound and Σerosion), the deposits.
@@ -398,10 +519,11 @@ pub fn splitting(c: &FluvialCtx) -> FluvialOut {
     let e: Vec<f64> = c.before.data.iter().zip(&hs.data).map(|(&b, &a)| (b as f64 - a as f64).max(0.0)).collect();
     let p = (c.pass)(&hs, &e);
     let mut z = hs;
+    let w = 1.0 - c.p_dep;
     for k in 0..z.data.len() {
         let d = p.deposit(k);
         if d != 0.0 {
-            z.data[k] = (z.data[k] as f64 + d) as f32;
+            z.data[k] = (z.data[k] as f64 + d / w) as f32;
         }
     }
     FluvialOut { z, e, pass: p, iterations: 1 }
@@ -416,9 +538,19 @@ pub struct SedRecord {
     pub fluvial_m: Vec<f32>,
     pub lake_m: Vec<f32>,
     pub marine_m: Vec<f32>,
-    /// The budget over the level (norm × cells): [eroded by the incision, the hillslope's loss to the sea, fluvial,
-    /// lakes, stranded, marine solid, exported].
-    pub budget: [f64; 7],
+    /// The budget over the level (norm × cells, solid): [eroded by the incision, the hillslope's loss to the sea, fluvial,
+    /// lakes, stranded, marine solid, exported; F183: subducted, the cover eroded by the incision, the cover lowered by the
+    /// hillslope, without A2 the solid created by counting a porous cover's height as solid].
+    pub budget: [f64; 11],
+    /// ADR Finding 183-A4 -- the worst per-step relative residual of the stock control (in = ΔStock + the cover eroded + the
+    /// cover lowered + subducted + exported, ΔStock measured on the cover's solid field).
+    pub max_stock_residual: f64,
+    /// ADR Finding 183 -- the cover's solid at the end (m of solid per cell); Σ |ΔL_cover| over the level (A1, kg/m² / g in
+    /// norm units); Σ |ΔH| of the compaction (norm); the compaction table's worst round trip (m).
+    pub solid_m: Vec<f32>,
+    pub load_cover_abs: f64,
+    pub compaction_change: f64,
+    pub table_err_m: f64,
     /// The worst per-step relative residual of the budget, and the worst f32-field residual (the deposits as written in z
     /// against the pass's f64).
     pub max_rel_residual: f64,
@@ -454,7 +586,7 @@ mod tests {
         let e: Vec<f64> = z.data.iter().map(|&v| if v > 0.5 { 1e-4 } else { 0.0 }).collect();
         for g in [0.0, 1.55, 3.1] {
             for lakes in [false, true] {
-                let p = pass(&z, &e, 0.5, None, g, lakes, true);
+                let p = pass(&z, &e, 0.5, None, g, lakes, true, 0.0);
                 let s = p.sums();
                 let tot: f64 = s.iter().sum();
                 assert!((tot - p.eroded).abs() <= 1e-12 * p.eroded, "g {g} lakes {lakes}: {tot} vs {}", p.eroded);
@@ -466,6 +598,31 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// ADR Finding 183-A2: the table inverts T to < 1 mm; z₀ = ∞ is linear; a porous pass conserves its solid.
+    #[test]
+    fn the_compaction_table_and_the_porous_pass() {
+        let t = CompactionTable::new(Compaction::declared());
+        assert!(t.max_err_m < 1e-3, "{}", t.max_err_m);
+        for h in [0.0, 1.0, 100.0, 1960.0, 8000.0, 29_000.0, 40_000.0] {
+            let s = t.c.solid(h);
+            assert!((t.inv(s) - h).abs() < 2e-3, "h {h}: {}", t.inv(s));
+        }
+        let lin = CompactionTable::new(Compaction { phi0: 0.63, z0_m: f32::INFINITY });
+        for s in [0.5, 10.0, 1234.5] {
+            assert!((lin.inv(s) - s / 0.37).abs() < 1e-6 * s);
+        }
+        let n = 32;
+        let mut z = GridF32::new(n, n, 0.6);
+        for x in 0..n {
+            z.data[x] = 0.4;
+        }
+        z.data[10 * n + 10] = 0.55;
+        z.data[10 * n + 11] = 0.56;
+        let e: Vec<f64> = z.data.iter().map(|&v| if v > 0.5 { 1e-4 } else { 0.0 }).collect();
+        let p = pass(&z, &e, 0.5, None, 1.55, true, true, 0.63);
+        assert!((p.sums().iter().sum::<f64>() - p.eroded).abs() <= 1e-12 * p.eroded);
     }
 
     /// A3: the marine step conserves the solid volume and never erodes the bathymetry below its sediment.

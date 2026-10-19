@@ -1,0 +1,1 @@
+   seed 1: the marine Σ standing above 0 m 18.6 % (9342 cells), above 100 m 7.8 % (4148), above 500 m 3.0 % (1878) · land with marine sediment: median altitude 80 m · the sea over the history: 1 Myr 52.4 % · 37 Myr 42.8 % · 60 Myr 39.3 % · 74 Myr 37.7 % · 84 Myr 37.5 % · 90 Myr 37.6 % · 94 Myr 37.8 % · 97 Myr 37.6 % · 98 Myr 37.5 % · 99 Myr 37.4 % · 100 Myr 37.7 %

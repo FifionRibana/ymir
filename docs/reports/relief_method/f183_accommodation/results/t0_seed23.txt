@@ -1,0 +1,3 @@
+   seed 23: 30 intervals · recyclable plates 8 covering 12.0 % of the map (the continent's plates 88.0 %) · their area-weighted consumed share over the history 187.6 % · consumed cells: all plates 1065, recyclable 921
+      per plate: 3: 59 cells, consumed 390 (661.0 %, product 99.9 %) · 4: 24 cells, consumed 0 (0.0 %, product 0.0 %) · 5: 106 cells, consumed 397 (374.5 %, product 98.8 %) · 6: 69 cells, consumed 0 (0.0 %, product 0.0 %) · 8: 137 cells, consumed 39 (28.5 %, product 24.6 %) · 10: 28 cells, consumed 84 (300.0 %, product 90.8 %) · 12: 30 cells, consumed 0 (0.0 %, product 0.0 %) · 15: 38 cells, consumed 11 (28.9 %, product 27.5 %)
+#T 8 0.119873046875 1.875763747454175 1065 921

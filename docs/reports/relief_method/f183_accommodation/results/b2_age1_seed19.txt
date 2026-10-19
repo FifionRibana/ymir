@@ -1,0 +1,25 @@
+   seed 19 young 20 Myr: physics without 17.9 s wall / 23.9 s CPU · with 27.7 s wall / 32.4 s CPU
+      without: lakes (dust 1–2 / 3–15 / 16–63 / large ≥ 64 cells) [5, 3, 3, 0], area km² [12.0, 49.0, 271.0, 0.0] · below-sea inland 546 cells · shelf median km: passive 2.2, active 2.2, all 2.2 (1209 paths), the passive break's depth 943 m · coast dimension 1.152, length ratio 1.185 · circumnavigable true · deciles [7.0, 12.0, 20.0, 34.0, 62.0, 131.0, 296.0, 593.0, 1016.0]
+      formations: Andean cordilleras 1 (lengths km [62.5]; total 62 km world, 469 km terrestrial; 2754 km²) · Andean not touching an active coast 1189 km² · collisional highland 18503 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 1328 km² · collision the only formation: false
+      W10 0.064 (W_in 0.033, rampart false) · active / passive 0.127 / 0.030 (2709 / 5059 cells) · macro plain 47.8 · plateau 0.8 · hill 23.2 · mountain 28.1 % · land 84526 km² · median 62 m
+#F 1 62.5 2753.9063 1188.9648 18503.418 0 0 1328.125 0
+#W 0.06372297 0.12661499 0.030045463 0
+#M 0.4783086 0.00814511 0.23228005 0.28126624 84526.3671875 61.52989
+#L 5 3 3 0 12.20703125 48.828125 270.99609375 0
+#S 2.2093750536441803 2.2093750536441803 2.2093750536441803 942.986572265625 1209
+#C 1.152493 1.1847826 1 34622
+#D 7.108462 12.308132 19.5055 33.617355 61.52989 131.0216 295.8249 593.1922 1015.91327
+      with: lakes (dust 1–2 / 3–15 / 16–63 / large ≥ 64 cells) [19, 6, 7, 4], area km² [59.0, 144.0, 564.0, 1089.0] · below-sea inland 53 cells · shelf median km: passive 8.5, active 103.0, all 6.6 (969 paths), the passive break's depth 1909 m · coast dimension 1.064, length ratio 1.061 · circumnavigable true · deciles [30.0, 63.0, 115.0, 175.0, 247.0, 356.0, 538.0, 824.0, 1260.0]
+      formations: Andean cordilleras 2 (lengths km [56.25, 12.5]; total 69 km world, 516 km terrestrial; 3655 km²) · Andean not touching an active coast 2004 km² · collisional highland 23247 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 5 km² · other 3762 km² · collision the only formation: false
+      W10 0.115 (W_in 0.041, rampart false) · active / passive 0.149 / 0.100 (1950 / 4191 cells) · macro plain 28.3 · plateau 2.3 · hill 30.9 · mountain 38.5 % · land 84802 km² · median 247 m
+#F 2 68.75 3654.7852 2004.3945 23247.07 0 4.8828125 3762.207 0
+#W 0.11545351 0.14923076 0.09973753 0
+#M 0.2828847 0.022628473 0.3091982 0.38528863 84802.24609375 246.87053
+#L 19 6 7 4 58.59375 144.04296875 563.96484375 1088.8671875
+#S 8.45937505364418 102.96562537550926 6.628125160932541 1909.0479736328125 969
+#C 1.0635432 1.0607638 1 34735
+#D 29.882616 63.43127 115.433365 174.58366 246.87053 355.8117 538.434 823.71674 1260.0486
+      the sediment: eroded 4.9764e3 + hillslope to the sea 2.7779e2 (norm × cells) → land 38.8 % · lakes 2.3 % · stranded 0.00 % · sea 58.9 % · exported 0.00 % · the mass control's worst step 1.42e-14 (f32 field 4.34e-6) · thickness on land median 1.0 m, max 4388 m · marine sub-steps 13262 in 3.9 s · iterations max 1
+#B 4976.399296696686 277.7934483587742 2037.9709030652168 120.40978347516065 0 3095.812058515086 0 0.0000000000000142355962878708 0.000004338957049934072 13262 3.9154761000000016
+      deltas (land gained at the coast) 21, 3567 km² · land lost to the sea 4495 km²
+#G 21 3566.89453125 4494.62890625 23.875 32.375

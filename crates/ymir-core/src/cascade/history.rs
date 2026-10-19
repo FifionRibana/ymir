@@ -128,6 +128,93 @@ pub struct C1Sources {
     pub s_final: Vec<f64>,
     /// The craton mask (the isostasy's buoyancy).
     pub craton: Vec<bool>,
+    /// ADR Finding 183-A3 -- C1's consumption of its oceanic plates, per snapshot interval (an observation only).
+    pub consumption: Consumption,
+}
+
+/// ADR Finding 183-A3 -- **C1's consumption of the oceanic plates**, recorded per snapshot interval. A cell is consumed at a step
+/// when it was oceanic on plate P and joins another plate Q that existed before the step while P survives it (C1's
+/// floor-triggered reassignment at a trench; a merge, where P vanishes, and a split, where Q is new, are not consumption).
+#[derive(Clone, Debug, Default)]
+pub struct Consumption {
+    /// Per interval (snapshots j → j + 1), per cell of the run's grid: the fraction of the cell's plate consumed over the
+    /// interval, 1 − Π_steps (1 − c_s / A_s) (c_s the plate's consumed cells at step s, A_s its area before the step), on a
+    /// plate carrying no continental cell at the interval's start; 0 elsewhere (the continent's plate does not subduct).
+    pub frac: Vec<Vec<f32>>,
+    /// Per interval: (plate, its area at the interval's start (cells), its consumed cells over the interval, recyclable).
+    pub plates: Vec<Vec<(u16, usize, usize, bool)>>,
+}
+
+/// The consumption recorder of [`run_c1_sources_mapped_ext`]: the state before the step, the interval's start and products.
+struct ConsumptionRec {
+    prev_id: Vec<u16>,
+    prev_type: Vec<PlateType>,
+    start_id: Vec<u16>,
+    start_type: Vec<PlateType>,
+    keep: std::collections::BTreeMap<u16, f64>,
+    consumed: std::collections::BTreeMap<u16, usize>,
+    out: Consumption,
+}
+
+impl ConsumptionRec {
+    fn new(st: &C1State) -> Self {
+        let id = st.plate_id.data().to_vec();
+        let ty = st.plate_type.data().to_vec();
+        Self { prev_id: id.clone(), prev_type: ty.clone(), start_id: id, start_type: ty, keep: Default::default(), consumed: Default::default(), out: Default::default() }
+    }
+    fn step(&mut self, st: &C1State) {
+        let cur = st.plate_id.data();
+        let n = cur.len();
+        let top = self.prev_id.iter().chain(cur.iter()).copied().max().unwrap_or(0) as usize + 1;
+        let (mut before, mut after, mut area) = (vec![false; top], vec![false; top], vec![0usize; top]);
+        for k in 0..n {
+            before[self.prev_id[k] as usize] = true;
+            after[cur[k] as usize] = true;
+            area[self.prev_id[k] as usize] += 1;
+        }
+        let mut c = vec![0usize; top];
+        for k in 0..n {
+            let (p, q) = (self.prev_id[k], cur[k]);
+            if p != q && self.prev_type[k] == PlateType::Oceanic && before[q as usize] && after[p as usize] {
+                c[p as usize] += 1;
+            }
+        }
+        for p in 0..top {
+            if c[p] > 0 {
+                *self.keep.entry(p as u16).or_insert(1.0) *= 1.0 - c[p] as f64 / area[p] as f64;
+                *self.consumed.entry(p as u16).or_insert(0) += c[p];
+            }
+        }
+        self.prev_id = cur.to_vec();
+        self.prev_type = st.plate_type.data().to_vec();
+    }
+    fn close_interval(&mut self, st: &C1State) {
+        let n = self.start_id.len();
+        let top = self.start_id.iter().copied().max().unwrap_or(0) as usize + 1;
+        let (mut area, mut cont) = (vec![0usize; top], vec![false; top]);
+        for k in 0..n {
+            area[self.start_id[k] as usize] += 1;
+            if self.start_type[k] == PlateType::Continental {
+                cont[self.start_id[k] as usize] = true;
+            }
+        }
+        let frac = (0..n)
+            .map(|k| {
+                let p = self.start_id[k];
+                if cont[p as usize] { 0.0 } else { (1.0 - self.keep.get(&p).copied().unwrap_or(1.0)) as f32 }
+            })
+            .collect();
+        let plates = (0..top)
+            .filter(|&p| area[p] > 0)
+            .map(|p| (p as u16, area[p], self.consumed.get(&(p as u16)).copied().unwrap_or(0), !cont[p]))
+            .collect();
+        self.out.frac.push(frac);
+        self.out.plates.push(plates);
+        self.keep.clear();
+        self.consumed.clear();
+        self.start_id = st.plate_id.data().to_vec();
+        self.start_type = st.plate_type.data().to_vec();
+    }
 }
 
 /// ADR Finding 167-B -- the thickness → altitude mapping of the record: C1's own (F165–F166), or the physical Airy
@@ -317,6 +404,8 @@ pub fn run_c1_sources_mapped_ext(
     let mut raw = vec![src_alt(state, &removed.borrow())];
     let mut steps = vec![0usize];
     let mut suture = vec![false; n];
+    // ADR Finding 183-A3: the consumption, observed
+    let mut cons = ConsumptionRec::new(state);
     run_with_closures_terms_ext(
         state,
         kin,
@@ -330,9 +419,11 @@ pub fn run_c1_sources_mapped_ext(
                     *s = true;
                 }
             }
+            cons.step(st);
             if (step + 1) % every == 0 {
                 raw.push(src_alt(st, &removed.borrow()));
                 steps.push(step + 1);
+                cons.close_interval(st);
             }
         },
         &mut |term, before, after| {
@@ -363,6 +454,7 @@ pub fn run_c1_sources_mapped_ext(
         s0,
         s_final: state.s.data().to_vec(),
         craton: state.cratonic_mask.data().to_vec(),
+        consumption: cons.out,
     }
 }
 
@@ -583,6 +675,42 @@ pub fn physics_history_sea(
     physics_history_dep(snaps, n, cfg, run, rock, curve, None, None, progress, cancel)
 }
 
+/// ADR Finding 183-A3 -- the recycling's per-step fraction: on each cell of the level, r = 1 − (1 − F_j)^share, F_j C1's
+/// consumed fraction of the cell's 64² parent's plate over interval j, share the step's part of the interval (the interval's
+/// removals multiply to F_j).
+fn recycle_fn<'a>(c: &'a Consumption, n: usize, js: impl Fn(usize) -> (usize, f64) + 'a) -> Box<dyn Fn(usize) -> Vec<f32> + 'a> {
+    let nc = (c.frac.first().map_or(0, |f| f.len()) as f64).sqrt().round() as usize;
+    Box::new(move |s| {
+        let (j, sh) = js(s);
+        let Some(fj) = c.frac.get(j) else { return vec![0.0; n * n] };
+        (0..n * n)
+            .map(|k| {
+                let f = fj[((k / n) * nc / n) * nc + (k % n) * nc / n] as f64;
+                if f > 0.0 { (1.0 - (1.0 - f).powf(sh)) as f32 } else { 0.0 }
+            })
+            .collect()
+    })
+}
+
+/// ADR Finding 183 -- [`physics_history_dep`] with C1's consumption for the recycling (`None` = [`physics_history_dep`]
+/// exactly; read only when `dep.recycle`).
+#[allow(clippy::too_many_arguments)]
+pub fn physics_history_acc<'h>(
+    snaps: &[GridF32],
+    n: usize,
+    cfg: &CascadeConfig,
+    run: &HistoryRun,
+    rock: Option<&super::Rock>,
+    curve: Option<&SeaCurve>,
+    dep: Option<super::deposition::Deposition>,
+    dep_hook: Option<&'h super::deposition::FluvialHook<'h>>,
+    consumption: Option<&'h Consumption>,
+    progress: &mut dyn FnMut(CascadeProgress),
+    cancel: &dyn Fn() -> bool,
+) -> Option<HistoryLevel> {
+    physics_history_inner(snaps, n, cfg, run, rock, curve, dep, dep_hook, consumption.filter(|_| dep.is_some_and(|d| d.recycle)), progress, cancel)
+}
+
 /// ADR Finding 182 -- [`physics_history_sea`] with the sediment deposition (`None` = [`physics_history_sea`] exactly);
 /// `dep_hook` replaces the fluvial stage (the bench's reference only). The steady timing takes no deposition.
 #[allow(clippy::too_many_arguments)]
@@ -595,6 +723,23 @@ pub fn physics_history_dep<'h>(
     curve: Option<&SeaCurve>,
     dep: Option<super::deposition::Deposition>,
     dep_hook: Option<&'h super::deposition::FluvialHook<'h>>,
+    progress: &mut dyn FnMut(CascadeProgress),
+    cancel: &dyn Fn() -> bool,
+) -> Option<HistoryLevel> {
+    physics_history_inner(snaps, n, cfg, run, rock, curve, dep, dep_hook, None, progress, cancel)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn physics_history_inner<'h>(
+    snaps: &[GridF32],
+    n: usize,
+    cfg: &CascadeConfig,
+    run: &HistoryRun,
+    rock: Option<&super::Rock>,
+    curve: Option<&SeaCurve>,
+    dep: Option<super::deposition::Deposition>,
+    dep_hook: Option<&'h super::deposition::FluvialHook<'h>>,
+    consumption: Option<&'h Consumption>,
     progress: &mut dyn FnMut(CascadeProgress),
     cancel: &dyn Fn() -> bool,
 ) -> Option<HistoryLevel> {
@@ -690,6 +835,13 @@ pub fn physics_history_dep<'h>(
             sea: Some(Box::new(move |s| p3[s.min(total - 1)].3)),
             dep,
             dep_hook,
+            recycle: consumption.map(|c| {
+                let p4 = plan.clone();
+                recycle_fn(c, n, move |s| {
+                    let (i, share, _, _) = p4[s.min(total - 1)];
+                    (interval(i), share as f64)
+                })
+            }),
         };
         let uplift = GridF32::new(n, n, 0.0);
         let rec = run_loop(z0.clone(), uplift, &cfg_t, n, total, Some(0), &drive, progress, cancel)?;
@@ -714,6 +866,7 @@ pub fn physics_history_dep<'h>(
         }
         let delta: Vec<Vec<f32>> = (0..intervals).map(|j| up[j + 1].data.iter().zip(&up[j].data).map(|(b, a)| b - a).collect()).collect();
         let dd = d.clone();
+        let (dd2, dsum2) = (d.clone(), dsum.clone());
         let drive = Drive {
             du: Box::new(move |i| {
                 let j = interval(i);
@@ -728,6 +881,12 @@ pub fn physics_history_dep<'h>(
             sea,
             dep,
             dep_hook,
+            recycle: consumption.map(|c| {
+                recycle_fn(c, n, move |i| {
+                    let i = i.min(steps - 1);
+                    (interval(i), dd2[i] / dsum2[interval(i)])
+                })
+            }),
         };
         let uplift = GridF32::new(n, n, 0.0);
         let rec = run_loop(z0.clone(), uplift, &cfg_t, n, run.steps, Some(0), &drive, progress, cancel)?;
@@ -753,6 +912,10 @@ pub fn physics_history_dep<'h>(
         sea: sea_fn(&vec![run.t_years / steps as f64; steps]),
         dep,
         dep_hook,
+        recycle: match timing {
+            Timing::History => consumption.map(|c| recycle_fn(c, n, move |i| (((i * intervals) / steps).min(intervals - 1), intervals as f64 / steps as f64))),
+            _ => None,
+        },
     };
     let uplift = GridF32::new(n, n, 0.0);
     let rec = run_loop(z0.clone(), uplift, &cfg_t, n, run.steps, Some(0), &drive, progress, cancel)?;
@@ -1095,7 +1258,7 @@ age_calkaBP	SeaLev_shortPC1	SeaLev_longPC1
         let zero = go(Some(Deposition::nothing()));
         assert_eq!(off.rec.z.data, zero.rec.z.data, "nothing deposited = the level without deposition");
         assert_eq!(off.rec.sum_rebound, zero.rec.sum_rebound);
-        let g0 = go(Some(Deposition { g: 0.0, lakes: true, marine: Some(Marine { k_m2_yr: 0.0, porosity: 0.63 }) }));
+        let g0 = go(Some(Deposition { g: 0.0, lakes: true, marine: Some(Marine { k_m2_yr: 0.0, porosity: 0.63 }), ..Deposition::declared() }));
         let r0 = g0.rec.sed.as_ref().unwrap();
         assert_eq!(r0.budget[2], 0.0, "G = 0: no fluvial deposit");
         assert!(r0.max_rel_residual < 1e-9, "G = 0: the mass {}", r0.max_rel_residual);
@@ -1108,6 +1271,47 @@ age_calkaBP	SeaLev_shortPC1	SeaLev_longPC1
         assert_eq!(b[6], 0.0, "the torus exports nothing");
         assert!(r.marine_substeps > 0 && r.iterations.iter().all(|&i| i == 1));
         assert!(r.thickness_m.iter().all(|&t| t >= 0.0));
+    }
+
+    /// ADR Finding 183 A5 (permanent): the accommodation's controls -- the three flags off through the new entry are F182 (the
+    /// same field); zero densities give no cover load; z₀ = ∞ compacts nothing; no consumption recycles nothing (bit for bit);
+    /// with the three on, both mass controls hold at 10⁻⁹ and the recycling removes solid.
+    #[test]
+    fn the_accommodation_controls() {
+        use crate::cascade::Rock;
+        use crate::cascade::deposition::{Compaction, Deposition, Load};
+        let base = snaps();
+        let c = cfg([0, 0]);
+        let rock = Rock { rho_k: 10.0, cover_m: vec![80.0; 128 * 128], ln_k: None };
+        let run = HistoryRun { t_years: 2.0e6, steps: 30, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: Some(2.0e7), sea_low: None };
+        let intervals = base.len() - 1;
+        let zero = Consumption { frac: vec![vec![0.0; 16 * 16]; intervals], plates: vec![] };
+        let half = Consumption { frac: vec![vec![0.5; 16 * 16]; intervals], plates: vec![] };
+        let go = |d: Deposition, cons: Option<&Consumption>| {
+            physics_history_acc(&base, 128, &c, &run, Some(&rock), None, Some(d), None, cons, &mut |_| {}, &|| false).unwrap()
+        };
+        let f182 = physics_history_dep(&base, 128, &c, &run, Some(&rock), None, Some(Deposition::declared()), None, &mut |_| {}, &|| false).unwrap();
+        let off = go(Deposition::declared(), Some(&half));
+        assert_eq!(f182.rec.z.data, off.rec.z.data, "the three flags off = F182");
+        let d = Deposition::declared();
+        let l0 = go(Deposition { load: Some(Load { rho_g: 0.0, rho_w: 0.0 }), ..d }, None);
+        assert_eq!(l0.rec.sed.as_ref().unwrap().load_cover_abs, 0.0, "zero densities: no cover load");
+        let ninf = go(Deposition { compaction: Some(Compaction { phi0: 0.63, z0_m: f32::INFINITY }), ..d }, None);
+        let r = ninf.rec.sed.as_ref().unwrap();
+        let tot: f64 = r.thickness_m.iter().map(|&t| t as f64).sum::<f64>() / (2.0 * 1.13 * c.depth_scale_m as f64);
+        assert!(r.compaction_change <= 1e-9 * tot.max(1e-30), "z0 = inf: {} against {tot}", r.compaction_change);
+        let rec_off = go(Deposition { recycle: false, ..d }, None);
+        let rec_zero = go(Deposition { recycle: true, ..d }, Some(&zero));
+        assert_eq!(rec_off.rec.z.data, rec_zero.rec.z.data, "no consumption: no recycling");
+        assert_eq!(rec_zero.rec.sed.as_ref().unwrap().budget[7], 0.0);
+        let all = go(Deposition { load: Some(Load::declared()), compaction: Some(Compaction::declared()), recycle: true, ..d }, Some(&half));
+        let ra = all.rec.sed.as_ref().unwrap();
+        assert!(ra.max_rel_residual < 1e-9, "the flux control: {}", ra.max_rel_residual);
+        assert!(ra.max_stock_residual < 1e-9, "the stock control: {}", ra.max_stock_residual);
+        assert!(ra.budget[7] > 0.0 && ra.load_cover_abs > 0.0 && ra.compaction_change > 0.0, "{:?}", ra.budget);
+        assert_eq!(ra.budget[10], 0.0, "with A2 no solid is created");
+        assert!(ra.table_err_m < 1e-3);
+        assert_ne!(all.rec.z.data, off.rec.z.data);
     }
 
     /// F169-A1: the torus noise follows the terrain (an origin rolls it exactly) and wraps (no seam).

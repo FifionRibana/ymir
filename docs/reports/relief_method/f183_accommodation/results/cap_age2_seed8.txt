@@ -1,0 +1,2 @@
+   seed 8 intermediate 100 Myr: eroded without the deposition 1.925e5 km³ · the ocean's solid capacity at t₀ (local Airy, km³): F182 1.588e5, A2 3.323e5, A1 2.192e5, A1 + A2 1.261e6 · eroded / capacity 1.21, 0.58, 0.88, 0.15
+#Q 192476.83365264675 158832.31708321493 332294.5030899092 219218.92232348182 1260992.6257267103

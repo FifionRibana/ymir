@@ -1,0 +1,1 @@
+   seed 23 (2 048², intermediate): land 102224 → 112087 km² · median altitude 73 → 393 m · crop centred on 256² cell 57339 · the shelf transect at cell 47939 (256² width 138.2 km, break depth 3973 m): range -5022 … 307 m (grey without, orange with)

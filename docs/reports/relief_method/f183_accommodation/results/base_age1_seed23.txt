@@ -1,0 +1,2 @@
+   seed 23 young 20 Myr without the deposition: the sea 37.7 % · circumnavigable false (r* None) · median altitude 101 m
+#O 0.3773345947265625 0 100.5099

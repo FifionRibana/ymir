@@ -23574,3 +23574,105 @@ l'arrêt (0,71 à 1,67 sur le panel). »
   - the A5 controls;
   - the report with the stop.
 - Production is unchanged: the C1 hash, the guard 6/6 Match, 665 lib and 33 viz tests.
+
+## Finding 183 — the sediments' accommodation (the load, the compaction, the recycling by subduction): ρ_g sourced (Sclater & Christie 1980 Table A1a, 2.72 g/cm³); the three built behind their flags with their controls (off = F182 bit for bit across the trees); the combination keeps the sea on the panel at the young and intermediate ages (5 / 5, median 47 %), but the declared stop fires at tier 2 (the circumnavigation lost on 6 of 14 seeds at the intermediate age, the old age collapses to land), mostly through F182's marine domain fixed for a whole step; Yuan's iteration never converges at G = 1.55; production unchanged
+
+**Status: Part 0 declared; nothing built, nothing measured, nothing committed.** Declared:
+`docs/reports/relief_method/f183_accommodation/f183_declared.md`.
+
+**The author's decision (verbatim)**: « Oui ok pour ajouter les 3 points. » It covers the three elements (A1 the load, A2 the
+compaction, A3 the recycling by subduction) and the amendment of A4 (the mass control counts the subducted term).
+
+- **The densities found**:
+  - ρ_m = 3 300 and ρ_c = 2 700 kg/m³ are the rebound's (`cascade.rs:465–467`; F165's declaration, no page).
+  - ρ_w = 1 030 kg/m³ is Whitehead & Clift 2009 p. 7 §[24] (F167's).
+- **ρ_g is not found** (the text of the 51 PDFs searched):
+  - Yuan EPSL Table 1 gives φ₀ = 0.63 and z₀ = 1 960 m « (Sclater and Christie, 1980) » but no density.
+  - Whitehead & Clift's « sediment … ρc = 2800 » is a lumped bulk density, not a grain density.
+  - Sclater & Christie 1980 is not deposited.
+- **The stop**: the source of ρ_g is asked for (Sclater & Christie 1980, JGR 85(B7), to verify).
+  - A reviewer's memory, labelled as such: their Table 1 « shale » carries Yuan's φ₀ and z₀, with a grain density of about
+    2.72 g/cm³. Nothing rests on it.
+- **The compaction**: Yuan EPSL eq. 7, p. 3. The one-class column integral h − φ₀ z₀ (1 − e^(−h/z₀)) is exact (Appendix A,
+  p. 9–10); A2 inverts it by a precomputed table.
+- **The flexure**: the rebound's (α = 64.4 km).
+- **Declared for A1**: one load balance, the deposits' load less ρ_c × the incision's lowering, through G once, divided by ρ_m.
+  With the deposition off it is the rebound exactly.
+- **The reviewer's order of magnitude** (« quelques 10⁸ ans » for the Earth's ocean without recycling) is a hypothesis to
+  verify: no global sediment flux is in `docs/refs`. The map's land / sea ratio is 0.96–1.63 (F182's panel) against the
+  Earth's 0.41.
+
+**The resumption (the author's complement).** Report: `docs/reports/relief_method/f183_accommodation/finding_183.md`.
+- **ρ_g = 2 720 kg/m³**, read on the scanned page: Sclater & Christie 1980, JGR 85(B7), Table A1a, p. 3732, row « Shale »
+  (f₀ 0.63, c 0.51 × 10⁻⁵ cm⁻¹, ρ_sg 2.72 g/cm³). It is Yuan EPSL's silt exactly; the « Sand » row is Yuan's sand. The
+  reviewer's memory was confirmed by the PDF.
+- **ρ_c is not harmonised** (the rebound's 2 700 against Airy's 2 800): F183 keeps the current values.
+- **The load balance, as the author specified**: the incision takes the cover first (at ρ_b), then the basement (ρ_c). The
+  cover's removed part leaves its solid volume, and the mass control counts it. The erodibility stays the basement's.
+- **Built** (`Deposition::{load, compaction, recycle}`; `physics_history_acc`; C1's run records its consumption, an observation
+  only):
+  - A1: the cover's load S (ρ_g − ρ_w) under water, S ρ_g + (H − S) ρ_w on land; ΔL − ρ_c e_b through the rebound's filter once,
+    at the step's end.
+  - A2: deposits at the surface porosity, re-compacted at the step's end by a T⁻¹ table (worst round trip 7.3 × 10⁻⁵ m).
+  - A3: on a plate with no continental cell, the cover removed at C1's consumed fraction.
+  - A4: the stock control (ΔStock measured on the cover's solid).
+- **Controls**:
+  - the three off = F182: the same synthetic history at HEAD and at c00817b hashes alike (84aad857019d8a19);
+  - zero densities give no load;
+  - z₀ = ∞ compacts nothing;
+  - no consumption recycles nothing, bit for bit;
+  - both mass controls < 10⁻⁹.
+- **Tier 0** (C1, 15 seeds): the recyclable plates cover 8.4–28.3 % of the map (median 14.9 %); C1 consumes a median 23.7 %
+  of them over the history.
+- **Tier 1** (the panel, 50 worlds):
+  - only the combination keeps the sea at both ages (5 / 5, median 47 % at the end), circumnavigable on 4 / 5. Seed 23 is not
+    circumnavigable without the deposition either;
+  - A1 alone or A2 alone keep the sea young (5 / 5) but none at the intermediate age;
+  - A3 alone recycles a median 1.8–5.3 %;
+  - in the combination the recycling takes a median 9.1 % at the intermediate age;
+  - local Airy capacity: eroded / capacity falls from 0.71–1.67 to 0.09–0.22 with the load and the compaction;
+  - the thickest cover is 4.4–7.0 km (the Ogooué: ~2 km in 5.3 Myr, Yuan EPSL p. 4);
+  - the controls hold ≤ 6.7 × 10⁻¹¹.
+- **Tier 2, the stop** (the brief's: the circumnavigation lost on ≥ 2 worlds):
+  - at the intermediate age, on 15 seeds, the combination loses the circumnavigation on 6 of the 14 that had it;
+  - the median altitude rises 115 → 518 m, the plains fall 44 → 16 %, the mountain rises 23 → 51 %;
+  - at the old age the panel collapses: the land covers 94–100 % of the map, circumnavigable 0 / 4, median altitude 5 142 m.
+- **The root, F182's marine scheme**: the marine domain is fixed for a whole step, so sea cells keep filling above sea level.
+  - Measured above 100 m: 54 % of the marine deposit on seed 7 (lost), 7.8 % on seed 1 (lost), 0.9 % on seed 18 (kept).
+  - It grows with the step's duration (5.7 Myr at the old age).
+  - Seed 1 also closes a narrow strait at 38 % of sea, which is physically plausible.
+  - The defect also inflated F182's tier-1 numbers.
+- **The reference** (Yuan's iteration, bench only): not converged in 50 iterates on 300 / 300 steps at G = 1.55 (convergence is
+  proven only for G / p̃ ≤ 1). Its numbers and P7 are not interpretable.
+- **The predictions**:
+  - the reviewer's: Q1 and Q5 held; Q2 and Q3 refuted; Q4 undecided;
+  - F182's on the combination: P1, P2, P3, P6 refuted; P5 half (W₁₀ 0.066); P7 formal only.
+- **For the author**:
+  1. a closure correction of F182's marine domain (re-read at each sub-step; a cell at sea level passes its source to its
+     lowest marine neighbour), behind a flag;
+  2. the reserved design question (the land / sea ratio, or an export off the map), after 1;
+  3. the land's +185 to +396 m from the deposition (driven by G);
+  4. the non-converging reference.
+- **Queued (the author's)**: harmonise ρ_c between the rebound and Airy, on a source with a page; the erodibility of the
+  sediment against the rock.
+
+**At commit** -- the author's words (verbatim): « Feu vert pour commiter le F183 tel quel (les trois drapeaux coupés par défaut,
+les contrôles, le rapport avec l'arrêt). Ajoute à l'ADR trois erreurs du relecteur : 1. F182 : le schéma marin n'exigeait pas
+que le domaine soit relu à chaque sous-pas (h < h_mer), alors que l'éq. 5 de Yuan ne vaut que sous la mer ; 2. F183, Q3 : 20 %
+de recyclage prédits sans voir que les plaques recyclables ne couvrent que 8 à 28 % de la carte ; 3. F183 : la règle « perd la
+circumnavigation » était ambiguë. Ta lecture (une perte due au dépôt par rapport au même monde sans dépôt) était la bonne. Elle
+sera désormais écrite ainsi. La référence de Yuan est abandonnée : sa convergence n'est prouvée que pour G ≤ 1 (JGR p. 8), et
+G = 1,55. Garde son code dans le banc, avec cette note. »
+- **The reviewer's errors, recorded (the author's)**:
+  1. **F182**: the marine scheme did not require the domain to be re-read at each sub-step (h < h_sea), although Yuan's eq. 5
+     holds only under the sea.
+  2. **F183, Q3**: 20 % of recycling was predicted without seeing that the recyclable plates cover only 8–28 % of the map.
+  3. **F183**: the rule « perd la circumnavigation » was ambiguous. The reading applied at tier 1 was the right one: a loss
+     caused by the deposition, against the same world without it. **From now on the rule is written that way.**
+- **Yuan's reference is abandoned**: its convergence is proven only for G ≤ 1 (JGR p. 8), and G = 1.55. Its code stays in the
+  benches (`yuan_ref` in `tests/f182_cascade.rs`, `yuan_ref183` in `tests/f183_cascade.rs`) with that note.
+- **Committed as is**:
+  - the three flags off by default;
+  - the controls;
+  - the report with the stop.
+- Production is unchanged: the C1 hash, the guard 6/6 Match, 667 lib and 33 viz tests.

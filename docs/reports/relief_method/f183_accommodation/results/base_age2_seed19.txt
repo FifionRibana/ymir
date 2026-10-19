@@ -1,0 +1,2 @@
+   seed 19 intermediate 100 Myr without the deposition: the sea 47.3 % · circumnavigable true (r* Some(8)) · median altitude 42 m
+#O 0.473388671875 1 42.048634
