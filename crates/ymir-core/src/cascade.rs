@@ -622,11 +622,17 @@ fn run_loop(
             du.iter().map(|&v| v.abs() as f64).sum::<f64>() / cells as f64
         };
         let start = z.data.clone();
-        // 1. uplift
+        // 1. uplift (F184-A2: with ks fluvial sub-steps, its ks-th part here and before each later sub-step)
         let t = Instant::now();
+        let ks = drive.dep.map_or(1, |d| d.fluvial_substeps.max(1));
+        let du1: std::borrow::Cow<[f32]> = if ks > 1 {
+            std::borrow::Cow::Owned(du.iter().map(|v| v / ks as f32).collect())
+        } else {
+            std::borrow::Cow::Borrowed(&du[..])
+        };
         for k in 0..cells {
-            z.data[k] += du[k];
-            s_up[k] += du[k];
+            z.data[k] += du1[k];
+            s_up[k] += du1[k];
         }
         if !drive.hold_sea {
             for k in 0..cells {
@@ -639,7 +645,7 @@ fn run_loop(
         let t = Instant::now();
         let before = z.data.clone();
         // F171-B: the field before the erosion and the step's rebound, for E_cum
-        let z_pre: Vec<f32> = if drive.rock.is_some() { before.clone() } else { Vec::new() };
+        let mut z_pre: Vec<f32> = if drive.rock.is_some() { before.clone() } else { Vec::new() };
         let mut reb_step: Vec<f32> = if drive.rock.is_some() { vec![0f32; cells] } else { Vec::new() };
         solver.random_receiver = cfg.receiver_tau.map(|tau| RandomReceiver {
             seed: receiver_seed ^ (steps as u64 + 1).wrapping_mul(0xA24B_AED4_963E_E407),
@@ -663,74 +669,111 @@ fn run_loop(
         let (mut c_inc, mut c_hill, mut created) = (0f64, 0f64, 0f64);
         let mut load_q: Option<Vec<f32>> = None;
         if let Some(dp) = drive.dep {
-            let incise = |f: &GridF32| -> GridF32 {
-                let mut zz = incise_with_floor_torus(f, &solver, kf.as_deref(), None, &mut |_, _| {}, tor);
-                if let Some(r) = drive.rock {
+            // ADR Finding 184-A2: the fluvial stage in ks sub-steps at dt / ks, the uplift's part added before each but the first
+            // (block 1 added it); ks = 1 is F183 exactly
+            let solver_k = if ks > 1 {
+                let mut s = solver.clone();
+                s.dt /= ks as f32;
+                s
+            } else {
+                solver.clone()
+            };
+            let mut e_tot = vec![0f64; cells];
+            let mut agg: Option<deposition::Pass> = None;
+            eb_vec = vec![0f64; cells];
+            for js in 0..ks {
+                if js > 0 {
                     for k in 0..cells {
-                        let rem = r.cover_m[k] - e_cum[k];
-                        let e = (f.data[k] - zz.data[k]) * n2m;
-                        if rem > 0.0 && e > rem {
-                            zz.data[k] += (e - rem) * (1.0 - 1.0 / r.rho_k) / n2m;
+                        z.data[k] += du1[k];
+                        s_up[k] += du1[k];
+                    }
+                    if !drive.hold_sea {
+                        for k in 0..cells {
+                            land[k] = z.data[k] > sea;
                         }
                     }
                 }
-                zz
-            };
-            let sea_mask: Vec<bool> = land.iter().map(|&l| !l).collect();
-            // F183-A2: the eroded matter in solid (the cover first, then the basement); without A2, F182's height
-            let to_solid = |e: &[f64]| -> Vec<f64> {
-                match &ctab {
-                    None => e.to_vec(),
-                    Some(t) => (0..cells)
-                        .map(|k| {
-                            let ec = e[k].min(sed64[k]).max(0.0);
-                            (e[k] - ec) + deposition::cover_removed(Some(t), solid64[k], sed64[k], ec, n2m64)
-                        })
-                        .collect(),
-                }
-            };
-            let pass = |s: &GridF32, e: &[f64]| {
-                let es = to_solid(e);
-                deposition::pass(s, &es, sea, Some(&sea_mask), dp.g as f64, dp.lakes, tor.is_some(), p_dep)
-            };
-            let ctx = deposition::FluvialCtx { before: &z, incise: &incise, pass: &pass, u_dt: mean_du, step: steps, p_dep };
-            let fo = match drive.dep_hook {
-                Some(hk) => hk(&ctx),
-                None => deposition::splitting(&ctx),
-            };
-            let rec = srec.as_mut().unwrap();
-            rec.iterations.push(fo.iterations);
-            let mut field_res = 0f64;
-            let mut dep_sum = 0f64;
-            eb_vec = vec![0f64; cells];
-            for k in 0..cells {
-                s_ero[k] -= fo.e[k] as f32;
-                let d = fo.pass.deposit(k);
-                // the deposits as written in z (f32), against the pass's f64 (F183: a deposit's thickness is d / (1 − p))
-                field_res += (fo.z.data[k] as f64 - (before[k] as f64 - fo.e[k])) - d / (1.0 - p_dep);
-                dep_sum += d;
-                // F183: the incision takes the cover first, then the basement; the cover's removed solid
-                let h0 = sed64[k];
-                let ec = fo.e[k].min(h0).max(0.0);
-                let c_rm = deposition::cover_removed(ctab.as_ref(), solid64[k], h0, ec, n2m64);
-                c_inc += c_rm;
-                if ctab.is_none() {
-                    created += ec - c_rm;
-                }
-                solid64[k] += d - c_rm;
-                eb_vec[k] = fo.e[k] - ec;
-                // the sediment: the incision removes it first, then the deposit
-                sed64[k] = match &ctab {
-                    None => (sed64[k] - fo.e[k]).max(0.0) + d,
-                    Some(_) => h0 - ec + d / (1.0 - p_dep),
+                let before_js = z.data.clone();
+                let incise = |f: &GridF32| -> GridF32 {
+                    let mut zz = incise_with_floor_torus(f, &solver_k, kf.as_deref(), None, &mut |_, _| {}, tor);
+                    if let Some(r) = drive.rock {
+                        for k in 0..cells {
+                            let rem = r.cover_m[k] - e_cum[k];
+                            let e = (f.data[k] - zz.data[k]) * n2m;
+                            if rem > 0.0 && e > rem {
+                                zz.data[k] += (e - rem) * (1.0 - 1.0 / r.rho_k) / n2m;
+                            }
+                        }
+                    }
+                    zz
                 };
-                rec.fluvial_m[k] += (fo.pass.fluvial[k] + fo.pass.stranded[k]) as f32 * n2m;
-                rec.lake_m[k] += fo.pass.lake[k] as f32 * n2m;
+                let sea_mask: Vec<bool> = land.iter().map(|&l| !l).collect();
+                // F183-A2: the eroded matter in solid (the cover first, then the basement); without A2, F182's height
+                let to_solid = |e: &[f64]| -> Vec<f64> {
+                    match &ctab {
+                        None => e.to_vec(),
+                        Some(t) => (0..cells)
+                            .map(|k| {
+                                let ec = e[k].min(sed64[k]).max(0.0);
+                                (e[k] - ec) + deposition::cover_removed(Some(t), solid64[k], sed64[k], ec, n2m64)
+                            })
+                            .collect(),
+                    }
+                };
+                let pass = |s: &GridF32, e: &[f64]| {
+                    let es = to_solid(e);
+                    deposition::pass(s, &es, sea, Some(&sea_mask), dp.g as f64, dp.lakes, tor.is_some(), p_dep)
+                };
+                let ctx = deposition::FluvialCtx { before: &z, incise: &incise, pass: &pass, u_dt: mean_du, step: steps, p_dep };
+                let fo = match drive.dep_hook {
+                    Some(hk) => hk(&ctx),
+                    None => deposition::splitting(&ctx),
+                };
+                let rec = srec.as_mut().unwrap();
+                rec.iterations.push(fo.iterations);
+                rec.capped += fo.pass.capped;
+                let mut field_res = 0f64;
+                let mut dep_sum = 0f64;
+                for k in 0..cells {
+                    s_ero[k] -= fo.e[k] as f32;
+                    let d = fo.pass.deposit(k);
+                    // the deposits as written in z (f32), against the pass's f64 (F183: a deposit's thickness is d / (1 − p))
+                    field_res += (fo.z.data[k] as f64 - (before_js[k] as f64 - fo.e[k])) - d / (1.0 - p_dep);
+                    dep_sum += d;
+                    // F183: the incision takes the cover first, then the basement; the cover's removed solid
+                    let h0 = sed64[k];
+                    let ec = fo.e[k].min(h0).max(0.0);
+                    let c_rm = deposition::cover_removed(ctab.as_ref(), solid64[k], h0, ec, n2m64);
+                    c_inc += c_rm;
+                    if ctab.is_none() {
+                        created += ec - c_rm;
+                    }
+                    solid64[k] += d - c_rm;
+                    eb_vec[k] += fo.e[k] - ec;
+                    e_tot[k] += fo.e[k];
+                    // the sediment: the incision removes it first, then the deposit
+                    sed64[k] = match &ctab {
+                        None => (sed64[k] - fo.e[k]).max(0.0) + d,
+                        Some(_) => h0 - ec + d / (1.0 - p_dep),
+                    };
+                    rec.fluvial_m[k] += (fo.pass.fluvial[k] + fo.pass.stranded[k]) as f32 * n2m;
+                    rec.lake_m[k] += fo.pass.lake[k] as f32 * n2m;
+                }
+                rec.max_field_residual = rec.max_field_residual.max(field_res.abs() / dep_sum.max(1e-30));
+                rec.last_outlets = (fo.pass.outlets, fo.pass.outlets_full);
+                z = fo.z;
+                match agg.as_mut() {
+                    None => agg = Some(fo.pass),
+                    Some(a) => a.absorb(&fo.pass),
+                }
             }
-            rec.max_field_residual = rec.max_field_residual.max(field_res.abs() / dep_sum.max(1e-30));
-            rec.last_outlets = (fo.pass.outlets, fo.pass.outlets_full);
-            z = fo.z;
-            dep_step = Some((fo.e, fo.pass));
+            // F184-A2: E_cum reads the erosion alone; the later uplift parts are not erosion
+            if ks > 1 && !z_pre.is_empty() {
+                for k in 0..cells {
+                    z_pre[k] += du1[k] * (ks - 1) as f32;
+                }
+            }
+            dep_step = Some((e_tot, agg.unwrap()));
         } else {
             z = incise_with_floor_torus(&z, &solver, kf.as_deref(), None, &mut |_, _| {}, tor);
             // the step that crosses the contact: the remaining cover at K_couv, the excess divided by ρ_K
@@ -813,14 +856,27 @@ fn run_loop(
                 }
             }
             let hill = hill.max(0.0);
-            let [fl, lk, st, ts] = ps.sums();
+            let [fl, lk, mut st, ts] = ps.sums();
+            // ADR Finding 184-A2: a river's outflow on a cell the later fluvial sub-steps raised above the sea; without the live
+            // domain it stays there (stranded), with it the marine step walks it seaward
+            if !dp.marine_live && dp.marine.is_some() {
+                for k in 0..cells {
+                    if land[k] && ps.to_sea[k] > 0.0 {
+                        let th = ps.to_sea[k] / (1.0 - p_dep);
+                        z.data[k] = (z.data[k] as f64 + th) as f32;
+                        sed64[k] += th;
+                        solid64[k] += ps.to_sea[k];
+                        st += ps.to_sea[k];
+                    }
+                }
+            }
             let rec = srec.as_mut().unwrap();
             let (solid, exported) = match dp.marine {
                 Some(m) => {
                     let w = deposition::coast_weights(&z, &land, tor.is_some());
                     let ws: f64 = w.iter().sum();
                     let src: Vec<f64> = (0..cells)
-                        .map(|k| if land[k] { 0.0 } else { ps.to_sea[k] + if ws > 0.0 { hill * w[k] / ws } else { 0.0 } })
+                        .map(|k| if land[k] { if dp.marine_live { ps.to_sea[k] } else { 0.0 } } else { ps.to_sea[k] + if ws > 0.0 { hill * w[k] / ws } else { 0.0 } })
                         .collect();
                     // a sea with no coast takes the loss nowhere: exported
                     let lost = if ws > 0.0 { 0.0 } else { hill };
@@ -828,7 +884,28 @@ fn run_loop(
                     let t = Instant::now();
                     let dt_step = solver.dt as f64;
                     let wm = 1.0 - m.porosity as f64;
-                    let r = if ctab.is_none() {
+                    let r = if dp.marine_live {
+                        // ADR Finding 184-A1: the domain re-read at each sub-step; the supply as F182 / F183 (thickness, or the
+                        // solid at the surface porosity with A2); the changes may land on any cell
+                        let mut sup: Vec<f64> = if ctab.is_none() { sed64.clone() } else { solid64.iter().map(|&s| s.max(0.0) / wm).collect() };
+                        let sup0 = sup.clone();
+                        let sed0: f64 = (0..cells).filter(|&k| marine[k]).map(|k| sup[k]).sum();
+                        let (ns, strd) = deposition::marine_step_live(&mut z, &src, dt_step, &m, cell_m as f64, &mut sup, tor.is_some(), sea as f64);
+                        rec.marine_substeps += ns;
+                        rec.marine_stranded += strd * wm;
+                        rec.steps.push((dt_step, ns, src.iter().sum(), marine.iter().filter(|&&b| b).count(), ps.eroded, sed0));
+                        let mut ds = 0f64;
+                        for k in 0..cells {
+                            let dt = sup[k] - sup0[k];
+                            if dt != 0.0 {
+                                rec.marine_m[k] += (dt * n2m as f64) as f32;
+                                sed64[k] += dt;
+                                solid64[k] += dt * wm;
+                                ds += dt * wm;
+                            }
+                        }
+                        (ds, lost)
+                    } else if ctab.is_none() {
                         // F182: the supply is the cover's thickness
                         let sed0: f64 = (0..cells).filter(|&k| marine[k]).map(|k| sed64[k]).sum();
                         let thick0: Vec<f64> = sed64.clone();

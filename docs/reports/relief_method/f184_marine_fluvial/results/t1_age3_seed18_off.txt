@@ -1,0 +1,2 @@
+   seed 18 old 300 Myr off: 19.9 s wall / 23.1 s CPU · the sea at the end 51.4 % · circumnavigable true · median altitude 53 m · plains 66.7 % · mountain 15.6 % · lakes large 0 / dust 10 (area 725 km²) · density 0.1975 · λ 17.29 km · S10 1.1320
+#W 0.5135498046875 1 53.347813 0.6668444 0.0042032623 0.17302383 0.15592848 0 10 0 725.09765625 0.19749036 17.28514 1.132006 23.125

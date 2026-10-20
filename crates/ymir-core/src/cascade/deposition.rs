@@ -19,7 +19,7 @@
 //!   per step, in f64, on the torus (nothing leaves the map).
 
 use crate::grid::GridF32;
-use crate::terrain::flow::{D8_DX, D8_DY, DIR_NONE, FlowConfig, compute_flow};
+use crate::terrain::flow::{D8_DIST, D8_DX, D8_DY, DIR_NONE, FlowConfig, compute_flow};
 
 /// The marine part (Yuan et al. 2019, EPSL): the silt's transport coefficient and its surface porosity.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -52,6 +52,10 @@ pub struct Deposition {
     pub compaction: Option<Compaction>,
     /// ADR Finding 183-A3 -- the recycling by subduction, read from C1's consumption (`false` = F182).
     pub recycle: bool,
+    /// ADR Finding 184-A1 -- the marine domain re-read at each sub-step (`false` = F182 / F183: fixed for the step).
+    pub marine_live: bool,
+    /// ADR Finding 184-A2 -- the fluvial stage in this many equal sub-steps (1 = F183).
+    pub fluvial_substeps: usize,
 }
 
 /// ADR Finding 183-A1 -- the densities of the load (kg/m³).
@@ -88,6 +92,146 @@ impl Compaction {
         let (p, z0) = (self.phi0 as f64, self.z0_m as f64);
         if z0.is_infinite() { (1.0 - p) * h_m } else { h_m - p * z0 * (1.0 - (-h_m / z0).exp()) }
     }
+}
+
+/// ADR Finding 184-A1 -- **the marine step with its domain re-read at each sub-step** (h < `sea`, norm): the sources enter in
+/// equal parts per sub-step; a part on a cell at or above the sea walks down the steepest descent (D8, periodic) to the sea,
+/// filling each sea cell it meets up to its room (`sea` − h) and walking on with the rest; at a closed depression the rest stays
+/// (stranded, returned in thickness). The diffusion runs between the sub-step's sea cells, each donor limited to its supply
+/// (`sup`, thickness) and each receiver's inflows capped at its room. Returns the sub-steps and the stranded thickness.
+#[allow(clippy::too_many_arguments)]
+pub fn marine_step_live(z: &mut GridF32, src: &[f64], dt_yr: f64, m: &Marine, cell_m: f64, sup: &mut [f64], torus: bool, sea: f64) -> (usize, f64) {
+    let (w, h) = (z.width, z.height);
+    let n = w * h;
+    let k_m = m.k_m2_yr as f64;
+    let thick = 1.0 / (1.0 - m.porosity as f64);
+    let srcs: Vec<usize> = (0..n).filter(|&k| src[k] > 0.0).collect();
+    if srcs.is_empty() && !sup.iter().any(|&v| v > 0.0) {
+        return (0, 0.0);
+    }
+    let nsub = if k_m > 0.0 && dt_yr > 0.0 { (dt_yr * 4.0 * k_m / (cell_m * cell_m)).ceil().max(1.0) as usize } else { 1 };
+    let lambda = if k_m > 0.0 { k_m * (dt_yr / nsub as f64) / (cell_m * cell_m) } else { 0.0 };
+    let at = |k: usize, dx: i32, dy: i32| -> usize {
+        let (x, y) = ((k % w) as i32 + dx, (k / w) as i32 + dy);
+        if torus {
+            y.rem_euclid(h as i32) as usize * w + x.rem_euclid(w as i32) as usize
+        } else if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
+            usize::MAX
+        } else {
+            y as usize * w + x as usize
+        }
+    };
+    let nb4: Vec<[usize; 4]> = (0..n).map(|k| [at(k, 1, 0), at(k, -1, 0), at(k, 0, 1), at(k, 0, -1)]).collect();
+    let mut hz: Vec<f64> = z.data.iter().map(|&v| v as f64).collect();
+    let mut stranded = 0f64;
+    let (mut sc, mut cap, mut delta) = (vec![0f64; n], vec![1f64; n], vec![0f64; n]);
+    for _ in 0..nsub {
+        // the sources: placed under the sea, walking seaward from a cell at or above it
+        for &k0 in &srcs {
+            let mut rem = src[k0] * thick / nsub as f64;
+            let mut c = k0;
+            for _ in 0..n {
+                if hz[c] < sea {
+                    let put = rem.min(sea - hz[c]);
+                    hz[c] += put;
+                    sup[c] += put;
+                    rem -= put;
+                    if rem <= 0.0 {
+                        break;
+                    }
+                }
+                let mut best: Option<(usize, f64)> = None;
+                for d in 0..8 {
+                    let j = at(c, D8_DX[d], D8_DY[d]);
+                    if j == usize::MAX {
+                        continue;
+                    }
+                    let s = (hz[c] - hz[j]) / D8_DIST[d] as f64;
+                    if s > 0.0 && best.is_none_or(|b| s > b.1) {
+                        best = Some((j, s));
+                    }
+                }
+                match best {
+                    Some((j, _)) => c = j,
+                    None => {
+                        hz[c] += rem;
+                        sup[c] += rem;
+                        stranded += rem;
+                        rem = 0.0;
+                        break;
+                    }
+                }
+            }
+            if rem > 0.0 {
+                hz[c] += rem;
+                sup[c] += rem;
+                stranded += rem;
+            }
+        }
+        if lambda <= 0.0 {
+            continue;
+        }
+        // the sub-step's domain, the donors' supply limit, the receivers' room
+        let dom: Vec<bool> = hz.iter().map(|&v| v < sea).collect();
+        for k in 0..n {
+            sc[k] = 0.0;
+            if !dom[k] {
+                continue;
+            }
+            let mut out = 0.0;
+            for &j in &nb4[k] {
+                if j != usize::MAX && dom[j] && hz[k] > hz[j] {
+                    out += lambda * (hz[k] - hz[j]);
+                }
+            }
+            if out > 0.0 {
+                sc[k] = (sup[k].max(0.0) / out).min(1.0);
+            }
+        }
+        for k in 0..n {
+            cap[k] = 1.0;
+            if !dom[k] {
+                continue;
+            }
+            let mut inflow = 0.0;
+            for &j in &nb4[k] {
+                if j != usize::MAX && dom[j] && hz[j] > hz[k] {
+                    inflow += lambda * (hz[j] - hz[k]) * sc[j];
+                }
+            }
+            if inflow > 0.0 {
+                cap[k] = ((sea - hz[k]).max(0.0) / inflow).min(1.0);
+            }
+        }
+        for k in 0..n {
+            delta[k] = 0.0;
+            if !dom[k] {
+                continue;
+            }
+            let mut d = 0.0;
+            for &j in &nb4[k] {
+                if j == usize::MAX || !dom[j] {
+                    continue;
+                }
+                if hz[j] > hz[k] {
+                    d += lambda * (hz[j] - hz[k]) * sc[j] * cap[k];
+                } else if hz[k] > hz[j] {
+                    d -= lambda * (hz[k] - hz[j]) * sc[k] * cap[j];
+                }
+            }
+            delta[k] = d;
+        }
+        for k in 0..n {
+            if delta[k] != 0.0 {
+                hz[k] += delta[k];
+                sup[k] += delta[k];
+            }
+        }
+    }
+    for k in 0..n {
+        z.data[k] = hz[k] as f32;
+    }
+    (nsub, stranded)
 }
 
 /// ADR Finding 183-A1/A2 -- the solid a lowering `ec` (≤ h) removes from a cover of solid `s` and thickness `h` (norm): with
@@ -166,11 +310,11 @@ impl Deposition {
     pub const G_DECLARED: f32 = 1.55;
     /// The declaration: G = 1.55, the lakes filled, the marine silt.
     pub fn declared() -> Self {
-        Self { g: Self::G_DECLARED, lakes: true, marine: Some(Marine::declared()), load: None, compaction: None, recycle: false }
+        Self { g: Self::G_DECLARED, lakes: true, marine: Some(Marine::declared()), load: None, compaction: None, recycle: false, marine_live: false, fluvial_substeps: 1 }
     }
     /// Nothing deposited: the F181 level bit for bit (the A5 control).
     pub fn nothing() -> Self {
-        Self { g: 0.0, lakes: false, marine: None, load: None, compaction: None, recycle: false }
+        Self { g: 0.0, lakes: false, marine: None, load: None, compaction: None, recycle: false, marine_live: false, fluvial_substeps: 1 }
     }
 }
 
@@ -190,12 +334,26 @@ pub struct Pass {
     /// The lakes' outlets (one per sub-basin) and how many of them filled to the spill.
     pub outlets: usize,
     pub outlets_full: usize,
+    /// ADR Finding 184 -- the fluvial deposit made under the cap (G / Ñ ≥ 1: the whole incoming flux), solid.
+    pub capped: f64,
 }
 
 impl Pass {
     /// The deposit on cell `k` (norm): fluvial + lake + stranded.
     pub fn deposit(&self, k: usize) -> f64 {
         self.fluvial[k] + self.lake[k] + self.stranded[k]
+    }
+    /// ADR Finding 184-A2: adds another sub-step's pass (the arrays, the eroded matter, the cap; the last outlets).
+    pub fn absorb(&mut self, o: &Pass) {
+        for (a, b) in [(&mut self.fluvial, &o.fluvial), (&mut self.lake, &o.lake), (&mut self.stranded, &o.stranded), (&mut self.to_sea, &o.to_sea)] {
+            for (x, y) in a.iter_mut().zip(b) {
+                *x += y;
+            }
+        }
+        self.eroded += o.eroded;
+        self.capped += o.capped;
+        self.outlets = o.outlets;
+        self.outlets_full = o.outlets_full;
     }
     pub fn sums(&self) -> [f64; 4] {
         let s = |v: &[f64]| v.iter().sum::<f64>();
@@ -302,6 +460,7 @@ pub fn pass(surface: &GridF32, e: &[f64], sea: f32, sea_mask: Option<&[bool]>, g
         eroded: e.iter().sum(),
         outlets: groups.len(),
         outlets_full: 0,
+        capped: 0.0,
     };
     let mut q = vec![0f64; n];
     for &k in stack.iter().rev() {
@@ -367,6 +526,10 @@ pub fn pass(surface: &GridF32, e: &[f64], sea: f32, sea_mask: Option<&[bool]>, g
             }
         } else {
             let d = (g / cnt[k] * qin).min(qin).max(0.0);
+            // F184: the cap's share (G / Ñ ≥ 1 deposits the whole incoming flux)
+            if g >= cnt[k] {
+                p.capped += d;
+            }
             p.fluvial[k] = d;
             qin + e[k] - d
         };
@@ -551,6 +714,10 @@ pub struct SedRecord {
     pub load_cover_abs: f64,
     pub compaction_change: f64,
     pub table_err_m: f64,
+    /// ADR Finding 184 -- the fluvial deposit made under the cap (solid, norm × cells); the marine source stranded in a closed
+    /// depression by the live domain (solid).
+    pub capped: f64,
+    pub marine_stranded: f64,
     /// The worst per-step relative residual of the budget, and the worst f32-field residual (the deposits as written in z
     /// against the pass's f64).
     pub max_rel_residual: f64,
@@ -598,6 +765,41 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// ADR Finding 184-A1: the live marine step conserves the source, fills the sea cells only up to the sea, walks a source
+    /// landing on land down to the sea, and strands it in a closed depression.
+    #[test]
+    fn the_live_marine_step_fills_to_the_sea_and_walks() {
+        let n = 24;
+        let sea = 0.5f64;
+        // a ramp: land on x < 8 (rising inland), sea beyond, and a closed land pit at (3, 3)
+        let mut z = GridF32::new(n, n, 0.0);
+        for k in 0..n * n {
+            let x = (k % n) as f32;
+            z.data[k] = if x < 8.0 { 0.52 + 0.01 * (8.0 - x) } else { 0.49 - 0.002 * (x - 8.0) };
+        }
+        z.data[3 * n + 3] = 0.51;
+        let mut src = vec![0f64; n * n];
+        src[5 * n + 2] = 0.05; // on land: walks to the sea
+        src[3 * n + 3] = 1e-3; // in the pit: stranded
+        src[10 * n + 9] = 0.02; // on the sea
+        let tot_src: f64 = src.iter().sum();
+        let m = Marine::declared();
+        let mut sup = vec![0f64; n * n];
+        let z0 = z.clone();
+        let (ns, strd) = marine_step_live(&mut z, &src, 2.0e5, &m, 1562.5, &mut sup, true, sea);
+        assert!(ns > 1);
+        let solid: f64 = sup.iter().sum::<f64>() * (1.0 - m.porosity as f64);
+        assert!((solid - tot_src).abs() < 1e-12 * tot_src, "{solid} against {tot_src}");
+        assert!(strd > 0.0, "the pit strands its source");
+        for k in 0..n * n {
+            let gained = z.data[k] as f64 - z0.data[k] as f64;
+            if z0.data[k] < 0.5 && gained > 0.0 {
+                assert!(z.data[k] as f64 <= sea + 1e-6, "a sea cell {k} filled above the sea: {}", z.data[k]);
+            }
+        }
+        assert!(sup[5 * n + 2] == 0.0, "the land source walked away");
     }
 
     /// ADR Finding 183-A2: the table inverts T to < 1 mm; z₀ = ∞ is linear; a porous pass conserves its solid.

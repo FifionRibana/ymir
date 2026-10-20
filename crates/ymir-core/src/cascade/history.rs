@@ -1314,6 +1314,36 @@ age_calkaBP	SeaLev_shortPC1	SeaLev_longPC1
         assert_ne!(all.rec.z.data, off.rec.z.data);
     }
 
+    /// ADR Finding 184 A5 (permanent): `fluvial_substeps = 1` and `marine_live = false` are F183's combination (the same field);
+    /// the live domain and 4 fluvial sub-steps keep both mass controls at 10⁻⁹ and leave no marine deposit above the sea but the
+    /// stranded one.
+    #[test]
+    fn the_f184_controls() {
+        use crate::cascade::Rock;
+        use crate::cascade::deposition::{Compaction, Deposition, Load};
+        let base = snaps();
+        let c = cfg([0, 0]);
+        let rock = Rock { rho_k: 10.0, cover_m: vec![80.0; 128 * 128], ln_k: None };
+        let run = HistoryRun { t_years: 2.0e6, steps: 30, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: Some(2.0e7), sea_low: None };
+        let intervals = base.len() - 1;
+        let half = Consumption { frac: vec![vec![0.5; 16 * 16]; intervals], plates: vec![] };
+        let go = |d: Deposition| physics_history_acc(&base, 128, &c, &run, Some(&rock), None, Some(d), None, Some(&half), &mut |_| {}, &|| false).unwrap();
+        let a = Deposition { load: Some(Load::declared()), compaction: Some(Compaction::declared()), recycle: true, ..Deposition::declared() };
+        let f183 = go(a);
+        let k1 = go(Deposition { fluvial_substeps: 1, marine_live: false, ..a });
+        assert_eq!(f183.rec.z.data, k1.rec.z.data, "k = 1, the domain fixed = F183");
+        for (ml, kk) in [(true, 1), (false, 4)] {
+            let r = go(Deposition { marine_live: ml, fluvial_substeps: kk, ..a });
+            let r = r.rec.sed.as_ref().unwrap();
+            assert!(r.max_rel_residual < 1e-9 && r.max_stock_residual < 1e-9, "live {ml} k {kk}: {} {}", r.max_rel_residual, r.max_stock_residual);
+        }
+        let live = go(Deposition { marine_live: true, fluvial_substeps: 4, ..a });
+        let r = live.rec.sed.as_ref().unwrap();
+        assert!(r.max_rel_residual < 1e-9 && r.max_stock_residual < 1e-9, "{} {}", r.max_rel_residual, r.max_stock_residual);
+        assert_eq!(r.iterations.len(), 30 * 4, "four fluvial sub-steps per step");
+        assert_ne!(live.rec.z.data, f183.rec.z.data);
+    }
+
     /// F169-A1: the torus noise follows the terrain (an origin rolls it exactly) and wraps (no seam).
     #[test]
     fn the_torus_noise_follows_the_terrain_and_wraps() {

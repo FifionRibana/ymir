@@ -23676,3 +23676,73 @@ G = 1,55. Garde son code dans le banc, avec cette note. »
   - the controls;
   - the report with the stop.
 - Production is unchanged: the C1 hash, the guard 6/6 Match, 667 lib and 33 viz tests.
+
+## Finding 184 — the marine domain re-read at each sub-step (A1) works, but the fluvial stage does not converge in sub-steps: k = 4 → 16 fails the project's statistical criterion on 10 / 10 panel worlds (the classes move 4–10 points), so the declared stop fires after tier 1; F183's old-age collapse was mostly the fluvial splitting, not the marine domain; production unchanged
+
+**Status: A1 and A2 built behind their flags with their controls; tier 1 measured; the stop; nothing committed.** Report:
+`docs/reports/relief_method/f184_marine_fluvial/finding_184.md`. Declared: `f184_declared.md`.
+
+- **A1** (`Deposition::marine_live`, `marine_step_live`):
+  - at each marine sub-step the domain is h < h_sea;
+  - a source at or above the sea walks down the steepest descent to the sea, filling each sea cell to its room (a closed
+    depression strands it);
+  - the inflows into a cell are capped at its room;
+  - no iteration to a tolerance.
+- **A2** (`Deposition::fluvial_substeps` = k): the uplift split in k, and the fluvial stage (incision, pass, lakes, cover) at
+  dt / k; the rebound or load, the hillslope, the marine step, the recycling and the compaction stay once per step.
+- **Controls**:
+  - k = 1 with the domain fixed is F183: across the trees, the same synthetic history hashes alike at HEAD and 022d3cc
+    (674074df3c49c6cd);
+  - the live step conserves, fills only to the sea, walks and strands;
+  - both mass controls < 10⁻⁹ with A1 and with k = 4.
+  - The first k = 4 control lost 14 % of the mass: a river's outflow on a cell a later sub-step raised above the sea was
+    dropped. Fixed before any tier.
+- **The criterion** (the project's, F174 at the commit of B′, C′, D; `f174_declared.md` A3, Q8 / R8): the density, λ and S₁₀
+  within 5 %, and the classes' largest move < 1 point, between k and 4k.
+- **Tier 1** (the panel; the circumnavigation against the same world without the deposition):
+  - the marine deposit above 100 m: F183 2.2 % (max 14.7) → A1 0.4 % (max 8.1) → k ≥ 4 0.2 % (max 1.8–3.3);
+  - **k = 1 → 4 fails** on 10 / 10 (the classes move 12–80 points); **4 → 16 fails** on 10 / 10 (4–10 points; density and S₁₀
+    mostly within 5 %, λ up to 10 %);
+  - the deposition's Δ median altitude against the world without it: +351 → +84 → +40 m (intermediate), +3 401 → +106 → +70 m
+    (old) as k goes 1 → 4 → 16;
+  - the plains: −29.6 → −10.2 → −5.2 points;
+  - E1 and E2 fail at k = 16; E3 holds on 4 / 5 (intermediate) and 2 / 5 (old);
+  - the old age keeps the sea on 5 / 5 from k = 4, but on 2 / 5 with A1 alone. **F183's collapse was mostly the splitting**;
+  - no circumnavigation is lost at k ≥ 4;
+  - the controls hold ≤ 8.9 × 10⁻¹¹.
+- **The reviewer's D2 hypothesis, corrected**:
+  - **the cap never fires**: G = 1.55, and a cell with an inflow has Ñ ≥ 2, so G / Ñ ≤ 0.775 (0.0 % under the cap on every
+    world);
+  - the splitting is unconverged because a sub-step's deposit (G / Ñ of the inflow, down to the hillslopes' second cell)
+    escapes the incision until the next sub-step.
+- **The cost** (CPU per world): k = 16 206–374 s (intermediate), 377–586 s (old); k = 64 would be ~4× that.
+- **The predictions**:
+  - the reviewer's: S1 refuted on the maxima (held on the medians); S2 refuted; S3 held; S4 not measurable (nothing converged);
+    S5 not measured;
+  - mine: T1–T4 refuted, T5 partly, T7 held.
+- **For the author**:
+  1. a fluvial sub-step bounded by duration (k_i = ⌈d_i / Δt_f⌉, tested against Δt_f / 4) instead of a uniform k, which refines
+     the many short steps needlessly;
+  2. or k = 64;
+  3. whether E1–E2 hold once converged is open.
+
+**At commit** -- the author's words (verbatim): « Feu vert pour commiter le F184 une fois tes vérifications passées (A1 et A2
+derrière leurs drapeaux, coupés par défaut ; les contrôles ; le rapport avec l'arrêt). Garde target_f184/. Ajoute à l'ADR deux
+erreurs du relecteur : 1. D2 : le mécanisme supposé (le plafond G/Ñ ≥ 1) était faux, puisque le plafond ne se déclenche jamais.
+La cause est le dépôt de chaque sous-pas jusque sur les versants, repris seulement au sous-pas suivant (ton diagnostic). 2. E1 et
+E2 (« le dépôt aplanit ») ont été écrites sans vérification contre l'équation de Yuan. À l'équilibre, le dépôt raidit les rivières
+des zones soulevées : hypothèse du relecteur, K A^m S^n = U (1 + G/p̃), à vérifier au F185. E1 et E2 deviennent des mesures
+rapportées, plus des conditions. »
+- **The reviewer's errors, recorded (the author's)**:
+  1. **D2**: the supposed mechanism (the cap G / Ñ ≥ 1) was wrong: the cap never fires. The cause is each sub-step's deposit,
+     reaching down to the hillslopes, which is taken up again only at the next sub-step.
+  2. **E1 and E2** (« the deposition flattens ») were written without checking them against Yuan's equation.
+     - At equilibrium the deposition steepens the rivers of the uplifted areas. The reviewer's hypothesis, **to verify at
+       F185**: K A^m S^n = U (1 + G / p̃).
+     - **E1 and E2 become reported measures, no longer conditions.**
+- **Committed as is**:
+  - A1 (`marine_live`) and A2 (`fluvial_substeps`) behind their flags, off by default;
+  - the controls;
+  - the report with the stop.
+  - `target_f184/` is kept.
+- Production is unchanged: the C1 hash, the guard 6/6 Match, 669 lib and 33 viz tests.
