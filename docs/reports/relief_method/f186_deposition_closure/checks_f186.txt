@@ -1,0 +1,32 @@
+# F186 after (the flags off)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 46.63s
+test result: ok. 672 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.12s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 33 passed; 0 failed; 18 ignored; 0 measured; 0 filtered out; finished in 1.88s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+# the 6/6 guard through run_hd (ymir-viz f123_viz_guard); F178: the exact verdict per state and the panic line kept
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+[HD] rivers clipped to lakes: 14747 -> 7290 segments (terminate at sinks)
+   livré: field NoReference { viz: "14953e8337bcd394" } · lakes NoReference { viz: "9748c34f86566083/7a48cc29495fa016" }
+[HD] rivers clipped to lakes: 20138 -> 11792 segments (terminate at sinks)
+   A1+B2: field NoReference { viz: "b07eabbe4773016a" } · lakes NoReference { viz: "34c84b66edebbd09/431997016b994447" }
+[HD] rivers clipped to lakes: 20111 -> 15039 segments (terminate at sinks)
+   C1 nue: field NoReference { viz: "c876c200e92e0f60" } · lakes NoReference { viz: "45264dbdfffe003c/85a1898d7a061441" }
+[HD] rivers clipped to lakes: 22204 -> 16211 segments (terminate at sinks)
+   C2 /10 col (défaut): field NoReference { viz: "a8d2d538d692c2f0" } · lakes NoReference { viz: "b7e502b2c1e126c3/e2dc847cd255850e" }
+[HD] rivers clipped to lakes: 21556 -> 15312 segments (terminate at sinks)
+   C2 /3: field NoReference { viz: "c2eb1cb3b24ebccb" } · lakes NoReference { viz: "4144d4ee828245f7/73ed1df1ce82d658" }
+[HD] rivers clipped to lakes: 19984 -> 12781 segments (terminate at sinks)
+   C2 /10 niveau mer: field NoReference { viz: "35e1bc8123049d8c" } · lakes NoReference { viz: "91ee910f77b7a260/c246e5b404f532e9" }
+   livré                  field non gardé (aucune référence sous cette empreinte ; viz 14953e8337bcd394) · lakes non gardé (aucune référence sous cette empreinte ; viz 9748c34f86566083/7a48cc29495fa016)
+   A1+B2                  field non gardé (aucune référence sous cette empreinte ; viz b07eabbe4773016a) · lakes non gardé (aucune référence sous cette empreinte ; viz 34c84b66edebbd09/431997016b994447)
+   C1 nue                 field non gardé (aucune référence sous cette empreinte ; viz c876c200e92e0f60) · lakes non gardé (aucune référence sous cette empreinte ; viz 45264dbdfffe003c/85a1898d7a061441)
+   C2 /10 col (défaut)    field non gardé (aucune référence sous cette empreinte ; viz a8d2d538d692c2f0) · lakes non gardé (aucune référence sous cette empreinte ; viz b7e502b2c1e126c3/e2dc847cd255850e)
+   C2 /3                  field non gardé (aucune référence sous cette empreinte ; viz c2eb1cb3b24ebccb) · lakes non gardé (aucune référence sous cette empreinte ; viz 4144d4ee828245f7/73ed1df1ce82d658)
+   C2 /10 niveau mer      field non gardé (aucune référence sous cette empreinte ; viz 35e1bc8123049d8c) · lakes non gardé (aucune référence sous cette empreinte ; viz 91ee910f77b7a260/c246e5b404f532e9)
+thread 'ui::workspace::f123_viz_guard::f123_viz_guard' (42420) panicked at crates\ymir-viz\src\ui\workspace.rs:7056:13:
+livré field: NoReference { viz: "14953e8337bcd394" }
+test ui::workspace::f123_viz_guard::f123_viz_guard ... FAILED
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 50 filtered out; finished in 1524.67s
+# done
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s

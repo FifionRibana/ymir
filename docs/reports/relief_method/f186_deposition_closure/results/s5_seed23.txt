@@ -1,0 +1,7 @@
+   the stages: the selection 109 s (Part 0, mains) · C1 1.1 s · the physics level with A 33.9 s · the amplifications 512² / 1 024² / 2 048² 5.0 / 7.9 / 37.3 s (without the deposition 4.8 / 8.8 / 41.8 s) · the burial 0.09 s · 4 096² ~138 s and 8 192² ~551 s (extrapolated, Part 0's ratios) · **the chain to 8 192² ≈ 883 s against 300 s**
+   at 2 048²: plains 48.2 → 50.3 % · plateau 0.0 → 0.0 % · hill 32.6 → 25.7 % · mountain 19.2 → 23.9 % · median 73 → 70 m · the cover's volume on land, fine 12550 km³ against coarse 12987 km³ (-3.4 %); on every cell, fine 136996 against coarse 137166 km³ (-0.1 %)
+   crop « lake » centred on 256² cell 2172
+   the delta's 2-cell oscillation at 256² (sea cells within 20 cells; along x / along y, m): the surface with A 36.3 / 14.2 · its thickness 53.2 / 22.5 · the world without 100.8 / 77.5
+   crop « delta » centred on 256² cell 8731
+   crop « plateau » centred on 256² cell 44470
+   step 5: 222 s

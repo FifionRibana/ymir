@@ -676,17 +676,26 @@ pub fn physics_history_sea(
 }
 
 /// ADR Finding 183-A3 -- the recycling's per-step fraction: on each cell of the level, r = 1 − (1 − F_j)^share, F_j C1's
-/// consumed fraction of the cell's 64² parent's plate over interval j, share the step's part of the interval (the interval's
-/// removals multiply to F_j).
+/// consumed fraction over interval j, share the step's part of the interval (the interval's removals multiply to F_j).
+/// F186: F_j is interpolated bilinearly from the 64² grid (the cell centres, the grid closed as a torus) instead of read by the
+/// cell's 64² parent, whose steps left 1-cell lines along the plate edges (a coarse quantity is interpolated, never read by its
+/// parent cell: the author's rule).
 fn recycle_fn<'a>(c: &'a Consumption, n: usize, js: impl Fn(usize) -> (usize, f64) + 'a) -> Box<dyn Fn(usize) -> Vec<f32> + 'a> {
     let nc = (c.frac.first().map_or(0, |f| f.len()) as f64).sqrt().round() as usize;
     Box::new(move |s| {
         let (j, sh) = js(s);
         let Some(fj) = c.frac.get(j) else { return vec![0.0; n * n] };
+        let wrap = |i: i64| -> usize { i.rem_euclid(nc as i64) as usize };
+        let ratio = nc as f64 / n as f64;
         (0..n * n)
             .map(|k| {
-                let f = fj[((k / n) * nc / n) * nc + (k % n) * nc / n] as f64;
-                if f > 0.0 { (1.0 - (1.0 - f).powf(sh)) as f32 } else { 0.0 }
+                let u = ((k % n) as f64 + 0.5) * ratio - 0.5;
+                let v = ((k / n) as f64 + 0.5) * ratio - 0.5;
+                let (i0, j0) = (u.floor() as i64, v.floor() as i64);
+                let (fx, fy) = (u - u.floor(), v - v.floor());
+                let at = |i: i64, jj: i64| fj[wrap(jj) * nc + wrap(i)] as f64;
+                let f = (at(i0, j0) * (1.0 - fx) + at(i0 + 1, j0) * fx) * (1.0 - fy) + (at(i0, j0 + 1) * (1.0 - fx) + at(i0 + 1, j0 + 1) * fx) * fy;
+                if f > 0.0 { (1.0 - (1.0 - f.min(1.0)).powf(sh)) as f32 } else { 0.0 }
             })
             .collect()
     })
@@ -1332,6 +1341,9 @@ age_calkaBP	SeaLev_shortPC1	SeaLev_longPC1
         let f183 = go(a);
         let k1 = go(Deposition { fluvial_substeps: 1, marine_live: false, ..a });
         assert_eq!(f183.rec.z.data, k1.rec.z.data, "k = 1, the domain fixed = F183");
+        // F185: a Δt_f longer than every step is one sub-step per step, F184 at k = 1
+        let dtf = go(Deposition { fluvial_dt_max: 1.0e12, ..a });
+        assert_eq!(f183.rec.z.data, dtf.rec.z.data, "a Δt_f longer than every step = k = 1");
         for (ml, kk) in [(true, 1), (false, 4)] {
             let r = go(Deposition { marine_live: ml, fluvial_substeps: kk, ..a });
             let r = r.rec.sed.as_ref().unwrap();
@@ -1343,6 +1355,228 @@ age_calkaBP	SeaLev_shortPC1	SeaLev_longPC1
         assert_eq!(r.iterations.len(), 30 * 4, "four fluvial sub-steps per step");
         assert_ne!(live.rec.z.data, f183.rec.z.data);
     }
+
+    /// ADR Finding 185 0.2 -- the run of the analytic test: a land plateau rising at U = 1e-4 m/yr from a fixed sea strip, on
+    /// the torus at 128², `t_years` in `steps` (linear time), with the deposition at `g` (the lakes; what reaches the sea is exported, Yuan's base level) in fluvial
+    /// sub-steps of at most `dt_f` years; `hill` = false switches the linear diffusion off. Returns the final field (m) and the
+    /// last step's change ratio.
+    fn yuan_run(g: f32, dt_f: f32, hill: bool, t_years: f64, steps: usize) -> (GridF32, f32) {
+        yuan_run_k(g, dt_f, hill, t_years, steps, false)
+    }
+
+    /// ADR Finding 186: [`yuan_run`] with the deposition as the K_eff closure (`keff`).
+    fn yuan_run_k(g: f32, dt_f: f32, hill: bool, t_years: f64, steps: usize, keff: bool) -> (GridF32, f32) {
+        use crate::cascade::deposition::Deposition;
+        let nc = 64;
+        let mut c = CascadeConfig { roughness_m: 20.0, seed: 5, ..CascadeConfig::declared(4000.0) };
+        if !hill {
+            c.alpha = 0.0;
+            c.d_phys_m2_yr = 0.0;
+        }
+        let n2m = c.norm_to_m();
+        let intervals = 20;
+        let u_norm_per_interval = (1.0e-4 * t_years / intervals as f64) as f32 / n2m;
+        let snaps: Vec<GridF32> = (0..=intervals)
+            .map(|j| {
+                let mut gd = GridF32::new(nc, nc, 0.0);
+                for k in 0..nc * nc {
+                    let y = k / nc;
+                    gd.data[k] = if y < 8 {
+                        c.sea_level - 1000.0 / n2m
+                    } else {
+                        c.sea_level + (5.0 + 2.0 * (y as f32 - 8.0).min(63.0 - y as f32 + 8.0)) / n2m + j as f32 * u_norm_per_interval
+                    };
+                }
+                gd
+            })
+            .collect();
+        let run = HistoryRun { t_years, steps, rebound: None, timing: Timing::History, age_years: None, sea_low: None };
+        // Yuan JGR p. 7: « sediment can leave the system from these base level nodes » -- what reaches the sea is exported
+        let d = if keff {
+            Deposition { marine: None, fluvial_keff: Some(g), ..Deposition::declared() }
+        } else {
+            Deposition { g, marine: None, fluvial_dt_max: dt_f, ..Deposition::declared() }
+        };
+        let l = physics_history_dep(&snaps, 128, &c, &run, None, None, Some(d), None, &mut |_| {}, &|| false).unwrap();
+        let last = *l.rec.ratios.last().unwrap();
+        if std::env::var("YUAN_DIAG").is_ok() {
+            let zm: Vec<f32> = l.rec.z.data.iter().map(|v| (v - c.sea_level) * n2m).collect();
+            let land: Vec<f32> = zm.iter().copied().filter(|&v| v > 0.0).collect();
+            let mx = land.iter().copied().fold(0.0f32, f32::max);
+            let mean = land.iter().sum::<f32>() / land.len().max(1) as f32;
+            let r = &l.rec.ratios;
+            eprintln!("YUANDIAG g {g} dt_f {dt_f}: land {} cells, mean {mean:.0} m, max {mx:.0} m, U T = {:.0} m, ratios at 25/50/75/100 % {:?}", land.len(), 1.0e-4 * t_years, [r[r.len() / 4], r[r.len() / 2], r[3 * r.len() / 4], r[r.len() - 1]]);
+        }
+        (GridF32 { width: 128, height: 128, data: l.rec.z.data.iter().map(|v| (v - c.sea_level) * n2m).collect() }, last)
+    }
+
+    /// ADR Finding 185 0.2 -- the steepness S Ñ^(m/n) (m/n = 0.5) of every land cell with a D8 receiver on land, and its D8 area Ñ
+    /// (cells), on a field in m above the sea (the torus).
+    fn steepness(z: &GridF32, cell_m: f32) -> Vec<(f64, f64)> {
+        use crate::terrain::flow::{D8_DIST, D8_DX, D8_DY, DIR_NONE, FlowConfig, compute_flow};
+        let n = z.width;
+        let flow = compute_flow(z, &FlowConfig { sea_level: 0.0, ..Default::default() });
+        let mut rec = vec![usize::MAX; n * n];
+        for k in 0..n * n {
+            let d = flow.direction[k];
+            if d == DIR_NONE || z.data[k] <= 0.0 {
+                continue;
+            }
+            let x = ((k % n) as i32 + D8_DX[d as usize]).rem_euclid(n as i32) as usize;
+            let y = ((k / n) as i32 + D8_DY[d as usize]).rem_euclid(n as i32) as usize;
+            rec[k] = y * n + x;
+        }
+        // the D8 area by a topological count (donors before receivers)
+        let mut indeg = vec![0usize; n * n];
+        for k in 0..n * n {
+            if rec[k] != usize::MAX {
+                indeg[rec[k]] += 1;
+            }
+        }
+        let mut area = vec![1f64; n * n];
+        let mut queue: Vec<usize> = (0..n * n).filter(|&k| indeg[k] == 0).collect();
+        while let Some(k) = queue.pop() {
+            let r = rec[k];
+            if r != usize::MAX {
+                area[r] += area[k];
+                indeg[r] -= 1;
+                if indeg[r] == 0 {
+                    queue.push(r);
+                }
+            }
+        }
+        (0..n * n)
+            .filter_map(|k| {
+                let r = rec[k];
+                if r == usize::MAX || z.data[r] <= 0.0 {
+                    return None;
+                }
+                let d = flow.direction[k] as usize;
+                let s = (z.data[k] - z.data[r]) as f64 / (D8_DIST[d] as f64 * cell_m as f64);
+                (s > 0.0).then(|| (s * area[k].sqrt(), area[k]))
+            })
+            .collect()
+    }
+
+    /// ADR Finding 185 0.2 -- the ratio of the steepness with and without the deposition, at Ñ ≥ 10 cells (median against median),
+    /// per area bin, and Yuan's factors: the discrete (1 + G (Ñ − 1)/Ñ) at the cells' median Ñ and the continuous 1 + G (eq. 24,
+    /// p. 9, n = 1).
+    fn yuan_ratio(dt_f: f32, hill: bool) -> (f64, f64, f64, Vec<(f64, f64, f64)>, f32, f32) {
+        let g = 1.55f32;
+        let cell_m = 400.0e3 / 128.0;
+        let (t, steps) = (40.0e6, 200);
+        let (zd, rd) = yuan_run(g, dt_f, hill, t, steps);
+        let (z0, r0) = yuan_run(0.0, dt_f, hill, t, steps);
+        let (sd, s0) = (steepness(&zd, cell_m), steepness(&z0, cell_m));
+        let med = |v: &mut Vec<f64>| -> f64 {
+            if v.is_empty() {
+                return f64::NAN;
+            }
+            v.sort_by(|a, b| a.total_cmp(b));
+            v[v.len() / 2]
+        };
+        let pick = |s: &[(f64, f64)], lo: f64, hi: f64| -> Vec<f64> { s.iter().filter(|c| c.1 >= lo && c.1 < hi).map(|c| c.0).collect() };
+        let ratio = med(&mut pick(&sd, 10.0, f64::INFINITY)) / med(&mut pick(&s0, 10.0, f64::INFINITY));
+        let nmed = med(&mut sd.iter().filter(|c| c.1 >= 10.0).map(|c| c.1).collect());
+        let disc = 1.0 + g as f64 * (nmed - 1.0) / nmed;
+        let mut bins = Vec::new();
+        let mut lo = 10.0;
+        while lo < 1.0e5 {
+            let (a, b) = (pick(&sd, lo, 2.0 * lo), pick(&s0, lo, 2.0 * lo));
+            if a.len() >= 5 && b.len() >= 5 {
+                let nm = med(&mut sd.iter().filter(|c| c.1 >= lo && c.1 < 2.0 * lo).map(|c| c.1).collect());
+                bins.push((nm, med(&mut a.clone()) / med(&mut b.clone()), 1.0 + g as f64 * (nm - 1.0) / nm));
+            }
+            lo *= 2.0;
+        }
+        (ratio, disc, 1.0 + g as f64, bins, rd, r0)
+    }
+
+    /// ADR Finding 185 0.2 (permanent, `#[ignore]`d for its cost: ~a few minutes) -- **the analytic test**: at equilibrium the
+    /// cascade's slope ratio with and without the deposition against Yuan's eq. 24 in the scheme's discrete form. Asserted: the
+    /// scheme without the hillslope diffusion (the terms of Yuan's equation, « we neglect the hillslope processes », p. 8) within
+    /// 5 % at Δt_f, and the full cascade's gap no larger at Δt_f than at 4 Δt_f. The full cascade's gap (the hillslope runs on the
+    /// channels: −10.6 % at 20 kyr, F185) is printed, not asserted, pending the author's ruling.
+    #[test]
+    #[ignore]
+    fn the_yuan_equilibrium() {
+        let dt_keep = YUAN_TEST_DT_F;
+        let mut gaps = Vec::new();
+        for (dt, hill) in [(dt_keep, true), (4.0 * dt_keep, true), (dt_keep, false)] {
+            let (r, disc, cont, bins, rd, r0) = yuan_ratio(dt, hill);
+            eprintln!("YUAN dt_f {dt} hill {hill}: ratio {r:.3} · discrete {disc:.3} ({:+.1} %) · continuous {cont:.3} ({:+.1} %) · the last step's change ratio {rd:.4} / {r0:.4} · bins (Ñ, ratio, discrete) {:?}",
+                100.0 * (r / disc - 1.0), 100.0 * (r / cont - 1.0), bins.iter().map(|b| ((b.0 * 10.0).round() / 10.0, (b.1 * 1000.0).round() / 1000.0, (b.2 * 1000.0).round() / 1000.0)).collect::<Vec<_>>());
+            gaps.push((r / disc - 1.0).abs());
+        }
+        assert!(gaps[2] < 0.05, "the scheme against Yuan's equilibrium (no hillslope) at dt_f: {:.3}", gaps[2]);
+        assert!(gaps[1] >= gaps[0], "the gap shrinks with the step: {:.3} at 4 dt_f against {:.3}", gaps[1], gaps[0]);
+        eprintln!("YUAN the full cascade's gap at dt_f (printed, not asserted): {:.3}", gaps[0]);
+    }
+
+    /// ADR Finding 186 A4 (permanent, `#[ignore]`d for its cost) -- **the analytic test with the K_eff closure**: without the
+    /// hillslope diffusion, the slope ratio with and without the deposition equals Yuan's discrete factor within 5 %.
+    #[test]
+    #[ignore]
+    fn the_yuan_equilibrium_keff() {
+        let g = 1.55f32;
+        let cell_m = 400.0e3 / 128.0;
+        let (t, steps) = (40.0e6, 200);
+        let (zd, rd) = yuan_run_k(g, f32::INFINITY, false, t, steps, true);
+        let (z0, r0) = yuan_run_k(0.0, f32::INFINITY, false, t, steps, true);
+        let (sd, s0) = (steepness(&zd, cell_m), steepness(&z0, cell_m));
+        let med = |v: &mut Vec<f64>| -> f64 {
+            v.sort_by(|a, b| a.total_cmp(b));
+            v[v.len() / 2]
+        };
+        let pick = |s: &[(f64, f64)], lo: f64, hi: f64| -> Vec<f64> { s.iter().filter(|c| c.1 >= lo && c.1 < hi).map(|c| c.0).collect() };
+        let ratio = med(&mut pick(&sd, 10.0, f64::INFINITY)) / med(&mut pick(&s0, 10.0, f64::INFINITY));
+        let nmed = med(&mut sd.iter().filter(|c| c.1 >= 10.0).map(|c| c.1).collect());
+        let disc = 1.0 + g as f64 * (nmed - 1.0) / nmed;
+        let mut lo = 10.0;
+        let mut bins = Vec::new();
+        while lo < 1.0e5 {
+            let (a, b) = (pick(&sd, lo, 2.0 * lo), pick(&s0, lo, 2.0 * lo));
+            if a.len() >= 5 && b.len() >= 5 {
+                let nm = med(&mut sd.iter().filter(|c| c.1 >= lo && c.1 < 2.0 * lo).map(|c| c.1).collect());
+                bins.push(((nm * 10.0).round() / 10.0, ((med(&mut a.clone()) / med(&mut b.clone())) * 1000.0).round() / 1000.0, ((1.0 + g as f64 * (nm - 1.0) / nm) * 1000.0).round() / 1000.0));
+            }
+            lo *= 2.0;
+        }
+        eprintln!("YUANKEFF ratio {ratio:.3} · discrete {disc:.3} ({:+.1} %) · continuous {:.3} · the last change ratio {rd:.4} / {r0:.4} · bins {bins:?}", 100.0 * (ratio / disc - 1.0), 1.0 + g as f64);
+        assert!((ratio / disc - 1.0).abs() < 0.05, "K_eff against Yuan's discrete factor: {ratio:.3} / {disc:.3}");
+    }
+
+    /// ADR Finding 186 A4 (permanent): the K_eff closure's controls -- G = 0 through the closure is the deposition with G = 0 (the
+    /// same field); with G = 1.55 both mass controls hold at 10⁻⁹ and the pass deposits nothing fluvial.
+    #[test]
+    fn the_f186_controls() {
+        use crate::cascade::Rock;
+        use crate::cascade::deposition::{Compaction, Deposition, Load};
+        let base = snaps();
+        let c = cfg([0, 0]);
+        let rock = Rock { rho_k: 10.0, cover_m: vec![80.0; 128 * 128], ln_k: None };
+        let run = HistoryRun { t_years: 2.0e6, steps: 30, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: Some(2.0e7), sea_low: None };
+        let intervals = base.len() - 1;
+        let half = Consumption { frac: vec![vec![0.5; 16 * 16]; intervals], plates: vec![] };
+        let go = |d: Deposition| physics_history_acc(&base, 128, &c, &run, Some(&rock), None, Some(d), None, Some(&half), &mut |_| {}, &|| false).unwrap();
+        let a = Deposition { load: Some(Load::declared()), compaction: Some(Compaction::declared()), recycle: true, marine_live: true, ..Deposition::declared() };
+        let g0 = go(Deposition { g: 0.0, ..a });
+        let k0 = go(Deposition { fluvial_keff: Some(0.0), ..a });
+        assert_eq!(g0.rec.z.data, k0.rec.z.data, "K_eff at G = 0 = the deposition at G = 0");
+        let k = go(Deposition { fluvial_keff: Some(1.55), ..a });
+        let r = k.rec.sed.as_ref().unwrap();
+        assert!(r.max_rel_residual < 1e-9 && r.max_stock_residual < 1e-9, "{} {}", r.max_rel_residual, r.max_stock_residual);
+        assert_eq!(r.budget[2], 0.0, "the closure deposits nothing fluvial");
+        assert_ne!(k.rec.z.data, k0.rec.z.data);
+        // the author's fallback: the live marine step on 2 × 2 blocks keeps both mass controls
+        let kb = go(Deposition { fluvial_keff: Some(1.55), marine_blocks: true, ..a });
+        let rb = kb.rec.sed.as_ref().unwrap();
+        assert!(rb.max_rel_residual < 1e-9 && rb.max_stock_residual < 1e-9, "blocks: {} {}", rb.max_rel_residual, rb.max_stock_residual);
+        assert!(rb.marine_substeps * 3 < r.marine_substeps, "the blocks' stability limit: {} against {}", rb.marine_substeps, r.marine_substeps);
+    }
+
+    /// ADR Finding 185 -- the fluvial sub-step the analytic test is judged at (Δt_f retained in Part A, years).
+    const YUAN_TEST_DT_F: f32 = 20.0e3;
 
     /// F169-A1: the torus noise follows the terrain (an origin rolls it exactly) and wraps (no seam).
     #[test]

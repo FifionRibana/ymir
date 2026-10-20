@@ -329,6 +329,10 @@ pub struct StreamPowerConfig {
     /// unchanged; `the_f159_extraction_changes_no_output` pins the `None` path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub random_receiver: Option<RandomReceiver>,
+    /// ADR Finding 186-A1 -- Yuan et al. 2019's fluvial deposition as a closure: K_eff = K / (1 + G (A − 1) / A), A the
+    /// incision's own area in cells (the MFD accumulation when `mfd_exponent` is set), G the deposition coefficient (JGR eq. 24:
+    /// K A^m S^n = U (1 + G/p̃) at steady state, in the discrete form of eq. 13–14). `None` in production (byte-identical).
+    pub keff_g: Option<f32>,
 }
 
 /// ADR Finding 163 -- [`StreamPowerConfig::random_receiver`]'s parameters. The caller draws anew by changing `seed`
@@ -398,6 +402,7 @@ impl StreamPowerConfig {
             a1_exempt: None,
             area_cap_cells: None,
             random_receiver: None,
+            keff_g: None,
         }
     }
 
@@ -555,6 +560,7 @@ impl Default for StreamPowerConfig {
             a1_exempt: None,
             area_cap_cells: None,
             random_receiver: None,
+            keff_g: None,
         }
     }
 }
@@ -804,6 +810,11 @@ pub fn incise_with_floor_torus(
             // C-3 lithology + C-3b fracture density: per-cell erodibility multiplier.
             // None → uniform (kf = 1, byte-identical).
             let kdt = k_base_dt * k_field.map_or(1.0, |kf| kf[k]);
+            // ADR Finding 186-A1: Yuan's deposition as K_eff (None in production: unchanged)
+            let kdt = match cfg.keff_g {
+                Some(g) => kdt / (1.0 + g * (area - 1.0).max(0.0) / area),
+                None => kdt,
+            };
             // ADR Finding 161 -- the area cap acts on the incision term only (`None` in production)
             let area_e = cfg.area_cap_cells.map_or(area, |c| area.min(c));
             let am = (area_e * cell_km2).powf(cfg.m); // A_km²^m

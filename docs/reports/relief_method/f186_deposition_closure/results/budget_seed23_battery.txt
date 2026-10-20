@@ -1,0 +1,11 @@
+   the selection (select_continent_default_margin, 1 plate counts tried, 224 candidates, 203 C1 runs, chose Some(16)): 271.1 s wall / 256.6 s CPU
+   C1 (64², the sources, Airy): 3.0 s wall / 1.8 s CPU
+   the physics level (256², 300 steps, no deposition): 62.3 s wall / 66.1 s CPU
+   amplification 512²: upscale 0.5 s · erosion 2.8 s (6 iterations) · talus 2.9 s (1000) · deposit 10.3 s (700) · total 16.5 s wall / 152.7 s CPU
+   amplification 1024²: upscale 1.3 s · erosion 11.1 s (6 iterations) · talus 4.5 s (500) · deposit 10.3 s (200) · total 27.1 s wall / 173.9 s CPU
+   amplification 2048²: upscale 4.2 s · erosion 46.7 s (6 iterations) · talus 36.9 s (1500) · deposit 29.0 s (150) · total 116.8 s wall / 818.0 s CPU
+   amplification 4096² (EXTRAPOLATED: the 2 048² cost per cell-iteration × cells × the budget, 6 / 1500 / 100 iterations; Budget::moyen's 4 096² and 8 192² rows are a declared PROXY): upscale 17 s · erosion 187 s · talus 148 s · deposit 77 s · total 429 s
+   amplification 8192² (EXTRAPOLATED: the 2 048² cost per cell-iteration × cells × the budget, 6 / 1500 / 100 iterations; Budget::moyen's 4 096² and 8 192² rows are a declared PROXY): upscale 67 s · erosion 747 s · talus 591 s · deposit 309 s · total 1714 s
+   the chain to 2 048² (measured): 497 s wall · to 8 192² (with the extrapolation): 2640 s wall, against the 300 s target (+2340 s)
+   0.2 · the physics level with F184's live combination (k = 1): 189.4 s wall / 186.8 s CPU · of which the marine step 109.1 s wall (65691 sub-steps) · against no deposition 62.3 s wall / 66.1 s CPU
+   the bench: 693 s

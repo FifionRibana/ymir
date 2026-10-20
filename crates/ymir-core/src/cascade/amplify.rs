@@ -1318,6 +1318,96 @@ pub fn retarget(h_a: &GridF32, h0: &GridF32, ocean: &[bool], cfg: &AmpConfig) ->
     (out, cons.iter().filter(|&&c| c).count())
 }
 
+/// ADR Finding 186-B2, replaced at F186 step 3 (the author's) -- **the burial closure**: what the physics level hands to the
+/// amplifications when its deposition is transmitted. The chain itself runs on the basement (z − H, [`Chain::new`]'s field);
+/// [`Transmit::bury`] fills a level's output to a level L, without steps and without a parameter:
+/// - on each covered physics-level cell (H > 0) L is the level whose fill over its fine cells, Σ max(0, L − basement), equals
+///   H × their count -- exact by sorting the fine values, no iteration; on a covered coarse lake L is its flat bed (as declared),
+///   on an uncovered cell L is the coarse basement (the surface, H = 0);
+/// - L is interpolated bilinearly on the fine grid (the coarse cell centres, the grid closed as a torus), and z = max(basement, L)
+///   on the fine cells whose interpolation stencil holds a covered cell (elsewhere the output is untouched, so H = 0 everywhere
+///   changes nothing); the fine cells of a covered coarse lake are at least its flat bed.
+/// The sea level is unchanged. (The first implementation compared each fine cell with the bicubic surface on the fine cells of a
+/// covered parent: it read the parent's H instead of the interpolated one, hence the 8 × 8 steps at 2 048².)
+#[derive(Clone, Debug)]
+pub struct Transmit {
+    /// The physics level's surface (m, the cover included) and its cover thickness H (m).
+    pub surface_m: GridF32,
+    pub cover_m: Vec<f32>,
+    /// The physics level's lake cells (`filled > z` on land, the routing's priority flood).
+    pub lake: Vec<bool>,
+}
+
+/// The level L over a set of basement values whose fill Σ max(0, L − b) equals `vol` (vol > 0): the values sorted, L =
+/// (vol + Σ_{i<j} b_i) / j for the largest j with L ≥ b_{j−1} -- exact, no iteration.
+pub fn fill_level(b: &mut [f32], vol: f64) -> f64 {
+    b.sort_by(|x, y| x.total_cmp(y));
+    let mut cum = 0f64;
+    let mut l = f64::NAN;
+    for j in 1..=b.len() {
+        cum += b[j - 1] as f64;
+        let cand = (vol + cum) / j as f64;
+        if j == b.len() || cand <= b[j] as f64 {
+            l = cand;
+            break;
+        }
+    }
+    l
+}
+
+impl Transmit {
+    /// A level's output buried (see [`Transmit`]).
+    pub fn bury(&self, r: &GridF32) -> GridF32 {
+        let (n, nc) = (r.width, self.surface_m.width);
+        let s = n / nc;
+        let ncc = nc * nc;
+        // L per coarse cell, and whether it is covered
+        let mut lv = vec![0f64; ncc];
+        let mut buf = vec![0f32; s * s];
+        for p in 0..ncc {
+            let h = self.cover_m[p];
+            if h <= 0.0 {
+                lv[p] = self.surface_m.data[p] as f64;
+                continue;
+            }
+            if self.lake[p] {
+                lv[p] = self.surface_m.data[p] as f64;
+                continue;
+            }
+            let (px, py) = (p % nc, p / nc);
+            for dy in 0..s {
+                for dx in 0..s {
+                    buf[dy * s + dx] = r.data[(py * s + dy) * n + px * s + dx];
+                }
+            }
+            lv[p] = fill_level(&mut buf, h as f64 * (s * s) as f64);
+        }
+        let mut out = r.clone();
+        let wrap = |i: i64| -> usize { i.rem_euclid(nc as i64) as usize };
+        for y in 0..n {
+            let v = (y as f64 + 0.5) / s as f64 - 0.5;
+            let (j0, fy) = (v.floor() as i64, v - v.floor());
+            for x in 0..n {
+                let u = (x as f64 + 0.5) / s as f64 - 0.5;
+                let (i0, fx) = (u.floor() as i64, u - u.floor());
+                let c = [wrap(j0) * nc + wrap(i0), wrap(j0) * nc + wrap(i0 + 1), wrap(j0 + 1) * nc + wrap(i0), wrap(j0 + 1) * nc + wrap(i0 + 1)];
+                if !c.iter().any(|&q| self.cover_m[q] > 0.0) {
+                    continue;
+                }
+                let l = (lv[c[0]] * (1.0 - fx) + lv[c[1]] * fx) * (1.0 - fy) + (lv[c[2]] * (1.0 - fx) + lv[c[3]] * fx) * fy;
+                let k = y * n + x;
+                let mut z = (out.data[k] as f64).max(l);
+                let p = (y / s) * nc + x / s;
+                if self.lake[p] && self.cover_m[p] > 0.0 {
+                    z = z.max(self.surface_m.data[p] as f64);
+                }
+                out.data[k] = z as f32;
+            }
+        }
+        out
+    }
+}
+
 /// A whole chain: the physics level (m) then the amplification levels.
 #[derive(Clone, Debug)]
 pub struct Chain {
@@ -1542,6 +1632,53 @@ impl Chain {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ADR Finding 186 B3 (permanent): H = 0 everywhere changes nothing; a cover raises a fine hollow to the coarse surface and
+    /// never lowers a cell; a coarse lake with a cover is flat at its bed.
+    #[test]
+    fn the_burial_closure() {
+        let nc = 16;
+        let mut surf = GridF32::new(nc, nc, 100.0);
+        surf.data[5 * nc + 5] = 80.0;
+        let fine = {
+            let mut g = GridF32::new(64, 64, 100.0);
+            for k in 0..64 * 64 {
+                g.data[k] = 100.0 + 30.0 * ((k % 64) as f32 * 0.9).sin();
+            }
+            g
+        };
+        let none = Transmit { surface_m: surf.clone(), cover_m: vec![0.0; nc * nc], lake: vec![false; nc * nc] };
+        assert_eq!(none.bury(&fine).data, fine.data, "H = 0: no change");
+        let mut cover = vec![0.0; nc * nc];
+        cover[5 * nc + 5] = 20.0;
+        let mut lake = vec![false; nc * nc];
+        lake[5 * nc + 5] = true;
+        let t = Transmit { surface_m: surf, cover_m: cover, lake };
+        let b = t.bury(&fine);
+        for k in 0..64 * 64 {
+            assert!(b.data[k] >= fine.data[k]);
+        }
+        // the fine cells of the coarse lake cell (5, 5): rows 20..24, columns 20..24, at least the lake bed (80 m)
+        for y in 20..24 {
+            for x in 20..24 {
+                assert!(b.data[y * 64 + x] >= 80.0);
+            }
+        }
+        // F186 step 3: the level is exact (the fill equals H × count), and a uniform cover on every cell fills each coarse cell's
+        // fine cells by exactly its volume (L constant on every cell, so the interpolation leaves it)
+        let mut v = vec![3.0f32, 1.0, 7.0, 2.0];
+        let l = fill_level(&mut v, 4.0 * 2.0);
+        let fill: f64 = [3.0f64, 1.0, 7.0, 2.0].iter().map(|b| (l - b).max(0.0)).sum();
+        assert!((fill - 8.0).abs() < 1e-12, "level {l}, fill {fill}");
+        let flat = Transmit { surface_m: GridF32::new(nc, nc, 0.0), cover_m: vec![5.0; nc * nc], lake: vec![false; nc * nc] };
+        let mut periodic = GridF32::new(64, 64, 0.0);
+        for k in 0..64 * 64 {
+            periodic.data[k] = 10.0 * ((k % 4) as f32);
+        }
+        let bf = flat.bury(&periodic);
+        let added: f64 = bf.data.iter().zip(&periodic.data).map(|(a, b)| (a - b) as f64).sum();
+        assert!((added - 5.0 * 64.0 * 64.0).abs() < 1e-3 * 5.0 * 64.0 * 64.0, "added {added}");
+    }
 
     /// ADR Finding 164-D1 -- the declared warps (A 0.5, L 4 and 2 previous cells) are invertible (J > 0 everywhere)
     /// at 512², 1 024² and 2 048² on two seeds; the negative control (A 2, L 2) folds; a zero displacement is the

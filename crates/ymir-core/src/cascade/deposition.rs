@@ -56,6 +56,17 @@ pub struct Deposition {
     pub marine_live: bool,
     /// ADR Finding 184-A2 -- the fluvial stage in this many equal sub-steps (1 = F183).
     pub fluvial_substeps: usize,
+    /// ADR Finding 185 -- the fluvial sub-step bounded by a duration (years): a step of duration d runs ⌈d / Δt_f⌉ sub-steps;
+    /// `f32::INFINITY` = F184 (`fluvial_substeps`).
+    pub fluvial_dt_max: f32,
+    /// ADR Finding 186-A1 -- the fluvial deposition as a closure: `Some(G)` makes the incision use K / (1 + G (Ñ − 1)/Ñ) and the
+    /// pass deposit nothing fluvial (it still routes, fills the lakes and delivers to the sea); `None` = F185.
+    pub fluvial_keff: Option<f32>,
+    /// ADR Finding 186-B -- the deposition handed to the amplifications (the chain on the basement, the burial closure
+    /// [`crate::cascade::amplify::Transmit`]); read by the chain's caller. `false` = the amplifications as today.
+    pub transmit: bool,
+    /// ADR Finding 186 (the author's fallback) -- the live marine diffusion on 2 × 2 blocks (128² at 256²); `false` = per cell.
+    pub marine_blocks: bool,
 }
 
 /// ADR Finding 183-A1 -- the densities of the load (kg/m³).
@@ -234,6 +245,152 @@ pub fn marine_step_live(z: &mut GridF32, src: &[f64], dt_yr: f64, m: &Marine, ce
     (nsub, stranded)
 }
 
+/// ADR Finding 186 (the author's fallback) -- **the live marine step on 2 × 2 blocks**:
+/// - the restriction: a block's source is the sum of its 4 cells' (as a thickness over the block, ÷ 4); its room under the sea
+///   is the mean of its cells' rooms, so the block's height is h_sea − that room when it has some, else its cells' mean;
+/// - the block's supply is the mean of its cells';
+/// - [`marine_step_live`] runs on the blocks (Δx doubled, so the stability limit and the sub-steps at 128²);
+/// - the prolongation (F186 step 2): the blocks' thickness change interpolated bilinearly on the cells, a gain capped by the
+///   cell's room under the sea (the author's rule), a loss by the cell's sediment (its symmetric extension, not in the author's
+///   rule; the loss per block in proportion to the sediment was measured worse, F186), each cell's excess shared among the
+///   block's cells and its ring that still have room (or sediment). (The first prolongation shared a gain « in proportion to the
+///   room »: it sent the deposit to the deepest cells and kept the shelf from forming, the reviewer's error, F186.)
+///
+/// The mass is exact: the last cell takes the remainder. Returns the sub-steps and the stranded thickness (per cell).
+#[allow(clippy::too_many_arguments)]
+pub fn marine_step_live_blocks(z: &mut GridF32, src: &[f64], dt_yr: f64, m: &Marine, cell_m: f64, sup: &mut [f64], torus: bool, sea: f64) -> (usize, f64) {
+    let n = z.width;
+    let nb = n / 2;
+    let kids = |b: usize| -> [usize; 4] {
+        let (bx, by) = (b % nb, b / nb);
+        let (x, y) = (2 * bx, 2 * by);
+        [y * n + x, y * n + x + 1, (y + 1) * n + x, (y + 1) * n + x + 1]
+    };
+    let mut zb = GridF32::new(nb, nb, 0.0);
+    let mut srcb = vec![0f64; nb * nb];
+    let mut supb = vec![0f64; nb * nb];
+    for b in 0..nb * nb {
+        let c = kids(b);
+        let room: f64 = c.iter().map(|&k| (sea - z.data[k] as f64).max(0.0)).sum::<f64>() / 4.0;
+        let mean: f64 = c.iter().map(|&k| z.data[k] as f64).sum::<f64>() / 4.0;
+        zb.data[b] = if room > 0.0 { (sea - room) as f32 } else { mean as f32 };
+        srcb[b] = c.iter().map(|&k| src[k]).sum::<f64>() / 4.0;
+        supb[b] = c.iter().map(|&k| sup[k]).sum::<f64>() / 4.0;
+    }
+    let z0b = zb.clone();
+    let sup0b = supb.clone();
+    let (ns, strd) = marine_step_live(&mut zb, &srcb, dt_yr, m, 2.0 * cell_m, &mut supb, torus, sea);
+    let _ = &z0b;
+    // ADR Finding 186 step 2 -- the prolongation (the author's): the blocks' thickness change interpolated bilinearly on the
+    // cells (the block centres at 2b + 1, so the weights 3/4 and 1/4; on the torus the interpolation keeps the total exactly),
+    // a gain capped by the cell's room under the sea, a loss by the cell's sediment; each cell's excess goes to the cells of its
+    // block and the ring around it that still have room (or sediment), in proportion; what no cell can take stays on the cell.
+    let db: Vec<f64> = (0..nb * nb).map(|bk| supb[bk] - sup0b[bk]).collect();
+    let wrap = |i: i64, m: usize| -> usize { i.rem_euclid(m as i64) as usize };
+    let nc = n * n;
+    let mut t = vec![0f64; nc];
+    for y in 0..n {
+        for x in 0..n {
+            let (bx0, fx) = if x % 2 == 0 { (x as i64 / 2 - 1, 0.75) } else { (x as i64 / 2, 0.25) };
+            let (by0, fy) = if y % 2 == 0 { (y as i64 / 2 - 1, 0.75) } else { (y as i64 / 2, 0.25) };
+            let at = |bx: i64, by: i64| -> f64 {
+                if torus {
+                    db[wrap(by, nb) * nb + wrap(bx, nb)]
+                } else {
+                    let (cx, cy) = (bx.clamp(0, nb as i64 - 1) as usize, by.clamp(0, nb as i64 - 1) as usize);
+                    db[cy * nb + cx]
+                }
+            };
+            let v0 = at(bx0, by0) * (1.0 - fx) + at(bx0 + 1, by0) * fx;
+            let v1 = at(bx0, by0 + 1) * (1.0 - fx) + at(bx0 + 1, by0 + 1) * fx;
+            t[y * n + x] = v0 * (1.0 - fy) + v1 * fy;
+        }
+    }
+    // the interpolation's total against the blocks' (exact up to rounding on the torus; the rounding residue goes to the cells
+    // in proportion to |t| so the mass is kept to the last bit the f64 allows)
+    let tot_b: f64 = db.iter().sum::<f64>() * 4.0;
+    let tot_c: f64 = t.iter().sum();
+    let abs_c: f64 = t.iter().map(|v| v.abs()).sum();
+    if abs_c > 0.0 {
+        let r = tot_b - tot_c;
+        for v in t.iter_mut() {
+            *v += r * v.abs() / abs_c;
+        }
+    }
+    // the caps and the excess
+    let room = |k: usize, z: &GridF32| (sea - z.data[k] as f64).max(0.0);
+    let mut excess = vec![0f64; nc];
+    let mut put = vec![0f64; nc];
+    for k in 0..nc {
+        let v = t[k];
+        if v > 0.0 {
+            let r = room(k, z);
+            let p = v.min(r);
+            put[k] = p;
+            excess[k] = v - p;
+        } else if v < 0.0 {
+            let a = sup[k].max(0.0);
+            let p = v.max(-a);
+            put[k] = p;
+            excess[k] = v - p;
+        }
+    }
+    let ring = |k: usize| -> Vec<usize> {
+        let (x, y) = ((k % n) as i64, (k / n) as i64);
+        let (bx, by) = (x - x.rem_euclid(2), y - y.rem_euclid(2));
+        let mut v = Vec::with_capacity(16);
+        for dy in -1..3 {
+            for dx in -1..3 {
+                let (cx, cy) = (bx + dx, by + dy);
+                if torus {
+                    v.push(wrap(cy, n) * n + wrap(cx, n));
+                } else if cx >= 0 && cy >= 0 && (cx as usize) < n && (cy as usize) < n {
+                    v.push(cy as usize * n + cx as usize);
+                }
+            }
+        }
+        v
+    };
+    for k in 0..nc {
+        let e = excess[k];
+        if e == 0.0 {
+            continue;
+        }
+        let rg = ring(k);
+        // what each ring cell can still take: room left (a gain) or sediment left (a loss)
+        let cap_of = |j: usize, put: &[f64]| -> f64 {
+            if e > 0.0 { (room(j, z) - put[j].max(0.0)).max(0.0) } else { (sup[j].max(0.0) + put[j].min(0.0)).max(0.0) }
+        };
+        let caps: Vec<f64> = rg.iter().map(|&j| cap_of(j, &put)).collect();
+        let cs: f64 = caps.iter().sum();
+        let mag = e.abs();
+        if cs <= 0.0 {
+            put[k] += e;
+            continue;
+        }
+        let take = mag.min(cs);
+        let mut left = take;
+        let last = caps.iter().rposition(|&c| c > 0.0).unwrap();
+        for (i, &j) in rg.iter().enumerate() {
+            if caps[i] <= 0.0 {
+                continue;
+            }
+            let d = if i == last { left } else { take * caps[i] / cs };
+            left -= d;
+            put[j] += d * e.signum();
+        }
+        // beyond the ring's capacity: on the cell itself
+        put[k] += (mag - take) * e.signum();
+    }
+    for k in 0..nc {
+        if put[k] != 0.0 {
+            sup[k] += put[k];
+            z.data[k] = (z.data[k] as f64 + put[k]) as f32;
+        }
+    }
+    (ns, strd * 4.0)
+}
+
 /// ADR Finding 183-A1/A2 -- the solid a lowering `ec` (≤ h) removes from a cover of solid `s` and thickness `h` (norm): with
 /// the compaction, S − T(H − e_c) (the column kept in Athy's equilibrium); without, S e_c / H (proportional).
 pub fn cover_removed(tab: Option<&CompactionTable>, s: f64, h: f64, ec: f64, n2m: f64) -> f64 {
@@ -310,11 +467,11 @@ impl Deposition {
     pub const G_DECLARED: f32 = 1.55;
     /// The declaration: G = 1.55, the lakes filled, the marine silt.
     pub fn declared() -> Self {
-        Self { g: Self::G_DECLARED, lakes: true, marine: Some(Marine::declared()), load: None, compaction: None, recycle: false, marine_live: false, fluvial_substeps: 1 }
+        Self { g: Self::G_DECLARED, lakes: true, marine: Some(Marine::declared()), load: None, compaction: None, recycle: false, marine_live: false, fluvial_substeps: 1, fluvial_dt_max: f32::INFINITY, fluvial_keff: None, transmit: false, marine_blocks: false }
     }
     /// Nothing deposited: the F181 level bit for bit (the A5 control).
     pub fn nothing() -> Self {
-        Self { g: 0.0, lakes: false, marine: None, load: None, compaction: None, recycle: false, marine_live: false, fluvial_substeps: 1 }
+        Self { g: 0.0, lakes: false, marine: None, load: None, compaction: None, recycle: false, marine_live: false, fluvial_substeps: 1, fluvial_dt_max: f32::INFINITY, fluvial_keff: None, transmit: false, marine_blocks: false }
     }
 }
 
@@ -765,6 +922,37 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// ADR Finding 186 (the fallback): the block step conserves the source exactly, and no cell gains above the sea but the
+    /// stranded part.
+    #[test]
+    fn the_block_marine_step_conserves() {
+        let n = 32;
+        let sea = 0.5f64;
+        let mut z = GridF32::new(n, n, 0.0);
+        for k in 0..n * n {
+            let x = (k % n) as f32;
+            z.data[k] = if x < 10.0 { 0.53 + 0.01 * (10.0 - x) } else { 0.495 - 0.002 * (x - 10.0) };
+        }
+        let mut src = vec![0f64; n * n];
+        src[6 * n + 4] = 0.04;
+        src[12 * n + 12] = 0.01;
+        let tot: f64 = src.iter().sum();
+        let m = Marine::declared();
+        let mut sup = vec![0f64; n * n];
+        let z0 = z.clone();
+        let (ns, strd) = marine_step_live_blocks(&mut z, &src, 2.0e5, &m, 1562.5, &mut sup, true, sea);
+        assert!(ns >= 1);
+        let solid: f64 = sup.iter().sum::<f64>() * (1.0 - m.porosity as f64);
+        assert!((solid - tot).abs() < 1e-12 * tot, "{solid} against {tot}");
+        let above: f64 = (0..n * n).filter(|&k| z0.data[k] < 0.5).map(|k| (z.data[k] as f64 - sea).max(0.0)).sum();
+        assert!(above <= strd + 1e-6, "above the sea {above} against stranded {strd}");
+        // F186 step 2: the bilinear prolongation keeps the mass off the torus too (the edge clamp, the residue redistributed)
+        let (mut z2, mut sup2) = (z0.clone(), vec![0f64; n * n]);
+        marine_step_live_blocks(&mut z2, &src, 2.0e5, &m, 1562.5, &mut sup2, false, sea);
+        let solid2: f64 = sup2.iter().sum::<f64>() * (1.0 - m.porosity as f64);
+        assert!((solid2 - tot).abs() < 1e-9 * tot, "{solid2} against {tot} (bounded)");
     }
 
     /// ADR Finding 184-A1: the live marine step conserves the source, fills the sea cells only up to the sea, walks a source

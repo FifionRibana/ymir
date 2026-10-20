@@ -23746,3 +23746,265 @@ rapportées, plus des conditions. »
   - the report with the stop.
   - `target_f184/` is kept.
 - Production is unchanged: the C1 hash, the guard 6/6 Match, 669 lib and 33 viz tests.
+
+## Finding 185 — the fluvial sub-step bounded by a duration: Part 0 done (Yuan's equilibrium, eq. 24, confirmed; the analytic test reproduces it exactly without the hillslope, 0.0 %, and misses by −10.6 % with the cascade's hillslope on the channels); the tier-1 bench stopped by the author (its cost); the reduced plan; production unchanged
+
+**Status: Part 0 measured; the tier-1 bench stopped by the author; nothing concluded from its partial worlds; nothing
+committed.** Declared: `docs/reports/relief_method/f185_fluvial_dt/f185_declared.md`.
+
+- **The reviewer's error, recorded (the author's)**: the F185 prompt asked for 80 / 20 / 5 kyr on 10 worlds at both ages without
+  costing it. It exceeded the 45-minute wall-time rule per tier by far. The author stopped the bench and reduced the plan:
+  1. Part 0 alone, reported first;
+  2. if the analytic test holds: 80 against 20 kyr on seeds 18 and 23, at the intermediate age only;
+  3. only if step 2 fails: 20 against 5 kyr on seed 23;
+  4. nothing else.
+- **0.1**: Yuan et al. 2019 JGR, §3.1, p. 9, eq. 24: S = [(1 + G/p̃) U / K_f]^(1/n) A^(−m/n) p̃^(−m/n), i.e.
+  K_f p̃^m A^m S^n = U (1 + G/p̃).
+  - The reviewer's form is confirmed, up to p̃^m (= 1).
+  - With the cascade's m = 0.5 and n = 1, the slope ratio is 1 + G = 2.55.
+  - The scheme's discrete form (eq. 13–14: the deposit uses the Ñ − 1 cells strictly upstream) is 1 + G (Ñ − 1)/Ñ: 2.40 at
+    Ñ = 10.
+- **0.2, the analytic test** (`the_yuan_equilibrium`, a 128² torus plateau rising at 10⁻⁴ m/yr from a fixed sea strip over
+  40 Myr, G = 1.55 against G = 0):
+  - The first design filled its sea strip with marine sediment and lost its base level, so it never reached an equilibrium.
+    It now exports what reaches the sea, as Yuan's base level does (JGR p. 7: « sediment can leave the system from these base
+    level nodes »). The final change ratio is 0.01–0.08 of U dt.
+  - The results:
+
+    | run | ratio | the discrete factor | gap |
+    |---|---|---|---|
+    | without the hillslope diffusion, 20 kyr | 2.527 | 2.527 | **+0.0 %** (each area bin within ~2 %) |
+    | the full cascade, 20 kyr | 2.26 | 2.53 | **−10.6 %** |
+    | the full cascade, 80 kyr | 2.24 | 2.53 | −11.5 % |
+
+  - **The deposition scheme reproduces Yuan's equilibrium exactly.** The cascade's linear diffusion, which also runs on the
+    channels and which Yuan neglects (« we neglect the hillslope processes », p. 8), lowers the ratio by ~11 %. The gap shrinks
+    slightly with the step.
+  - The declared rule (the full cascade within 5 %) is not met. Which version judges the scheme is the author's ruling.
+- **What ran before the stop** (reported, not concluded):
+  - the intermediate age, seeds 8, 18, 19: without the deposition, Δt_f = 80 and 20 kyr;
+  - seed 23: without the deposition only.
+
+**Part 0 accepted by the author.**
+- 0.1: Yuan's eq. 24 (p. 9) confirms the form; the discrete factor 1 + G (Ñ − 1)/Ñ is accepted.
+- 0.2:
+  - the permanent test asserts the version without the hillslope diffusion (within 5 %; 0.0 % measured) and the gap falling
+    with the step;
+  - the full cascade's gap (−10.6 % at 20 kyr) is printed, not asserted;
+  - the test's design correction (the export at the base level, Yuan JGR p. 7) is accepted.
+- **The reviewer's error, recorded (the author's)**: the 5 % threshold was set on the full cascade, mixing the validation of the
+  deposition scheme with the model's other processes (the hillslope diffusion, which Yuan neglects, p. 8).
+- **The author's question, answered by reading the code**: the material the hillslope moves onto a channel cell **does** enter
+  Q_s when the incision takes it up, at the next step.
+  - The hillslope runs after the step's fluvial stage (`cascade.rs:825` talus, `:837` linear diffusion). A land cell's gain stays
+    in z.
+  - At the next step the incision lowers that z (`deposition.rs:684`). Its eroded height e = before − after (`:685`) is what
+    the pass routes (`:686`, through `cascade.rs:727`): Q_in + e enters every cell's outflow (`deposition.rs:473`, `:483`,
+    `:537`).
+  - Two consequences:
+    - such colluvium is not counted as cover: the hillslope's gains do not add to `sed64` or to the solid stock, only its
+      lowering removes cover (`cascade.rs:854–858`). So its re-incision is booked as basement (e_b, `cascade.rs:748`, `:755`);
+    - it is then loaded at ρ_c in A1's balance (`cascade.rs:1006`), and with A2 its solid is its height (no porosity).
+  - What the hillslope moves onto the sea is the marine source H (F182), not deleted.
+
+**Step 2** (the author's go-ahead; 80 against 20 kyr, the intermediate age, seed 23 run, seeds 8, 18, 19 already computed):
+- **F174's criterion holds on 0 / 4**, on the classes only:
+  - density, λ and S₁₀ are within 5 % on all four (worst 3.3 / 4.0 / 0.9 %);
+  - the classes move 1.08–3.17 points against the 1-point bar (F184's uniform k = 4 → 16 moved them 4.2–6.8).
+- **Against the world without the deposition** (medians), 80 → 20 kyr:
+  - Δ median altitude +50 → +32 m;
+  - plains −7.0 → −4.7 points; mountain +5.7 → +5.4 points;
+  - large lakes −20 % → +3 % (E3 2 / 4 → 1 / 4).
+- No circumnavigation is lost; the sea is kept 4 / 4; the controls ≤ 4.8 × 10⁻¹¹.
+- Split by zone at 20 kyr: the net-deposition zone (31 % of the land) has Δ plains −4.0 and Δ mountain +4.4 points; the
+  net-erosion zone −0.2 and +5.7 points.
+- The cost is 117–140 s CPU per world at 80 kyr and 251–265 s at 20 kyr.
+- **Step 3** (20 against 5 kyr on seed 23) waits for the author's go-ahead.
+
+**The chantier's budget rule (the author's decision, verbatim)**: « Oui ok. ET, il faut une extrapolation à 8192². Ca ne peut pas
+durer des heures. Dans la version avant multigrid j'étais à 5 minutes max. Ce serait bien de ne pas dépasser cette cible. »
+- **The rule**: the continent profile's complete chain, from C1 to 8 192², must take at most **5 minutes of wall time per
+  world**. Every finding reports its cost against this target.
+- **The reorientation validated by the author**:
+  - (a) the fluvial deposition becomes a closure (Yuan's K_eff at 256², no sub-steps);
+  - (b) the deposition is computed at 256² only and transmitted to the amplifications.
+- **The reviewer's error, recorded (the author's, from F186's brief)**: from F182 to F185 the fluvial deposition was treated as a
+  time-stepped simulation to converge by sub-steps, at up to ~1 h per world for the old profile at the physics level alone.
+
+## Finding 186 — the deposition by closures: Yuan's K_eff (+0.4 % on the analytic test); the per-cell marine step proposed as the physical reference (to be confirmed by the author), the blocks kept behind their flag (they lose the shelves); the burial by a level, exact per cell, overshoots where the chain lifts the basement; the recycling interpolated; a coarse quantity is never read through its parent cell (the author's rule); the chain ≈ 3 × the 5-minute target (F187); production unchanged
+
+**Status: Part 0 measured, Parts A and B built with their controls; Part C not run; nothing committed.** Report:
+`docs/reports/relief_method/f186_deposition_closure/finding_186.md`.
+
+- **Part 0** (seed 23, intermediate, no deposition; **on battery, the CPU throttled ≈ 2.5 ×** against F184 and F185's mains
+  figures):
+  - the selection 271 s (203 C1 runs), C1 3 s, the physics level 62 s;
+  - the amplifications 17 / 27 / 117 s (512² / 1 024² / 2 048²);
+  - extrapolated (the 2 048² cost per cell-iteration × cells × `Budget::moyen`'s PROXY rows): 4 096² ~429 s, 8 192² ~1 714 s.
+  - The chain to 8 192² is ≈ 2 640 s on battery, ≈ 1 060 s estimated on mains, **against 300 s: W3 held**.
+  - The most expensive stages: the 8 192² amplification, then the 4 096² one and the selection.
+  - F184's live combination at 256²: 189 s against 62 s without the deposition, the marine step 109 s of it.
+- **A**: `StreamPowerConfig::keff_g` (`None` in production) divides K by 1 + G (A − 1)/A in the incision's loop, A the MFD area
+  in cells; `Deposition::fluvial_keff` sets it and the pass deposits nothing fluvial (lakes and sea only).
+  - **The analytic test with K_eff, without the hillslope: 2.529 against 2.520, +0.4 %.**
+  - Controls: K_eff at G = 0 is G = 0 bit for bit; the mass controls < 10⁻⁹; the flags off hash 674074df3c49c6cd (as at
+    022d3cc and f6ec78e).
+- **B**: `amplify::Transmit::bury`. The chain runs on the basement; each level's output is max(the cell, the cover surface) where
+  the 256² parent has H > 0 (the bicubic surface, or a covered coarse lake's flat bed); the sea is unchanged.
+  - The lake rule was amended before any measurement to the covered lakes only, which keeps « H = 0 changes nothing ».
+  - Its control passes.
+- **Tier 1 needs mains power**: it judges A5's 60 s budget, which the battery's throttling alone would exceed.
+
+**The measurement rule for budgets (the author's)**: every time budget is measured on mains power, on the author's reference
+machine (to be specified by the author). A measurement made on battery is redone before any decision. F186's Part 0 is therefore
+redone on mains before tier 1.
+- **The author's ruling on the plan**: tier 2 runs the chain to 2 048² (with the deposition and the transmission), and 4 096² and
+  8 192² stay extrapolated. Building those levels and optimising the selection is F187 (the chain's budget and the multigrid),
+  written after F186.
+
+**Part 0 on mains, tiers 1 and 2** (report: `finding_186.md`):
+- **Part 0 on mains** (seed 23, intermediate, no deposition):
+  - the selection 108.8 s (203 C1 runs), C1 1.2 s, the physics level 24.6 s;
+  - the amplifications 6.1 / 9.6 / 41.7 s; 4 096² ~154 s and 8 192² ~615 s extrapolated;
+  - **the chain to 8 192² ≈ 960 s against 300 s (W3 held)**. The most expensive stages are the 8 192² and 4 096² amplifications
+    and the selection: F187.
+- **Tier 1, the panel at 256², intermediate**:
+  - with A per cell the physics level takes 70–81 s: **the 60 s budget fails**, the marine step 43–53 s of it;
+  - the author's fallback (`Deposition::marine_blocks`: the live marine step on 2 × 2 blocks; the restriction summing the sources,
+    the mean room, the prolongation by room; the stability at 128²) brings it to **27–34 s** (the marine step 2.7–3.8 s,
+    16 538 sub-steps against 65 691);
+  - both variants: the sea kept 5 / 5, no circumnavigation lost; Δ median altitude +9 / +11 m; plains −1.9 / −1.4 and mountain
+    +2.4 / +2.9 points; the mass controls ≤ 8.5 × 10⁻¹¹;
+  - E3 fails (1 / 5, 2 / 5): the large lakes grow (a hypothesis, not measured: K_eff's slower sills and the load's subsidence);
+  - the blocks narrow the passive shelves the per-cell step builds (7–37 km → 2–3 km on 3 seeds);
+  - (v) not measured.
+- **Tier 2, the chain to 2 048², seed 23, with A (blocks) and the transmission**:
+  - the deposition adds ~10 s; the burial costs 0.06 s; ≈ 919 s to 8 192² with the extrapolation;
+  - at 2 048²: plains 48.2 → 54.9 % (W6 held), hills 32.6 → 23.4 %, mountain 19.2 → 21.7 %, median 73 → 67 m;
+  - the cover's volume, fine against coarse: −1.7 % on every cell, −18.8 % on land (the land / sea line moves);
+  - **the plates show 8 × 8 stair edges** where the cover meets the basement (the 256² parent's mask), and stripes in a delta
+    (not diagnosed).
+- **Tier 3** (the old age) not run: its condition, both tiers' budgets, fails on the chain's own 5 minutes.
+- **The predictions**: W1, W3, W4, W6 held; W2 held only with the fallback; W5 refuted.
+- **For the author**:
+  1. the blocks (the budget held, the shelves narrowed);
+  2. the burial's stair edges;
+  3. E3's diagnosis;
+  4. (v) before any adoption.
+- **The checks**:
+  - 672 lib and 33 viz tests pass; production's C1 hash is unchanged.
+  - **The guard reads NoReference on all six states.** `StreamPowerConfig`'s new field changes the configs' `Debug` fingerprint, so
+    every cache digest changed.
+  - The 12 computed field and lake hashes are all present in the stored references: the output is unchanged. Re-keying the
+    references, or moving K_eff out of the config, is the author's call.
+
+**The continuation, the author's steps 1–5** (on mains; report `finding_186.md`, « The continuation »):
+- **Step 1**: the two reference files re-indexed under the new digests. Before writing, the identity of the 12 values (six fields,
+  six lake pairs) was checked against the viz guard's computed hashes; no value changed. The guard after the round: **6 / 6 Match** (field and lakes; 135 s); production’s C1 hash test passes; 672 lib and 33 viz tests pass; `cargo check --workspace` clean (warnings only).
+  - **Queued (the author's)**: the cache key by `Debug` changes as soon as a field is added, even at `None`.
+- **Step 2, the marine step**:
+  - The active-cell sweep is bit for bit the full sweep (hash 0c463b9f11e65660) but slower: the physics level's median is 88.3 s
+    (the marine step 51–63 s), because the sediment covers most of the sea. Over 60 s, so the blocks, with the author's
+    prolongation: the block's change interpolated bilinearly, a gain capped by the cell's room under the sea, the surplus to the
+    block's ring with room, the mass within 10⁻⁹.
+    - The losses, not in the author's rule: a symmetric cap by the sediment, kept (t1d). The per-block loss (t1e) was measured
+      worse: deficit lines 848 against 650, E3 1/5 against 3/5.
+  - The panel with t1d: the physics level median 29.9 s (max 33.1 s); the sea 5 / 5, none lost; Δ median +7 m; plains −1.6,
+    mountain +3.5 points; E3 3 / 5.
+  - **The shelves stay at 2.2 km on 5 / 5** (per cell 2.2 / 6.9 / 8.2 / 37.0 / 3.1 km). The correction of the prolongation does
+    not bring them back; the other cause in the block step is not measured.
+  - The deep sea keeps faint 1-cell deficit lines. The index on seed 23: per cell 201, t1d 650, without the recycling 245. So they
+    are mostly the recycling's steps at the plate edges, which a bilinear prolongation does not fill.
+- **Step 3, the burial by a level**: `Transmit::bury` (replaces B2).
+  - On each covered 256² cell, L with Σ max(0, L − fine basement) = H × count, exact by sorting (`fill_level`).
+  - L is interpolated bilinearly, with L = the coarse basement where H = 0, and z = max(fine basement, L). Covered lakes stay flat.
+  - **Read as**: applied only where the stencil holds a covered cell, which keeps « H = 0 changes nothing ».
+  - Controls pass. The volume at 2 048²: −0.1 % on every cell, −3.4 % on land (B2: −1.7 / −18.8 %).
+  - **The previous implementation read the parent cell's H instead of the declared interpolated H** (the 8 × 8 stairs, now gone).
+  - The delta's vertical stripes come from the marine blocks at 256². They are in the 256² surface's bicubic, with all three
+    prolongations, and absent per cell. So they are neither the burial nor the bicubic. Oscillation along x / y: 36.3 / 14.2 m.
+- **Step 4** (the panel, the blocks):
+  - (v) holds 5 / 5 (without, with A, with A without the load).
+  - W₁₀ global / active / passive 0.150 / 0.354 / 0.090 → 0.149 / 0.230 / 0.093.
+  - E3 3 / 5 with and without the load, on different seeds: the load grows seed 19's lakes, and its absence grows seed 23's. Not
+    one cause.
+  - The old age: (v) 5 / 5; the sea 47.6 → 53.2 %; circumnavigable 4 / 4 with none lost against the same world without the
+    deposition; plains 66.7 → 61.6 %; mountain 15.6 → 19.6 %; median 53 → 72 m; large lakes 1 → 0.
+- **Step 5** (seed 23 to 2 048², with step 3):
+  - the physics level 33.9 s; the amplifications 5.0 / 7.9 / 37.3 s; the burial 0.09 s; ≈ 883 s to 8 192² against 300 s;
+  - plains 48.2 → 50.3 %, hills 32.6 → 25.7 %, mountain 19.2 → 23.9 %, median 73 → 70 m;
+  - plates `s5_map2048_off_A_seed23.png`, `s5_crops_seed23.png`.
+
+**The reviewer's error (the author's words, recorded)**: the prolongation « en proportion de la place » sends the deposit to the
+deepest cells and keeps the shelf from forming.
+- **Measured since**: replacing it with the author's bilinear prolongation does not restore the shelves on the panel (2.2 km on
+  5 / 5). So it was not the only cause; the remaining one is not measured.
+
+**The decision on the marine step (to be confirmed by the author before it is applied)**, verbatim:
+
+> Décision (à confirmer par l'auteur avant d'appliquer) : le marin en cellules est la référence physique. Les blocs ne
+> sont pas adoptés : ils perdent le plateau, créent les stries du delta et multiplient les lignes en mer profonde. Garde
+> leur code derrière son drapeau, avec la mesure. Le budget de 60 s pour la couche de physique (A5) était une
+> répartition du relecteur : il est retiré. La seule règle est celle de l'auteur, 300 s pour la chaîne entière. Le
+> surcoût du marin en cellules (~45 s) sera traité au F187 avec le reste du budget. Inscris-le à l'ADR.
+>
+> Règle générale, à ajouter à l'ADR : une grandeur grossière ne se lit jamais par sa cellule mère, elle s'interpole
+> (cf. les marches de l'enfouissement et les lignes du recyclage).
+
+- What it means here:
+  - the per-cell marine step is the physical reference;
+  - the blocks are not adopted, and their code stays behind `Deposition::marine_blocks` (off) with its measures;
+  - **the 60 s budget for the physics level (A5) is withdrawn**: it was the reviewer's split;
+  - the only budget rule is the author's, 300 s for the whole chain; the per-cell marine step's extra cost (~45 s) goes to F187
+    with the rest of the budget.
+- **The general rule (the author's)**: a coarse quantity is never read through its parent cell; it is interpolated.
+  - Its two cases so far: the burial's 8 × 8 stairs (B2 read the parent's H) and the recycling's 1-cell lines at the plate edges
+    (A3 read the 64² parent's consumed fraction).
+
+**Before the commit, the author's three steps** (on mains):
+1. **The recycling interpolated.**
+   - F183 A3's consumed fraction F_j is now interpolated bilinearly from the 64² grid (the cell centres, the torus) in
+     `history.rs::recycle_fn`, instead of read by the 64² parent cell.
+   - The deep-sea lines' index (seed 23, the per-cell marine step): **201 → 161 cells**.
+   - The controls hold (`the_accommodation_controls`): no consumption recycles nothing, bit for bit; with the load, the
+     compaction and the recycling on, both mass controls hold at 10⁻⁹.
+2. **The diagnosis, no correction** (seed 23, the chain to 2 048², step 5's blocks configuration; `results/diag_white_seed23.txt`,
+   `results/diag_bumps_edge_seed23.txt`). The new white bumps are fine cells ≥ 1 200 m with the deposition and < 600 m without;
+   there are three families:
+   - **The burial on a basement the chain has lifted** (the lake crop's oval spot, the elongated islet top right, the spot at the
+     bottom):
+     - cells 4980 (map x 231–235, y 35–43), 17360 (x 413–421, y 127–141) and 56482 (x 318–332, y 433–445);
+     - interior basins 1.7–2.9 km below the sea at 256², filled to ~sea level by the marine sediment (H 1.8–3.0 km);
+     - the chain lifts their basement to the land floor, 0.5 m (`amplify.rs:903`, `lift_interior`), then the burial fills a
+       volume H over that lifted basement (`amplify.rs`, `Transmit::bury` / `fill_level`): peaks of 1 761, 2 516 and 3 008 m
+       where the basement chain gives 1 m.
+   - **The burial on a sea floor the chain has raised** (the open basins near the coasts):
+     - cells 12331, 4148, 7216, 9759: basement 1.6–3.5 km below the sea at 256², not interior;
+     - the chain's fine basement there is only −0.4 to −1.6 km (its working field puts the ocean at 0 m, `amplify.rs:889`), so
+       the fill to H overshoots: 1.4–2.0 km.
+   - **The rock raised inland, no cover** (the points at the bottom right):
+     - cells 39851, 39603, 41684, 42442, 39102 and others: H = 0, the rock 0.6–1.1 km higher than without the deposition;
+     - **neither K_eff nor the load**: the rock rises more without K_eff (+1.5 to +2.1 km) and about as much without the load
+       (+0.7 to +1.2 km);
+     - **hypothesis, not measured**: the base level moved seaward by the filled basins (the rivers lengthened).
+   - **The delta crop's vertical edge** (« avec ») is the basement's own straight coast, identical in the basement chain and in
+     the world without the deposition, against which the bay's flat fill now stands. The burial's added height jumps +149 m at
+     fine x 247, which is not on a 256² cell edge, so it is not the burial's stencil.
+3. **The chain to 2 048² with the per-cell marine step** (seed 23; `results/c3_seed23.txt`):
+   - **the stages**: C1 1.2 s; the physics level with A 84.0 s; the amplifications 5.1 / 8.5 / 39.9 s; the burial 0.09 s;
+     **≈ 986 s to 8 192²** with Part 0's selection and extrapolation, against 300 s (F187);
+   - **at 2 048²**: plains 48.2 → 49.8 %, hills 32.6 → 26.9 %, mountain 19.2 → 23.3 %, median 73 → 70 m;
+   - **the cover's volume**, fine against coarse: −0.2 % on every cell, −7.0 % on land;
+   - **the delta's 2-cell oscillation along x / y** (m): 18.9 / 15.9 per cell, 36.3 / 14.2 with the blocks;
+   - **the plates for the author**: `images/c3_map2048_off_A_seed23.png` (the whole map) and
+     `images/c3_crops_lake_delta_plateau_off_A_seed23.png` (lake, delta, plateau; without | with);
+   - **what they show**: the shelves along the coasts, no deep-sea lines, no delta stripes; the burial's bumps of step 2 and the
+     delta's straight edge remain (diagnosed, not corrected).
+- **The adoption** waits for the author's eye on these plates.
+
+**At commit** (the author's words, verbatim): « Puis commit du F186 (drapeaux coupés par défaut, contrôles, rapport). L'adoption
+viendra après le regard de l'auteur sur les planches de l'étape 3. »
+- Committed: K_eff (`StreamPowerConfig::keff_g`, `Deposition::fluvial_keff`), the live marine step on blocks
+  (`Deposition::marine_blocks`), the transmission and the burial by the level (`Deposition::transmit`, `amplify::Transmit`,
+  `fill_level`), the recycling interpolated, and F185's `fluvial_dt_max`. Every flag is off by default; production's hash is
+  unchanged; the guard 6 / 6 Match after the re-indexing.

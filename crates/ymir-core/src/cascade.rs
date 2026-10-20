@@ -624,7 +624,10 @@ fn run_loop(
         let start = z.data.clone();
         // 1. uplift (F184-A2: with ks fluvial sub-steps, its ks-th part here and before each later sub-step)
         let t = Instant::now();
-        let ks = drive.dep.map_or(1, |d| d.fluvial_substeps.max(1));
+        // F185: a sub-step bounded by a duration, ⌈d / Δt_f⌉ (Δt_f = ∞: F184's count)
+        let ks = drive.dep.map_or(1, |d| {
+            if d.fluvial_dt_max.is_finite() { ((solver.dt / d.fluvial_dt_max).ceil() as usize).max(1) } else { d.fluvial_substeps.max(1) }
+        });
         let du1: std::borrow::Cow<[f32]> = if ks > 1 {
             std::borrow::Cow::Owned(du.iter().map(|v| v / ks as f32).collect())
         } else {
@@ -671,13 +674,16 @@ fn run_loop(
         if let Some(dp) = drive.dep {
             // ADR Finding 184-A2: the fluvial stage in ks sub-steps at dt / ks, the uplift's part added before each but the first
             // (block 1 added it); ks = 1 is F183 exactly
-            let solver_k = if ks > 1 {
+            let mut solver_k = if ks > 1 {
                 let mut s = solver.clone();
                 s.dt /= ks as f32;
                 s
             } else {
                 solver.clone()
             };
+            // ADR Finding 186-A1: the fluvial deposition as Yuan's K_eff, the pass then deposits nothing fluvial
+            solver_k.keff_g = dp.fluvial_keff;
+            let g_pass = if dp.fluvial_keff.is_some() { 0.0 } else { dp.g as f64 };
             let mut e_tot = vec![0f64; cells];
             let mut agg: Option<deposition::Pass> = None;
             eb_vec = vec![0f64; cells];
@@ -722,7 +728,7 @@ fn run_loop(
                 };
                 let pass = |s: &GridF32, e: &[f64]| {
                     let es = to_solid(e);
-                    deposition::pass(s, &es, sea, Some(&sea_mask), dp.g as f64, dp.lakes, tor.is_some(), p_dep)
+                    deposition::pass(s, &es, sea, Some(&sea_mask), g_pass, dp.lakes, tor.is_some(), p_dep)
                 };
                 let ctx = deposition::FluvialCtx { before: &z, incise: &incise, pass: &pass, u_dt: mean_du, step: steps, p_dep };
                 let fo = match drive.dep_hook {
@@ -890,7 +896,12 @@ fn run_loop(
                         let mut sup: Vec<f64> = if ctab.is_none() { sed64.clone() } else { solid64.iter().map(|&s| s.max(0.0) / wm).collect() };
                         let sup0 = sup.clone();
                         let sed0: f64 = (0..cells).filter(|&k| marine[k]).map(|k| sup[k]).sum();
-                        let (ns, strd) = deposition::marine_step_live(&mut z, &src, dt_step, &m, cell_m as f64, &mut sup, tor.is_some(), sea as f64);
+                        // F186: the author's fallback, the live step on 2 × 2 blocks
+                        let (ns, strd) = if dp.marine_blocks {
+                            deposition::marine_step_live_blocks(&mut z, &src, dt_step, &m, cell_m as f64, &mut sup, tor.is_some(), sea as f64)
+                        } else {
+                            deposition::marine_step_live(&mut z, &src, dt_step, &m, cell_m as f64, &mut sup, tor.is_some(), sea as f64)
+                        };
                         rec.marine_substeps += ns;
                         rec.marine_stranded += strd * wm;
                         rec.steps.push((dt_step, ns, src.iter().sum(), marine.iter().filter(|&&b| b).count(), ps.eroded, sed0));

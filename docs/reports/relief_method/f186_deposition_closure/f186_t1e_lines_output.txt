@@ -1,0 +1,16 @@
+   blocks_lossblock: deficit-line cells 848
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 34.46s
+==========  F186 tier 1 . 256², the panel, intermediate: without / with A with the marine step on 2 × 2 blocks, the gains bilinear, the losses per block  ==========
+   seed 8: the physics level without 21.5 s wall / 27.4 s CPU · with A 28.2 s wall / 34.7 s CPU (the marine step 3.0 s wall, 16538 sub-steps)
+      the shelf, passive / active median: 2.2 / 2.2 km → 2.2 / 2.2 km (Harris unconverted 34.9–123.0, ÷ 7.5 4.65–16.4)
+   seed 18: the physics level without 21.1 s wall / 27.3 s CPU · with A 28.2 s wall / 32.2 s CPU (the marine step 3.7 s wall, 16538 sub-steps)
+      the shelf, passive / active median: 2.2 / 2.2 km → 3.1 / 2.2 km (Harris unconverted 34.9–123.0, ÷ 7.5 4.65–16.4)
+   seed 19: the physics level without 23.5 s wall / 30.4 s CPU · with A 30.2 s wall / 35.0 s CPU (the marine step 3.7 s wall, 16538 sub-steps)
+      the shelf, passive / active median: 2.2 / 2.2 km → 2.2 / 3.1 km (Harris unconverted 34.9–123.0, ÷ 7.5 4.65–16.4)
+   seed 23: the physics level without 25.4 s wall / 31.6 s CPU · with A 33.7 s wall / 40.5 s CPU (the marine step 3.8 s wall, 16538 sub-steps)
+      the shelf, passive / active median: 2.2 / 3.8 km → 2.2 / 2.2 km (Harris unconverted 34.9–123.0, ÷ 7.5 4.65–16.4)
+   seed 29: the physics level without 23.3 s wall / 29.1 s CPU · with A 30.8 s wall / 37.1 s CPU (the marine step 3.7 s wall, 16538 sub-steps)
+      the shelf, passive / active median: 2.2 / 3.1 km → 2.2 / 2.2 km (Harris unconverted 34.9–123.0, ÷ 7.5 4.65–16.4)
+   F186 tier 1 (5 seeds): the physics level with A, wall median 30.2 s, max 33.7 s (the budget 60 s) · the sea kept 5 / 5 · the circumnavigation lost (against off) 0 · E3 1 / 5 · Δ median altitude median +2 m · Δ plains -0.4 · Δ mountain +2.9 points
+   tier 1: 279 s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 278.98s

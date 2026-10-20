@@ -1,0 +1,10 @@
+
+   F186 step 4, the panel's summary (medians over the seeds; the run order off_100, A_100, A_noload_100, off_300, A_300)
+      seed 8: (v) 1 / 1 / 1 · W10 off 0.150 (0.354 / 0.125) → A 0.149 (0.278 / 0.132) · the large lakes' area off 906 → A 1858, without the load 2000 km² · old: sea 49.4 → 53.2 %, circumnavigable true → true, plains 34.4 → 32.9 %, mountain 37.8 → 41.7 %, median 290 → 402 m, large lakes 1 → 4
+      seed 18: (v) 1 / 1 / 1 · W10 off 0.144 (0.155 / 0.136) → A 0.166 (0.191 / 0.150) · the large lakes' area off 410 → A 0, without the load 229 km² · old: sea 51.4 → 56.2 %, circumnavigable true → true, plains 66.7 → 61.6 %, mountain 15.6 → 19.6 %, median 53 → 72 m, large lakes 0 → 0
+      seed 19: (v) 1 / 1 / 1 · W10 off 0.033 (0.088 / 0.003) → A 0.036 (0.090 / 0.005) · the large lakes' area off 654 → A 1941, without the load 0 km² · old: sea 47.6 → 57.8 %, circumnavigable true → true, plains 79.1 → 65.1 %, mountain 7.1 → 11.8 %, median 22 → 61 m, large lakes 1 → 0
+      seed 23: (v) 1 / 1 / 1 · W10 off 0.210 (0.410 / 0.090) → A 0.137 (0.230 / 0.093) · the large lakes' area off 1033 → A 288, without the load 1340 km² · old: sea 38.3 → 38.1 %, circumnavigable false → false, plains 72.0 → 69.3 %, mountain 14.1 → 16.7 %, median 52 → 57 m, large lakes 2 → 4
+      seed 29: (v) 1 / 1 / 1 · W10 off 0.193 (0.451 / 0.087) → A 0.173 (0.364 / 0.093) · the large lakes' area off 735 → A 439, without the load 554 km² · old: sea 44.7 → 50.1 %, circumnavigable true → true, plains 54.8 → 52.2 %, mountain 22.9 → 26.8 %, median 129 → 133 m, large lakes 2 → 0
+   intermediate (5 seeds): (v) holds off 5 / A 5 / A without the load 5 · W10 global / active / passive: off 0.150 / 0.354 / 0.090 → A 0.149 / 0.230 / 0.093 (|Δ| max 0.073 / 0.180 / 0.013)
+   E3 (the large lakes' area falls against off): A 3 / 5, A without the load 3 / 5 · medians off 735 · A 439 · without the load 554 km²
+   old (5 seeds): (v) off 5 / A 5 · the sea 47.6 → 53.2 % · circumnavigable off 4 / A 4 (lost against the same world without the deposition: 0) · plains 66.7 → 61.6 % · mountain 15.6 → 19.6 % · median 53 → 72 m · large lakes 1 → 0

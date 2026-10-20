@@ -1,0 +1,141 @@
+# Part 0 on mains
+   the selection (select_continent_default_margin, 1 plate counts tried, 224 candidates, 203 C1 runs, chose Some(16)): 108.8 s wall / 107.2 s CPU
+   C1 (64², the sources, Airy): 1.2 s wall / 0.7 s CPU
+   the physics level (256², 300 steps, no deposition): 24.6 s wall / 31.3 s CPU
+   amplification 512²: upscale 0.3 s · erosion 1.0 s (6 iterations) · talus 1.2 s (1000) · deposit 3.6 s (700) · total 6.1 s wall / 58.4 s CPU
+   amplification 1024²: upscale 0.5 s · erosion 4.1 s (6 iterations) · talus 1.7 s (500) · deposit 3.3 s (200) · total 9.6 s wall / 65.9 s CPU
+   amplification 2048²: upscale 1.5 s · erosion 16.3 s (6 iterations) · talus 14.1 s (1500) · deposit 9.9 s (150) · total 41.7 s wall / 340.9 s CPU
+   amplification 4096² (EXTRAPOLATED: the 2 048² cost per cell-iteration × cells × the budget, 6 / 1500 / 100 iterations; Budget::moyen's 4 096² and 8 192² rows are a declared PROXY): upscale 6 s · erosion 65 s · talus 56 s · deposit 26 s · total 154 s
+   amplification 8192² (EXTRAPOLATED: the 2 048² cost per cell-iteration × cells × the budget, 6 / 1500 / 100 iterations; Budget::moyen's 4 096² and 8 192² rows are a declared PROXY): upscale 23 s · erosion 260 s · talus 225 s · deposit 106 s · total 615 s
+   the chain to 2 048² (measured): 192 s wall · to 8 192² (with the extrapolation): 960 s wall, against the 300 s target (+660 s)
+   0.2 · the physics level with F184's live combination (k = 1): 69.9 s wall / 74.6 s CPU · of which the marine step 38.8 s wall (65691 sub-steps) · against no deposition 24.6 s wall / 31.3 s CPU
+   the bench: 265 s
+# tier 1 (per cell)
+   seed 18: the physics level without 19.9 s wall / 24.5 s CPU · with A 73.4 s wall / 79.6 s CPU (the marine step 49.3 s wall, 65691 sub-steps)
+   seed 18 intermediate 100 Myr off: 19.4 s wall / 24.4 s CPU · the sea at the end 51.3 % · circumnavigable true · median altitude 62 m · plains 58.2 % · mountain 20.2 % · lakes large 1 / dust 4 (area 840 km²) · density 0.1953 · λ 16.16 km · S10 1.1276
+#W 0.5132293701171875 1 61.80873 0.58233285 0.0021315946 0.2137237 0.20181185 1 4 410.15625 839.84375 0.19528322 16.161236 1.1275872 24.40625
+   seed 18 intermediate 100 Myr A: 72.9 s wall / 79.5 s CPU · the sea at the end 53.9 % · circumnavigable true · median altitude 70 m · plains 53.7 % · mountain 24.8 % · lakes large 0 / dust 13 (area 891 km²) · density 0.2603 · λ 27.82 km · S10 1.1156
+#W 0.5391845703125 1 70.43466 0.53725165 0.010496689 0.20394039 0.24831125 0 13 0 891.11328125 0.2602596 27.821047 1.1156335 79.515625
+      the marine Σ above 0 m 2.24 %, above 100 m 0.82 % · stranded by the marine step 2.68 % of the sea's solid · the fluvial deposit 0.000e0 km³, under the cap 0.0 % · lakes born of a deposit 0 / 32 · the thickest cover 3838 m · land / lakes / sea 0.9 / 0.3 / 98.8 % · subducted 13.7 % · controls flux 1.7e-14 stock 3.0e-11
+#D 0.022359919786038154 0.008219220772296278 0.026788883156374593 0 0 0 32 3838.2764 0.0029115906466282526 0.9884042781579341 0.1371000960158561 0.000000000000016981600096996948 0.000000000030198132950908095
+      zones: deposition 22.6 % of the land (Δ plains -9.2 / Δ mountain +0.9 points), erosion (Δ plains +0.2 / Δ mountain +4.2)
+      the deposition zone (7021 cells): median slope 0.16° → 0.01°, median altitude 24 → 19 m · the erosion zone: slope 0.69° → 0.75°, altitude 125 → 150 m
+      the shelf, passive / active median: 2.2 / 2.2 km → 6.9 / 56.9 km (Harris unconverted 34.9–123.0, ÷ 7.5 4.65–16.4)
+      the sediment: lakes 0.3 % · sea 98.8 % · stranded 0.87 % · subducted 13.7 % · flux control 1.7e-14 · stock control 3.0e-11
+#T 19.8901944 24.5 73.3504694 79.59375 0.15558239817619324 0.006932212971150875 23.55612564086914 19.048171997070313 0.6926147937774658 0.7457628846168518 124.9577865600586 150.42001342773438 6.89687505364418 56.89687505364418 0.0029115906466282526 0.9884042781579341 0.000000000000016981600096996948 0.000000000030198132950908095
+   seed 19: the physics level without 22.6 s wall / 27.8 s CPU · with A 74.0 s wall / 80.0 s CPU (the marine step 47.5 s wall, 65691 sub-steps)
+   seed 19 intermediate 100 Myr off: 22.2 s wall / 27.7 s CPU · the sea at the end 47.3 % · circumnavigable true · median altitude 42 m · plains 63.6 % · mountain 12.9 % · lakes large 2 / dust 2 (area 1174 km²) · density 0.2016 · λ 21.68 km · S10 1.1341
+#W 0.473388671875 1 42.048634 0.6357499 0.01958739 0.21551923 0.12914349 2 2 654.296875 1174.31640625 0.20158607 21.682184 1.1340588 27.703125
+   seed 19 intermediate 100 Myr A: 73.6 s wall / 79.9 s CPU · the sea at the end 53.0 % · circumnavigable true · median altitude 67 m · plains 53.8 % · mountain 20.1 % · lakes large 2 / dust 7 (area 2957 km²) · density 0.2625 · λ 29.77 km · S10 1.1196
+#W 0.52960205078125 1 66.69925 0.5379525 0.032081224 0.22923966 0.20072661 2 7 2341.30859375 2956.54296875 0.2624768 29.7662 1.1196401 79.9375
+      the marine Σ above 0 m 1.45 %, above 100 m 0.58 % · stranded by the marine step 2.24 % of the sea's solid · the fluvial deposit 0.000e0 km³, under the cap 0.0 % · lakes born of a deposit 0 / 24 · the thickest cover 3967 m · land / lakes / sea 0.3 / 0.5 / 99.2 % · subducted 19.0 % · controls flux 2.0e-14 stock 8.5e-11
+#D 0.01453026943936993 0.005776975888842122 0.022361372015077062 0 0 0 24 3966.6797 0.004604591509085826 0.9922517776795777 0.19032021407760663 0.000000000000019760447269022118 0.00000000008459987657719684
+      zones: deposition 4.4 % of the land (Δ plains -2.7 / Δ mountain +5.4 points), erosion (Δ plains -4.3 / Δ mountain +5.6)
+      the deposition zone (1783 cells): median slope 0.09° → 0.06°, median altitude 7 → 19 m · the erosion zone: slope 0.37° → 0.52°, altitude 46 → 70 m
+      the shelf, passive / active median: 2.2 / 2.2 km → 8.2 / 94.1 km (Harris unconverted 34.9–123.0, ÷ 7.5 4.65–16.4)
+      the sediment: lakes 0.5 % · sea 99.2 % · stranded 0.31 % · subducted 19.0 % · flux control 2.0e-14 · stock control 8.5e-11
+#T 22.5905484 27.78125 73.9872188 80.03125 0.08601938933134079 0.06394153088331223 7.388651371002197 19.09397315979004 0.3729671239852905 0.5225329399108887 45.816375732421875 70.45957946777344 8.190625160932541 94.0781258046627 0.004604591509085826 0.9922517776795777 0.000000000000019760447269022118 0.00000000008459987657719684
+   seed 23: the physics level without 24.8 s wall / 31.3 s CPU · with A 81.1 s wall / 88.0 s CPU (the marine step 51.5 s wall, 65691 sub-steps)
+   seed 23 intermediate 100 Myr off: 24.3 s wall / 31.2 s CPU · the sea at the end 38.1 % · circumnavigable false · median altitude 79 m · plains 60.3 % · mountain 18.7 % · lakes large 3 / dust 12 (area 1658 km²) · density 0.2022 · λ 18.72 km · S10 1.1372
+#W 0.3809051513671875 0 79.146805 0.60293794 0.00054223253 0.20974539 0.18677446 3 12 1032.71484375 1657.71484375 0.20223552 18.719904 1.1371673 31.15625
+   seed 23 intermediate 100 Myr A: 80.7 s wall / 87.8 s CPU · the sea at the end 37.0 % · circumnavigable false · median altitude 65 m · plains 62.2 % · mountain 21.1 % · lakes large 4 / dust 16 (area 7634 km²) · density 0.2609 · λ 27.17 km · S10 1.1209
+#W 0.3696746826171875 0 65.04707 0.62153524 0.0027354814 0.16483091 0.21089835 4 16 6879.8828125 7634.27734375 0.26088303 27.169346 1.1208655 87.75
+      the marine Σ above 0 m 11.06 %, above 100 m 2.66 % · stranded by the marine step 4.18 % of the sea's solid · the fluvial deposit 0.000e0 km³, under the cap 0.0 % · lakes born of a deposit 0 / 47 · the thickest cover 5929 m · land / lakes / sea 0.1 / 0.6 / 99.3 % · subducted 31.5 % · controls flux 1.7e-14 stock 2.4e-11
+#D 0.11062063122058098 0.026574400737062343 0.04183367625857036 0 0 0 47 5929.2734 0.005800526854780495 0.9934612256504841 0.31524482085957617 0.000000000000016969194437109786 0.000000000023607743567785
+      zones: deposition 32.4 % of the land (Δ plains -1.5 / Δ mountain +0.9 points), erosion (Δ plains +5.1 / Δ mountain +3.2)
+      the deposition zone (14952 cells): median slope 0.24° → 0.03°, median altitude 36 → 36 m · the erosion zone: slope 0.76° → 0.62°, altitude 127 → 130 m
+      the shelf, passive / active median: 2.2 / 3.8 km → 37.0 / 17.8 km (Harris unconverted 34.9–123.0, ÷ 7.5 4.65–16.4)
+      the sediment: lakes 0.6 % · sea 99.3 % · stranded 0.07 % · subducted 31.5 % · flux control 1.7e-14 · stock control 2.4e-11
+#T 24.7539221 31.265625 81.0756419 88.015625 0.2439904510974884 0.02745879255235195 35.567230224609375 35.98414611816406 0.7550110220909119 0.6155080795288086 126.67125701904297 130.23423767089844 36.96250021457672 17.83437505364418 0.005800526854780495 0.9934612256504841 0.000000000000016969194437109786 0.000000000023607743567785
+   seed 29: the physics level without 23.6 s wall / 28.4 s CPU · with A 80.9 s wall / 89.5 s CPU (the marine step 53.2 s wall, 65691 sub-steps)
+   seed 29 intermediate 100 Myr off: 23.2 s wall / 28.3 s CPU · the sea at the end 44.3 % · circumnavigable true · median altitude 180 m · plains 43.7 % · mountain 26.7 % · lakes large 3 / dust 7 (area 1826 km²) · density 0.2077 · λ 20.18 km · S10 1.1401
+#W 0.44342041015625 1 180.05005 0.4370545 0.012364294 0.28385788 0.26672333 3 7 734.86328125 1826.171875 0.20769985 20.178885 1.1400758 28.34375
+   seed 29 intermediate 100 Myr A: 80.5 s wall / 89.4 s CPU · the sea at the end 46.2 % · circumnavigable true · median altitude 150 m · plains 46.2 % · mountain 29.1 % · lakes large 2 / dust 11 (area 2605 km²) · density 0.2647 · λ 24.82 km · S10 1.1369
+#W 0.461669921875 1 150.21997 0.46196145 0.015617914 0.23157597 0.29084468 2 11 1713.8671875 2604.98046875 0.26469314 24.819448 1.1368734 89.4375
+      the marine Σ above 0 m 6.45 %, above 100 m 3.59 % · stranded by the marine step 4.72 % of the sea's solid · the fluvial deposit 0.000e0 km³, under the cap 0.0 % · lakes born of a deposit 0 / 42 · the thickest cover 5178 m · land / lakes / sea 0.1 / 0.7 / 99.3 % · subducted 1.7 % · controls flux 1.8e-14 stock 4.2e-11
+#D 0.06450791333378059 0.03593420491339439 0.04719242977093058 0 0 0 42 5178.333 0.0066119497222131805 0.9927150758488757 0.016729667655432396 0.000000000000017771776878295844 0.00000000004247690032231675
+      zones: deposition 10.8 % of the land (Δ plains -13.6 / Δ mountain +9.3 points), erosion (Δ plains +10.2 / Δ mountain -1.0)
+      the deposition zone (5403 cells): median slope 0.24° → 0.24°, median altitude 22 → 56 m · the erosion zone: slope 0.90° → 0.72°, altitude 208 → 170 m
+      the shelf, passive / active median: 2.2 / 3.1 km → 3.1 / 4.7 km (Harris unconverted 34.9–123.0, ÷ 7.5 4.65–16.4)
+      the sediment: lakes 0.7 % · sea 99.3 % · stranded 0.07 % · subducted 1.7 % · flux control 1.8e-14 · stock control 4.2e-11
+#T 23.6417307 28.40625 80.9056993 89.5 0.2443166971206665 0.23871727287769318 21.886438369750977 56.1948356628418 0.9007300138473511 0.7194667458534241 208.4933319091797 170.1228485107422 3.125 4.6875 0.0066119497222131805 0.9927150758488757 0.000000000000017771776878295844 0.00000000004247690032231675
+   seed 8: the physics level without 21.5 s wall / 27.0 s CPU · with A 70.1 s wall / 75.2 s CPU (the marine step 43.1 s wall, 65691 sub-steps)
+   seed 8 intermediate 100 Myr off: 21.1 s wall / 26.8 s CPU · the sea at the end 49.3 % · circumnavigable true · median altitude 377 m · plains 23.6 % · mountain 47.7 % · lakes large 3 / dust 2 (area 1477 km²) · density 0.2282 · λ 20.34 km · S10 1.1303
+#W 0.493011474609375 1 377.13846 0.23647144 0.024528984 0.26157227 0.4774273 3 2 905.76171875 1477.05078125 0.22815213 20.343233 1.1302783 26.84375
+   seed 8 intermediate 100 Myr A: 69.6 s wall / 75.0 s CPU · the sea at the end 51.0 % · circumnavigable true · median altitude 491 m · plains 21.8 % · mountain 46.1 % · lakes large 3 / dust 17 (area 2634 km²) · density 0.2957 · λ 27.76 km · S10 1.1206
+#W 0.5104522705078125 1 491.3184 0.2179659 0.093943834 0.22694261 0.46114764 3 17 2060.546875 2634.27734375 0.29568383 27.755291 1.1205765 75.03125
+      the marine Σ above 0 m 1.21 %, above 100 m 0.52 % · stranded by the marine step 1.23 % of the sea's solid · the fluvial deposit 0.000e0 km³, under the cap 0.0 % · lakes born of a deposit 0 / 40 · the thickest cover 4306 m · land / lakes / sea 0.2 / 0.5 / 99.3 % · subducted 10.0 % · controls flux 1.8e-14 stock 3.9e-11
+#D 0.012112403396326767 0.005196515867342173 0.01232755106863721 0 0 0 40 4305.7046 0.004785875107496224 0.9928515909145074 0.1002591769045364 0.00000000000001794376737270225 0.00000000003934362786726201
+      zones: deposition 14.8 % of the land (Δ plains -11.7 / Δ mountain -4.3 points), erosion (Δ plains +2.6 / Δ mountain -3.5)
+      the deposition zone (4978 cells): median slope 0.46° → 0.07°, median altitude 42 → 229 m · the erosion zone: slope 1.97° → 1.78°, altitude 452 → 545 m
+      the shelf, passive / active median: 2.2 / 2.2 km → 2.2 / 6.0 km (Harris unconverted 34.9–123.0, ÷ 7.5 4.65–16.4)
+      the sediment: lakes 0.5 % · sea 99.3 % · stranded 0.24 % · subducted 10.0 % · flux control 1.8e-14 · stock control 3.9e-11
+#T 21.5228697 27.015625 70.1253821 75.1875 0.45670315623283386 0.07300065457820892 41.67414855957031 228.92965698242188 1.9700814485549927 1.7802706956863403 451.86285400390625 544.556396484375 2.2093750536441803 5.981250107288361 0.004785875107496224 0.9928515909145074 0.00000000000001794376737270225 0.00000000003934362786726201
+# tier 1 (2 x 2 blocks)
+   seed 18: the physics level without 21.0 s wall / 26.9 s CPU · with A 26.9 s wall / 31.8 s CPU (the marine step 3.3 s wall, 16538 sub-steps)
+   seed 18 intermediate 100 Myr off: 20.5 s wall / 26.8 s CPU · the sea at the end 51.3 % · circumnavigable true · median altitude 62 m · plains 58.2 % · mountain 20.2 % · lakes large 1 / dust 4 (area 840 km²) · density 0.1953 · λ 16.16 km · S10 1.1276
+#W 0.5132293701171875 1 61.80873 0.58233285 0.0021315946 0.2137237 0.20181185 1 4 410.15625 839.84375 0.19528322 16.161236 1.1275872 26.828125
+   seed 18 intermediate 100 Myr A: 26.5 s wall / 31.5 s CPU · the sea at the end 55.1 % · circumnavigable true · median altitude 73 m · plains 55.3 % · mountain 25.0 % · lakes large 1 / dust 6 (area 415 km²) · density 0.2298 · λ 24.07 km · S10 1.1347
+#W 0.551483154296875 1 72.76104 0.55276585 0.009661836 0.18748724 0.25008506 1 6 163.57421875 415.0390625 0.22979383 24.06651 1.1347281 31.5
+      the marine Σ above 0 m 2.07 %, above 100 m 0.77 % · stranded by the marine step 2.51 % of the sea's solid · the fluvial deposit 0.000e0 km³, under the cap 0.0 % · lakes born of a deposit 0 / 11 · the thickest cover 3862 m · land / lakes / sea 0.4 / 0.2 / 99.4 % · subducted 13.7 % · controls flux 2.2e-14 stock 2.3e-11
+#D 0.02071265322516948 0.007716665066175064 0.025134707110654676 0 0 0 11 3861.5432 0.0020312505353570812 0.9939379952328541 0.13742162940033836 0.000000000000021688668192392027 0.00000000002261513287173071
+      zones: deposition 6.1 % of the land (Δ plains -1.8 / Δ mountain -0.1 points), erosion (Δ plains +0.8 / Δ mountain +3.3)
+      the deposition zone (1957 cells): median slope 0.12° → 0.14°, median altitude 14 → 22 m · the erosion zone: slope 0.47° → 0.44°, altitude 77 → 79 m
+      the shelf, passive / active median: 2.2 / 2.2 km → 3.1 / 3.1 km (Harris unconverted 34.9–123.0, ÷ 7.5 4.65–16.4)
+      the sediment: lakes 0.2 % · sea 99.4 % · stranded 0.40 % · subducted 13.7 % · flux control 2.2e-14 · stock control 2.3e-11
+#T 20.9653715 26.9375 26.8691914 31.8125 0.12319327145814896 0.13611753284931183 14.473539352416992 22.251493453979492 0.4699091911315918 0.44061198830604553 77.20433807373047 79.18115234375 3.125 3.125 0.0020312505353570812 0.9939379952328541 0.000000000000021688668192392027 0.00000000002261513287173071
+   seed 19: the physics level without 22.9 s wall / 31.2 s CPU · with A 29.9 s wall / 37.0 s CPU (the marine step 3.6 s wall, 16538 sub-steps)
+   seed 19 intermediate 100 Myr off: 22.5 s wall / 31.0 s CPU · the sea at the end 47.3 % · circumnavigable true · median altitude 42 m · plains 63.6 % · mountain 12.9 % · lakes large 2 / dust 2 (area 1174 km²) · density 0.2016 · λ 21.68 km · S10 1.1341
+#W 0.473388671875 1 42.048634 0.6357499 0.01958739 0.21551923 0.12914349 2 2 654.296875 1174.31640625 0.20158607 21.682184 1.1340588 31.03125
+   seed 19 intermediate 100 Myr A: 29.5 s wall / 36.9 s CPU · the sea at the end 53.7 % · circumnavigable true · median altitude 67 m · plains 52.0 % · mountain 20.4 % · lakes large 1 / dust 7 (area 750 km²) · density 0.2616 · λ 29.11 km · S10 1.1159
+#W 0.537261962890625 1 66.81914 0.5195212 0.033898305 0.24249819 0.20408231 1 7 168.45703125 749.51171875 0.26158798 29.107878 1.1158504 36.890625
+      the marine Σ above 0 m 1.30 %, above 100 m 0.47 % · stranded by the marine step 2.13 % of the sea's solid · the fluvial deposit 0.000e0 km³, under the cap 0.0 % · lakes born of a deposit 0 / 21 · the thickest cover 3657 m · land / lakes / sea 0.4 / 0.5 / 99.1 % · subducted 19.2 % · controls flux 1.8e-14 stock 4.7e-11
+#D 0.013028709362447568 0.004718021744640099 0.021263477421972158 0 0 0 21 3657.1897 0.005116295237511152 0.9912723000794074 0.19236414600788604 0.000000000000018287124867423194 0.00000000004681199464931333
+      zones: deposition 3.7 % of the land (Δ plains -6.3 / Δ mountain +5.9 points), erosion (Δ plains -5.2 / Δ mountain +5.7)
+      the deposition zone (1622 cells): median slope 0.10° → 0.08°, median altitude 8 → 10 m · the erosion zone: slope 0.38° → 0.55°, altitude 48 → 71 m
+      the shelf, passive / active median: 2.2 / 2.2 km → 2.2 / 3.1 km (Harris unconverted 34.9–123.0, ÷ 7.5 4.65–16.4)
+      the sediment: lakes 0.5 % · sea 99.1 % · stranded 0.36 % · subducted 19.2 % · flux control 1.8e-14 · stock control 4.7e-11
+#T 22.8735369 31.203125 29.9442047 36.984375 0.10051742941141129 0.08195305615663528 7.7462968826293945 9.631514549255371 0.37791961431503296 0.5518565773963928 47.82147979736328 70.59159088134766 2.2093750536441803 3.125 0.005116295237511152 0.9912723000794074 0.000000000000018287124867423194 0.00000000004681199464931333
+   seed 23: the physics level without 26.0 s wall / 33.3 s CPU · with A 34.2 s wall / 40.6 s CPU (the marine step 3.7 s wall, 16538 sub-steps)
+   seed 23 intermediate 100 Myr off: 25.6 s wall / 32.9 s CPU · the sea at the end 38.1 % · circumnavigable false · median altitude 79 m · plains 60.3 % · mountain 18.7 % · lakes large 3 / dust 12 (area 1658 km²) · density 0.2022 · λ 18.72 km · S10 1.1372
+#W 0.3809051513671875 0 79.146805 0.60293794 0.00054223253 0.20974539 0.18677446 3 12 1032.71484375 1657.71484375 0.20223552 18.719904 1.1371673 32.921875
+   seed 23 intermediate 100 Myr A: 33.8 s wall / 40.5 s CPU · the sea at the end 37.4 % · circumnavigable false · median altitude 68 m · plains 63.9 % · mountain 21.3 % · lakes large 2 / dust 13 (area 3223 km²) · density 0.2512 · λ 25.88 km · S10 1.1180
+#W 0.374481201171875 0 67.55059 0.6388984 0.0030492267 0.14516759 0.21288481 2 13 2612.3046875 3222.65625 0.25124514 25.882362 1.1180149 40.46875
+      the marine Σ above 0 m 9.67 %, above 100 m 2.74 % · stranded by the marine step 3.93 % of the sea's solid · the fluvial deposit 0.000e0 km³, under the cap 0.0 % · lakes born of a deposit 0 / 37 · the thickest cover 5877 m · land / lakes / sea 0.1 / 0.6 / 99.4 % · subducted 31.8 % · controls flux 2.1e-14 stock 2.2e-11
+#D 0.0967279978449138 0.027437812075926635 0.039319456067200526 0 0 0 37 5876.9155 0.005805463323655425 0.9935387573608073 0.3175039137685451 0.000000000000021313720462858714 0.00000000002190934732787196
+      zones: deposition 25.2 % of the land (Δ plains +3.6 / Δ mountain +0.7 points), erosion (Δ plains +5.4 / Δ mountain +3.1)
+      the deposition zone (12021 cells): median slope 0.25° → 0.03°, median altitude 32 → 36 m · the erosion zone: slope 0.67° → 0.51°, altitude 112 → 107 m
+      the shelf, passive / active median: 2.2 / 3.8 km → 2.2 / 2.2 km (Harris unconverted 34.9–123.0, ÷ 7.5 4.65–16.4)
+      the sediment: lakes 0.6 % · sea 99.4 % · stranded 0.07 % · subducted 31.8 % · flux control 2.1e-14 · stock control 2.2e-11
+#T 26.0015971 33.28125 34.1929598 40.59375 0.24885842204093933 0.031873561441898346 32.46022415161133 36.49198913574219 0.672158420085907 0.5117167830467224 112.33039855957031 107.30450439453125 2.2093750536441803 2.2093750536441803 0.005805463323655425 0.9935387573608073 0.000000000000021313720462858714 0.00000000002190934732787196
+   seed 29: the physics level without 23.6 s wall / 30.6 s CPU · with A 31.3 s wall / 35.9 s CPU (the marine step 3.8 s wall, 16538 sub-steps)
+   seed 29 intermediate 100 Myr off: 23.2 s wall / 30.4 s CPU · the sea at the end 44.3 % · circumnavigable true · median altitude 180 m · plains 43.7 % · mountain 26.7 % · lakes large 3 / dust 7 (area 1826 km²) · density 0.2077 · λ 20.18 km · S10 1.1401
+#W 0.44342041015625 1 180.05005 0.4370545 0.012364294 0.28385788 0.26672333 3 7 734.86328125 1826.171875 0.20769985 20.178885 1.1400758 30.390625
+   seed 29 intermediate 100 Myr A: 30.9 s wall / 35.8 s CPU · the sea at the end 46.7 % · circumnavigable true · median altitude 160 m · plains 46.0 % · mountain 29.5 % · lakes large 2 / dust 14 (area 2256 km²) · density 0.2575 · λ 23.82 km · S10 1.1341
+#W 0.4668731689453125 1 159.68916 0.45965827 0.0141961705 0.23071639 0.29542917 2 14 1374.51171875 2255.859375 0.25753644 23.820854 1.1340616 35.78125
+      the marine Σ above 0 m 6.22 %, above 100 m 3.32 % · stranded by the marine step 4.29 % of the sea's solid · the fluvial deposit 0.000e0 km³, under the cap 0.0 % · lakes born of a deposit 1 / 45 · the thickest cover 5144 m · land / lakes / sea 0.2 / 0.7 / 99.1 % · subducted 1.7 % · controls flux 2.5e-14 stock 2.9e-11
+#D 0.0621780275973014 0.03324380075497774 0.0428791909028261 0 0 1 45 5144.415 0.006702919067470987 0.9912297646406941 0.01682651194839966 0.00000000000002490340672719494 0.000000000028726851226669026
+      zones: deposition 11.3 % of the land (Δ plains -9.8 / Δ mountain +10.0 points), erosion (Δ plains +10.5 / Δ mountain -0.9)
+      the deposition zone (5640 cells): median slope 0.29° → 0.28°, median altitude 26 → 47 m · the erosion zone: slope 0.93° → 0.76°, altitude 215 → 180 m
+      the shelf, passive / active median: 2.2 / 3.1 km → 2.2 / 2.2 km (Harris unconverted 34.9–123.0, ÷ 7.5 4.65–16.4)
+      the sediment: lakes 0.7 % · sea 99.1 % · stranded 0.21 % · subducted 1.7 % · flux control 2.5e-14 · stock control 2.9e-11
+#T 23.5823184 30.59375 31.2908757 35.859375 0.29129526019096375 0.28300783038139343 25.69122314453125 47.2637939453125 0.9266557097434998 0.7576338052749634 215.33843994140625 180.36392211914063 2.2093750536441803 2.2093750536441803 0.006702919067470987 0.9912297646406941 0.00000000000002490340672719494 0.000000000028726851226669026
+   seed 8: the physics level without 20.4 s wall / 27.0 s CPU · with A 28.6 s wall / 34.7 s CPU (the marine step 2.7 s wall, 16538 sub-steps)
+   seed 8 intermediate 100 Myr off: 20.0 s wall / 26.9 s CPU · the sea at the end 49.3 % · circumnavigable true · median altitude 377 m · plains 23.6 % · mountain 47.7 % · lakes large 3 / dust 2 (area 1477 km²) · density 0.2282 · λ 20.34 km · S10 1.1303
+#W 0.493011474609375 1 377.13846 0.23647144 0.024528984 0.26157227 0.4774273 3 2 905.76171875 1477.05078125 0.22815213 20.343233 1.1302783 26.875
+   seed 8 intermediate 100 Myr A: 28.2 s wall / 34.4 s CPU · the sea at the end 51.7 % · circumnavigable true · median altitude 500 m · plains 22.3 % · mountain 46.7 % · lakes large 2 / dust 14 (area 2607 km²) · density 0.2978 · λ 29.40 km · S10 1.1183
+#W 0.5171966552734375 1 500.08374 0.22265415 0.09313865 0.21724977 0.46695742 2 14 2082.51953125 2607.421875 0.29778212 29.395267 1.1183352 34.375
+      the marine Σ above 0 m 0.81 %, above 100 m 0.31 % · stranded by the marine step 0.86 % of the sea's solid · the fluvial deposit 0.000e0 km³, under the cap 0.0 % · lakes born of a deposit 0 / 33 · the thickest cover 4304 m · land / lakes / sea 0.4 / 0.5 / 99.1 % · subducted 10.1 % · controls flux 1.7e-14 stock 4.4e-11
+#D 0.008114513193599961 0.003068507590354346 0.008585582176960208 0 0 0 33 4304.481 0.004759669634523076 0.9912050563229501 0.10082852342536491 0.000000000000016540970747010168 0.000000000044045692743639184
+      zones: deposition 12.1 % of the land (Δ plains -9.0 / Δ mountain -6.0 points), erosion (Δ plains +3.5 / Δ mountain -3.4)
+      the deposition zone (4046 cells): median slope 0.54° → 0.10°, median altitude 59 → 367 m · the erosion zone: slope 1.86° → 1.71°, altitude 431 → 517 m
+      the shelf, passive / active median: 2.2 / 2.2 km → 3.1 / 2.2 km (Harris unconverted 34.9–123.0, ÷ 7.5 4.65–16.4)
+      the sediment: lakes 0.5 % · sea 99.1 % · stranded 0.40 % · subducted 10.1 % · flux control 1.7e-14 · stock control 4.4e-11
+#T 20.3910671 26.953125 28.639526 34.65625 0.5355937480926514 0.0967322289943695 59.45001983642578 367.1728820800781 1.8612453937530518 1.7127877473831177 430.7314453125 516.8600463867188 3.125 2.2093750536441803 0.004759669634523076 0.9912050563229501 0.000000000000016540970747010168 0.000000000044045692743639184
+# tier 2
+   the stages: the selection 109 s (Part 0, mains) · C1 1.1 s · the physics level with A 34.5 s · the amplifications 512² / 1 024² / 2 048² 4.9 / 8.7 / 39.1 s (without the deposition 5.0 / 9.2 / 42.1 s) · the burial 0.06 s · 4 096² ~145 s and 8 192² ~577 s (extrapolated, Part 0's ratios) · **the chain to 8 192² ≈ 919 s against 300 s**
+   at 2 048²: plains 48.2 → 54.9 % · plateau 0.0 → 0.0 % · hill 32.6 → 23.4 % · mountain 19.2 → 21.7 % · median 73 → 67 m · the cover's volume on land, fine 10496 km³ against coarse 12929 km³ (-18.8 %); on every cell, fine 134337 against coarse 136600 km³ (-1.7 %)
+   crop « lake » centred on 256² cell 60900
+   crop « delta » centred on 256² cell 8981
+   crop « plateau » centred on 256² cell 44471
+   tier 2: 227 s

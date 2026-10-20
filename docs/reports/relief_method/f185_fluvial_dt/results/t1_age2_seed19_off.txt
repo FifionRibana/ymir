@@ -1,0 +1,2 @@
+   seed 19 intermediate 100 Myr off: 22.3 s wall / 29.0 s CPU · the sea at the end 47.3 % · circumnavigable true · median altitude 42 m · plains 63.6 % · mountain 12.9 % · lakes large 2 / dust 2 (area 1174 km²) · density 0.2016 · λ 21.68 km · S10 1.1341
+#W 0.473388671875 1 42.048634 0.6357499 0.01958739 0.21551923 0.12914349 2 2 654.296875 1174.31640625 0.20158607 21.682184 1.1340588 28.953125

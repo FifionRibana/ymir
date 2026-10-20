@@ -1,0 +1,45 @@
+
+==========  F186 continuation, step 2: the bumps and the delta's edge, seed 23  ==========
+   blocks (256²):
+      63 groups with z_on − z_off > 150 m on land
+      group of 3659 cells, peak at 256² cell 63686 (x 198, y 248): z -4045 → 16 m (Δ +4061) · cover H 4054 m (marine 7908, lake 264, fluvial 0) · basement Δ +7 m · cells in a lake 228, with a marine deposit > 1 m 1518
+      group of 1321 cells, peak at 256² cell 10794 (x 42, y 42): z -5036 → 84 m (Δ +5120) · cover H 5933 m (marine 12708, lake 63, fluvial 0) · basement Δ -813 m · cells in a lake 61, with a marine deposit > 1 m 1051
+      group of 847 cells, peak at 256² cell 57682 (x 82, y 225): z -4466 → 67 m (Δ +4533) · cover H 4854 m (marine 10162, lake 52, fluvial 0) · basement Δ -321 m · cells in a lake 33, with a marine deposit > 1 m 753
+      group of 330 cells, peak at 256² cell 9159 (x 199, y 35): z -3194 → 16 m (Δ +3210) · cover H 3298 m (marine 6406, lake 130, fluvial 0) · basement Δ -88 m · cells in a lake 330, with a marine deposit > 1 m 330
+      group of 256 cells, peak at 256² cell 41567 (x 95, y 162): z 1043 → 1827 m (Δ +785) · cover H 0 m (marine -1, lake 0, fluvial 0) · basement Δ +785 m · cells in a lake 0, with a marine deposit > 1 m 89
+      group of 69 cells, peak at 256² cell 17360 (x 208, y 67): z -2355 → 56 m (Δ +2411) · cover H 2546 m (marine 5308, lake 26, fluvial 0) · basement Δ -135 m · cells in a lake 0, with a marine deposit > 1 m 69
+      group of 57 cells, peak at 256² cell 44268 (x 236, y 172): z 335 → 731 m (Δ +396) · cover H 0 m (marine 701, lake 0, fluvial 0) · basement Δ +396 m · cells in a lake 0, with a marine deposit > 1 m 54
+      group of 45 cells, peak at 256² cell 4980 (x 116, y 19): z -1687 → 58 m (Δ +1746) · cover H 1783 m (marine 2725, lake 245, fluvial 0) · basement Δ -37 m · cells in a lake 0, with a marine deposit > 1 m 45
+      group of 43 cells, peak at 256² cell 1150 (x 126, y 4): z -176 → 45 m (Δ +221) · cover H 149 m (marine 0, lake 131, fluvial 0) · basement Δ +72 m · cells in a lake 32, with a marine deposit > 1 m 0
+      group of 42 cells, peak at 256² cell 47194 (x 90, y 184): z -358 → 1 m (Δ +358) · cover H 411 m (marine 1074, lake 1, fluvial 0) · basement Δ -53 m · cells in a lake 0, with a marine deposit > 1 m 42
+      group of 38 cells, peak at 256² cell 3932 (x 92, y 15): z 243 → 515 m (Δ +272) · cover H 0 m (marine 951, lake 4, fluvial 0) · basement Δ +272 m · cells in a lake 0, with a marine deposit > 1 m 16
+      group of 20 cells, peak at 256² cell 12353 (x 65, y 48): z 589 → 886 m (Δ +297) · cover H 0 m (marine 236, lake 0, fluvial 0) · basement Δ +297 m · cells in a lake 0, with a marine deposit > 1 m 20
+   cells (256²):
+      68 groups with z_on − z_off > 150 m on land
+      group of 3682 cells, peak at 256² cell 63686 (x 198, y 248): z -4045 → 6 m (Δ +4051) · cover H 4106 m (marine 7974, lake 401, fluvial 0) · basement Δ -54 m · cells in a lake 95, with a marine deposit > 1 m 1401
+      group of 1281 cells, peak at 256² cell 10794 (x 42, y 42): z -5036 → 10 m (Δ +5045) · cover H 5920 m (marine 12577, lake 96, fluvial 0) · basement Δ -874 m · cells in a lake 140, with a marine deposit > 1 m 1042
+      group of 724 cells, peak at 256² cell 57682 (x 82, y 225): z -4466 → 52 m (Δ +4518) · cover H 4815 m (marine 10052, lake 32, fluvial 0) · basement Δ -296 m · cells in a lake 102, with a marine deposit > 1 m 597
+      group of 329 cells, peak at 256² cell 9159 (x 199, y 35): z -3194 → 27 m (Δ +3221) · cover H 3278 m (marine 6572, lake 122, fluvial 0) · basement Δ -56 m · cells in a lake 91, with a marine deposit > 1 m 329
+      group of 257 cells, peak at 256² cell 41567 (x 95, y 162): z 1043 → 1833 m (Δ +790) · cover H 0 m (marine 0, lake 0, fluvial 0) · basement Δ +790 m · cells in a lake 0, with a marine deposit > 1 m 28
+      group of 77 cells, peak at 256² cell 44269 (x 237, y 172): z 217 → 838 m (Δ +621) · cover H 0 m (marine 1411, lake 0, fluvial 0) · basement Δ +621 m · cells in a lake 0, with a marine deposit > 1 m 77
+      group of 69 cells, peak at 256² cell 17360 (x 208, y 67): z -2355 → 58 m (Δ +2413) · cover H 2565 m (marine 5321, lake 30, fluvial 0) · basement Δ -152 m · cells in a lake 0, with a marine deposit > 1 m 69
+      group of 44 cells, peak at 256² cell 4980 (x 116, y 19): z -1687 → 50 m (Δ +1737) · cover H 1792 m (marine 3094, lake 193, fluvial 0) · basement Δ -55 m · cells in a lake 11, with a marine deposit > 1 m 44
+      group of 42 cells, peak at 256² cell 1150 (x 126, y 4): z -176 → 42 m (Δ +218) · cover H 165 m (marine 0, lake 132, fluvial 0) · basement Δ +53 m · cells in a lake 31, with a marine deposit > 1 m 13
+      group of 37 cells, peak at 256² cell 45401 (x 89, y 177): z 653 → 1002 m (Δ +349) · cover H 0 m (marine 944, lake 0, fluvial 0) · basement Δ +349 m · cells in a lake 0, with a marine deposit > 1 m 37
+      group of 36 cells, peak at 256² cell 60574 (x 158, y 236): z 31 → 203 m (Δ +172) · cover H 0 m (marine 206, lake 33, fluvial 0) · basement Δ +172 m · cells in a lake 0, with a marine deposit > 1 m 36
+      group of 34 cells, peak at 256² cell 4094 (x 254, y 15): z 22 → 530 m (Δ +508) · cover H 579 m (marine 1601, lake 0, fluvial 0) · basement Δ -71 m · cells in a lake 0, with a marine deposit > 1 m 34
+   blocks at 2 048² (per group, the fine maximum over its cells): without the deposition / the basement chain / buried
+      group of 3659 cells at 256² cell 36264: 3532 / 3879 / 3879 m
+      group of 1321 cells at 256² cell 46: 4498 / 4718 / 4718 m
+      group of 847 cells at 256² cell 48221: 2861 / 3167 / 3167 m
+      group of 330 cells at 256² cell 4027: 5 / 9 / 19 m
+      group of 256 cells at 256² cell 37731: 3427 / 3582 / 3582 m
+      group of 69 cells at 256² cell 15823: 5 / 12 / 2518 m
+      group of 57 cells at 256² cell 43242: 1085 / 1295 / 1295 m
+      group of 45 cells at 256² cell 3700: 11 / 15 / 1761 m
+      group of 43 cells at 256² cell 129: 4 / 69 / 69 m
+      group of 42 cells at 256² cell 44892: 930 / 1216 / 1216 m
+      group of 38 cells at 256² cell 2393: 545 / 795 / 795 m
+      group of 20 cells at 256² cell 10820: 1168 / 1401 / 1401 m
+   the delta crop: the burial's added height, column means on land, the largest jump +149 m at crop column 191 (fine x 247, 256² column 30, off the 256² cell edge)
+   step 2's diagnosis: 307 s
