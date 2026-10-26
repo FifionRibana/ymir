@@ -1,4 +1,4 @@
-# Finding 186 — the deposition by closures: Yuan's K_eff holds the equilibrium at +0.4 %; the per-cell marine step proposed as the physical reference, to be confirmed by the author (the blocks hold a 60 s budget, since withdrawn, but lose the shelves, stripe the delta and multiply the deep-sea lines); the burial by a level removes the stairs, but where the chain lifts or raises the basement it overshoots by 1.4–3 km; the recycling interpolated; the chain to 8 192² stays ~3 × over the 5-minute target (F187)
+# Finding 186 — the deposition by closures: Yuan's K_eff holds the equilibrium at +0.4 %; the per-cell marine step is the physical reference, confirmed by the author (the blocks hold a 60 s budget, since withdrawn, but lose the shelves, stripe the delta and multiply the deep-sea lines); the burial by a level removes the stairs, but where the chain lifts or raises the basement it overshoots by 1.4–3 km; the recycling interpolated; the chain to 8 192² stays ~3 × over the 5-minute target (F187)
 
 **Status: Part 0 measured on mains; A and B built with their controls; tier 1 (the panel, intermediate) and tier 2 (the chain to
 2 048², seed 23) measured; tier 3 (the old age) not run: its condition is « tiers 1 and 2 hold their budgets », and the chain's
@@ -274,7 +274,7 @@ sea, and the surplus is shared among the cells of the block and its ring that st
 
 ## The decision, the recycling, the diagnosis and the chain per cell
 
-**The decision on the marine step (to be confirmed by the author before it is applied)**, verbatim:
+**The decision on the marine step (the reviewer's proposal, confirmed by the author: « Oui marin en cellule. »)**, the proposal verbatim (its « à confirmer » is the proposal's own wording, kept as written):
 
 > Décision (à confirmer par l'auteur avant d'appliquer) : le marin en cellules est la référence physique. Les blocs ne
 > sont pas adoptés : ils perdent le plateau, créent les stries du delta et multiplient les lignes en mer profonde. Garde

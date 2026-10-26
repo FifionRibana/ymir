@@ -1,0 +1,2 @@
+   seed 23 (p0): the filled zone 38970 km² of the 2 048² land · on it, without → with the deposition: S10 1.3767 → 1.1998 · a_dir (the straight, D8-aligned share) 0.375 → 0.537 · the order-≥ 2 pieces 6131 → 5624
+#R 1.3766501 1.1998463 0.3751065 0.53680843

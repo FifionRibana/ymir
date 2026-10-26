@@ -1,0 +1,1 @@
+   [off] 25.3 s wall / 30.7 s CPU · the mass controls 0.0e0 / 0.0e0 · land 40455 cells · median 85 m

@@ -1,0 +1,24 @@
+   [prod] 89.1 s wall / 95.4 s CPU
+   E1, the raw readings (density, λ km, S10, plain / plateau / hill / mountain %): the production (one fluvial step per step, median 167 kyr) · 20 kyr · 10 kyr · 5 kyr
+   all the land:
+      production 0.2537 · 21.34 · 1.1291 · 23.27 / 6.37 / 25.78 / 44.58
+      20 kyr     0.2336 · 19.13 · 1.1399 · 23.72 / 3.34 / 28.83 / 44.11
+      10 kyr     0.2376 · 19.44 · 1.1409 · 23.57 / 3.71 / 28.95 / 43.77
+      5 kyr      0.2433 · 20.18 · 1.1346 · 25.13 / 2.95 / 27.92 / 44.00
+   A′'s zone:
+      production 0.2754 · 21.99 · 1.1267 · 35.96 / 6.25 / 33.05 / 24.74
+      20 kyr     0.2506 · 18.28 · 1.1421 · 37.16 / 2.05 / 35.75 / 25.04
+      10 kyr     0.2545 · 18.67 · 1.1475 · 36.96 / 2.09 / 36.61 / 24.34
+      5 kyr      0.2631 · 20.77 · 1.1316 · 38.58 / 1.63 / 35.52 / 24.27
+   C > 1:
+      production 0.4072 · 64.06 · 1.1026 · 28.93 / 5.76 / 28.03 / 37.28
+      20 kyr     0.3908 · 64.06 · 1.1099 · 28.24 / 2.83 / 30.85 / 38.08
+      10 kyr     0.3827 · 64.06 · 1.1105 · 29.35 / 3.32 / 29.96 / 37.38
+      5 kyr      0.4009 · 64.06 · 1.1155 · 30.42 / 2.68 / 29.43 / 37.47
+   C ≤ 1:
+      production 0.2243 · 46.42 · 1.1253 · 22.38 / 6.42 / 25.67 / 45.53
+      20 kyr     0.2064 · 42.33 · 1.1337 · 22.93 / 3.47 / 27.99 / 45.60
+      10 kyr     0.2117 · 39.79 · 1.1373 · 22.65 / 3.79 / 28.53 / 45.04
+      5 kyr      0.2145 · 42.58 · 1.1344 · 24.33 / 2.98 / 27.74 / 44.96
+   D2a: the missing rebound (the hillslope's basement unloading not flexed) on the 17516 cells the hillslope lowers: max 66 m, median 29 m · on the 980 coastal ones, 22 % above 50 m · its mean over the map +29.9 m (the k = 0 part; D2's estimate +36 m from the export alone)
+   91 s

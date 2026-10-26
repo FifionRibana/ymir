@@ -1,0 +1,13 @@
+   D2.1 (seed 8): the uniform mode at the run's end: the erosional part w0 +928.5 m · the load part (deposits, recycling) -537.9 m · their sum +390.6 m · the cumulated rebound's mean +390.6 m (the series over time are not recorded: not recomputed)
+   D2.2: the masses (kg): the basement incised ρc V 4.902e17 (181573 km³) · deposits on land ρg S + ρw (H − S) 7.834e15 (S 2243 km³) · at sea (ρg − ρw) S 2.762e17 (S 163433 km³) · the budget's terms (norm × cells, F182–F183): eroded 6.7285e3, hillslope to the sea 2.5600e2, fluvial 0.0000e0, lakes 3.7582e1, stranded 1.2641e2, sea 6.8205e3, exported 0.0000e0, subducted 6.5859e2
+      the expected uniform mode (ρc V_inc − ΔL_land − ΔL_sea) / (ρm A) +390.6 m against the recorded +390.6 m
+      the hillslope's export to the sea 7063 km³ (thickness): it loads the sea once deposited but its removal from the land is not in A1's unloading; as basement it would add ρc V / (ρm A) = +36.1 m to w0
+   D2.3: seed 8's east lake (1300 cells, 3174 km²): the cumulated flexure there +436 m = the uniform mode +391 m (90 %) + the non-uniform part +45 m (10 %) · the cumulated tectonic source there +315 m
+   D2.4: A′'s zone (17926 cells): the cumulated Δz_v (the source + the flexure) < 0 on 122 cells; without the uniform mode on 1379; so -1030 % of the zone's cells with a negative cumulated Δz_v would leave it (the cumulated Δz_v, not A′'s per-step one: an approximation)
+   D3 (seed 23): the lakes F187 4006 km² → F187 + B 6565 km² · the new lakes (≥ 16 cells, not overlapping F187's), the largest first:
+      74 cells (181 km²) at (240, 48), 14 km from the coast · B − F187 on the lake: the surface -19 m, the cover +23 m (F187's cover there 96 m), the cumulated flexure -5 m · at its outlet 2802: the surface -14 m, the cover +60 m
+      72 cells (176 km²) at (200, 248), 66 km from the coast · B − F187 on the lake: the surface -5 m, the cover +3 m (F187's cover there 2277 m), the cumulated flexure +3 m · at its outlet 62921: the surface -5 m, the cover -11 m
+      18 cells (44 km²) at (241, 244), 12 km from the coast · B − F187 on the lake: the surface -23 m, the cover +56 m (F187's cover there 60 m), the cumulated flexure -3 m · at its outlet 61425: the surface -10 m, the cover +106 m
+      the new lakes together (164 cells): the surface -13 m, the cover +18 m, the cumulated flexure -2 m (B − F187, means)
+   296 s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 33 filtered out; finished in 295.87s

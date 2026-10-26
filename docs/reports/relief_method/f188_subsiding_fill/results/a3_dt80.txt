@@ -1,0 +1,1 @@
+   [a3_dt80] 101.2 s wall / 108.2 s CPU · the mass controls 1.8e-14 / 5.0e-11

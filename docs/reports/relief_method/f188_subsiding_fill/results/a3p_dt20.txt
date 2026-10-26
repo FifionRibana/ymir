@@ -1,0 +1,1 @@
+   [a3p_dt20] 286.3 s wall / 289.1 s CPU · the mass controls 1.3e-14 / 3.9e-11

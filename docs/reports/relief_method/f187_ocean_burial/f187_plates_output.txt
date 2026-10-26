@@ -1,0 +1,7 @@
+   seed 18: X2 (filled > 50 m above the bilinear surface) 12 → 0 cells, the worst 141.6 → 2.7 m · the volume filled outside the covered cells 181 → 19 km³ · the total fill 166468 → 166211 km³ against the coarse 165639 km³ (+0.5 → +0.3 %)
+   seed 19: X2 (filled > 50 m above the bilinear surface) 66 → 18 cells, the worst 156.3 → 74.4 m · the volume filled outside the covered cells 100 → 7 km³ · the total fill 167459 → 167312 km³ against the coarse 167617 km³ (-0.1 → -0.2 %)
+   seed 23: X2 (filled > 50 m above the bilinear surface) 7 → 0 cells, the worst 110.5 → 12.6 m · the volume filled outside the covered cells 263 → 44 km³ · the total fill 155366 → 155032 km³ against the coarse 155503 km³ (-0.1 → -0.3 %)
+   seed 23: the delta crop centred on 256² cell 7972 (without | the bounded burial | corrected)
+   seed 8: X2 (filled > 50 m above the bilinear surface) 2 → 0 cells, the worst 53.1 → 13.6 m · the volume filled outside the covered cells 242 → 38 km³ · the total fill 238866 → 238550 km³ against the coarse 238415 km³ (+0.2 → +0.1 %)
+   the plates: 855 s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 854.84s

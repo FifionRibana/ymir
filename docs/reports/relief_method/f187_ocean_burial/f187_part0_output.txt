@@ -1,0 +1,8 @@
+F187REF off 6b3a0aa02911cd27 A fb9a0ba78e86a1bd cover 4c13633b7778294b
+   seed 8: at the end 10 depressions, 598 km² (245 cells), the largest 83 cells, 1018 m deep · over the 300 steps: with ≥ 1 depression 285 steps, the first at step 14, the first ≥ 50 cells at step 28 · the maxima: 11 depressions, 627 km² in all, the largest 137 cells (334 km²), 1675 m deep
+   seed 18: at the end 4 depressions, 688 km² (282 cells), the largest 181 cells, 1096 m deep · over the 300 steps: with ≥ 1 depression 293 steps, the first at step 8, the first ≥ 50 cells at step 14 · the maxima: 17 depressions, 1636 km² in all, the largest 344 cells (840 km²), 1601 m deep
+   seed 19: at the end 4 depressions, 1619 km² (663 cells), the largest 271 cells, 3069 m deep · over the 300 steps: with ≥ 1 depression 291 steps, the first at step 2, the first ≥ 50 cells at step 13 · the maxima: 20 depressions, 3125 km² in all, the largest 562 cells (1372 km²), 3069 m deep
+   seed 23: at the end 7 depressions, 2898 km² (1187 cells), the largest 421 cells, 4045 m deep · over the 300 steps: with ≥ 1 depression 292 steps, the first at step 4, the first ≥ 50 cells at step 12 · the maxima: 23 depressions, 7239 km² in all, the largest 598 cells (1460 km²), 4243 m deep
+   seed 29: at the end 14 depressions, 2566 km² (1051 cells), the largest 252 cells, 3691 m deep · over the 300 steps: with ≥ 1 depression 294 steps, the first at step 1, the first ≥ 50 cells at step 13 · the maxima: 17 depressions, 5999 km² in all, the largest 985 cells (2405 km²), 4385 m deep
+   Part 0: 131 s
+the reference at 5e40634 (worktree): F187REF off 6b3a0aa02911cd27 A fb9a0ba78e86a1bd cover 4c13633b7778294b

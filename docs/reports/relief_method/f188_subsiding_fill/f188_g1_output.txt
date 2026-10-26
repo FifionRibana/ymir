@@ -1,0 +1,47 @@
+   G1: the land's median 1218 m; the cells above 5 × it: 65
+      cell 14572 (x 236, y 56): 6254 m
+      cell 14573 (x 237, y 56): 6149 m
+      cell 14827 (x 235, y 57): 6407 m
+      cell 14828 (x 236, y 57): 9856 m
+      cell 14829 (x 237, y 57): 7223 m
+      cell 15083 (x 235, y 58): 6651 m
+      cell 15084 (x 236, y 58): 10599 m
+      cell 15085 (x 237, y 58): 6503 m
+      cell 21115 (x 123, y 82): 7292 m
+      cell 21116 (x 124, y 82): 8143 m
+      cell 21371 (x 123, y 83): 7830 m
+      cell 21372 (x 124, y 83): 9703 m
+   the domain's land max per step: at 10 / 20 / 30 / 40 / 50 / 60 Myr [25259, 3070, 5335, 2836, 4588, 12677] m; it first exceeds 3 km at step 25 (4.00 Myr), cell 16300 (x 172, y 63)
+   the max over the window (step, m, cell): (17, 1369, 54019) (18, 1447, 38969) (19, 1526, 38969) (20, 1605, 38969) (21, 1685, 38969) (22, 1763, 38968) (23, 1843, 38968) (24, 1922, 45039) (25, 10736, 16300) (26, 5474, 33177) (27, 4944, 33177) (28, 4568, 33177) (29, 4215, 33177) (30, 3884, 33177) (31, 3577, 33177) (32, 3300, 33177)
+   the top cell 16300 (x 172, y 63) and its 8 neighbours; the window: from step 25 (4.0 Myr)
+   every 10 Myr:
+      step 63 (10.08 Myr): top h 765 m [land] receiver (+1,+0) area 9.8 km² · the step's incision -112.7 m, talus +0.0 m, diffusion +20.1 m · the neighbours' h [1100, 921, 781, 1002, 599, 1051, 887, 721]
+      step 125 (20.00 Myr): top h 476 m [land] receiver (+1,+0) area 24.4 km² · the step's incision -102.1 m, talus +0.0 m, diffusion +22.0 m · the neighbours' h [775, 669, 563, 599, 377, 785, 651, 545]
+      step 188 (30.08 Myr): top h 481 m [land] receiver (-1,+0) area 4.9 km² · the step's incision -80.3 m, talus +0.0 m, diffusion +0.0 m · the neighbours' h [288, 487, 558, 287, 653, 305, 480, 619]
+      step 250 (40.00 Myr): top h 771 m [land] receiver (+1,-1) area 2.4 km² · the step's incision -65.5 m, talus +0.0 m, diffusion -14.6 m · the neighbours' h [842, 698, 492, 824, 591, 624, 696, 550]
+      step 313 (50.08 Myr): top h 799 m [land] receiver (+1,+0) area 7.3 km² · the step's incision -85.7 m, talus +0.0 m, diffusion +7.1 m · the neighbours' h [905, 801, 611, 983, 643, 1065, 880, 732]
+      step 375 (60.00 Myr): top h 763 m [land] receiver (+1,+1) area 14.6 km² · the step's incision -99.9 m, talus +0.0 m, diffusion +12.5 m · the neighbours' h [1111, 970, 860, 929, 718, 823, 656, 555]
+   every step of the window:
+      step 15 (2.40 Myr): top h 447 m [land] receiver (+0,-1) area 2.4 km² · the step's incision -91.5 m, talus +0.0 m, diffusion -47.4 m · the neighbours' h [488, 228, 512, 253, 359, 491, 251, 531]
+      step 16 (2.56 Myr): top h 402 m [land] receiver (+0,-1) area 2.4 km² · the step's incision -82.6 m, talus +0.0 m, diffusion -42.3 m · the neighbours' h [447, 210, 472, 231, 321, 445, 228, 483]
+      step 17 (2.72 Myr): top h 371 m [land] receiver (+0,-1) area 2.4 km² · the step's incision -73.4 m, talus +0.0 m, diffusion -37.9 m · the neighbours' h [417, 199, 442, 218, 300, 412, 215, 448]
+      step 18 (2.88 Myr): top h 349 m [land] receiver (+0,-1) area 2.4 km² · the step's incision -67.1 m, talus +0.0 m, diffusion -34.8 m · the neighbours' h [395, 190, 419, 208, 286, 387, 205, 421]
+      step 19 (3.04 Myr): top h 334 m [land] receiver (+0,-1) area 2.4 km² · the step's incision -62.7 m, talus +0.0 m, diffusion -32.6 m · the neighbours' h [378, 184, 402, 201, 277, 370, 199, 402]
+      step 20 (3.20 Myr): top h 323 m [land] receiver (+0,-1) area 2.4 km² · the step's incision -59.8 m, talus +0.0 m, diffusion -31.3 m · the neighbours' h [366, 179, 388, 195, 270, 357, 192, 387]
+      step 21 (3.36 Myr): top h 314 m [land] receiver (+0,-1) area 2.4 km² · the step's incision -58.1 m, talus +0.0 m, diffusion -30.4 m · the neighbours' h [356, 174, 378, 190, 263, 346, 187, 376]
+      step 22 (3.52 Myr): top h 308 m [land] receiver (+0,-1) area 2.4 km² · the step's incision -56.8 m, talus +0.0 m, diffusion -29.8 m · the neighbours' h [349, 170, 370, 186, 258, 338, 183, 367]
+      step 23 (3.68 Myr): top h 303 m [land] receiver (+0,-1) area 2.4 km² · the step's incision -55.5 m, talus +0.0 m, diffusion -29.1 m · the neighbours' h [343, 169, 364, 184, 255, 333, 181, 360]
+      step 24 (3.84 Myr): top h 300 m [land] receiver (+0,-1) area 2.4 km² · the step's incision -54.3 m, talus +0.0 m, diffusion -28.5 m · the neighbours' h [339, 169, 359, 183, 253, 329, 181, 356]
+      step 25 (4.00 Myr): top h 10736 m [land] receiver (+0,+1) area 2.4 km² · the step's incision -120.1 m, talus -92874.2 m, diffusion -1259.7 m · the neighbours' h [4828, 6059, 5077, 5220, 5362, 4351, 5115, 4454]
+      step 26 (4.16 Myr): top h 5097 m [land] receiver (-1,+0) area 2.4 km² · the step's incision -1611.0 m, talus -3897.0 m, diffusion -211.2 m · the neighbours' h [3888, 4780, 3993, 3924, 4020, 3609, 3955, 3659]
+      step 27 (4.32 Myr): top h 4455 m [land] receiver (-1,+0) area 2.4 km² · the step's incision -380.5 m, talus -195.6 m, diffusion -146.7 m · the neighbours' h [3516, 4397, 3601, 3557, 3613, 3248, 3612, 3307]
+      step 28 (4.48 Myr): top h 4092 m [land] receiver (-1,+0) area 2.4 km² · the step's incision -302.5 m, talus +0.0 m, diffusion -140.0 m · the neighbours' h [3191, 4034, 3279, 3225, 3285, 2925, 3303, 2987]
+      step 29 (4.64 Myr): top h 3747 m [land] receiver (-1,+0) area 2.4 km² · the step's incision -292.6 m, talus +0.0 m, diffusion -132.1 m · the neighbours' h [2892, 3689, 2984, 2920, 2984, 2625, 3012, 2692]
+      step 30 (4.80 Myr): top h 3425 m [land] receiver (-1,+0) area 2.4 km² · the step's incision -278.4 m, talus +0.0 m, diffusion -124.2 m · the neighbours' h [2620, 3366, 2704, 2641, 2701, 2363, 2749, 2428]
+      step 31 (4.96 Myr): top h 3128 m [land] receiver (-1,+0) area 2.4 km² · the step's incision -261.5 m, talus +0.0 m, diffusion -115.3 m · the neighbours' h [2388, 3070, 2450, 2398, 2443, 2146, 2520, 2201]
+      step 32 (5.12 Myr): top h 2862 m [land] receiver (-1,+0) area 2.4 km² · the step's incision -240.6 m, talus +0.0 m, diffusion -105.7 m · the neighbours' h [2197, 2807, 2224, 2198, 2214, 1974, 2324, 2007]
+      step 33 (5.28 Myr): top h 2626 m [land] receiver (+1,+0) area 2.4 km² · the step's incision -219.5 m, talus +0.0 m, diffusion -95.8 m · the neighbours' h [2047, 2577, 2023, 2040, 2007, 1844, 2156, 1838]
+      step 34 (5.44 Myr): top h 2413 m [land] receiver (+1,+0) area 2.4 km² · the step's incision -209.5 m, talus +0.0 m, diffusion -84.4 m · the neighbours' h [1934, 2378, 1844, 1922, 1818, 1749, 2010, 1688]
+   G1.4, the production (seed 8, results/prod.bin): the land cells > 500 m above all 8 neighbours: 2 at [(160, 29, 1496), (216, 123, 553)]
+   G1: 356 s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 41 filtered out; finished in 355.68s

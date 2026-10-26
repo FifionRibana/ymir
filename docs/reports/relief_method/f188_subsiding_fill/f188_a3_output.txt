@@ -1,0 +1,6 @@
+   [a3_dt80] 101.2 s wall / 108.2 s CPU · the mass controls 1.8e-14 / 5.0e-11
+   [a3_dt20] 224.8 s wall / 230.8 s CPU · the mass controls 1.6e-14 / 4.0e-11
+   the zone: 17023 cells (41560 km²) with a fluvial deposit at 20 kyr
+   80 → 20 kyr on the zone: density 0.2721 → 0.2789 (2.4 %) · λ 20.65 → 21.05 km (1.9 %) · S10 1.1502 → 1.1374 (1.1 %) · the classes (plain, plateau, hill, mountain) 36.5 / 3.8 / 35.2 / 24.5 → 42.7 / 1.5 / 33.3 / 22.5 % (the largest move 6.22 points)
+   A3 FAILS (the stop)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 27 filtered out; finished in 0.95s

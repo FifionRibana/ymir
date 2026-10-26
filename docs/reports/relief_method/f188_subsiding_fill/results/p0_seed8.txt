@@ -1,0 +1,2 @@
+   seed 8 (p0): the filled zone 17860 km² of the 2 048² land · on it, without → with the deposition: S10 1.2936 → 1.1886 · a_dir (the straight, D8-aligned share) 0.437 → 0.571 · the order-≥ 2 pieces 3163 → 2754
+#R 1.2936286 1.1886495 0.43713307 0.5705519

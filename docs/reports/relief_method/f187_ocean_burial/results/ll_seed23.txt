@@ -1,0 +1,16 @@
+   seed 23
+   [depK_noload] 86.8 s wall / 93.0 s CPU · unconnected depressions at the end 9 (142 km²)
+#Q 9 58 0 0 0 0 0 0 86.8033954 92.984375
+      depK_noload: lakes (dust 1–2 / 3–15 / 16–63 / large ≥ 64 cells) [24, 16, 10, 2], area km² [76.0, 317.0, 720.0, 20959.0] · below-sea inland 58 cells · shelf median km: passive 10.9, active 6.0, all 6.9 (464 paths), the passive break's depth 1928 m · coast dimension 1.108, length ratio 1.108 · circumnavigable false · deciles [107.0, 136.0, 137.0, 154.0, 189.0, 237.0, 306.0, 410.0, 877.0]
+      formations: Andean cordilleras 3 (lengths km [181.25, 50.0, 75.0]; total 306 km world, 2297 km terrestrial; 19004 km²) · Andean not touching an active coast 190 km² · collisional highland 7712 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 254 km² · other 537 km² · collision the only formation: false
+      W10 0.136 (W_in 0.075, rampart false) · active / passive 0.290 / 0.088 (713 / 2301 cells) · macro plain 57.6 · plateau 0.7 · hill 21.5 · mountain 20.3 % · land 136396 km² · median 189 m
+#F 3 306.25 19003.906 190.42969 7712.4023 0 253.90625 537.1094 0
+#W 0.13603185 0.29032257 0.08822251 0
+#M 0.5755889 0.0065511563 0.21479201 0.20306794 136396.484375 189.01207
+#L 24 16 10 2 75.68359375 317.3828125 720.21484375 20959.47265625
+#S 10.9375 5.981250107288361 6.89687505364418 1927.7620849609375 464
+#C 1.1083803 1.1076388 0 55868
+#D 106.72459 136.41727 137.26794 154.48546 189.01207 236.99521 306.34412 410.1456 877.334
+      the sediment: eroded 8.3323e3 + hillslope to the sea 3.5784e2 (norm × cells) → land 0.0 % · lakes 4.4 % · stranded 1.03 % · sea 94.6 % · exported 0.00 % · the mass control's worst step 9.27e-14 (f32 field 7.79e-5) · thickness on land median 0.0 m, max 6056 m · marine sub-steps 65691 in 47.5 s · iterations max 1
+#B 8332.267203812527 357.83741822838783 0 384.24772927250126 89.23763797086664 8216.619254797559 0 0.00000000000009271823168260888 0.00007791078525888293 65691 47.47075840000005
+#M2 0.00000000000009271823168260888 0.00000000001586343684835305

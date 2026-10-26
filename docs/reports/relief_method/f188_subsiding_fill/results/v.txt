@@ -1,0 +1,35 @@
+   V1 (no hillslope):
+      fluvial step 160 kyr: 27 s · the steady state (max |dh/dt| < 1 % U) first holds at never within 60 Myr · the land's max 2159 m, median 864 m
+      fluvial step 40 kyr: 110 s · the steady state (max |dh/dt| < 1 % U) first holds at never within 60 Myr · the land's max 2120 m, median 859 m
+      fluvial step 10 kyr: 428 s · the steady state (max |dh/dt| < 1 % U) first holds at never within 60 Myr · the land's max 2128 m, median 859 m
+      h, 160 against 40 kyr: the relative difference median 2.22e-1, max 3.69e1
+      h, 40 against 10 kyr: the relative difference median 1.88e-1, max 2.97e1
+      h, 160 against 10 kyr: the relative difference median 2.29e-1, max 3.75e1
+      density   160 / 40 / 10 kyr: 0.1610 / 0.1610 / 0.1602 · 160 vs 40 -0.021 · 40 vs 10 +0.522 · converged (under E3's noise floor)
+      λ         160 / 40 / 10 kyr: 7.0502 / 7.0516 / 7.0347 · 160 vs 40 -0.019 · 40 vs 10 +0.241 · converged (under E3's noise floor)
+      S10       160 / 40 / 10 kyr: 1.1486 / 1.1471 / 1.1498 · 160 vs 40 +0.131 · 40 vs 10 -0.240 · converged (under E3's noise floor)
+      plain     160 / 40 / 10 kyr: 0.6057 / 0.5679 / 0.5627 · 160 vs 40 +0.038 · 40 vs 10 +0.005 · converged (under E3's noise floor)
+      plateau   160 / 40 / 10 kyr: 0.0000 / 0.0000 / 0.0000 · 160 vs 40 +0.000 · 40 vs 10 +0.000 · converged (under E3's noise floor)
+      hill      160 / 40 / 10 kyr: 9.3888 / 9.4955 / 9.5041 · 160 vs 40 -0.107 · 40 vs 10 -0.009 · converged (under E3's noise floor)
+      mountain  160 / 40 / 10 kyr: 90.0055 / 89.9367 / 89.9332 · 160 vs 40 +0.069 · 40 vs 10 +0.003 · converged (under E3's noise floor)
+      h = ε + ∫ U / (K A^m) dx at 160 kyr, on 13807 river cells: |h / h_pred − 1| median 0.17 %, p90 0.87 %
+      h = ε + ∫ U / (K A^m) dx at 40 kyr, on 13867 river cells: |h / h_pred − 1| median 0.12 %, p90 0.58 %
+      h = ε + ∫ U / (K A^m) dx at 10 kyr, on 13756 river cells: |h / h_pred − 1| median 0.10 %, p90 0.55 %
+   V2 (the production's hillslope):
+      fluvial step 160 kyr: 49 s · the steady state (max |dh/dt| < 1 % U) first holds at never within 60 Myr · the land's max 4449 m, median 1327 m
+      fluvial step 40 kyr: 132 s · the steady state (max |dh/dt| < 1 % U) first holds at never within 60 Myr · the land's max 12677 m, median 1218 m
+      fluvial step 10 kyr: 441 s · the steady state (max |dh/dt| < 1 % U) first holds at never within 60 Myr · the land's max 3030 m, median 1129 m
+      h, 160 against 40 kyr: the relative difference median 2.57e-1, max 1.51e1
+      h, 40 against 10 kyr: the relative difference median 2.67e-1, max 5.74e1
+      h, 160 against 10 kyr: the relative difference median 2.74e-1, max 1.77e1
+      density   160 / 40 / 10 kyr: 0.1518 / 0.1657 / 0.1541 · 160 vs 40 -8.370 · 40 vs 10 +7.490 · r -0.89 (out of 0.1 … 0.5)
+      λ         160 / 40 / 10 kyr: 10.0908 / 9.6675 / 9.4399 · 160 vs 40 +4.378 · 40 vs 10 +2.412 · r +0.55 (out of 0.1 … 0.5)
+      S10       160 / 40 / 10 kyr: 1.1408 / 1.1452 / 1.1527 · 160 vs 40 -0.392 · 40 vs 10 -0.645 · converged (under E3's noise floor)
+      plain     160 / 40 / 10 kyr: 0.1076 / 0.1042 / 0.0729 · 160 vs 40 +0.003 · 40 vs 10 +0.031 · converged (under E3's noise floor)
+      plateau   160 / 40 / 10 kyr: 0.0139 / 0.3108 / 0.5799 · 160 vs 40 -0.297 · 40 vs 10 -0.269 · converged (under E3's noise floor)
+      hill      160 / 40 / 10 kyr: 7.1667 / 7.4340 / 7.9913 · 160 vs 40 -0.267 · 40 vs 10 -0.557 · r +2.08 (out of 0.1 … 0.5)
+      mountain  160 / 40 / 10 kyr: 92.7118 / 92.1510 / 91.3559 · 160 vs 40 +0.561 · 40 vs 10 +0.795 · r +1.42 (out of 0.1 … 0.5)
+      h = ε + ∫ U / (K A^m) dx at 160 kyr, on 12559 river cells: |h / h_pred − 1| median 26.22 %, p90 64.62 %
+      h = ε + ∫ U / (K A^m) dx at 40 kyr, on 13411 river cells: |h / h_pred − 1| median 35.72 %, p90 57.41 %
+      h = ε + ∫ U / (K A^m) dx at 10 kyr, on 12662 river cells: |h / h_pred − 1| median 33.26 %, p90 45.03 %
+   V: 1189 s

@@ -1,0 +1,1 @@
+   [d_no_compaction] 110.5 s wall / 117.0 s CPU · the mass controls 1.8e-13 / 2.3e-11 · land 49771 cells · median 96 m

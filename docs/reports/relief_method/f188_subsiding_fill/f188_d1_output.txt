@@ -1,0 +1,12 @@
+   D1: the physics level's 300 steps at the intermediate age last 18.7 … 1465.9 kyr (median 167.0 kyr, total 100.0 Myr); production runs one fluvial step per step (fluvial_dt_max = ∞, fluvial_substeps = 1)
+   bounded at 80 / 20 / 5 kyr: 200 / 295 / 300 steps split, 1404 / 5157 / 20150 fluvial sub-steps in all (against 300)
+   the Courant number C = K_SI A^0.5 dt / dx (K_SI 2e-6 /yr, dx 1 562.5 m):
+      A = 100 km²: dt 80 kyr C = 1.02 · 20 kyr 0.26 · 5 kyr 0.06 · the production's median step (167 kyr) 2.14
+      A = 1000 km²: dt 80 kyr C = 3.24 · 20 kyr 0.81 · 5 kyr 0.20 · the production's median step (167 kyr) 6.76
+      A = 10000 km²: dt 80 kyr C = 10.24 · 20 kyr 2.56 · 5 kyr 0.64 · the production's median step (167 kyr) 21.37
+   the land with C > 1 at 80 kyr: 7.3 % (2401 of 32707 cells)
+   the land with C > 1 at 20 kyr: 1.9 % (628 of 32707 cells)
+   the land with C > 1 at the production's median step: 15.3 % (5018 of 32707 cells)
+   the control on C > 1 (at the production's step; 5018 cells): the classes 80 relative to 20 kyr -0.16 / +0.43 / +0.24 / -0.52 points · the most moved: mountain (-0.52)
+   the control on C ≤ 1 (at the production's step; 27689 cells): the classes 80 relative to 20 kyr +0.50 / +1.60 / -3.29 / +1.19 points · the most moved: hill (-3.29)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 33 filtered out; finished in 0.16s

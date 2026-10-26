@@ -1,0 +1,4 @@
+   the zone: 17023 cells (41560 km²) with a fluvial deposit at 20 kyr
+   80 → 20 kyr on the zone: density 0.2721 → 0.2789 (2.4 %) · λ 20.65 → 21.05 km (1.9 %) · S10 1.1502 → 1.1374 (1.1 %) · the classes (plain, plateau, hill, mountain) 36.5 / 3.8 / 35.2 / 24.5 → 42.7 / 1.5 / 33.3 / 22.5 % (the largest move 6.22 points)
+   A3 FAILS (the stop)
+   1 s

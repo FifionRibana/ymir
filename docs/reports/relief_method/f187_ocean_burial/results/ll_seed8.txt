@@ -1,0 +1,25 @@
+   seed 8
+   [depK_noload] 83.6 s wall / 88.4 s CPU · unconnected depressions at the end 1 (2 km²)
+#Q 1 1 0 0 0 0 0 0 83.5613053 88.40625
+      depK_noload: lakes (dust 1–2 / 3–15 / 16–63 / large ≥ 64 cells) [20, 26, 8, 4], area km² [61.0, 461.0, 654.0, 3379.0] · below-sea inland 1 cells · shelf median km: passive 4.4, active 3.8, all 3.8 (866 paths), the passive break's depth 690 m · coast dimension 1.076, length ratio 1.067 · circumnavigable true · deciles [57.0, 84.0, 169.0, 276.0, 446.0, 617.0, 801.0, 1557.0, 3058.0]
+      formations: Andean cordilleras 4 (lengths km [25.0, 12.5, 18.75, 31.25]; total 88 km world, 656 km terrestrial; 4441 km²) · Andean not touching an active coast 715 km² · collisional highland 31497 km² · separated 22 km² (groups: cells, nearest channel, km [(9, "band remnant", 26)]) · arc mountain 73 km² · other 2671 km² · collision the only formation: false
+      W10 0.144 (W_in 0.131, rampart false) · active / passive 0.297 / 0.128 (468 / 4652 cells) · macro plain 20.1 · plateau 8.0 · hill 26.8 · mountain 45.0 % · land 87644 km² · median 446 m
+#F 4 87.5 4440.918 715.33203 31496.582 21.972656 73.24219 2670.8984 0
+#W 0.14375 0.29700854 0.1283319 0
+#M 0.20142622 0.080364354 0.26844758 0.44976184 87644.04296875 445.8145
+#L 20 26 8 4 61.03515625 461.42578125 654.296875 3378.90625
+#S 4.418750107288361 3.7718750536441803 3.7718750536441803 689.6968994140625 866
+#C 1.0764409 1.0666667 1 35899
+#D 56.787544 83.852776 168.60269 275.50308 445.8145 616.7301 800.9911 1557.0596 3057.7183
+      the sediment: eroded 7.1258e3 + hillslope to the sea 2.7365e2 (norm × cells) → land 0.0 % · lakes 0.5 % · stranded 0.13 % · sea 99.4 % · exported 0.00 % · the mass control's worst step 1.41e-14 (f32 field 2.99e-5) · thickness on land median 0.0 m, max 5136 m · marine sub-steps 65691 in 55.8 s · iterations max 1
+#B 7125.769624220342 273.6478958129883 0 34.82366481752124 9.518027131929438 7355.075828083882 0 0.000000000000014075275079479133 0.0000298592350489677 65691 55.79974849999995
+#M2 0.000000000000014075275079479133 0.00000000001800797310758286
+   the full configuration's large lakes (new: not overlapping a lake of the world without the deposition):
+      2699 cells (6589 km²) NEW · its nearest cell to the coast 3 km · the outlet at 256² cell 31683 (40 m) · the load's deflection there (the rebound with − without the load) -373 m
+#LK 2699 3.4938562 -373.3862 1
+      129 cells (315 km²) NEW · its nearest cell to the coast 70 km · the outlet at 256² cell 50829 (538 m) · the load's deflection there (the rebound with − without the load) -61 m
+#LK 129 69.75473 -60.875 1
+      206 cells (503 km²) · its nearest cell to the coast 41 km · the outlet at 256² cell 54866 (440 m) · the load's deflection there (the rebound with − without the load) -329 m
+#LK 206 41.251183 -329.26672 0
+      136 cells (332 km²) · its nearest cell to the coast 31 km · the outlet at 256² cell 60490 (442 m) · the load's deflection there (the rebound with − without the load) -532 m
+#LK 136 30.777681 -531.64185 0

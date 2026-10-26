@@ -1,0 +1,12 @@
+   [offA] 22.7 s wall / 28.5 s CPU · unconnected depressions 14 (2625 km²) · seed 8's east box lakes 449 km²
+#Q 14 1075 184 0 0 0 0 22.6666152 28.453125
+      offA: lakes (dust 1–2 / 3–15 / 16–63 / large ≥ 64 cells) [6, 16, 9, 4], area km² [22.0, 273.0, 740.0, 886.0] · below-sea inland 1075 cells · shelf median km: passive 2.2, active 3.1, all 2.2 (1270 paths), the passive break's depth 1342 m · coast dimension 1.179, length ratio 1.228 · circumnavigable true · deciles [13.0, 37.0, 86.0, 133.0, 184.0, 245.0, 334.0, 536.0, 1142.0]
+      formations: Andean cordilleras 2 (lengths km [137.5, 106.25]; total 244 km world, 1828 km terrestrial; 12490 km²) · Andean not touching an active coast 90 km² · collisional highland 10015 km² · separated 0 km² (groups: cells, nearest channel, km []) · arc mountain 0 km² · other 1028 km² · collision the only formation: false
+      W10 0.193 (W_in 0.075, rampart false) · active / passive 0.450 / 0.087 (2320 / 5635 cells) · macro plain 45.0 · plateau 1.2 · hill 27.3 · mountain 26.5 % · land 88992 km² · median 184 m
+#F 2 243.75 12490.234 90.33203 10014.648 0 0 1027.832 0
+#W 0.19321182 0.45043105 0.08731145 0
+#M 0.44956243 0.012290472 0.27269486 0.26545227 88991.69921875 183.96597
+#L 6 16 9 4 21.97265625 273.4375 739.74609375 886.23046875
+#S 2.2093750536441803 3.125 2.2093750536441803 1342.2548828125 1270
+#C 1.1793685 1.2283654 1 36451
+#D 12.700129 37.486797 85.56759 133.46786 183.96597 245.00822 333.5609 536.4713 1142.4188

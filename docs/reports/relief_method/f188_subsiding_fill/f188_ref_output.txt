@@ -1,0 +1,2 @@
+F188REF the field bit for bit F187: true · the cover: true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 30 filtered out; finished in 100.05s

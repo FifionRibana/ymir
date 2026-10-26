@@ -1,0 +1,6 @@
+   seed 8 F187: the registration check: 100.00 % of the drawn river pixels on land, 30 / 30 trunk mouths within a pixel of the sea -> PASSES
+   F2, seed 8 F187 at 2 048²: the land components < 1 km² in the shallow seas (−200 … 0 m) 12 (4.3 km²); with no depth condition 15 (5.8 km²)
+   seed 8 F187 + B: the registration check: 100.00 % of the drawn river pixels on land, 31 / 31 trunk mouths within a pixel of the sea -> PASSES
+   seed 18 F187: the registration check: 100.00 % of the drawn river pixels on land, 25 / 25 trunk mouths within a pixel of the sea -> PASSES
+   seed 18 F187 + B: the registration check: 100.00 % of the drawn river pixels on land, 33 / 33 trunk mouths within a pixel of the sea -> PASSES
+   seed 19 F187: the registration check: 100.00 % of the drawn river pixels on land, 47 / 48 trunk mouths within a pixel of the sea -> FAILS: no plate

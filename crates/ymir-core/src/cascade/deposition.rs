@@ -61,7 +61,11 @@ pub struct Deposition {
     pub fluvial_dt_max: f32,
     /// ADR Finding 186-A1 -- the fluvial deposition as a closure: `Some(G)` makes the incision use K / (1 + G (Ñ − 1)/Ñ) and the
     /// pass deposit nothing fluvial (it still routes, fills the lakes and delivers to the sea); `None` = F185.
+    /// **Not adopted (F187, the author: « oui on supprime k_eff »): double counting with an effective K.**
     pub fluvial_keff: Option<f32>,
+    /// ADR Finding 188-B -- **the sediment's erodibility**: a cell with a cover (H > 0) erodes at K2's soft cover's K (K_couv,
+    /// ρ_K times the basement's, Stock & Montgomery 1999) while the lowering stays in the cover. `false` = F187.
+    pub soft_cover: bool,
     /// ADR Finding 186-B -- the deposition handed to the amplifications (the chain on the basement, the burial closure
     /// [`crate::cascade::amplify::Transmit`]); read by the chain's caller. `false` = the amplifications as today.
     pub transmit: bool,
@@ -112,6 +116,26 @@ impl Compaction {
 /// (`sup`, thickness) and each receiver's inflows capped at its room. Returns the sub-steps and the stranded thickness.
 #[allow(clippy::too_many_arguments)]
 pub fn marine_step_live(z: &mut GridF32, src: &[f64], dt_yr: f64, m: &Marine, cell_m: f64, sup: &mut [f64], torus: bool, sea: f64) -> (usize, f64) {
+    marine_step_live_sea(z, src, dt_yr, m, cell_m, sup, torus, sea, None, None)
+}
+
+/// ADR Finding 187-A1/A2 -- [`marine_step_live`] with the ocean by connectivity (`Some(torus origin)`): at each sub-step the
+/// domain is the largest 4-connected component of h < h_sea (relabelled only when a cell crossed the sea, so exactly the
+/// labelling of every sub-step), the sources fill only the ocean's cells, and an unconnected below-sea cell is a closed
+/// depression (a walk ending there strands its rest). `None` is [`marine_step_live`] exactly.
+#[allow(clippy::too_many_arguments)]
+pub fn marine_step_live_sea(
+    z: &mut GridF32,
+    src: &[f64],
+    dt_yr: f64,
+    m: &Marine,
+    cell_m: f64,
+    sup: &mut [f64],
+    torus: bool,
+    sea: f64,
+    connected: Option<Option<[usize; 2]>>,
+    mut strand_out: Option<&mut [f64]>,
+) -> (usize, f64) {
     let (w, h) = (z.width, z.height);
     let n = w * h;
     let k_m = m.k_m2_yr as f64;
@@ -136,13 +160,25 @@ pub fn marine_step_live(z: &mut GridF32, src: &[f64], dt_yr: f64, m: &Marine, ce
     let mut hz: Vec<f64> = z.data.iter().map(|&v| v as f64).collect();
     let mut stranded = 0f64;
     let (mut sc, mut cap, mut delta) = (vec![0f64; n], vec![1f64; n], vec![0f64; n]);
+    // F187-A1: the ocean and the below-sea mask it was labelled from
+    let (mut ocean, mut below): (Vec<bool>, Vec<bool>) = (Vec::new(), Vec::new());
+    let refresh = |hz: &[f64], ocean: &mut Vec<bool>, below: &mut Vec<bool>| {
+        if let Some(t) = connected {
+            let b: Vec<bool> = hz.iter().map(|&v| v < sea).collect();
+            if b != *below {
+                *ocean = super::amplify::largest_component(&b, w, t);
+                *below = b;
+            }
+        }
+    };
     for _ in 0..nsub {
+        refresh(&hz, &mut ocean, &mut below);
         // the sources: placed under the sea, walking seaward from a cell at or above it
         for &k0 in &srcs {
             let mut rem = src[k0] * thick / nsub as f64;
             let mut c = k0;
             for _ in 0..n {
-                if hz[c] < sea {
+                if hz[c] < sea && (connected.is_none() || ocean[c]) {
                     let put = rem.min(sea - hz[c]);
                     hz[c] += put;
                     sup[c] += put;
@@ -168,6 +204,9 @@ pub fn marine_step_live(z: &mut GridF32, src: &[f64], dt_yr: f64, m: &Marine, ce
                         hz[c] += rem;
                         sup[c] += rem;
                         stranded += rem;
+                        if let Some(so) = strand_out.as_deref_mut() {
+                            so[c] += rem;
+                        }
                         rem = 0.0;
                         break;
                     }
@@ -177,13 +216,21 @@ pub fn marine_step_live(z: &mut GridF32, src: &[f64], dt_yr: f64, m: &Marine, ce
                 hz[c] += rem;
                 sup[c] += rem;
                 stranded += rem;
+                if let Some(so) = strand_out.as_deref_mut() {
+                    so[c] += rem;
+                }
             }
         }
         if lambda <= 0.0 {
             continue;
         }
         // the sub-step's domain, the donors' supply limit, the receivers' room
-        let dom: Vec<bool> = hz.iter().map(|&v| v < sea).collect();
+        let dom: Vec<bool> = if connected.is_some() {
+            refresh(&hz, &mut ocean, &mut below);
+            ocean.clone()
+        } else {
+            hz.iter().map(|&v| v < sea).collect()
+        };
         for k in 0..n {
             sc[k] = 0.0;
             if !dom[k] {
@@ -467,11 +514,29 @@ impl Deposition {
     pub const G_DECLARED: f32 = 1.55;
     /// The declaration: G = 1.55, the lakes filled, the marine silt.
     pub fn declared() -> Self {
-        Self { g: Self::G_DECLARED, lakes: true, marine: Some(Marine::declared()), load: None, compaction: None, recycle: false, marine_live: false, fluvial_substeps: 1, fluvial_dt_max: f32::INFINITY, fluvial_keff: None, transmit: false, marine_blocks: false }
+        Self { g: Self::G_DECLARED, lakes: true, marine: Some(Marine::declared()), load: None, compaction: None, recycle: false, marine_live: false, fluvial_substeps: 1, fluvial_dt_max: f32::INFINITY, fluvial_keff: None, transmit: false, marine_blocks: false, soft_cover: false }
+    }
+    /// ADR Finding 188-H -- **the adopted deposition profile** (the author: « ok B adopté »): F187's configuration without
+    /// K_eff (the load, the compaction, the recycling, the live marine step, G = 0, no K_eff) with F188's soft cover (B), the
+    /// deposition handed to the amplifications. It goes with [`crate::cascade::Sea`] `{ connected: true }` at the physics level,
+    /// C1's consumption for the recycling, and in the chain `AmpConfig::sea_strict` with `Transmit::bury_smooth`.
+    /// Known defects (F188): the fluvial and marine stranding on dead ends (G1 bis: 3 487 km³ on seed 8), `bury_smooth`'s
+    /// read through the parent cell, the step dependence (E3, V2 bis), the hillslopes' unloading (D2a).
+    pub fn continent_default() -> Self {
+        Self {
+            g: 0.0,
+            load: Some(Load::declared()),
+            compaction: Some(Compaction::declared()),
+            recycle: true,
+            marine_live: true,
+            soft_cover: true,
+            transmit: true,
+            ..Self::declared()
+        }
     }
     /// Nothing deposited: the F181 level bit for bit (the A5 control).
     pub fn nothing() -> Self {
-        Self { g: 0.0, lakes: false, marine: None, load: None, compaction: None, recycle: false, marine_live: false, fluvial_substeps: 1, fluvial_dt_max: f32::INFINITY, fluvial_keff: None, transmit: false, marine_blocks: false }
+        Self { g: 0.0, lakes: false, marine: None, load: None, compaction: None, recycle: false, marine_live: false, fluvial_substeps: 1, fluvial_dt_max: f32::INFINITY, fluvial_keff: None, transmit: false, marine_blocks: false, soft_cover: false }
     }
 }
 
@@ -527,14 +592,27 @@ impl Pass {
 /// lake's capacity in solid is its volume × (1 − `p_dep`). `p_dep` = 0 is F182 exactly.
 #[allow(clippy::too_many_arguments)]
 pub fn pass(surface: &GridF32, e: &[f64], sea: f32, sea_mask: Option<&[bool]>, g: f64, lakes: bool, torus: bool, p_dep: f64) -> Pass {
+    pass_routed(surface, e, sea, sea_mask, false, g, lakes, torus, p_dep)
+}
+
+/// ADR Finding 187-A2/A3 -- [`pass`] with `routed`: the `sea_mask` (the ocean by connectivity) is also the routing's sea --
+/// the flood's seeds, the fixed receivers -- and a below-sea cell outside it is a closed depression, a lake filled by volume
+/// up to its sill. `false` is [`pass`] exactly.
+#[allow(clippy::too_many_arguments)]
+pub fn pass_routed(surface: &GridF32, e: &[f64], sea: f32, sea_mask: Option<&[bool]>, routed: bool, g: f64, lakes: bool, torus: bool, p_dep: f64) -> Pass {
     let wsol = 1.0 - p_dep;
     let (w, h) = (surface.width, surface.height);
     let n = w * h;
-    let flow = compute_flow(surface, &FlowConfig { sea_level: sea, ..Default::default() });
+    let ocean: Option<&[bool]> = if routed { Some(sea_mask.expect("the routed pass needs the ocean")) } else { None };
+    let flow = match ocean {
+        Some(o) => crate::terrain::flow::compute_flow_ocean(surface, &FlowConfig { sea_level: sea, ..Default::default() }, o),
+        None => compute_flow(surface, &FlowConfig { sea_level: sea, ..Default::default() }),
+    };
+    let base = |k: usize| ocean.map_or(surface.data[k] <= sea, |o| o[k]);
     let mut receiver = vec![0usize; n];
     for k in 0..n {
         let d = flow.direction[k];
-        if d == DIR_NONE || surface.data[k] <= sea {
+        if d == DIR_NONE || base(k) {
             receiver[k] = k;
             continue;
         }
@@ -592,7 +670,7 @@ pub fn pass(surface: &GridF32, e: &[f64], sea: f32, sea_mask: Option<&[bool]>, g
     // A2: the lakes (filled > z on land), each cell's outlet (the lake cell whose receiver leaves the lake), the
     // sub-basins sorted from the bottom up, their capacity
     let is_lake: Vec<bool> =
-        (0..n).map(|k| lakes && surface.data[k] > sea && flow.filled.data[k] > surface.data[k]).collect();
+        (0..n).map(|k| lakes && ocean.map_or(surface.data[k] > sea, |o| !o[k]) && flow.filled.data[k] > surface.data[k]).collect();
     let mut outlet = vec![usize::MAX; n];
     for &k in &stack {
         if is_lake[k] {
@@ -854,6 +932,8 @@ pub fn splitting(c: &FluvialCtx) -> FluvialOut {
 pub struct SedRecord {
     /// The sediment thickness at the end (m): the deposits, less what the incision and the hillslope lowered since.
     pub thickness_m: Vec<f32>,
+    /// ADR Finding 188-B2 -- Σ of the marine walk's stranded thickness per cell (m; empty unless the live marine step ran).
+    pub marine_stranded_m: Vec<f32>,
     /// Σ over the level of the fluvial deposits, the lake fills and the marine thickness change (m per cell).
     pub fluvial_m: Vec<f32>,
     pub lake_m: Vec<f32>,
@@ -869,6 +949,12 @@ pub struct SedRecord {
     /// norm units); Σ |ΔH| of the compaction (norm); the compaction table's worst round trip (m).
     pub solid_m: Vec<f32>,
     pub load_cover_abs: f64,
+    /// ADR Finding 188 D2 (a record only) -- the uniform mode (k = 0) of F183 A1's flexure, cumulated over the steps (norm): its
+    /// erosional part, mean(ρ_c e_basement / ρ_m), and its load part, mean(−ΔL / ρ_m); and Σ e_basement (norm × cells), the
+    /// basement the incision removed (the hillslope's lowering is not in it).
+    pub w0_erosion_n: f64,
+    pub w0_load_n: f64,
+    pub basement_incised_n: f64,
     pub compaction_change: f64,
     pub table_err_m: f64,
     /// ADR Finding 184 -- the fluvial deposit made under the cap (solid, norm × cells); the marine source stranded in a closed

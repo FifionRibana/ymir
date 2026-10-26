@@ -1,0 +1,19 @@
+   G1 bis (seed 8, F187, the run's end): the stranded thickness (record `fluvial_m`, G = 0) in all 3487.28 km³ · cells with > 10 m stranded: 92
+      (x 169, y 108): stranded 577522 m · z 111 m (its highest neighbour 125 m) · the cover 0 m · D8 some · in a lake now false
+      (x 122, y 116): stranded 264773 m · z 265 m (its highest neighbour 349 m) · the cover 0 m · D8 some · in a lake now false
+      (x 160, y 113): stranded 92915 m · z 144 m (its highest neighbour 148 m) · the cover 0 m · D8 some · in a lake now false
+      (x 112, y 116): stranded 87135 m · z 2372 m (its highest neighbour 3026 m) · the cover 0 m · D8 some · in a lake now false
+      (x 154, y 105): stranded 52268 m · z 114 m (its highest neighbour 156 m) · the cover 241 m · D8 some · in a lake now false
+      (x 165, y 119): stranded 42782 m · z 134 m (its highest neighbour 144 m) · the cover 0 m · D8 some · in a lake now false
+      (x 168, y 98): stranded 42762 m · z 204 m (its highest neighbour 215 m) · the cover 0 m · D8 some · in a lake now false
+      (x 176, y 205): stranded 31233 m · z 155 m (its highest neighbour 195 m) · the cover 0 m · D8 some · in a lake now false
+      (x 194, y 109): stranded 29314 m · z 560 m (its highest neighbour 630 m) · the cover 689 m · D8 some · in a lake now false
+      (x 176, y 103): stranded 26295 m · z 86 m (its highest neighbour 131 m) · the cover 92 m · D8 some · in a lake now false
+      (x 168, y 192): stranded 16382 m · z 545 m (its highest neighbour 558 m) · the cover 0 m · D8 some · in a lake now false
+      (x 167, y 194): stranded 16309 m · z 570 m (its highest neighbour 592 m) · the cover 0 m · D8 some · in a lake now false
+      (x 195, y 221): stranded 14920 m · z 1035 m (its highest neighbour 1240 m) · the cover 1041 m · D8 some · in a lake now false
+      (x 199, y 219): stranded 13998 m · z 1242 m (its highest neighbour 1179 m) · the cover 1250 m · D8 some · in a lake now false
+      (x 165, y 188): stranded 13653 m · z 521 m (its highest neighbour 528 m) · the cover 232 m · D8 some · in a lake now false
+   the spike (x 160, y 29): z 1496 m, its highest neighbour 725 m · stranded there 3368 m · the cover 1501 m (lake fill 0 m, marine 14 m)
+   the spike (x 216, y 123): z 553 m, its highest neighbour 30 m · stranded there 0 m · the cover 656 m (lake fill 0 m, marine 2727 m)
+   73 s

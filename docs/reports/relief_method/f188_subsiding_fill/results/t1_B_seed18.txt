@@ -1,0 +1,14 @@
+   [B] 97.2 s wall / 101.5 s CPU · unconnected depressions 4 (29 km²) · seed 8's east box lakes 122 km²
+#Q 4 12 50 860264.4442956103 141686593.70846334 0.000000000000016720013971508418 0.00000000003153109627655822 97.1848604 101.484375
+      B: lakes (dust 1–2 / 3–15 / 16–63 / large ≥ 64 cells) [26, 20, 3, 2], area km² [78.0, 293.0, 325.0, 710.0] · below-sea inland 12 cells · shelf median km: passive 5.3, active 8.8, all 6.0 (1028 paths), the passive break's depth 1848 m · coast dimension 1.085, length ratio 1.075 · circumnavigable true · deciles [10.0, 13.0, 26.0, 44.0, 81.0, 137.0, 214.0, 368.0, 790.0]
+      formations: Andean cordilleras 3 (lengths km [125.0, 6.25, 18.75]; total 150 km world, 1125 km terrestrial; 9038 km²) · Andean not touching an active coast 242 km² · collisional highland 4890 km² · separated 764 km² (groups: cells, nearest channel, km [(305, "rift", 6), (8, "rift", 50)]) · arc mountain 0 km² · other 203 km² · collision the only formation: false
+      W10 0.161 (W_in 0.053, rampart false) · active / passive 0.161 / 0.160 (2664 / 3726 cells) · macro plain 53.5 · plateau 0.3 · hill 25.4 · mountain 20.8 % · land 72905 km² · median 81 m
+#F 3 150 9038.086 241.69922 4890.1367 764.16016 0 202.63672 0
+#W 0.16056338 0.16066065 0.16049382 0
+#M 0.53529567 0.0026120152 0.25447056 0.20762172 72905.2734375 81.13305
+#L 26 20 3 2 78.125 292.96875 324.70703125 710.44921875
+#S 5.33437505364418 8.837500214576721 5.981250107288361 1848.1162109375 1028
+#C 1.0852122 1.0746528 1 29862
+#D 9.958178 12.848979 26.205803 43.950687 81.13305 137.46057 213.58928 368.28015 790.13916
+      the sediment: eroded 4.4737e3 + hillslope to the sea 2.8395e2 (norm × cells) → land 0.0 % · lakes 0.4 % · stranded 2.08 % · sea 97.5 % · exported 0.00 % · the mass control's worst step 1.67e-14 (f32 field 4.47e-5) · thickness on land median 0.0 m, max 4225 m · marine sub-steps 65691 in 72.9 s · iterations max 1
+#B 4473.663526071677 283.9520049095154 0 19.315946200483364 99.00747124469105 4639.292113536021 0 0.000000000000016720013971508418 0.00004466928855444976 65691 72.89918229999996

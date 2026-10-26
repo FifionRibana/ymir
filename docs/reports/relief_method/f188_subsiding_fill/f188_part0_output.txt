@@ -1,0 +1,5 @@
+   seed 8 (p0): the filled zone 17860 km² of the 2 048² land · on it, without → with the deposition: S10 1.2936 → 1.1886 · a_dir (the straight, D8-aligned share) 0.437 → 0.571 · the order-≥ 2 pieces 3163 → 2754
+   seed 18 (p0): the filled zone 23012 km² of the 2 048² land · on it, without → with the deposition: S10 1.5148 → 1.1607 · a_dir (the straight, D8-aligned share) 0.232 → 0.662 · the order-≥ 2 pieces 4592 → 3316
+   seed 19 (p0): the filled zone 6524 km² of the 2 048² land · on it, without → with the deposition: S10 1.5084 → 1.2591 · a_dir (the straight, D8-aligned share) 0.269 → 0.394 · the order-≥ 2 pieces 3119 → 539
+   seed 23 (p0): the filled zone 38970 km² of the 2 048² land · on it, without → with the deposition: S10 1.3767 → 1.1998 · a_dir (the straight, D8-aligned share) 0.375 → 0.537 · the order-≥ 2 pieces 6131 → 5624
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 30 filtered out; finished in 876.51s

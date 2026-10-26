@@ -1,0 +1,2 @@
+   seed 8: at the end 10 depressions, 598 km² (245 cells), the largest 83 cells, 1018 m deep · over the 300 steps: with ≥ 1 depression 285 steps, the first at step 14, the first ≥ 50 cells at step 28 · the maxima: 11 depressions, 627 km² in all, the largest 137 cells (334 km²), 1675 m deep
+#P0 10 245 1017.9672 83 285 11 257 1675.3026

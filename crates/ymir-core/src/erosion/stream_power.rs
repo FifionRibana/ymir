@@ -332,6 +332,8 @@ pub struct StreamPowerConfig {
     /// ADR Finding 186-A1 -- Yuan et al. 2019's fluvial deposition as a closure: K_eff = K / (1 + G (A − 1) / A), A the
     /// incision's own area in cells (the MFD accumulation when `mfd_exponent` is set), G the deposition coefficient (JGR eq. 24:
     /// K A^m S^n = U (1 + G/p̃) at steady state, in the discrete form of eq. 13–14). `None` in production (byte-identical).
+    /// **Not adopted (F187, the author: « oui on supprime k_eff »): double counting with an effective K** -- the cascade's K,
+    /// like Stock & Montgomery's, is fitted on natural rivers, whose steepness already holds the factor (1 + G).
     pub keff_g: Option<f32>,
 }
 
@@ -637,6 +639,24 @@ pub fn incise_with_floor_torus(
     progress: &mut dyn FnMut(usize, &GridF32),
     torus: Option<[usize; 2]>,
 ) -> GridF32 {
+    incise_with_floor_torus_ocean(height, cfg, k_field, floor, progress, torus, None)
+}
+
+/// ADR Finding 187-A -- [`incise_with_floor_torus`] with the ocean given as a mask (`Some`, fixed for the call): only the
+/// mask's cells are the sea (the base nodes, the flood's seeds, the MFD's outlets, the banks' and the diffusion's fixed
+/// cells); a below-sea cell outside it is a closed depression, routed through to its sill. `None` is
+/// [`incise_with_floor_torus`] exactly (the sea is `h ≤ sea_level` per cell).
+pub fn incise_with_floor_torus_ocean(
+    height: &GridF32,
+    cfg: &StreamPowerConfig,
+    k_field: Option<&[f32]>,
+    floor: Option<&[f32]>,
+    progress: &mut dyn FnMut(usize, &GridF32),
+    torus: Option<[usize; 2]>,
+    ocean: Option<&[bool]>,
+) -> GridF32 {
+    let sea_at = |k: usize, v: f32| ocean.map_or(v <= cfg.sea_level, |o| o[k]);
+    assert!(ocean.is_none() || cfg.random_receiver.is_none(), "the random receivers read the per-cell sea");
     let (w, h) = (height.width, height.height);
     assert!(
         torus.is_none() || !(cfg.diffusion > 0.0 && cfg.critical_slope > 0.0),
@@ -648,7 +668,10 @@ pub fn incise_with_floor_torus(
 
     for iter in 0..cfg.iterations {
         // 1. Route on the current surface (depression fill + D8 + accumulation).
-        let mut flow = compute_flow(&field, &flow_cfg);
+        let mut flow = match ocean {
+            Some(o) => crate::terrain::flow::compute_flow_ocean(&field, &flow_cfg, o),
+            None => compute_flow(&field, &flow_cfg),
+        };
         // ADR Finding 163 -- the weighted random receiver (`None` in production)
         if let Some(rr) = &cfg.random_receiver {
             randomize_receivers(&mut flow, rr, cfg.sea_level, w, h, torus);
@@ -657,7 +680,10 @@ pub fn incise_with_floor_torus(
         // set, the drainage area A is dispersed so the rilling feedback cannot run away.
         let mfd_acc = cfg
             .mfd_exponent
-            .map(|p| mfd_accumulation_framed(&flow.filled, &flow.direction, cfg.sea_level, p, w, h, torus.unwrap_or([0, 0])));
+            .map(|p| match ocean {
+                Some(o) => crate::terrain::flow::mfd_accumulation_ocean(&flow.filled, &flow.direction, o, p, w, h, torus.unwrap_or([0, 0])),
+                None => mfd_accumulation_framed(&flow.filled, &flow.direction, cfg.sea_level, p, w, h, torus.unwrap_or([0, 0])),
+            });
         let acc: &GridF32 = mfd_acc.as_ref().unwrap_or(&flow.accumulation);
 
         // 2. Receiver + distance per cell (base = points off-grid / no outlet /
@@ -667,7 +693,7 @@ pub fn incise_with_floor_torus(
         for k in 0..n {
             let d = flow.direction[k];
             let (x, y) = (k % w, k / w);
-            if d == DIR_NONE || field.data[k] <= cfg.sea_level {
+            if d == DIR_NONE || sea_at(k, field.data[k]) {
                 receiver[k] = k;
                 continue;
             }
@@ -729,7 +755,7 @@ pub fn incise_with_floor_torus(
         let cell_km2 = cfg.cell_km * cfg.cell_km;
         for &k in &stack {
             let r = receiver[k];
-            if r == k || field.data[k] <= cfg.sea_level {
+            if r == k || sea_at(k, field.data[k]) {
                 continue; // base level, fixed
             }
             let area = acc.data[k].max(1.0);
@@ -863,7 +889,7 @@ pub fn incise_with_floor_torus(
             let mut newz = field.data.clone();
             for &k in &stack {
                 let r = receiver[k];
-                if r == k || field.data[k] <= cfg.sea_level {
+                if r == k || sea_at(k, field.data[k]) {
                     continue;
                 }
                 let area = acc.data[k].max(1.0);
@@ -892,7 +918,7 @@ pub fn incise_with_floor_torus(
                             break;
                         }
                         let b = by as usize * w + bx as usize;
-                        if field.data[b] <= cfg.sea_level || field.data[b] <= zc {
+                        if sea_at(b, field.data[b]) || field.data[b] <= zc {
                             break; // reached sea, or ground already at/below the floor
                         }
                         if zc < newz[b] {
@@ -947,7 +973,7 @@ pub fn incise_with_floor_torus(
                     for y in 1..h - 1 {
                         for x in 1..w - 1 {
                             let k = y * w + x;
-                            if field.data[k] <= cfg.sea_level
+                            if sea_at(k, field.data[k])
                                 || (!cfg.diffuse_channels
                                     && cfg.min_area_cells > 0.0
                                     && acc.data[k] >= cfg.min_area_cells)

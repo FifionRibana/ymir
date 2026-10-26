@@ -188,15 +188,23 @@ impl Ord for PqCell {
 
 /// Compute flow directions, accumulation, and basins from a heightmap.
 pub fn compute_flow(heightmap: &GridF32, config: &FlowConfig) -> FlowResult {
-    let w = heightmap.width;
-    let h = heightmap.height;
-    let n = w * h;
+    let n = heightmap.width * heightmap.height;
 
     // Step 1: identify ocean
     let mut is_ocean = vec![false; n];
     for i in 0..n {
         is_ocean[i] = heightmap.data[i] <= config.sea_level;
     }
+    compute_flow_ocean(heightmap, config, &is_ocean)
+}
+
+/// ADR Finding 187-A -- [`compute_flow`] with the ocean given as a mask (`ocean[i]`: the cell is the sea, a base of the
+/// flood) instead of `h ≤ sea_level` per cell: a below-sea cell outside the mask is a closed depression, filled to its sill
+/// like any lake. [`compute_flow`] is this with the per-cell mask, exactly.
+pub fn compute_flow_ocean(heightmap: &GridF32, config: &FlowConfig, ocean: &[bool]) -> FlowResult {
+    let w = heightmap.width;
+    let h = heightmap.height;
+    let is_ocean: &[bool] = ocean;
 
     // Step 2: priority flood pit filling (fills depressions to the EXACT sill —
     // no epsilon increment, so flats are truly flat for the Garbrecht-Martz step).
@@ -900,6 +908,21 @@ pub fn mfd_accumulation_framed(
 ) -> GridF32 {
     let n = w * h;
     let is_ocean: Vec<bool> = (0..n).map(|i| filled.data[i] <= sea_level).collect();
+    mfd_accumulation_ocean(filled, direction, &is_ocean, p, w, h, origin)
+}
+
+/// ADR Finding 187-A -- [`mfd_accumulation_framed`] with the ocean given as a mask (`filled ≤ sea_level` per cell is
+/// [`mfd_accumulation_framed`] exactly).
+pub fn mfd_accumulation_ocean(
+    filled: &GridF32,
+    direction: &[u8],
+    is_ocean: &[bool],
+    p: f32,
+    w: usize,
+    h: usize,
+    origin: [usize; 2],
+) -> GridF32 {
+    let n = w * h;
     let mut land: Vec<usize> = (0..n).filter(|&i| !is_ocean[i]).collect();
     let canon = |k: usize| ((k / w + origin[1]) % h) * w + (k % w + origin[0]) % w;
     land.sort_unstable_by(|&a, &b| {

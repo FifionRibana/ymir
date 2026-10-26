@@ -157,6 +157,8 @@ pub struct AmpConfig {
     pub torus: Option<[usize; 2]>,
     /// ADR Finding 171-C -- K2's heterogeneous K: every level's k times exp(ln M), ln M fixed to the rock (`None` = one k).
     pub k_hetero: Option<KHetero>,
+    /// ADR Finding 187-A4 -- the chain's ocean aligned on the physics level's A1 (the strict comparison, z < 0); `false` = F186.
+    pub sea_strict: bool,
 }
 
 /// ADR Finding 171-C -- **the heterogeneous K**: ln M = σ_lnK · Σ_j a_j g_j, g_j a unit-variance band noise at λ_j = L / 2^j on
@@ -266,7 +268,14 @@ impl AmpConfig {
             // ADR Finding 169 (at commit) -- the torus is the cascade's default; the input in C1's own frame
             torus: Some([0, 0]),
             k_hetero: None,
+            sea_strict: false,
         }
+    }
+    /// ADR Finding 187-A4 -- the level's ocean: with `sea_strict`, A1's (the largest 4-connected component of z < 0,
+    /// [`ocean_connected`]); else F186's [`ocean_mask_t`] (z ≤ 0), exactly.
+    pub fn ocean(&self, z: &GridF32) -> Vec<bool> {
+        let t = torus_at(self.torus, z.width);
+        if self.sea_strict { ocean_connected(z, 0.0, t) } else { ocean_mask_t(z, t) }
     }
     /// N1's k at a level of `n` cells.
     pub fn n1_k_at(&self, n: usize) -> f32 {
@@ -508,6 +517,55 @@ pub fn ocean_mask_t(z: &GridF32, torus: Option<[usize; 2]>) -> Vec<bool> {
             cmin = cmin.min(canon_index(k, n, o));
             let (x, y) = (k % n, k / n);
             for j in [y * n + (x + 1) % n, y * n + (x + n - 1) % n, ((y + 1) % n) * n + x, ((y + n - 1) % n) * n + x] {
+                if sea[j] && lab[j] == u32::MAX {
+                    lab[j] = next;
+                    stack.push(j);
+                }
+            }
+        }
+        if best.is_none_or(|b| size > b.0 || (size == b.0 && cmin < b.1)) {
+            best = Some((size, cmin, next));
+        }
+        next += 1;
+    }
+    match best {
+        Some((_, _, l)) => lab.iter().map(|&v| v == l).collect(),
+        None => vec![false; n * n],
+    }
+}
+
+/// ADR Finding 187-A1 -- **the ocean by connectivity**: the largest 4-connected component (periodic with `torus`) of the
+/// cells strictly below `level`, ties to the component holding the smallest terrain index (`ocean_mask_t`'s rule). No
+/// parameter. Without a torus the components stop at the edges.
+pub fn ocean_connected(z: &GridF32, level: f32, torus: Option<[usize; 2]>) -> Vec<bool> {
+    let sea: Vec<bool> = z.data.iter().map(|&v| v < level).collect();
+    largest_component(&sea, z.width, torus)
+}
+
+/// ADR Finding 187-A1 -- the largest 4-connected component of a mask on an n² grid (periodic with `torus`), ties to the
+/// component holding the smallest terrain index.
+pub fn largest_component(sea: &[bool], n: usize, torus: Option<[usize; 2]>) -> Vec<bool> {
+    let mut lab = vec![u32::MAX; n * n];
+    let mut best: Option<(usize, usize, u32)> = None;
+    let mut stack = Vec::new();
+    let mut next = 0u32;
+    for s0 in 0..n * n {
+        if !sea[s0] || lab[s0] != u32::MAX {
+            continue;
+        }
+        lab[s0] = next;
+        stack.push(s0);
+        let (mut size, mut cmin) = (0usize, usize::MAX);
+        while let Some(k) = stack.pop() {
+            size += 1;
+            cmin = cmin.min(torus.map_or(k, |o| canon_index(k, n, o)));
+            let (x, y) = (k % n, k / n);
+            let nb: [Option<usize>; 4] = if torus.is_some() {
+                [Some(y * n + (x + 1) % n), Some(y * n + (x + n - 1) % n), Some(((y + 1) % n) * n + x), Some(((y + n - 1) % n) * n + x)]
+            } else {
+                [(x + 1 < n).then(|| k + 1), (x > 0).then(|| k - 1), (y + 1 < n).then(|| k + n), (y > 0).then(|| k - n)]
+            };
+            for j in nb.into_iter().flatten() {
                 if sea[j] && lab[j] == u32::MAX {
                     lab[j] = next;
                     stack.push(j);
@@ -872,7 +930,7 @@ impl AmpLevel {
             }
             l.data
         });
-        let ocean = ocean_mask_t(&up, torus);
+        let ocean = cfg.ocean(&up);
         let mut d5 = d5_up.unwrap_or_else(|| vec![false; n * n]);
         for k in 0..n * n {
             if !ocean[k] && up.data[k] <= 0.0 {
@@ -882,7 +940,7 @@ impl AmpLevel {
                 d5[k] = false;
             }
         }
-        let prev_ocean = ocean_mask_t(prev, torus_at(cfg.torus, prev.width));
+        let prev_ocean = cfg.ocean(prev);
         let mut prev_work = GridF32 {
             width: prev.width,
             height: prev.height,
@@ -1358,16 +1416,53 @@ pub fn fill_level(b: &mut [f32], vol: f64) -> f64 {
 impl Transmit {
     /// A level's output buried (see [`Transmit`]).
     pub fn bury(&self, r: &GridF32) -> GridF32 {
+        self.bury_with(r, false, false, false)
+    }
+    /// ADR Finding 187-B -- the burial bounded by the 256² surface: on a covered cell the volume is max(0, z_256 − b̄) × n,
+    /// b̄ the mean of the fine basement as the chain left it (after `lift_interior` and the ocean at 0 m), instead of H × n.
+    /// Since Σ max(0, L − b) ≥ n (L − b̄), the level L never exceeds z_256 on its cell; the rest is [`Transmit::bury`]'s.
+    pub fn bury_bounded(&self, r: &GridF32) -> GridF32 {
+        self.bury_with(r, true, false, false)
+    }
+    /// ADR Finding 187 (the adoption's corrections) -- [`Transmit::bury_bounded`] with the level of the cells that hold no fill:
+    /// - on an uncovered cell L is the minimum of its fine basement (the author's step 3: the interpolation toward an uncovered
+    ///   cell then tapers to the basement instead of filling to the coarse surface, which made the steps at the fill's edge);
+    /// - and on a covered cell whose bounded volume is 0 (z_256 ≤ b̄) the same minimum.
+    /// - Both are capped by z_256 (declared): the minimum of the fine basement can stand above the 256² surface where the
+    ///   chain raised the basement, and the interpolation carried it into the neighbours. That made the 7 cells above the
+    ///   surface (F187's step 2).
+    /// No parameter. H = 0 everywhere changes nothing (the fill applies only where the stencil holds a covered cell).
+    pub fn bury_edge(&self, r: &GridF32) -> GridF32 {
+        self.bury_with(r, true, true, false)
+    }
+    /// ADR Finding 187 (the islets' correction, the reviewer's) -- [`Transmit::bury_edge`], except on a covered cell whose cover
+    /// H exceeds the local relief of its fine basement (max − mean over the cell): there the fine surface is the 256²
+    /// surface interpolated bilinearly. A basement buried under more sediment than its relief was not sculpted in the open
+    /// air, so its amplified peaks must not pierce the fill. No parameter; elsewhere the fill by the level L is unchanged.
+    pub fn bury_smooth(&self, r: &GridF32) -> GridF32 {
+        self.bury_with(r, true, true, true)
+    }
+    fn bury_with(&self, r: &GridF32, bounded: bool, edge: bool, smooth: bool) -> GridF32 {
         let (n, nc) = (r.width, self.surface_m.width);
         let s = n / nc;
         let ncc = nc * nc;
         // L per coarse cell, and whether it is covered
         let mut lv = vec![0f64; ncc];
         let mut buf = vec![0f32; s * s];
+        let fine_min = |p: usize| -> f64 {
+            let (px, py) = (p % nc, p / nc);
+            let mut m = f32::MAX;
+            for dy in 0..s {
+                for dx in 0..s {
+                    m = m.min(r.data[(py * s + dy) * n + px * s + dx]);
+                }
+            }
+            (m as f64).min(self.surface_m.data[p] as f64)
+        };
         for p in 0..ncc {
             let h = self.cover_m[p];
             if h <= 0.0 {
-                lv[p] = self.surface_m.data[p] as f64;
+                lv[p] = if edge { fine_min(p) } else { self.surface_m.data[p] as f64 };
                 continue;
             }
             if self.lake[p] {
@@ -1380,8 +1475,42 @@ impl Transmit {
                     buf[dy * s + dx] = r.data[(py * s + dy) * n + px * s + dx];
                 }
             }
-            lv[p] = fill_level(&mut buf, h as f64 * (s * s) as f64);
+            let vol = if bounded {
+                let mean = buf.iter().map(|&v| v as f64).sum::<f64>() / (s * s) as f64;
+                (self.surface_m.data[p] as f64 - mean).max(0.0) * (s * s) as f64
+            } else {
+                h as f64 * (s * s) as f64
+            };
+            lv[p] = if vol > 0.0 {
+                fill_level(&mut buf, vol)
+            } else if edge {
+                fine_min(p)
+            } else {
+                buf.iter().copied().fold(f32::MAX, f32::min) as f64
+            };
         }
+        // F187: the cells where the cover exceeds the fine basement's local relief (max − mean), with `smooth`
+        let buried: Vec<bool> = if smooth {
+            (0..ncc)
+                .map(|p| {
+                    if self.cover_m[p] <= 0.0 {
+                        return false;
+                    }
+                    let (px, py) = (p % nc, p / nc);
+                    let (mut mx, mut sum) = (f32::MIN, 0f64);
+                    for dy in 0..s {
+                        for dx in 0..s {
+                            let v = r.data[(py * s + dy) * n + px * s + dx];
+                            mx = mx.max(v);
+                            sum += v as f64;
+                        }
+                    }
+                    self.cover_m[p] as f64 > mx as f64 - sum / (s * s) as f64
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         let mut out = r.clone();
         let wrap = |i: i64| -> usize { i.rem_euclid(nc as i64) as usize };
         for y in 0..n {
@@ -1400,6 +1529,10 @@ impl Transmit {
                 let p = (y / s) * nc + x / s;
                 if self.lake[p] && self.cover_m[p] > 0.0 {
                     z = z.max(self.surface_m.data[p] as f64);
+                }
+                if smooth && buried[p] {
+                    let sf = |q: usize| self.surface_m.data[q] as f64;
+                    z = (sf(c[0]) * (1.0 - fx) + sf(c[1]) * fx) * (1.0 - fy) + (sf(c[2]) * (1.0 - fx) + sf(c[3]) * fx) * fy;
                 }
                 out.data[k] = z as f32;
             }
@@ -1424,7 +1557,7 @@ pub struct Chain {
 
 impl Chain {
     pub fn new(physics_m: GridF32, cfg: AmpConfig) -> Self {
-        let ocean = ocean_mask_t(&physics_m, torus_at(cfg.torus, physics_m.width));
+        let ocean = cfg.ocean(&physics_m);
         let peak_m = physics_m.data.iter().zip(&ocean).filter(|(_, o)| !**o).map(|(v, _)| *v).fold(f32::MIN, f32::max);
         Self { cfg, physics_m, peak_m, levels: Vec::new(), d5_phys: Vec::new(), ln_k_phys: None }
     }
@@ -1465,7 +1598,7 @@ impl Chain {
         let prev2 = (self.cfg.n1_recal_depth >= 2).then(|| match self.levels.last() {
             Some(l) => l.prev_work.clone(),
             None => {
-                let oc = ocean_mask_t(&self.physics_m, torus_at(self.cfg.torus, self.physics_m.width));
+                let oc = self.cfg.ocean(&self.physics_m);
                 let w = GridF32 {
                     width: self.physics_m.width,
                     height: self.physics_m.height,
@@ -1678,6 +1811,37 @@ mod tests {
         let bf = flat.bury(&periodic);
         let added: f64 = bf.data.iter().zip(&periodic.data).map(|(a, b)| (a - b) as f64).sum();
         assert!((added - 5.0 * 64.0 * 64.0).abs() < 1e-3 * 5.0 * 64.0 * 64.0, "added {added}");
+        // F187-B3: a chain that leaves the coarse basement (each coarse cell's fine mean = z_256 − H) gives F186's volume, so
+        // the bounded burial is F186's exactly; H = 0 changes nothing; the fill never exceeds the cell's 256² surface
+        let surf_b = GridF32::new(nc, nc, 15.0 + 5.0);
+        let tb = Transmit { surface_m: surf_b.clone(), cover_m: vec![5.0; nc * nc], lake: vec![false; nc * nc] };
+        assert_eq!(tb.bury_bounded(&periodic).data, tb.bury(&periodic).data, "b̄ = z − H: the bounded burial is F186's");
+        let none_b = Transmit { surface_m: surf_b, cover_m: vec![0.0; nc * nc], lake: vec![false; nc * nc] };
+        assert_eq!(none_b.bury_bounded(&periodic).data, periodic.data, "H = 0: no change");
+        // a chain that lifted the basement to 0.5 m under a 3 000 m cover (F186's family i): F186 fills 3 km above, F187 to the
+        // surface at most
+        let lifted = GridF32::new(64, 64, 0.5);
+        let ti = Transmit { surface_m: GridF32::new(nc, nc, 56.0), cover_m: vec![3000.0; nc * nc], lake: vec![false; nc * nc] };
+        let top_f186 = ti.bury(&lifted).data.iter().copied().fold(f32::MIN, f32::max);
+        let top_f187 = ti.bury_bounded(&lifted).data.iter().copied().fold(f32::MIN, f32::max);
+        assert!(top_f186 > 3000.0 && (top_f187 - 56.0).abs() < 1e-3, "F186 {top_f186}, F187 {top_f187}");
+        // F187's corrections (bury_edge): H = 0 changes nothing; a covered cell with no room (z_256 below the chain's basement)
+        // and its uncovered neighbours never lift a fine cell above the 256² surface's bilinear interpolation
+        assert_eq!(none_b.bury_edge(&periodic).data, periodic.data, "H = 0: no change (edge)");
+        let mut cov = vec![0.0f32; nc * nc];
+        cov[5 * nc + 5] = 100.0;
+        let mut surf_e = GridF32::new(nc, nc, 10.0);
+        surf_e.data[5 * nc + 6] = 0.0;
+        let te = Transmit { surface_m: surf_e.clone(), cover_m: cov, lake: vec![false; nc * nc] };
+        let high = GridF32::new(64, 64, 40.0);
+        let be = te.bury_edge(&high);
+        let bb = te.bury_bounded(&high);
+        assert_eq!(be.data, high.data, "no room anywhere: the corrected burial fills nothing");
+        assert_eq!(none_b.bury_smooth(&periodic).data, periodic.data, "H = 0: no change (smooth)");
+        // a cover thicker than the fine relief: the fine surface is the bilinear 256² surface
+        let ts = Transmit { surface_m: GridF32::new(nc, nc, 50.0), cover_m: vec![100.0; nc * nc], lake: vec![false; nc * nc] };
+        assert!(ts.bury_smooth(&periodic).data.iter().all(|&v| (v - 50.0).abs() < 1e-4), "buried basement: the bilinear surface");
+        assert!(bb.data.iter().zip(&high.data).all(|(a, b)| a >= b));
     }
 
     /// ADR Finding 164-D1 -- the declared warps (A 0.5, L 4 and 2 previous cells) are invertible (J > 0 everywhere)

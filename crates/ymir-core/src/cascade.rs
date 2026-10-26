@@ -30,7 +30,7 @@ pub mod predict;
 pub mod profile;
 
 use crate::erosion::stream_power::{
-    RELIEF_V1_A_C_KM2, RELIEF_V3_MFD_P, RandomReceiver, StreamPowerConfig, incise_with_floor_torus,
+    RELIEF_V1_A_C_KM2, RELIEF_V3_MFD_P, RandomReceiver, StreamPowerConfig, incise_with_floor_torus_ocean,
     linear_diffusion_torus, talus_sweep_torus,
 };
 use crate::seed::WorldSeed;
@@ -60,6 +60,15 @@ impl SubStep {
             SubStep::Diffusion => "Diffusion",
         }
     }
+}
+
+/// ADR Finding 187-A -- **the sea of the physics level**. `connected`: the ocean is the largest 4-connected component
+/// (periodic) of h < h_sea, re-read at each step and each marine sub-step; only its cells are the base nodes, the marine
+/// domain and the cells held after the hillslope, and the other below-sea cells are closed depressions under the lakes'
+/// rules. `false` (the default) = every cell below the sea is the sea, F186 exactly.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Sea {
+    pub connected: bool,
 }
 
 /// The declared parameters (`f159_declared.md` D1–D7). [`CascadeConfig::declared`] is the round's.
@@ -107,6 +116,11 @@ pub struct CascadeConfig {
     /// frame: the solver, the talus and the diffusion are periodic, and the roughness, the ordered sums and the rebound's
     /// FFT read the terrain's frame. `None` = F168 exactly.
     pub torus: Option<[usize; 2]>,
+    /// ADR Finding 187-A -- the sea by connectivity (off: F186).
+    pub sea: Sea,
+    /// ADR Finding 188 V (a bench knob) -- the talus off in the hillslope stage. `false` (the default) = the talus on, as
+    /// every earlier level.
+    pub talus_off: bool,
 }
 
 impl CascadeConfig {
@@ -134,6 +148,8 @@ impl CascadeConfig {
             seed: 0,
             // ADR Finding 169 (at commit) -- the torus is the cascade's default; the input in C1's own frame
             torus: Some([0, 0]),
+            sea: Sea { connected: false },
+            talus_off: false,
         }
     }
     /// Metres per norm unit (`c1_altitude_norm_to_metres`' slope).
@@ -174,6 +190,10 @@ impl CascadeConfig {
         sp.sea_level = self.sea_level;
         sp.diffusion = self.diffusion_weight(n);
         sp.diffusion_substeps = self.diffusion_substeps;
+        // F188 V: the talus off (a bench knob)
+        if self.talus_off {
+            sp.talus_slope = 0.0;
+        }
         sp
     }
 }
@@ -500,11 +520,17 @@ pub struct Drive<'a> {
     /// ADR Finding 183-A3 -- the recycling: the fraction of each cell's cover subducted at step `i` (C1's consumption); `None` =
     /// none.
     pub recycle: Option<Box<dyn Fn(usize) -> Vec<f32> + 'a>>,
+    /// ADR Finding 187 Part 0 -- the bench's observer of the field (norm) at each step's end; `None` everywhere else. It reads,
+    /// it changes nothing.
+    pub observe: Option<&'a dyn Fn(usize, &GridF32)>,
+    /// ADR Finding 188 G1 -- the bench's observer of the operators: at each step's end the field and the cumulated incision,
+    /// talus and hillslope sums (norm; `sum_diffusion` holds the talus). `None` everywhere else; it reads only.
+    pub observe_ops: Option<&'a dyn Fn(usize, &GridF32, &[f32], &[f32], &[f32])>,
 }
 
 impl<'a> Drive<'a> {
     pub fn steady(du: &'a [f32]) -> Self {
-        Self { du: Box::new(move |_| std::borrow::Cow::Borrowed(du)), hold_sea: true, eq_stop: true, rebound: None, dt: None, rock: None, sea: None, dep: None, dep_hook: None, recycle: None }
+        Self { du: Box::new(move |_| std::borrow::Cow::Borrowed(du)), hold_sea: true, eq_stop: true, rebound: None, dt: None, rock: None, sea: None, dep: None, dep_hook: None, recycle: None, observe: None, observe_ops: None }
     }
 }
 
@@ -573,6 +599,12 @@ fn run_loop(
     let (mut ratios, mut calm, mut steps, mut equilibrium, mut talus_last) = (Vec::new(), 0usize, 0usize, false, 0f32);
     // ADR Finding 182: the deposition's state (the sediment thickness, norm, f64) and record
     assert!(drive.dep.is_none() || !drive.hold_sea, "the deposition runs on a history level only");
+    // ADR Finding 187-A: the sea by connectivity runs on a history level, with the live marine step per cell
+    let conn = cfg.sea.connected;
+    assert!(!conn || !drive.hold_sea, "the connected sea runs on a history level only");
+    assert!(!conn || drive.dep.is_none_or(|d| d.marine.is_none() || (d.marine_live && !d.marine_blocks)), "the connected sea needs the live marine step per cell");
+    // F187-A1: the land of a field, the complement of the ocean by connectivity
+    let land_conn = |z: &GridF32, sea: f32| -> Vec<bool> { amplify::ocean_connected(z, sea, tor).iter().map(|&o| !o).collect() };
     let mut sed64 = if drive.dep.is_some() { vec![0f64; cells] } else { Vec::new() };
     let mut srec = drive.dep.map(|_| deposition::SedRecord {
         fluvial_m: vec![0.0; cells],
@@ -585,6 +617,7 @@ fn run_loop(
     let mut solid64 = if drive.dep.is_some() { vec![0f64; cells] } else { Vec::new() };
     let load_on = drive.dep.is_some_and(|d| d.load.is_some());
     let mut load_prev = if load_on { vec![0f64; cells] } else { Vec::new() };
+    let mut strand_cells = if drive.dep.is_some_and(|d| d.marine_live) { vec![0f64; cells] } else { Vec::new() };
     let ctab = drive.dep.and_then(|d| d.compaction).map(deposition::CompactionTable::new);
     let p_dep = drive.dep.and_then(|d| d.compaction).map_or(0.0, |c| c.phi0 as f64);
     let n2m64 = n2m as f64;
@@ -637,7 +670,9 @@ fn run_loop(
             z.data[k] += du1[k];
             s_up[k] += du1[k];
         }
-        if !drive.hold_sea {
+        if conn {
+            land = land_conn(&z, sea);
+        } else if !drive.hold_sea {
             for k in 0..cells {
                 land[k] = z.data[k] > sea;
             }
@@ -658,7 +693,9 @@ fn run_loop(
         let kf: Option<Vec<f32>> = drive.rock.map(|r| {
             (0..cells)
                 .map(|k| {
-                    let f = if e_cum[k] < r.cover_m[k] { 1.0 } else { 1.0 / r.rho_k };
+                    // F188-B: a cell carrying a deposit erodes at the soft cover's K while the lowering stays in it
+                    let soft = drive.dep.is_some_and(|d| d.soft_cover) && sed64.get(k).is_some_and(|&h| h > 0.0);
+                    let f = if e_cum[k] < r.cover_m[k] || soft { 1.0 } else { 1.0 / r.rho_k };
                     r.ln_k.as_ref().map_or(f, |l| f * l[k].exp())
                 })
                 .collect()
@@ -693,18 +730,23 @@ fn run_loop(
                         z.data[k] += du1[k];
                         s_up[k] += du1[k];
                     }
-                    if !drive.hold_sea {
+                    if conn {
+                        land = land_conn(&z, sea);
+                    } else if !drive.hold_sea {
                         for k in 0..cells {
                             land[k] = z.data[k] > sea;
                         }
                     }
                 }
                 let before_js = z.data.clone();
+                // F187-A2: the ocean is the incision's sea (`None`: every cell below the sea, F186)
+                let ocean_k: Option<Vec<bool>> = conn.then(|| land.iter().map(|&l| !l).collect());
                 let incise = |f: &GridF32| -> GridF32 {
-                    let mut zz = incise_with_floor_torus(f, &solver_k, kf.as_deref(), None, &mut |_, _| {}, tor);
+                    let mut zz = incise_with_floor_torus_ocean(f, &solver_k, kf.as_deref(), None, &mut |_, _| {}, tor, ocean_k.as_deref());
                     if let Some(r) = drive.rock {
                         for k in 0..cells {
-                            let rem = r.cover_m[k] - e_cum[k];
+                            // F188-B: the remaining soft cover is the rock's, or the deposit when it is thicker
+                            let rem = if dp.soft_cover { (r.cover_m[k] - e_cum[k]).max(sed64[k] as f32 * n2m) } else { r.cover_m[k] - e_cum[k] };
                             let e = (f.data[k] - zz.data[k]) * n2m;
                             if rem > 0.0 && e > rem {
                                 zz.data[k] += (e - rem) * (1.0 - 1.0 / r.rho_k) / n2m;
@@ -728,7 +770,7 @@ fn run_loop(
                 };
                 let pass = |s: &GridF32, e: &[f64]| {
                     let es = to_solid(e);
-                    deposition::pass(s, &es, sea, Some(&sea_mask), g_pass, dp.lakes, tor.is_some(), p_dep)
+                    deposition::pass_routed(s, &es, sea, Some(&sea_mask), conn, g_pass, dp.lakes, tor.is_some(), p_dep)
                 };
                 let ctx = deposition::FluvialCtx { before: &z, incise: &incise, pass: &pass, u_dt: mean_du, step: steps, p_dep };
                 let fo = match drive.dep_hook {
@@ -781,7 +823,8 @@ fn run_loop(
             }
             dep_step = Some((e_tot, agg.unwrap()));
         } else {
-            z = incise_with_floor_torus(&z, &solver, kf.as_deref(), None, &mut |_, _| {}, tor);
+            let ocean_k: Option<Vec<bool>> = conn.then(|| land.iter().map(|&l| !l).collect());
+            z = incise_with_floor_torus_ocean(&z, &solver, kf.as_deref(), None, &mut |_, _| {}, tor, ocean_k.as_deref());
             // the step that crosses the contact: the remaining cover at K_couv, the excess divided by ρ_K
             if let Some(r) = drive.rock {
                 for k in 0..cells {
@@ -900,7 +943,7 @@ fn run_loop(
                         let (ns, strd) = if dp.marine_blocks {
                             deposition::marine_step_live_blocks(&mut z, &src, dt_step, &m, cell_m as f64, &mut sup, tor.is_some(), sea as f64)
                         } else {
-                            deposition::marine_step_live(&mut z, &src, dt_step, &m, cell_m as f64, &mut sup, tor.is_some(), sea as f64)
+                            deposition::marine_step_live_sea(&mut z, &src, dt_step, &m, cell_m as f64, &mut sup, tor.is_some(), sea as f64, conn.then_some(tor), Some(&mut strand_cells))
                         };
                         rec.marine_substeps += ns;
                         rec.marine_stranded += strd * wm;
@@ -1012,6 +1055,10 @@ fn run_loop(
                     rec.load_cover_abs += dl.abs();
                     load_prev[k] = lc;
                     q[k] = (-(dl - rb.rho_c as f64 * eb_vec[k]) / rb.rho_m as f64) as f32;
+                    // F188 D2: the uniform mode's two parts and the basement incised (a record only)
+                    rec.w0_erosion_n += rb.rho_c as f64 * eb_vec[k] / rb.rho_m as f64 / cells as f64;
+                    rec.w0_load_n += -dl / rb.rho_m as f64 / cells as f64;
+                    rec.basement_incised_n += eb_vec[k];
                 }
                 load_q = Some(q);
             }
@@ -1039,6 +1086,12 @@ fn run_loop(
         }
         secs[3] += t.elapsed().as_secs_f64();
         steps += 1;
+        if let Some(o) = drive.observe {
+            o(steps, &z);
+        }
+        if let Some(o) = drive.observe_ops {
+            o(steps, &z, &s_ero, &s_tal, &s_dif);
+        }
         let change: f64 = (0..cells).filter(|&k| land[k]).map(|k| (z.data[k] - start[k]).abs() as f64).sum();
         // no uplift: no steady state to reach, the level runs to its cap
         let ratio = if mean_du > 0.0 { (change / n_land as f64 / mean_du) as f32 } else { f32::INFINITY };
@@ -1083,6 +1136,8 @@ fn run_loop(
             // the f64 rounding of the marine fluxes can leave −1e−17: clamped for the record only
             r.thickness_m = sed64.iter().map(|&v| (v.max(0.0) * n2m as f64) as f32).collect();
             r.solid_m = solid64.iter().map(|&v| (v.max(0.0) * n2m as f64) as f32).collect();
+            // F188-B2: the marine walk's stranded thickness per cell (m)
+            r.marine_stranded_m = strand_cells.iter().map(|&v| (v * n2m as f64) as f32).collect();
             r
         }),
     })

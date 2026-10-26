@@ -1,0 +1,13 @@
+   V2 bis (the production's hillslope, the lakes filled by volume, no fluvial deposit):
+      fluvial step 160 kyr: 44 s · the land's max over its median, worst over the steps 48.22 (step 105) · at the end: max 4655 m, median 1242 m
+      fluvial step 40 kyr: 111 s · the land's max over its median, worst over the steps 22.32 (step 23) · at the end: max 6825 m, median 1283 m
+      fluvial step 10 kyr: 396 s · the land's max over its median, worst over the steps 7.74 (step 26) · at the end: max 3598 m, median 1335 m
+      density   160 / 40 / 10 kyr: 0.1505 / 0.1570 / 0.1529 · 160 vs 40 -4.119 · 40 vs 10 +2.719 · r -0.66 (out of 0.1 … 0.5)
+      λ         160 / 40 / 10 kyr: 10.0660 / 9.8431 / 9.3216 · 160 vs 40 +2.265 · 40 vs 10 +5.594 · r +2.47 (out of 0.1 … 0.5)
+      S10       160 / 40 / 10 kyr: 1.1459 / 1.1599 / 1.1803 · 160 vs 40 -1.210 · 40 vs 10 -1.725 · r +1.43 (out of 0.1 … 0.5)
+      plain     160 / 40 / 10 kyr: 0.1389 / 0.0816 / 0.0747 · 160 vs 40 +0.057 · 40 vs 10 +0.007 · converged (under E3's noise floor)
+      plateau   160 / 40 / 10 kyr: 0.0642 / 1.0538 / 0.1163 · 160 vs 40 -0.990 · 40 vs 10 +0.938 · r -0.95 (out of 0.1 … 0.5)
+      hill      160 / 40 / 10 kyr: 7.4340 / 7.4045 / 7.9722 · 160 vs 40 +0.030 · 40 vs 10 -0.568 · r -19.24 (out of 0.1 … 0.5)
+      mountain  160 / 40 / 10 kyr: 92.3628 / 91.4601 / 91.8368 · 160 vs 40 +0.903 · 40 vs 10 -0.377 · converged (under E3's noise floor)
+   V2 bis: FAILS: stop and report
+   551 s

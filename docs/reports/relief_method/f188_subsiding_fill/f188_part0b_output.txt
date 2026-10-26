@@ -1,0 +1,15 @@
+    = note: `#[warn(deprecated)]` on by default
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+    Finished `release` profile [optimized] target(s) in 0.16s
+     Running tests\f188_cascade.rs (target_f185b\release\deps\f188_cascade-05f5f934081fe878.exe)
+   seed 8 (p0b): the filled zone 17860 km² of the 2 048² land · on it, without → with the deposition: S10 1.2936 → 1.1886 · a_dir (the straight, D8-aligned share) 0.437 → 0.571 · the order-≥ 2 pieces 3163 → 2754
+      without the lakes: S10 1.2957 → 1.1257 · a_dir 0.253 → 0.609 · the pieces 1203 → 1593
+   seed 18 (p0b): the filled zone 23012 km² of the 2 048² land · on it, without → with the deposition: S10 1.5148 → 1.1607 · a_dir (the straight, D8-aligned share) 0.232 → 0.662 · the order-≥ 2 pieces 4592 → 3316
+      without the lakes: S10 1.3821 → 1.1285 · a_dir 0.216 → 0.731 · the pieces 2387 → 2433
+   seed 19 (p0b): the filled zone 6524 km² of the 2 048² land · on it, without → with the deposition: S10 1.5084 → 1.2591 · a_dir (the straight, D8-aligned share) 0.269 → 0.394 · the order-≥ 2 pieces 3119 → 539
+      without the lakes: S10 1.5598 → 1.2171 · a_dir 0.198 → 0.406 · the pieces 1666 → 420
+   seed 23 (p0b): the filled zone 38970 km² of the 2 048² land · on it, without → with the deposition: S10 1.3767 → 1.1998 · a_dir (the straight, D8-aligned share) 0.375 → 0.537 · the order-≥ 2 pieces 6131 → 5624
+      without the lakes: S10 1.3644 → 1.1362 · a_dir 0.259 → 0.593 · the pieces 2978 → 3908
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 30 filtered out; finished in 911.29s

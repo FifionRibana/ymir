@@ -1,0 +1,16 @@
+   seed 8: the deflection's domain mean -629 m (the uniform part, removed) · the rest ranges -648 … +682 m
+      2699 cells NEW · 3 km from the coast · the outlet 31683: the deflection minus the domain mean +256 m; the land within 30 km, median +231 m; the outlet against it +25 m
+      129 cells NEW · 70 km from the coast · the outlet 50829: the deflection minus the domain mean +568 m; the land within 30 km, median +554 m; the outlet against it +14 m
+      206 cells · 41 km from the coast · the outlet 54866: the deflection minus the domain mean +300 m; the land within 30 km, median +299 m; the outlet against it +1 m
+      136 cells · 31 km from the coast · the outlet 60490: the deflection minus the domain mean +97 m; the land within 30 km, median +112 m; the outlet against it -14 m
+   seed 18: the deflection's domain mean -457 m (the uniform part, removed) · the rest ranges -301 … +349 m
+      815 cells NEW · 4 km from the coast · the outlet 24840: the deflection minus the domain mean +183 m; the land within 30 km, median +198 m; the outlet against it -15 m
+      1761 cells · 8 km from the coast · the outlet 41473: the deflection minus the domain mean +162 m; the land within 30 km, median +126 m; the outlet against it +36 m
+   seed 19: the deflection's domain mean -570 m (the uniform part, removed) · the rest ranges -387 … +369 m
+      71 cells NEW · 5 km from the coast · the outlet 8560: the deflection minus the domain mean -87 m; the land within 30 km, median -60 m; the outlet against it -27 m
+      65 cells NEW · 5 km from the coast · the outlet 16705: the deflection minus the domain mean +236 m; the land within 30 km, median +262 m; the outlet against it -26 m
+   seed 29: the deflection's domain mean -936 m (the uniform part, removed) · the rest ranges -563 … +474 m
+      779 cells · 5 km from the coast · the outlet 10408: the deflection minus the domain mean -105 m; the land within 30 km, median -32 m; the outlet against it -73 m
+      898 cells NEW · 4 km from the coast · the outlet 18418: the deflection minus the domain mean -98 m; the land within 30 km, median -95 m; the outlet against it -4 m
+      194 cells NEW · 13 km from the coast · the outlet 23344: the deflection minus the domain mean +409 m; the land within 30 km, median +408 m; the outlet against it +1 m
+   680 s

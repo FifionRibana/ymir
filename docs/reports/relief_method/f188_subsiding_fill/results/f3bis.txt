@@ -1,0 +1,6 @@
+   seed 19 F187: the registration check (amended): 100.00 % on land, 48 / 48 mouths pass -> PASSES
+   seed 19 F187 + B: the registration check (amended): 100.00 % on land, 53 / 53 mouths pass -> PASSES
+   seed 23 F187: the registration check (amended): 100.00 % on land, 40 / 40 mouths pass -> PASSES
+   seed 23 F187 + B: the registration check (amended): 100.00 % on land, 41 / 41 mouths pass -> PASSES
+   seed 8 F187 + B, the east coast's crop (fine x 1632–1832, rows 1086–1546): 799 covered 256² cells, of which bury_smooth flattens 627 (8 × 8 fine blocks); the land fine cells where bury_smooth and bury_edge differ by > 1 m: 6516 of 88740
+   F3 bis: 676 s

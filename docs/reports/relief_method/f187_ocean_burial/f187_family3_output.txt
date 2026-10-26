@@ -1,0 +1,43 @@
+   [off] 25.3 s wall / 30.7 s CPU · the mass controls 0.0e0 / 0.0e0 · land 40455 cells · median 85 m
+   [whole] 91.0 s wall / 96.1 s CPU · the mass controls 1.7e-14 / 2.1e-11 · land 41580 cells · median 69 m
+   [a_no_fill] 93.3 s wall / 97.7 s CPU · the mass controls 1.3e-14 / 1.9e-11 · land 37558 cells · median 74 m
+   [b_no_marine] 31.6 s wall / 37.1 s CPU · the mass controls 2.9e-15 / 9.3e-14 · land 41674 cells · median 101 m
+   [c_no_load] 83.5 s wall / 88.2 s CPU · the mass controls 1.9e-14 / 2.1e-11 · land 49570 cells · median 174 m
+   [d_no_compaction] 110.5 s wall / 117.0 s CPU · the mass controls 1.8e-13 / 2.3e-11 · land 49771 cells · median 96 m
+   [e_no_recycling] 90.4 s wall / 96.0 s CPU · the mass controls 2.1e-14 / 4.4e-11 · land 39258 cells · median 46 m
+   [f_no_keff] 101.9 s wall / 107.6 s CPU · the mass controls 1.5e-14 / 1.7e-11 · land 42671 cells · median 60 m
+   the rock (z − H) minus the world without the deposition, at F186's cells (m):
+      cell                whole       a_no_fill     b_no_marine       c_no_load d_no_compaction  e_no_recycling       f_no_keff
+      41567                +796            +798            +884            +934            +899            +560             +22
+      44269                +493            +246            +190            +307            +731            +332            +530
+      45401                +365            +549             +61            +164            +423            +229            +397
+      60574                 +71              -6             +63            +202             -56            +101             -13
+      39851               +1013           +1018           +1167           +1220            +792            +904             -21
+      39603               +1024           +1014           +1126           +1190            +863            +885             +62
+      41684                +893            +826            +897            +943            +863            +612            +327
+      42442               +1129           +1130           +1135           +1226           +1082            +931            +122
+      39102                +972            +988            +956           +1058           +1001            +782            +102
+      mean                 +751            +729            +720            +805            +733            +593            +170
+   the share of the whole run's mean gap that each cut removes (1 − cut / whole): a_no_fill 3 % b_no_marine 4 % c_no_load -7 % d_no_compaction 2 % e_no_recycling 21 % f_no_keff 77 %
+   whole: the coast against the world without the deposition: land gained 3444.8242 km² (1411 cells), lost 3869.629 km² (1585 cells)
+      cell 41567: to the nearest ocean 10 → 10 km · the river to the sea 14 → 13 km (-0 km)
+      cell 44269: to the nearest ocean 15 → 11 km · the river to the sea 31 → 12 km (-19 km)
+      cell 45401: to the nearest ocean 8 → 9 km · the river to the sea 11 → 14 km (+4 km)
+      cell 60574: to the nearest ocean 102 → 102 km · the river to the sea 269 → 191 km (-78 km)
+      cell 39851: to the nearest ocean 24 → 24 km · the river to the sea 32 → 30 km (-2 km)
+      cell 39603: to the nearest ocean 23 → 24 km · the river to the sea 30 → 26 km (-5 km)
+      cell 41684: to the nearest ocean 15 → 15 km · the river to the sea 35 → 34 km (-1 km)
+      cell 42442: to the nearest ocean 19 → 17 km · the river to the sea 36 → 24 km (-12 km)
+      cell 39102: to the nearest ocean 14 → 14 km · the river to the sea 20 → 17 km (-4 km)
+   b_no_marine: the coast against the world without the deposition: land gained 200.19531 km² (82 cells), lost 397.94922 km² (163 cells)
+      cell 41567: to the nearest ocean 10 → 10 km · the river to the sea 14 → 13 km (-0 km)
+      cell 44269: to the nearest ocean 15 → 15 km · the river to the sea 31 → 28 km (-3 km)
+      cell 45401: to the nearest ocean 8 → 8 km · the river to the sea 11 → 8 km (-2 km)
+      cell 60574: to the nearest ocean 102 → 103 km · the river to the sea 269 → 202 km (-66 km)
+      cell 39851: to the nearest ocean 24 → 24 km · the river to the sea 32 → 30 km (-2 km)
+      cell 39603: to the nearest ocean 23 → 24 km · the river to the sea 30 → 25 km (-5 km)
+      cell 41684: to the nearest ocean 15 → 15 km · the river to the sea 35 → 40 km (+5 km)
+      cell 42442: to the nearest ocean 19 → 17 km · the river to the sea 36 → 32 km (-4 km)
+      cell 39102: to the nearest ocean 14 → 14 km · the river to the sea 20 → 17 km (-4 km)
+   the diagnosis: 636 s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 17 filtered out; finished in 636.24s

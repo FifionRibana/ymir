@@ -1,0 +1,1 @@
+   [f_no_keff] 101.9 s wall / 107.6 s CPU · the mass controls 1.5e-14 / 1.7e-11 · land 42671 cells · median 60 m

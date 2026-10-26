@@ -1,0 +1,21 @@
+   the stages: C1 0.7 s wall / 0.5 s CPU · the physics level with the deposition and A 98.5 s · the amplifications 512² / 1 024² / 2 048² 6.6 / 9.8 / 46.9 s (without the deposition 6.6 / 10.6 / 53.5 s) · the burial 0.10 s
+   X2: the filled fine cells 2397347; above the bilinear 256² surface by more than 50 m: 7; the filled cells' greatest excess 110.5 m (every cell, the basement's amplification included: 1853 m)
+   the filled basins (basement below the sea, not the ocean, covered): 53 groups
+      7009 cells at 256² cell 23: the fine maximum inside 1572 m (the 256² surface's maximum 1209 m) · the land around, fine p90 1296 m
+      744 cells at 256² cell 46680: the fine maximum inside 1303 m (the 256² surface's maximum 1151 m) · the land around, fine p90 791 m
+      311 cells at 256² cell 18265: the fine maximum inside 38 m (the 256² surface's maximum 37 m) · the land around, fine p90 49 m
+      167 cells at 256² cell 127: the fine maximum inside 73 m (the 256² surface's maximum 68 m) · the land around, fine p90 73 m
+      148 cells at 256² cell 38292: the fine maximum inside 208 m (the 256² surface's maximum 211 m) · the land around, fine p90 81 m
+      106 cells at 256² cell 54182: the fine maximum inside 160 m (the 256² surface's maximum 146 m) · the land around, fine p90 249 m
+      96 cells at 256² cell 15822: the fine maximum inside 50 m (the 256² surface's maximum 50 m) · the land around, fine p90 42 m
+      59 cells at 256² cell 26046: the fine maximum inside 1089 m (the 256² surface's maximum 1122 m) · the land around, fine p90 485 m
+      57 cells at 256² cell 3699: the fine maximum inside 57 m (the 256² surface's maximum 57 m) · the land around, fine p90 62 m
+      36 cells at 256² cell 54931: the fine maximum inside 83 m (the 256² surface's maximum 72 m) · the land around, fine p90 140 m
+   at 2 048²: plains 49.8 → 55.4 % · hill 31.2 → 26.9 % · mountain 19.0 → 17.7 % · median 78 → 59 m · the cover's volume, fine against coarse: every cell 155366 against 155503 km³ (-0.1 %), the land 28609 against 29656 km³ (-3.5 %)
+   crop « lake » centred on 256² cell 20417
+   crop « delta » centred on 256² cell 7972
+   crop « plateau » centred on 256² cell 45490
+   F186's spot at 256² cell 4980: the fine maximum around it 57 m buried, 3 m the basement chain (F186: 1 761 / 2 516 / 3 008 m)
+   F186's spot at 256² cell 17360: the fine maximum around it 47 m buried, 4 m the basement chain (F186: 1 761 / 2 516 / 3 008 m)
+   F186's spot at 256² cell 56482: the fine maximum around it 137 m buried, 3 m the basement chain (F186: 1 761 / 2 516 / 3 008 m)
+   the adoption's chain: 325 s

@@ -1,0 +1,4 @@
+   seed 8: the plate written (274 s so far)
+   seed 18: the plate written (573 s so far)
+   seed 19: the plate written (855 s so far)
+   seed 23: the plate written (1181 s so far)

@@ -1,0 +1,1 @@
+   [ce_no_load_no_recycling] 85.7 s wall / 92.7 s CPU · the mass controls 1.3e-14 / 2.3e-11 · land 55799 cells · median 163 m

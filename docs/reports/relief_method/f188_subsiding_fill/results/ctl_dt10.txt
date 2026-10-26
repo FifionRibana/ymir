@@ -1,0 +1,1 @@
+   [ctl_dt10] 414.1 s wall / 418.3 s CPU · the mass controls 2.1e-14 / 3.8e-11

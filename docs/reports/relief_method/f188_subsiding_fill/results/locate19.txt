@@ -1,0 +1,2 @@
+   F3 bis 1, seed 19 F187: the trunk mouths not within a pixel of a drawn sea pixel
+      the mouth at fine (738, 17) = map pixel (369, 1015), the trunk 7623 km², its receiver at fine (739, 18) is the connected ocean (0.0 m deep) one fine cell away · the ocean's width through the receiver: 1 fine cells along x, 5 along y (one map pixel = 2 fine cells)

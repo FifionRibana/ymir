@@ -1,0 +1,17 @@
+   seed 8 (p0b): the filled zone 17860 km² of the 2 048² land · on it, without → with the deposition: S10 1.2936 → 1.1886 · a_dir (the straight, D8-aligned share) 0.437 → 0.571 · the order-≥ 2 pieces 3163 → 2754
+#R 1.2936286 1.1886495 0.43713307 0.5705519
+      without the lakes: S10 1.2957 → 1.1257 · a_dir 0.253 → 0.609 · the pieces 1203 → 1593
+#RL 1.295658 1.1256677 0.25349382 0.60926974
+   seed 18 (p0b): the filled zone 23012 km² of the 2 048² land · on it, without → with the deposition: S10 1.5148 → 1.1607 · a_dir (the straight, D8-aligned share) 0.232 → 0.662 · the order-≥ 2 pieces 4592 → 3316
+#R 1.5147908 1.1606588 0.23223291 0.6624249
+      without the lakes: S10 1.3821 → 1.1285 · a_dir 0.216 → 0.731 · the pieces 2387 → 2433
+#RL 1.3820693 1.1285429 0.2155175 0.7313312
+   seed 19 (p0b): the filled zone 6524 km² of the 2 048² land · on it, without → with the deposition: S10 1.5084 → 1.2591 · a_dir (the straight, D8-aligned share) 0.269 → 0.394 · the order-≥ 2 pieces 3119 → 539
+#R 1.5084085 1.2590632 0.26933473 0.39380482
+      without the lakes: S10 1.5598 → 1.2171 · a_dir 0.198 → 0.406 · the pieces 1666 → 420
+#RL 1.5597771 1.2170535 0.19773537 0.40585703
+   seed 23 (p0b): the filled zone 38970 km² of the 2 048² land · on it, without → with the deposition: S10 1.3767 → 1.1998 · a_dir (the straight, D8-aligned share) 0.375 → 0.537 · the order-≥ 2 pieces 6131 → 5624
+#R 1.3766501 1.1998463 0.3751065 0.53680843
+      without the lakes: S10 1.3644 → 1.1362 · a_dir 0.259 → 0.593 · the pieces 2978 → 3908
+#RL 1.3643832 1.1361556 0.2593517 0.5930963
+   Part 0: 911 s

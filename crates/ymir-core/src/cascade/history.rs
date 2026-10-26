@@ -701,6 +701,22 @@ fn recycle_fn<'a>(c: &'a Consumption, n: usize, js: impl Fn(usize) -> (usize, f6
     })
 }
 
+/// ADR Finding 188 G1 -- [`physics_history_obs`] with the operators' observer too (the bench's; `None` is
+/// [`physics_history_obs`] exactly).
+#[allow(clippy::too_many_arguments)]
+pub fn physics_history_ops<'h>(
+    snaps: &[GridF32],
+    n: usize,
+    cfg: &CascadeConfig,
+    run: &HistoryRun,
+    dep: Option<super::deposition::Deposition>,
+    observe_ops: Option<&'h dyn Fn(usize, &GridF32, &[f32], &[f32], &[f32])>,
+    progress: &mut dyn FnMut(CascadeProgress),
+    cancel: &dyn Fn() -> bool,
+) -> Option<HistoryLevel> {
+    physics_history_inner(snaps, n, cfg, run, None, None, dep, None, None, None, observe_ops, progress, cancel)
+}
+
 /// ADR Finding 183 -- [`physics_history_dep`] with C1's consumption for the recycling (`None` = [`physics_history_dep`]
 /// exactly; read only when `dep.recycle`).
 #[allow(clippy::too_many_arguments)]
@@ -717,7 +733,27 @@ pub fn physics_history_acc<'h>(
     progress: &mut dyn FnMut(CascadeProgress),
     cancel: &dyn Fn() -> bool,
 ) -> Option<HistoryLevel> {
-    physics_history_inner(snaps, n, cfg, run, rock, curve, dep, dep_hook, consumption.filter(|_| dep.is_some_and(|d| d.recycle)), progress, cancel)
+    physics_history_inner(snaps, n, cfg, run, rock, curve, dep, dep_hook, consumption.filter(|_| dep.is_some_and(|d| d.recycle)), None, None, progress, cancel)
+}
+
+/// ADR Finding 187 Part 0 -- [`physics_history_acc`] with an observer of the field (norm) at each step's end (the bench's;
+/// it changes nothing: `None` is [`physics_history_acc`] exactly).
+#[allow(clippy::too_many_arguments)]
+pub fn physics_history_obs<'h>(
+    snaps: &[GridF32],
+    n: usize,
+    cfg: &CascadeConfig,
+    run: &HistoryRun,
+    rock: Option<&super::Rock>,
+    curve: Option<&SeaCurve>,
+    dep: Option<super::deposition::Deposition>,
+    dep_hook: Option<&'h super::deposition::FluvialHook<'h>>,
+    consumption: Option<&'h Consumption>,
+    observe: Option<&'h dyn Fn(usize, &GridF32)>,
+    progress: &mut dyn FnMut(CascadeProgress),
+    cancel: &dyn Fn() -> bool,
+) -> Option<HistoryLevel> {
+    physics_history_inner(snaps, n, cfg, run, rock, curve, dep, dep_hook, consumption.filter(|_| dep.is_some_and(|d| d.recycle)), observe, None, progress, cancel)
 }
 
 /// ADR Finding 182 -- [`physics_history_sea`] with the sediment deposition (`None` = [`physics_history_sea`] exactly);
@@ -735,7 +771,7 @@ pub fn physics_history_dep<'h>(
     progress: &mut dyn FnMut(CascadeProgress),
     cancel: &dyn Fn() -> bool,
 ) -> Option<HistoryLevel> {
-    physics_history_inner(snaps, n, cfg, run, rock, curve, dep, dep_hook, None, progress, cancel)
+    physics_history_inner(snaps, n, cfg, run, rock, curve, dep, dep_hook, None, None, None, progress, cancel)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -749,6 +785,8 @@ fn physics_history_inner<'h>(
     dep: Option<super::deposition::Deposition>,
     dep_hook: Option<&'h super::deposition::FluvialHook<'h>>,
     consumption: Option<&'h Consumption>,
+    observe: Option<&'h dyn Fn(usize, &GridF32)>,
+    observe_ops: Option<&'h dyn Fn(usize, &GridF32, &[f32], &[f32], &[f32])>,
     progress: &mut dyn FnMut(CascadeProgress),
     cancel: &dyn Fn() -> bool,
 ) -> Option<HistoryLevel> {
@@ -851,6 +889,8 @@ fn physics_history_inner<'h>(
                     (interval(i), share as f64)
                 })
             }),
+            observe,
+            observe_ops,
         };
         let uplift = GridF32::new(n, n, 0.0);
         let rec = run_loop(z0.clone(), uplift, &cfg_t, n, total, Some(0), &drive, progress, cancel)?;
@@ -896,6 +936,8 @@ fn physics_history_inner<'h>(
                     (interval(i), dd2[i] / dsum2[interval(i)])
                 })
             }),
+            observe,
+            observe_ops,
         };
         let uplift = GridF32::new(n, n, 0.0);
         let rec = run_loop(z0.clone(), uplift, &cfg_t, n, run.steps, Some(0), &drive, progress, cancel)?;
@@ -925,6 +967,8 @@ fn physics_history_inner<'h>(
             Timing::History => consumption.map(|c| recycle_fn(c, n, move |i| (((i * intervals) / steps).min(intervals - 1), intervals as f64 / steps as f64))),
             _ => None,
         },
+        observe,
+        observe_ops,
     };
     let uplift = GridF32::new(n, n, 0.0);
     let rec = run_loop(z0.clone(), uplift, &cfg_t, n, run.steps, Some(0), &drive, progress, cancel)?;
@@ -1515,6 +1559,7 @@ age_calkaBP	SeaLev_shortPC1	SeaLev_longPC1
 
     /// ADR Finding 186 A4 (permanent, `#[ignore]`d for its cost) -- **the analytic test with the K_eff closure**: without the
     /// hillslope diffusion, the slope ratio with and without the deposition equals Yuan's discrete factor within 5 %.
+    /// **K_eff is not adopted (F187): double counting with an effective K.** The test stays, for the closure behind its flag.
     #[test]
     #[ignore]
     fn the_yuan_equilibrium_keff() {
@@ -1544,6 +1589,112 @@ age_calkaBP	SeaLev_shortPC1	SeaLev_longPC1
         }
         eprintln!("YUANKEFF ratio {ratio:.3} · discrete {disc:.3} ({:+.1} %) · continuous {:.3} · the last change ratio {rd:.4} / {r0:.4} · bins {bins:?}", 100.0 * (ratio / disc - 1.0), 1.0 + g as f64);
         assert!((ratio / disc - 1.0).abs() < 0.05, "K_eff against Yuan's discrete factor: {ratio:.3} / {disc:.3}");
+    }
+
+    /// ADR Finding 188 B3 (permanent; A's and A′'s controls went with their code at B's adoption):
+    /// - nothing deposited (no marine step, no lakes, G = 0): the soft cover changes nothing;
+    /// - a zone that sinks (U < 0 on part of the land), with the adopted profile ([`Deposition::continent_default`], B on): both
+    ///   mass controls hold at 10⁻⁹ and the profile deposits.
+    #[test]
+    fn the_f188_controls() {
+        use crate::cascade::deposition::Deposition;
+        let nc = 64;
+        let base = CascadeConfig { roughness_m: 20.0, seed: 5, ..CascadeConfig::declared(4000.0) };
+        let n2m = base.norm_to_m();
+        let snaps = |sink: bool| -> Vec<GridF32> {
+            (0..=10)
+                .map(|j| {
+                    let mut gd = GridF32::new(nc, nc, 0.0);
+                    for k in 0..nc * nc {
+                        let (x, y) = (k % nc, k / nc);
+                        // the uplift is uniform (the sea strip too: a step in U would ring in the bicubic and sink the coast)
+                        let up = j as f32 * 2.0e-4 * 4.0e5 / n2m;
+                        gd.data[k] = if y < 8 {
+                            base.sea_level - 1000.0 / n2m + up * 0.5
+                        } else {
+                            let sinking = sink && (20..44).contains(&x) && (12..30).contains(&y);
+                            base.sea_level + (5.0 + 2.0 * (y as f32 - 8.0).min(63.0 - y as f32 + 8.0)) / n2m + if sinking { 300.0 / n2m - 0.6 * up } else { up }
+                        };
+                    }
+                    gd
+                })
+                .collect()
+        };
+        let run = |rebound: Option<Rebound>| HistoryRun { t_years: 4.0e6, steps: 40, rebound, timing: Timing::History, age_years: None, sea_low: None };
+        let go = |sink: bool, rebound: Option<Rebound>, d: Deposition| physics_history_dep(&snaps(sink), 128, &base, &run(rebound), None, None, Some(d), None, &mut |_| {}, &|| false).unwrap();
+        // nothing deposited: B changes nothing
+        let quiet = Deposition { marine: None, lakes: false, g: 0.0, ..Deposition::declared() };
+        let q0 = go(true, None, quiet);
+        let q1 = go(true, None, Deposition { soft_cover: true, ..quiet });
+        assert_eq!(q0.rec.z.data, q1.rec.z.data, "H = 0: the soft cover changes nothing");
+        // a sinking zone with the adopted profile: the mass, and the profile deposits
+        let l = go(true, Some(Rebound::declared()), Deposition::continent_default());
+        let r = l.rec.sed.as_ref().unwrap();
+        assert!(r.max_rel_residual < 1e-9 && r.max_stock_residual < 1e-9, "the mass: {} {}", r.max_rel_residual, r.max_stock_residual);
+        assert!(r.thickness_m.iter().any(|&h| h > 0.0), "the adopted profile deposited nothing");
+    }
+
+    /// ADR Finding 187 A5 (permanent) -- the sea by connectivity:
+    /// - on a world whose below-sea cells all stay connected (a full-width sea strip on the torus, no marine step), the flag
+    ///   gives the same field, bit for bit, without the deposition and with it (the lakes and K_eff);
+    /// - with an interior basin below the sea (a pit in the land) and the deposition with the live marine step, the two mass
+    ///   controls hold at 10⁻⁹ with the flag, the basin is no marine domain (no marine deposit in it) and the pass fills it
+    ///   as a lake.
+    #[test]
+    fn the_f187_controls() {
+        use crate::cascade::{Sea, deposition::Deposition};
+        let nc = 64;
+        let base = CascadeConfig { roughness_m: 20.0, seed: 5, ..CascadeConfig::declared(4000.0) };
+        let n2m = base.norm_to_m();
+        let snaps_with = |pit: bool| -> Vec<GridF32> {
+            (0..=10)
+                .map(|j| {
+                    let mut gd = GridF32::new(nc, nc, 0.0);
+                    for k in 0..nc * nc {
+                        let (x, y) = (k % nc, k / nc);
+                        gd.data[k] = if y < 8 {
+                            base.sea_level - 1000.0 / n2m
+                        } else {
+                            base.sea_level + (5.0 + 2.0 * (y as f32 - 8.0).min(63.0 - y as f32 + 8.0)) / n2m + j as f32 * 2.0e-4 * 4.0e5 / n2m
+                        };
+                        if pit && (30..34).contains(&x) && (36..40).contains(&y) {
+                            gd.data[k] = base.sea_level - 300.0 / n2m;
+                        }
+                    }
+                    gd
+                })
+                .collect()
+        };
+        let run = HistoryRun { t_years: 4.0e6, steps: 40, rebound: None, timing: Timing::History, age_years: None, sea_low: None };
+        let go = |sea: Sea, pit: bool, d: Option<Deposition>| {
+            let c = CascadeConfig { sea, ..base.clone() };
+            physics_history_dep(&snaps_with(pit), 128, &c, &run, None, None, d, None, &mut |_| {}, &|| false).unwrap()
+        };
+        let on = Sea { connected: true };
+        let off = Sea::default();
+        // every below-sea cell connected: the same field with and without the flag
+        let a = go(off, false, None);
+        let b = go(on, false, None);
+        assert_eq!(a.rec.z.data, b.rec.z.data, "no deposition: the connected sea changes a connected world");
+        let d = Deposition { marine: None, fluvial_keff: Some(Deposition::G_DECLARED), ..Deposition::declared() };
+        let a = go(off, false, Some(d));
+        let b = go(on, false, Some(d));
+        assert_eq!(a.rec.z.data, b.rec.z.data, "the deposition without the sea: the connected sea changes a connected world");
+        // an interior basin: the mass, no marine deposit in it, the pass fills it
+        let dm = Deposition { marine_live: true, fluvial_keff: Some(Deposition::G_DECLARED), ..Deposition::declared() };
+        let l = go(on, true, Some(dm));
+        let r = l.rec.sed.as_ref().unwrap();
+        assert!(r.max_rel_residual < 1e-9 && r.max_stock_residual < 1e-9, "the mass: {} {}", r.max_rel_residual, r.max_stock_residual);
+        let basin: Vec<usize> = (0..128 * 128).filter(|&k| (60..68).contains(&(k % 128)) && (72..80).contains(&(k / 128))).collect();
+        let marine_in: f32 = basin.iter().map(|&k| r.marine_m[k].abs()).sum();
+        let lake_in: f32 = basin.iter().map(|&k| r.lake_m[k]).sum();
+        assert_eq!(marine_in, 0.0, "the interior basin took a marine deposit");
+        assert!(lake_in > 0.0, "the interior basin was not filled as a lake");
+        // without the flag the same basin is the sea's: the marine step fills it
+        let l0 = go(off, true, Some(dm));
+        let r0 = l0.rec.sed.as_ref().unwrap();
+        let marine0: f32 = basin.iter().map(|&k| r0.marine_m[k]).sum();
+        assert!(marine0 > 0.0, "without the flag the basin is the sea's marine domain");
     }
 
     /// ADR Finding 186 A4 (permanent): the K_eff closure's controls -- G = 0 through the closure is the deposition with G = 0 (the

@@ -1,0 +1,1 @@
+   [ctl_dt20] 287.4 s wall / 291.2 s CPU · the mass controls 1.9e-14 / 4.1e-11

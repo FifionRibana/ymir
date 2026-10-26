@@ -1,0 +1,21 @@
+   [ctl_dt5] 729.0 s wall / 730.2 s CPU · the mass controls 1.7e-14 / 4.5e-11
+   A′'s zone: 20 kyr relative to 5 kyr → F174 fails
+      density   80 vs 20: -0.83 % · 20 vs 5: -4.75 % · the ratio |20 vs 5| / |80 vs 20| 5.76
+      λ         80 vs 20: -4.64 % · 20 vs 5: -12.03 % · the ratio |20 vs 5| / |80 vs 20| 2.59
+      S10       80 vs 20: +0.05 % · 20 vs 5: +0.93 % · the ratio |20 vs 5| / |80 vs 20| 20.21
+      plain     80 vs 20: +1.81 points · 20 vs 5: -1.42 points · the ratio |20 vs 5| / |80 vs 20| 0.78
+      plateau   80 vs 20: +2.91 points · 20 vs 5: +0.42 points · the ratio |20 vs 5| / |80 vs 20| 0.15 (in 1/8 … 1/2)
+      hill      80 vs 20: -6.20 points · 20 vs 5: +0.22 points · the ratio |20 vs 5| / |80 vs 20| 0.04
+      mountain  80 vs 20: +1.49 points · 20 vs 5: +0.77 points · the ratio |20 vs 5| / |80 vs 20| 0.52
+   all the land: 20 kyr relative to 5 kyr → F174 fails
+      density   80 vs 20: +0.65 % · 20 vs 5: -3.99 % · the ratio |20 vs 5| / |80 vs 20| 6.14
+      λ         80 vs 20: +3.50 % · 20 vs 5: -5.23 % · the ratio |20 vs 5| / |80 vs 20| 1.49
+      S10       80 vs 20: -0.47 % · 20 vs 5: +0.47 % · the ratio |20 vs 5| / |80 vs 20| 0.99
+      plain     80 vs 20: +0.49 points · 20 vs 5: -1.41 points · the ratio |20 vs 5| / |80 vs 20| 2.88
+      plateau   80 vs 20: +1.59 points · 20 vs 5: +0.39 points · the ratio |20 vs 5| / |80 vs 20| 0.25 (in 1/8 … 1/2)
+      hill      80 vs 20: -4.20 points · 20 vs 5: +0.90 points · the ratio |20 vs 5| / |80 vs 20| 0.21 (in 1/8 … 1/2)
+      mountain  80 vs 20: +2.13 points · 20 vs 5: +0.12 points · the ratio |20 vs 5| / |80 vs 20| 0.05
+   the hills on C > 1 (the production's step): 80 kyr 31.09 % · 20 kyr 30.85 % · 5 kyr 29.43 %
+   the hills on C ≤ 1 (the production's step): 80 kyr 24.70 % · 20 kyr 27.99 % · 5 kyr 27.74 %
+   731 s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 34 filtered out; finished in 730.65s

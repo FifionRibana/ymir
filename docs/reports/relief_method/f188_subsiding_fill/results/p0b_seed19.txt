@@ -1,0 +1,4 @@
+   seed 19 (p0b): the filled zone 6524 km² of the 2 048² land · on it, without → with the deposition: S10 1.5084 → 1.2591 · a_dir (the straight, D8-aligned share) 0.269 → 0.394 · the order-≥ 2 pieces 3119 → 539
+#R 1.5084085 1.2590632 0.26933473 0.39380482
+      without the lakes: S10 1.5598 → 1.2171 · a_dir 0.198 → 0.406 · the pieces 1666 → 420
+#RL 1.5597771 1.2170535 0.19773537 0.40585703

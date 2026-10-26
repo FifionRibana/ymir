@@ -1,0 +1,35 @@
+   [ctl_dt10] 414.1 s wall / 418.3 s CPU · the mass controls 2.1e-14 / 3.8e-11
+   all the land (32206 cells): the classes at 20 / 10 / 5 kyr: plain 23.72 / 23.57 / 25.13 · plateau 3.34 / 3.71 / 2.95 · hill 28.83 / 28.95 / 27.92 · mountain 44.11 / 43.77 / 44.00 %
+      density   20 vs 10: -1.70 % · 10 vs 5: -2.33 % · r +1.37 → fails
+      λ         20 vs 10: -1.62 % · 10 vs 5: -3.67 % · r +2.27 → fails
+      S10       20 vs 10: -0.09 % · 10 vs 5: +0.56 % · converged (under the noise floor)
+      plain     20 vs 10: +0.15 pt · 10 vs 5: -1.56 pt · r -10.20 → fails
+      plateau   20 vs 10: -0.37 pt · 10 vs 5: +0.76 pt · r -2.05 → fails
+      hill      20 vs 10: -0.12 pt · 10 vs 5: +1.02 pt · r -8.58 → fails
+      mountain  20 vs 10: +0.34 pt · 10 vs 5: -0.22 pt · converged (under the noise floor)
+   A′'s zone (17926 cells): the classes at 20 / 10 / 5 kyr: plain 37.16 / 36.96 / 38.58 · plateau 2.05 / 2.09 / 1.63 · hill 35.75 / 36.61 / 35.52 · mountain 25.04 / 24.34 / 24.27 %
+      density   20 vs 10: -1.54 % · 10 vs 5: -3.26 % · r +2.12 → fails
+      λ         20 vs 10: -2.12 % · 10 vs 5: -10.12 % · r +4.76 → fails
+      S10       20 vs 10: -0.47 % · 10 vs 5: +1.41 % · r -3.01 → fails
+      plain     20 vs 10: +0.20 pt · 10 vs 5: -1.62 pt · r -8.01 → fails
+      plateau   20 vs 10: -0.04 pt · 10 vs 5: +0.46 pt · converged (under the noise floor)
+      hill      20 vs 10: -0.86 pt · 10 vs 5: +1.08 pt · r -1.26 → fails
+      mountain  20 vs 10: +0.70 pt · 10 vs 5: +0.07 pt · converged (under the noise floor)
+   C > 1 (5018 cells): the classes at 20 / 10 / 5 kyr: plain 28.24 / 29.35 / 30.42 · plateau 2.83 / 3.32 / 2.68 · hill 30.85 / 29.96 / 29.43 · mountain 38.08 / 37.38 / 37.47 %
+      density   20 vs 10: +2.11 % · 10 vs 5: -4.53 % · r -2.14 → fails
+      λ         20 vs 10: +0.00 % · 10 vs 5: +0.00 % · converged (under the noise floor)
+      S10       20 vs 10: -0.05 % · 10 vs 5: -0.46 % · converged (under the noise floor)
+      plain     20 vs 10: -1.11 pt · 10 vs 5: -1.07 pt · r +0.96 → passes
+      plateau   20 vs 10: -0.48 pt · 10 vs 5: +0.63 pt · r -1.31 → fails
+      hill      20 vs 10: +0.89 pt · 10 vs 5: +0.53 pt · r +0.60 → passes
+      mountain  20 vs 10: +0.70 pt · 10 vs 5: -0.09 pt · converged (under the noise floor)
+   C ≤ 1 (27689 cells): the classes at 20 / 10 / 5 kyr: plain 22.93 / 22.65 / 24.33 · plateau 3.47 / 3.79 / 2.98 · hill 27.99 / 28.53 / 27.74 · mountain 45.60 / 45.04 / 44.96 %
+      density   20 vs 10: -2.47 % · 10 vs 5: -1.33 % · r +0.54 → passes
+      λ         20 vs 10: +6.38 % · 10 vs 5: -6.57 % · r -1.03 → fails
+      S10       20 vs 10: -0.32 % · 10 vs 5: +0.25 % · converged (under the noise floor)
+      plain     20 vs 10: +0.29 pt · 10 vs 5: -1.68 pt · r -5.84 → fails
+      plateau   20 vs 10: -0.32 pt · 10 vs 5: +0.81 pt · r -2.55 → fails
+      hill      20 vs 10: -0.54 pt · 10 vs 5: +0.79 pt · r -1.47 → fails
+      mountain  20 vs 10: +0.57 pt · 10 vs 5: +0.08 pt · converged (under the noise floor)
+   E3 on all the land and A′'s zone: a quantity fails: stop and report
+   416 s
