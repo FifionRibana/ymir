@@ -1886,7 +1886,8 @@ mod tests {
             }
         }
         assert_ne!(g.data, f.data, "the run must change the field");
-        assert_eq!(hsh, 12_184_360_552_995_495_344, "pinned hash (38a353e)");
+        // ADR Finding 189 -- re-pinned: the routing's corrections (2.1, 2.2) move the field (38a353e's 12_184_360_552_995_495_344)
+        assert_eq!(hsh, 14_682_463_079_531_168_290, "pinned hash (F189)");
         // the pin covers the two extracted blocks only if both act on this field
         let no_talus = incise_with_floor(&f, &StreamPowerConfig { talus_slope: 0.0, ..cfg.clone() }, None, None, &mut |_, _| {});
         let no_diff = incise_with_floor(&f, &StreamPowerConfig { diffusion: 0.0, ..cfg.clone() }, None, None, &mut |_, _| {});

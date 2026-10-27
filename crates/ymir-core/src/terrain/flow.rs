@@ -225,18 +225,18 @@ pub fn compute_flow_ocean(heightmap: &GridF32, config: &FlowConfig, ocean: &[boo
     // distance gradient. It cannot create a pit (the bound keeps the toward-outlet
     // neighbour strictly lower) and never touches `filled` → the hydrology (lakes,
     // water balance, endorheic basins) is unchanged; only the TRACÉ wanders.
-    let flat_grad = resolve_flats(&filled, &is_ocean, config.flat_perturbation.as_ref(), w, h);
+    let (flat, flat_grad) = flat_resolution(&filled, is_ocean, config.flat_perturbation.as_ref(), w, h);
 
     // Step 3+4: flow direction + accumulation. D8 (mono) by default; with `dinf`,
     // the flat pass routes on the CONTINUOUS flat_grad gradient (fractional split)
     // → `accumulation` is fractional, `direction` is the primary neighbour.
     let (direction, accumulation) = if config.dinf {
-        let (dir, dir2, frac1) = compute_dinf(&filled, &flat_grad, &is_ocean, w, h);
+        let (dir, dir2, frac1) = compute_dinf(&filled, &flat_grad, &flat, is_ocean, w, h);
         let acc =
             compute_accumulation_dinf(&filled, &flat_grad, &dir, &dir2, &frac1, &is_ocean, w, h);
         (dir, acc)
     } else {
-        let dir = compute_d8(&filled, &flat_grad, &is_ocean, w, h);
+        let dir = compute_d8(&filled, &flat_grad, &flat, is_ocean, w, h);
         let acc = compute_accumulation(&filled, &flat_grad, &dir, &is_ocean, w, h);
         (dir, acc)
     };
@@ -253,7 +253,9 @@ fn pit_fill(heightmap: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> GridF
     let mut processed = vec![false; n];
     let mut pq = BinaryHeap::new();
 
-    // Seed: ocean cells and land cells adjacent to ocean
+    // Seed: ocean cells and land cells adjacent to ocean. ADR Finding 189 2.1: every link with the ocean is 4-connected (the
+    // ocean is a 4-connected component), so only the ocean's 4-neighbours seed the flood; a land cell touching the ocean by a
+    // corner only is flooded from the land, and a below-sea pocket on a corner becomes a closed depression (a lake).
     for j in 0..h {
         for i in 0..w {
             let idx = j * w + i;
@@ -261,6 +263,9 @@ fn pit_fill(heightmap: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> GridF
                 processed[idx] = true;
                 // Check neighbors for land cells to seed
                 for d in 0..8 {
+                    if D8_DX[d] != 0 && D8_DY[d] != 0 {
+                        continue;
+                    }
                     let ni = ((i as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
                     let nj = ((j as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
                     let nidx = nj * w + ni;
@@ -303,60 +308,81 @@ fn pit_fill(heightmap: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> GridF
 fn compute_d8(
     filled: &GridF32,
     flat_grad: &[f64],
+    flat: &[bool],
     is_ocean: &[bool],
     w: usize,
     h: usize,
 ) -> Vec<u8> {
     let n = w * h;
     let mut direction = vec![DIR_NONE; n];
+    let nbr = |i: usize, j: usize, d: usize| -> usize {
+        let ni = ((i as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
+        let nj = ((j as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
+        nj * w + ni
+    };
 
+    // Pass 1 — steepest descent on `filled` (real terrain + the sill exits of flats). ADR Finding 189 2.1: an ocean
+    // neighbour is a receiver only through a side (4-connected), and a side ocean neighbour always counts as lower (its
+    // slope floored at the smallest positive value: the ocean is the base level, whatever its depth); between two land
+    // cells D8 stays 8-connected.
     for j in 0..h {
         for i in 0..w {
             let idx = j * w + i;
             if is_ocean[idx] {
                 continue;
             }
-
             let my_h = filled.data[idx];
             let mut best_dir = DIR_NONE;
             let mut best_slope = 0.0f32;
-
-            // Pass 1 — steepest descent on `filled` (real terrain + the sill exits
-            // of flats). Unchanged from the original; slopes/real drainage untouched.
             for d in 0..8 {
-                let ni = ((i as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
-                let nj = ((j as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
-                let nidx = nj * w + ni;
-
-                let slope = (my_h - filled.data[nidx]) / D8_DIST[d];
+                let nidx = nbr(i, j, d);
+                let side = D8_DX[d] == 0 || D8_DY[d] == 0;
+                if is_ocean[nidx] && !side {
+                    continue;
+                }
+                let mut slope = (my_h - filled.data[nidx]) / D8_DIST[d];
+                if is_ocean[nidx] {
+                    slope = slope.max(f32::MIN_POSITIVE);
+                }
                 if slope > best_slope {
                     best_slope = slope;
                     best_dir = d as u8;
                 }
             }
+            direction[idx] = best_dir;
+        }
+    }
 
-            // Pass 2 — flat resolution. Only reached when no strictly-lower
-            // neighbour exists (a pit-filled flat interior). Route to the
-            // EQUAL-elevation neighbour with the smallest `flat_grad` (down the
-            // Garbrecht-Martz gradient toward the outlet). `flat_grad` is 0 on
-            // non-flat cells, so the flat's spill cells (which DO drain via pass 1)
-            // attract the flow. Guaranteed to descend (the toward-lower term
-            // dominates `flat_grad`), so no spurious sink is introduced.
-            if best_dir == DIR_NONE {
-                let my_g = flat_grad[idx];
-                let mut best_g = my_g;
-                for d in 0..8 {
-                    let ni = ((i as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
-                    let nj = ((j as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
-                    let nidx = nj * w + ni;
-                    if !is_ocean[nidx] && filled.data[nidx] == my_h && flat_grad[nidx] < best_g {
-                        best_g = flat_grad[nidx];
-                        best_dir = d as u8;
-                    }
+    // Pass 2 — flat resolution. Only reached when no strictly-lower neighbour exists (a pit-filled flat interior). Route to
+    // the EQUAL-elevation land neighbour with the smallest `flat_grad` (down the gradient toward the outlet). ADR Finding 189
+    // 2.2: the candidates are the flat neighbours with a strictly smaller `flat_grad`, and the equal neighbours outside the
+    // flat that already have a receiver from pass 1 (Barnes et al. 2014's « low edge », §2.2: a cell with a defined flow
+    // direction next to an equal cell without one). A low edge's `flat_grad` is 0 and a flat cell's is ≥ 1 (the towards-
+    // lower distance starts at 1, Barnes et al. 2014 §2.4), so the low edge is always taken. No cycle: along a route the
+    // flat cells' `flat_grad` strictly decreases, and a low edge leaves the flat by a strict descent.
+    let pass1 = direction.clone();
+    for j in 0..h {
+        for i in 0..w {
+            let idx = j * w + i;
+            if is_ocean[idx] || pass1[idx] != DIR_NONE {
+                continue;
+            }
+            let my_h = filled.data[idx];
+            let my_g = flat_grad[idx];
+            let mut best: Option<(f64, u8)> = None;
+            for d in 0..8 {
+                let nidx = nbr(i, j, d);
+                if is_ocean[nidx] || filled.data[nidx] != my_h {
+                    continue;
+                }
+                let ok = if flat[nidx] { flat_grad[nidx] < my_g } else { pass1[nidx] != DIR_NONE };
+                if ok && best.is_none_or(|b| flat_grad[nidx] < b.0) {
+                    best = Some((flat_grad[nidx], d as u8));
                 }
             }
-
-            direction[idx] = best_dir;
+            if let Some((_, d)) = best {
+                direction[idx] = d;
+            }
         }
     }
 
@@ -375,6 +401,7 @@ fn compute_d8(
 fn compute_dinf(
     filled: &GridF32,
     flat_grad: &[f64],
+    flat: &[bool],
     is_ocean: &[bool],
     w: usize,
     h: usize,
@@ -404,14 +431,22 @@ fn compute_dinf(
                 continue;
             }
             let my_h = filled.data[idx];
-            // Pass 1 — mono steepest descent on `filled` (slopes). Unchanged.
+            // Pass 1 — mono steepest descent on `filled` (slopes); ADR Finding 189 2.1: the ocean through a side only, and
+            // always lower (as in `compute_d8`).
             let mut best_dir = DIR_NONE;
             let mut best_slope = 0.0f32;
             for d in 0..8 {
                 let ni = ((i as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
                 let nj = ((j as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
                 let nidx = nj * w + ni;
-                let slope = (my_h - filled.data[nidx]) / D8_DIST[d];
+                let side = D8_DX[d] == 0 || D8_DY[d] == 0;
+                if is_ocean[nidx] && !side {
+                    continue;
+                }
+                let mut slope = (my_h - filled.data[nidx]) / D8_DIST[d];
+                if is_ocean[nidx] {
+                    slope = slope.max(f32::MIN_POSITIVE);
+                }
                 if slope > best_slope {
                     best_slope = slope;
                     best_dir = d as u8;
@@ -440,10 +475,11 @@ fn compute_dinf(
             let gy = (g_at(4) - g_at(0)) * 0.5;
             let (fx, fy) = (-gx, -gy);
 
-            // valid downstream candidates.
+            // valid downstream candidates (ADR Finding 189 2.2: a flat neighbour lower in `flat_grad`, or an equal low edge,
+            // whose `flat_grad` 0 is below every flat cell's).
             let valid = |d: usize| -> bool {
                 let m = nbr(d);
-                !is_ocean[m] && filled.data[m] == my_h && flat_grad[m] < my_g
+                !is_ocean[m] && filled.data[m] == my_h && flat_grad[m] < my_g && (flat[m] || flat_grad[m] == 0.0)
             };
 
             if fx == 0.0 && fy == 0.0 {
@@ -554,57 +590,9 @@ fn compute_accumulation_dinf(
     acc
 }
 
-/// Garbrecht-Martz 1997 flat resolution. Imposes a convergent drainage gradient
-/// over the TRULY-flat regions (cells whose `filled` value exactly equals a
-/// neighbour's and which have no strictly-lower neighbour = the pit-filled
-/// depression interiors). Returns a per-cell `flat_grad` (0 on non-flat cells);
-/// a flat cell drains to the equal-elevation neighbour with the smallest value.
-///
-/// The gradient combines two distance transforms over the flat:
-/// - **toward-lower** `tl`: graph distance from the flat's spill cells (the
-///   equal-elevation cells adjacent to lower terrain / ocean). 0 at the spill,
-///   growing inward.
-/// - **away-from-higher** `fh`: graph distance from the flat's high edges (cells
-///   adjacent to HIGHER terrain — where inflow enters). 0 at the high edge.
-///
-/// `flat_grad = tl·(fhmax+1) + (fhmax − fh)`. The `tl` term DOMINATES (weight
-/// `fhmax+1` exceeds the `(fhmax − fh)` range), so every flat cell has a
-/// strictly-smaller-`flat_grad` neighbour toward a spill → guaranteed drainage,
-/// no interior minimum. The `(fhmax − fh)` term breaks ties between equal-`tl`
-/// neighbours toward the convergent (away-from-inflow) direction — this is what
-/// dissolves the parallel-bar / fan pattern the old eps-fill produced.
-///
-/// Native FBM-textured plateaus are never EXACTLY flat (micro-relief gives a
-/// strictly-lower neighbour), so they are not classified as flat here and keep
-/// their real diffuse drainage — the fix touches only the pit-filled flats.
-///
-/// #drainage fix A — with `perturb`, a coherent value-noise term bounded to
-/// `amplitude·(fhmax+1)` with `amplitude < 0.5` is ADDED to `flat_grad` on the
-/// flats. Since a single `tl` step is `(fhmax+1)` and the noise difference
-/// between two cells is `< 2·0.5·(fhmax+1) = (fhmax+1)`, the toward-spill
-/// neighbour (one `tl` lower) stays strictly lower → drainage still guaranteed,
-/// no interior minimum. But the noise (up to nearly half a `tl` step) overrides
-/// the `(fhmax − fh)` tie-break and small `tl` differences → the route WANDERS
-/// instead of converging cardinal-straight.
-fn resolve_flats(
-    filled: &GridF32,
-    is_ocean: &[bool],
-    perturb: Option<&FlatPerturbation>,
-    w: usize,
-    h: usize,
-) -> Vec<f64> {
-    flat_resolution(filled, is_ocean, perturb, w, h).1
-}
-
-/// ADR Finding 130-P — [`resolve_flats`] with the flat cells it classified (`needs`): the same
-/// Garbrecht-Martz gradient, exposed so a bench can read the skeleton's flats on it.
-pub fn flat_resolution(
-    filled: &GridF32,
-    is_ocean: &[bool],
-    perturb: Option<&FlatPerturbation>,
-    w: usize,
-    h: usize,
-) -> (Vec<bool>, Vec<f64>) {
+/// ADR Finding 189 -- the flat classification and the two distances of [`flat_resolution`]: `needs` (the flat cells), `tl`
+/// (the towards-lower distance, −1 unreached), `fh` (the away-from-higher distance, −1 unreached).
+pub fn flat_distances(filled: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> (Vec<bool>, Vec<i32>, Vec<i32>) {
     use std::collections::VecDeque;
     let n = w * h;
     let f = &filled.data;
@@ -614,6 +602,9 @@ pub fn flat_resolution(
         nj * w + ni
     };
 
+    // ADR Finding 189 2.1: an ocean neighbour counts only through a side (and is then lower); a corner ocean neighbour is
+    // no neighbour at all, as in `compute_d8`'s pass 1
+    let side = |d: usize| D8_DX[d] == 0 || D8_DY[d] == 0;
     // 1. Classify flat cells: land, exact-equal to a neighbour, no lower neighbour.
     let mut needs = vec![false; n];
     for j in 0..h {
@@ -625,7 +616,9 @@ pub fn flat_resolution(
             let (mut has_lower, mut has_equal) = (false, false);
             for d in 0..8 {
                 let m = nb(i, j, d);
-                if is_ocean[m] || f[m] < f[c] {
+                if is_ocean[m] {
+                    has_lower |= side(d);
+                } else if f[m] < f[c] {
                     has_lower = true;
                 } else if f[m] == f[c] {
                     has_equal = true;
@@ -648,12 +641,16 @@ pub fn flat_resolution(
             let mut is_spill = false;
             for d in 0..8 {
                 let m = nb(i, j, d);
-                if is_ocean[m] || f[m] < f[c] || (f[m] == f[c] && !needs[m]) {
+                if if is_ocean[m] { side(d) } else { f[m] < f[c] || (f[m] == f[c] && !needs[m]) } {
                     is_spill = true;
                 }
             }
+            // ADR Finding 189 2.2: the distance starts at 1 on the flat cells next to the exit (Barnes et al. 2014, §2.4: « An
+            // iteration counter I is set to 1 »), so every flat cell's gradient stays above its exit's 0 (the exit, a low
+            // edge, is no flat cell). At 0 a spill cell tied with its exit when fh = fh_max (F189 Part 1: 41 / 42 strandings
+            // of class (ii) on seed 8 had fh_max = 0, the flats one cell wide).
             if is_spill {
-                tl[c] = 0;
+                tl[c] = 1;
                 q.push_back(c);
             }
         }
@@ -701,6 +698,55 @@ pub fn flat_resolution(
             }
         }
     }
+    (needs, tl, fh)
+}
+
+/// Garbrecht-Martz 1997 flat resolution. Imposes a convergent drainage gradient
+/// over the TRULY-flat regions (cells whose `filled` value exactly equals a
+/// neighbour's and which have no strictly-lower neighbour = the pit-filled
+/// depression interiors). Returns a per-cell `flat_grad` (0 on non-flat cells);
+/// a flat cell drains to the equal-elevation neighbour with the smallest value.
+///
+/// The gradient combines two distance transforms over the flat:
+/// - **toward-lower** `tl`: graph distance from the flat's spill cells (the
+///   equal-elevation cells adjacent to lower terrain / ocean). 1 at the spill,
+///   growing inward (ADR Finding 189 2.2, Barnes et al. 2014 §2.4: at 0 a spill
+///   cell could tie with its exit's 0 and keep no receiver).
+/// - **away-from-higher** `fh`: graph distance from the flat's high edges (cells
+///   adjacent to HIGHER terrain — where inflow enters). 0 at the high edge.
+///
+/// `flat_grad = tl·(fhmax+1) + (fhmax − fh)`. The `tl` term DOMINATES (weight
+/// `fhmax+1` exceeds the `(fhmax − fh)` range), so every flat cell has a
+/// strictly-smaller-`flat_grad` neighbour toward a spill → guaranteed drainage,
+/// no interior minimum. The `(fhmax − fh)` term breaks ties between equal-`tl`
+/// neighbours toward the convergent (away-from-inflow) direction — this is what
+/// dissolves the parallel-bar / fan pattern the old eps-fill produced.
+///
+/// Native FBM-textured plateaus are never EXACTLY flat (micro-relief gives a
+/// strictly-lower neighbour), so they are not classified as flat here and keep
+/// their real diffuse drainage — the fix touches only the pit-filled flats.
+///
+/// #drainage fix A — with `perturb`, a coherent value-noise term bounded to
+/// `amplitude·(fhmax+1)` with `amplitude < 0.5` is ADDED to `flat_grad` on the
+/// flats. Since a single `tl` step is `(fhmax+1)` and the noise difference
+/// between two cells is `< 2·0.5·(fhmax+1) = (fhmax+1)`, the toward-spill
+/// neighbour (one `tl` lower) stays strictly lower → drainage still guaranteed,
+/// no interior minimum. But the noise (up to nearly half a `tl` step) overrides
+/// the `(fhmax − fh)` tie-break and small `tl` differences → the route WANDERS
+/// instead of converging cardinal-straight.
+///
+/// ADR Finding 130-P — the flat cells it classified (`needs`) are returned with the
+/// gradient, so a bench can read the skeleton's flats on it; ADR Finding 189 2.2 — D8's flat
+/// pass reads them too (an equal non-flat neighbour with a receiver is a low edge).
+pub fn flat_resolution(
+    filled: &GridF32,
+    is_ocean: &[bool],
+    perturb: Option<&FlatPerturbation>,
+    w: usize,
+    h: usize,
+) -> (Vec<bool>, Vec<f64>) {
+    let n = w * h;
+    let (needs, tl, fh) = flat_distances(filled, is_ocean, w, h);
     let fhmax = fh.iter().copied().max().unwrap_or(0).max(0) as f64;
 
     // 4. Combined gradient (tl dominant → guaranteed descent; fh breaks bars).
@@ -1610,6 +1656,72 @@ mod tests {
         // Max accumulation should be large (many cells drain to edges)
         let max_acc = result.accumulation.data.iter().cloned().fold(0.0f32, f32::max);
         assert!(max_acc > 10.0, "Should have significant flow accumulation: {max_acc}");
+    }
+
+    /// Every land cell's receivers reach the ocean within n moves (no dead end, no cycle).
+    fn reaches_ocean(r: &FlowResult, ocean: &[bool], w: usize, h: usize) -> bool {
+        (0..w * h).filter(|&k| !ocean[k]).all(|k0| {
+            let mut k = k0;
+            for _ in 0..w * h {
+                if ocean[k] {
+                    return true;
+                }
+                let d = r.direction[k];
+                if d == DIR_NONE {
+                    return false;
+                }
+                let nx = ((k % w) as i32 + D8_DX[d as usize]).rem_euclid(w as i32) as usize;
+                let ny = ((k / w) as i32 + D8_DY[d as usize]).rem_euclid(h as i32) as usize;
+                k = ny * w + nx;
+            }
+            false
+        })
+    }
+
+    /// ADR Finding 189 2.1 (permanent) -- a below-sea pocket touching the ocean (a 4-connected component) by a corner only,
+    /// deeper than the ocean cell there: it is no flood seed any more but a closed depression, a lake filled to its sill, and
+    /// it has a receiver; every land cell reaches the ocean.
+    #[test]
+    fn the_ocean_is_linked_through_sides_only() {
+        let n = 8;
+        let mut hmap = GridF32::new(n, n, 50.0);
+        for y in 0..n {
+            hmap.set(0, y, -100.0);
+        }
+        hmap.set(1, 2, -100.0);
+        hmap.set(2, 3, -500.0);
+        let below: Vec<bool> = hmap.data.iter().map(|&v| v < 0.0).collect();
+        let ocean = crate::cascade::amplify::largest_component(&below, n, Some([0, 0]));
+        let p = 3 * n + 2;
+        assert!(!ocean[p] && ocean[2 * n + 1], "the pocket is out of the ocean, its corner neighbour in it");
+        let r = compute_flow_ocean(&hmap, &FlowConfig::default(), &ocean);
+        assert!(r.filled.data[p] > hmap.data[p], "the pocket is a lake: {}", r.filled.data[p]);
+        assert_ne!(r.direction[p], DIR_NONE, "the pocket has a receiver");
+        assert!(reaches_ocean(&r, &ocean, n, n), "a land cell does not reach the ocean");
+    }
+
+    /// ADR Finding 189 2.2 (permanent) -- a flat one cell wide (a pit filled to its sill) whose only exit is an equal-height
+    /// cell outside the flat (the sill, which drains by a strict descent): the flat cell takes the sill as its receiver, and
+    /// every land cell reaches the ocean (no cycle). Before F189 the flat cell's gradient (tl 0, fh = fh_max = 0) tied with the
+    /// sill's 0 and it kept no receiver.
+    #[test]
+    fn a_one_cell_flat_drains_to_its_low_edge() {
+        let n = 7;
+        let mut hmap = GridF32::new(n, n, 10.0);
+        for y in 0..n {
+            hmap.set(0, y, -1.0);
+        }
+        hmap.set(3, 3, 5.0); // the pit
+        hmap.set(2, 3, 6.0); // the sill, the pit's lowest neighbour
+        hmap.set(1, 3, 4.0); // below the sill, next to the ocean
+        let ocean: Vec<bool> = hmap.data.iter().map(|&v| v < 0.0).collect();
+        let r = compute_flow_ocean(&hmap, &FlowConfig::default(), &ocean);
+        let (pit, sill) = (3 * n + 3, 3 * n + 2);
+        assert_eq!(r.filled.data[pit], r.filled.data[sill], "the pit is filled to its sill");
+        let d = r.direction[pit];
+        assert_ne!(d, DIR_NONE, "the one-cell flat has no receiver");
+        assert_eq!((3 + D8_DX[d as usize], 3 + D8_DY[d as usize]), (2, 3), "the flat cell drains to its sill");
+        assert!(reaches_ocean(&r, &ocean, n, n), "a land cell does not reach the ocean");
     }
 
     #[test]

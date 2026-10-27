@@ -533,8 +533,10 @@ fn f123_teeth() {
 
 /// The viz's auto-framing origin for seed 1 (the author's export manifest).
 const VIZ_ORIGIN: [f64; 2] = [0.09375, 0.578_125];
-/// Finding 109's recorded hash of seed 1's delivered field at the benches' origin (ADR L17300).
-const F109_DELIVERED: u64 = 0x316c_a8f7_27ca_6f62;
+/// Finding 109's recorded hash of seed 1's delivered field at the benches' origin (ADR L17300). ADR Finding 189: re-pinned --
+/// the routing's corrections (2.1, the ocean linked through sides only; 2.2, the flats' exit) move the field; Finding 109's
+/// value was 0x316c_a8f7_27ca_6f62.
+const F109_DELIVERED: u64 = 0xa3bd_b6b4_e988_10c0;
 
 /// ADR Finding 123 — **the identity guard's reference, built AT THE VIZ'S SETTINGS.**
 ///

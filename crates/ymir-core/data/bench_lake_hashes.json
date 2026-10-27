@@ -1,48 +1,48 @@
 [
   {
-    "digest": "e83f2229c82c3c00",
+    "digest": "7dcbccb922822e3c",
     "label": "livré · cadrage canonique (viz) · 45° / 40°",
-    "lakes_hash": "9748c34f86566083/7a48cc29495fa016",
+    "lakes_hash": "742464dd4510deb3/159c02123fe304c1",
     "lakes": 60,
     "latitude_deg": 45.0,
     "span_deg": 40.0
   },
   {
-    "digest": "dc3d3eef2350029a",
+    "digest": "a0a866988be270dc",
     "label": "A1+B2 · cadrage canonique (viz) · 45° / 40°",
-    "lakes_hash": "34c84b66edebbd09/431997016b994447",
+    "lakes_hash": "2fc5ccb28ee7c335/2a0ebbd950bf0633",
     "lakes": 38,
     "latitude_deg": 45.0,
     "span_deg": 40.0
   },
   {
-    "digest": "4e25368bbc9f31ca",
+    "digest": "ad7e06ddd8c18ce5",
     "label": "C1 nue · cadrage canonique (viz) · 45° / 40°",
-    "lakes_hash": "45264dbdfffe003c/85a1898d7a061441",
+    "lakes_hash": "0a52a5475fd775b8/2bc53a695a063e91",
     "lakes": 27,
     "latitude_deg": 45.0,
     "span_deg": 40.0
   },
   {
-    "digest": "90781a0ab545d946",
+    "digest": "c1a5b87ffb8508d0",
     "label": "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°",
-    "lakes_hash": "b7e502b2c1e126c3/e2dc847cd255850e",
+    "lakes_hash": "a538428ceceb8f40/6cacb4cbdd932cc9",
     "lakes": 26,
     "latitude_deg": 45.0,
     "span_deg": 40.0
   },
   {
-    "digest": "0802406781654cf3",
+    "digest": "a47a09a97375dd28",
     "label": "C2 /3 · cadrage canonique (viz) · 45° / 40°",
-    "lakes_hash": "4144d4ee828245f7/73ed1df1ce82d658",
+    "lakes_hash": "f5a8061b418d1460/c3c975ffc3e77b71",
     "lakes": 26,
     "latitude_deg": 45.0,
     "span_deg": 40.0
   },
   {
-    "digest": "10c78c41d07b257a",
+    "digest": "d0e0d2db006fac5d",
     "label": "C2 /10 niveau mer · cadrage canonique (viz) · 45° / 40°",
-    "lakes_hash": "91ee910f77b7a260/c246e5b404f532e9",
+    "lakes_hash": "bec210c6f3120f30/5af4748f8d9d1f9e",
     "lakes": 24,
     "latitude_deg": 45.0,
     "span_deg": 40.0

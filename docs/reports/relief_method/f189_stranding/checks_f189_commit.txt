@@ -1,0 +1,26 @@
+test result: ok. 677 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 8.98s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 33 passed; 0 failed; 18 ignored; 0 measured; 0 filtered out; finished in 1.92s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+seed 42: C1 hash c69acd85a0f7f484
+seed 8: C1 hash 3565285d65e4c341
+seed 10481999410520546993: C1 hash fd23c309498a9761
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+   |     field in this variant
+   |     --------- fields in this variant
+   |            ---------- fields in this struct
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   livré: field Match { label: "livré · cadrage canonique (viz)" } · lakes Match { label: "livré · cadrage canonique (viz) · 45° / 40°" }
+   A1+B2: field Match { label: "A1+B2 · cadrage canonique (viz)" } · lakes Match { label: "A1+B2 · cadrage canonique (viz) · 45° / 40°" }
+   C1 nue: field Match { label: "C1 nue · cadrage canonique (viz)" } · lakes Match { label: "C1 nue · cadrage canonique (viz) · 45° / 40°" }
+   C2 /10 col (défaut): field Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" } · lakes Match { label: "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°" }
+   C2 /3: field Match { label: "C2 /3 · cadrage canonique (viz)" } · lakes Match { label: "C2 /3 · cadrage canonique (viz) · 45° / 40°" }
+   C2 /10 niveau mer: field Match { label: "C2 /10 niveau mer · cadrage canonique (viz)" } · lakes Match { label: "C2 /10 niveau mer · cadrage canonique (viz) · 45° / 40°" }
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes = banc
+   C1 nue                 field = banc · lakes = banc
+   C2 /10 col (défaut)    field = banc · lakes = banc
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes = banc
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 50 filtered out; finished in 107.94s
+done

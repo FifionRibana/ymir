@@ -1,0 +1,30 @@
+   [prod] 83 s · the mass 2.0e-14 / 3.3e-11 · stranded 0.000e0 / marine 0.000e0 (norm × cells)
+   [dt20] 292 s · the mass 1.8e-14 / 3.5e-11 · stranded 0.000e0 / marine 0.000e0 (norm × cells)
+   [dt10] 489 s · the mass 1.6e-14 / 3.8e-11 · stranded 0.000e0 / marine 0.000e0 (norm × cells)
+   [dt5] 855 s · the mass 1.9e-14 / 3.2e-11 · stranded 0.000e0 / marine 0.000e0 (norm × cells)
+   all the land (28979 cells): the classes at production / 20 / 10 / 5 kyr: plain 22.21 / 23.71 / 23.34 / 23.31 · plateau 6.01 / 2.66 / 2.94 / 2.61 · hill 23.96 / 25.45 / 25.86 / 26.27 · mountain 47.82 / 48.18 / 47.86 / 47.81 %
+      density   20 vs 10: -1.48 % · 10 vs 5: +0.57 % · converged (under the noise floor) · production vs 5: +1.22 %
+      λ         20 vs 10: -1.62 % · 10 vs 5: +0.03 % · converged (under the noise floor) · production vs 5: +0.49 %
+      S10       20 vs 10: +0.50 % · 10 vs 5: -0.03 % · converged (under the noise floor) · production vs 5: +0.10 %
+      plain     20 vs 10: +0.38 pt · 10 vs 5: +0.03 pt · converged (under the noise floor) · production vs 5: -1.10 pt
+      plateau   20 vs 10: -0.28 pt · 10 vs 5: +0.33 pt · converged (under the noise floor) · production vs 5: +3.40 pt
+      hill      20 vs 10: -0.41 pt · 10 vs 5: -0.41 pt · converged (under the noise floor) · production vs 5: -2.31 pt
+      mountain  20 vs 10: +0.31 pt · 10 vs 5: +0.06 pt · converged (under the noise floor) · production vs 5: +0.01 pt
+   C > 1 (4494 cells): the classes at production / 20 / 10 / 5 kyr: plain 25.59 / 26.30 / 26.77 / 26.56 · plateau 6.99 / 2.96 / 2.08 / 2.62 · hill 27.95 / 29.42 / 29.82 / 30.22 · mountain 39.47 / 41.32 / 41.34 / 40.60 %
+      density   20 vs 10: +2.63 % · 10 vs 5: +1.07 % · r +0.41 → passes · production vs 5: +44.14 %
+      λ         20 vs 10: -33.33 % · 10 vs 5: +0.00 % · converged (under the noise floor) · production vs 5: +100.00 %
+      S10       20 vs 10: +0.76 % · 10 vs 5: -0.99 % · converged (under the noise floor) · production vs 5: +2.28 %
+      plain     20 vs 10: -0.47 pt · 10 vs 5: +0.20 pt · converged (under the noise floor) · production vs 5: -0.97 pt
+      plateau   20 vs 10: +0.88 pt · 10 vs 5: -0.54 pt · r -0.62 → fails · production vs 5: +4.36 pt
+      hill      20 vs 10: -0.40 pt · 10 vs 5: -0.40 pt · converged (under the noise floor) · production vs 5: -2.27 pt
+      mountain  20 vs 10: -0.01 pt · 10 vs 5: +0.74 pt · r -55.90 → fails · production vs 5: -1.12 pt
+   C ≤ 1 (24664 cells): the classes at production / 20 / 10 / 5 kyr: plain 22.71 / 22.68 / 22.65 / 23.05 · plateau 5.73 / 2.63 / 3.10 / 2.60 · hill 22.99 / 24.81 / 25.15 / 25.43 · mountain 48.57 / 49.87 / 49.10 / 48.92 %
+      density   20 vs 10: -3.10 % · 10 vs 5: +0.53 % · converged (under the noise floor) · production vs 5: -16.76 %
+      λ         20 vs 10: -3.84 % · 10 vs 5: +2.17 % · r -0.57 → fails · production vs 5: +25.69 %
+      S10       20 vs 10: -0.52 % · 10 vs 5: +0.51 % · converged (under the noise floor) · production vs 5: NaN %
+      plain     20 vs 10: +0.03 pt · 10 vs 5: -0.40 pt · converged (under the noise floor) · production vs 5: -0.35 pt
+      plateau   20 vs 10: -0.47 pt · 10 vs 5: +0.50 pt · converged (under the noise floor) · production vs 5: +3.13 pt
+      hill      20 vs 10: -0.34 pt · 10 vs 5: -0.28 pt · converged (under the noise floor) · production vs 5: -2.44 pt
+      mountain  20 vs 10: +0.78 pt · 10 vs 5: +0.18 pt · converged (under the noise floor) · production vs 5: -0.35 pt
+   F189 E3 on all the land: every remaining quantity passes
+   1723 s

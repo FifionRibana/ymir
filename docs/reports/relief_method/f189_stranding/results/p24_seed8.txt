@@ -1,0 +1,4 @@
+   F189 2.4, seed 8 (93 s): the pass routed 300 fields: land cells without a receiver 0 out of the lakes, 0 in them · the incision routed 300 fields: 0 out of the lakes, 0 in them
+   strandings: fluvial 0 (0.000 km³; the budget's stranded 0.000 km³), marine 0 (the record 0.000 km³) · the mass: per step 2.04e-14, the stock 3.32e-11
+   exported (the ocean filled, no deeper cell) 0.000 km³ of solid = 0.0000 % of the marine sources (173843.11 km³) · rerouted land sources 0.000 km³
+   94 s

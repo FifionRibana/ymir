@@ -1,0 +1,142 @@
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir_wt189b\crates\ymir-core)
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+    |                     ^^^^^^^^^
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+   Compiling ymir-viz v0.1.0 (D:\Personnel\Projects\ymir_wt189b\crates\ymir-viz)
+   --> crates\ymir-viz\src\ui\workspace.rs:701:8
+    |
+    |        ^                                ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+    |
+    |
+    --> crates\ymir-viz\src\ui\workspace.rs:2607:58
+     |
+     |                                                          ^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+   --> crates\ymir-viz\src\ui\cascade.rs:542:51
+    |
+    |                                                   ^^^^ this value is reassigned later and never used
+    |                             --------- `ln_k_phys` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+   |
+   |          --------- variant in this enum
+   |     ^^^^^^
+   |
+   = note: `C1Command` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+   |
+   |     ---------   ^^^^
+   |     |
+   |     field in this variant
+   |
+   = note: `C1Event` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   --> crates\ymir-viz\src\bridge\c1\events.rs:105:48
+    |
+    |     ------------ field in this variant         ^^^^^^^
+    |
+    = note: `C1Event` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   |
+   |          ------- variant in this enum
+   |     ^^^^^^
+   |
+   = note: `C1Event` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   --> crates\ymir-viz\src\bridge\c1\hd.rs:365:9
+    |
+    |     ------- field in this variant
+    |         ^^^^^^
+    |
+    = note: `HdState` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+   --> crates\ymir-viz\src\bridge\c1\inspect.rs:110:9
+    |
+    |            -------------- field in this struct
+    |         ^^^^^^^^^^^^^
+    |
+    = note: `CellInspection` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   |
+   |     --------- fields in this variant
+   |         ^^^^
+   |         ^^^^
+   |
+   = note: `C1RunState` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+   |
+   |            ---------- fields in this struct
+   |         ^^
+   |         ^^
+   |
+   = note: `C1Snapshot` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   --> crates\ymir-viz\src\bridge\c1\snapshot.rs:172:12
+    |
+    | --------------- methods in this implementation
+    |            ^^^^^^^^^^^
+    |            ^^^^^^^^^^
+   --> crates\ymir-viz\src\visualization\c1_viz.rs:358:8
+    |
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   |        ^^^^^^^^^^^
+   --> crates\ymir-viz\src\visualization\colormap.rs:137:8
+    |
+    |        ^^^^^^^
+   --> crates\ymir-viz\src\visualization\colormap.rs:151:8
+    |
+    |        ^^^^^^^^^^^^^
+   --> crates\ymir-viz\src\bridge\c1\hd.rs:862:9
+    |
+    |         ^^^^^--------^
+    |              |
+    |              argument has type `{closure@crates\ymir-viz\src\bridge\c1\hd.rs:815:28: 815:44}`
+    |
+    = note: `#[warn(dropping_copy_types)]` on by default
+    |
+    |
+    Finished `release` profile [optimized] target(s) in 3m 42s
+     Running unittests src\lib.rs (target_wt189\release\deps\ymir_viz-9f8f90df5d4490fe.exe)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src\main.rs (target_wt189\release\deps\ymir_viz-1c955b3a3fa74abc.exe)
+[HD] bench guard (ae30850337aa98e3): Match { label: "livré · cadrage canonique (viz)" }
+[HD] lake guard (7dcbccb922822e3c): Match { label: "livré · cadrage canonique (viz) · 45° / 40°" }
+   livré: field Match { label: "livré · cadrage canonique (viz)" } · lakes Match { label: "livré · cadrage canonique (viz) · 45° / 40°" }
+[HD] bench guard (60961ad5e62482ac): Match { label: "A1+B2 · cadrage canonique (viz)" }
+[HD] lake guard (a0a866988be270dc): Match { label: "A1+B2 · cadrage canonique (viz) · 45° / 40°" }
+   A1+B2: field Match { label: "A1+B2 · cadrage canonique (viz)" } · lakes Match { label: "A1+B2 · cadrage canonique (viz) · 45° / 40°" }
+[HD] bench guard (daaa08721b9b59ea): Match { label: "C1 nue · cadrage canonique (viz)" }
+[HD] lake guard (ad7e06ddd8c18ce5): Match { label: "C1 nue · cadrage canonique (viz) · 45° / 40°" }
+   C1 nue: field Match { label: "C1 nue · cadrage canonique (viz)" } · lakes Match { label: "C1 nue · cadrage canonique (viz) · 45° / 40°" }
+[HD] bench guard (b178da1b3728a635): Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" }
+[HD] lake guard (c1a5b87ffb8508d0): Match { label: "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°" }
+   C2 /10 col (défaut): field Match { label: "C2 /10 col (défaut) · cadrage canonique (viz)" } · lakes Match { label: "C2 /10 col (défaut) · cadrage canonique (viz) · 45° / 40°" }
+[HD] bench guard (c9953c226cba30c7): Match { label: "C2 /3 · cadrage canonique (viz)" }
+[HD] lake guard (a47a09a97375dd28): Match { label: "C2 /3 · cadrage canonique (viz) · 45° / 40°" }
+   C2 /3: field Match { label: "C2 /3 · cadrage canonique (viz)" } · lakes Match { label: "C2 /3 · cadrage canonique (viz) · 45° / 40°" }
+[HD] bench guard (b9fd92ef915110ba): Match { label: "C2 /10 niveau mer · cadrage canonique (viz)" }
+[HD] lake guard (d0e0d2db006fac5d): Match { label: "C2 /10 niveau mer · cadrage canonique (viz) · 45° / 40°" }
+   C2 /10 niveau mer: field Match { label: "C2 /10 niveau mer · cadrage canonique (viz)" } · lakes Match { label: "C2 /10 niveau mer · cadrage canonique (viz) · 45° / 40°" }
+   livré                  field = banc · lakes = banc
+   A1+B2                  field = banc · lakes = banc
+   C1 nue                 field = banc · lakes = banc
+   C2 /10 col (défaut)    field = banc · lakes = banc
+   C2 /3                  field = banc · lakes = banc
+   C2 /10 niveau mer      field = banc · lakes = banc
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 50 filtered out; finished in 132.85s

@@ -1,0 +1,41 @@
+   Compiling ymir-core v0.1.0 (D:\Personnel\Projects\ymir_wt189b\crates\ymir-core)
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:109:21
+    |
+    |                     ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+   --> crates\ymir-core\src\tectonics_c1\closures\volcanism\placement.rs:110:21
+    |
+    |                     ^^^^^^^^^
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:819:9
+    |
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_width`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+   --> crates\ymir-core\src\tectonics_c1\drainage.rs:826:9
+    |
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_src_catch`
+    --> crates\ymir-core\src\tectonics_c1\drainage.rs:2205:23
+     |
+     |                       ^^^^^^^^^^^^ this value is reassigned later and never used
+     |         ------------------- `next_id` is overwritten here before the previous value is read
+     |
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+    Finished `release` profile [optimized] target(s) in 1m 07s
+     Running tests\f123_teeth.rs (target_wt189\release\deps\f123_teeth-68f1cfb698c1c1ce.exe)
+   livré                      F149-K · Exorheic only through a tagged segment: 0 [] · Unresolved left: 3
+   livré                      field ae30850337aa98e3 = 925362a45deabea6 · lakes key 7dcbccb922822e3c · **60 lakes** (2 crater) · 742464dd4510deb3/159c02123fe304c1 (182 s)
+   A1+B2                      F149-K · Exorheic only through a tagged segment: 1 ["1000016 (403.7 km², tagged segments [11827])"] · Unresolved left: 0
+   A1+B2                      field 60961ad5e62482ac = 78fb5883fb8516fb · lakes key a0a866988be270dc · **38 lakes** (2 crater) · 2fc5ccb28ee7c335/2a0ebbd950bf0633 (180 s)
+   C1 nue                     F149-K · Exorheic only through a tagged segment: 1 ["1000017 (325.1 km², tagged segments [15070])"] · Unresolved left: 2
+   C1 nue                     field daaa08721b9b59ea = 557c6c5d7caa2a71 · lakes key ad7e06ddd8c18ce5 · **27 lakes** (2 crater) · 0a52a5475fd775b8/2bc53a695a063e91 (279 s)
+   C2 /10 col (défaut)        F149-K · Exorheic only through a tagged segment: 1 ["1000011 (494.3 km², tagged segments [16287])"] · Unresolved left: 0
+   C2 /10 col (défaut)        field b178da1b3728a635 = b856c4277578fdfa · lakes key c1a5b87ffb8508d0 · **26 lakes** (1 crater) · a538428ceceb8f40/6cacb4cbdd932cc9 (308 s)
+   C2 /3                      F149-K · Exorheic only through a tagged segment: 0 [] · Unresolved left: 0
+   C2 /3                      field c9953c226cba30c7 = d5ddb2afbc6f91c4 · lakes key a47a09a97375dd28 · **26 lakes** (1 crater) · f5a8061b418d1460/c3c975ffc3e77b71 (318 s)
+   C2 /10 niveau mer          F149-K · Exorheic only through a tagged segment: 1 ["1000017 (373.9 km², tagged segments [12828])"] · Unresolved left: 0
+   C2 /10 niveau mer          field b9fd92ef915110ba = 4342949acc324cf0 · lakes key d0e0d2db006fac5d · **24 lakes** (1 crater) · bec210c6f3120f30/5af4748f8d9d1f9e (243 s)
+   C2 /10 col, lake_base ON   F149-K · Exorheic only through a tagged segment: 1 ["1000011 (493.2 km², tagged segments [13488])"] · Unresolved left: 0
+   C2 /10 col, lake_base ON   field 36d4e3a54abf954e = fe392b320f8da2d6 · lakes key ccc40334ecae5d69 · **34 lakes** (1 crater) · c21e73ef2292ef8d/459f968035cdfa62 (314 s)
+   wrote D:\Personnel\Projects\ymir_wt189b\crates\ymir-core\data/bench_lake_hashes.json (6 entries)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 1823.34s

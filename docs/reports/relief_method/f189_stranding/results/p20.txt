@@ -1,0 +1,8 @@
+   F189 2.0 (1), seed 8, the committed configuration (87 s): the marine sources 190050.39 km³ (solid)
+      land by the step's mask: 0.00 km³ (0.0 %) · the rivers 0.00 km³ · the hillslope 0.00 km³
+      sea by the mask, at or above the sea at the marine step: 0.00 km³ (0.0 %) · the rivers 0.00 km³ · the hillslope 0.00 km³
+      below the sea, out of the ocean: 0.00 km³ (0.0 %) · the rivers 0.00 km³ · the hillslope 0.00 km³
+      the ocean: 190050.39 km³ (100.0 %) · the rivers 182540.64 km³ · the hillslope 7509.75 km³
+   F189 2.0 (2), the committed configuration: 300 routed fields, 87 with a land cell without a receiver · per field median 0 max 5 · cell-fields (iii) 112 · (ii) the tie 0 · other 0 · of which in a filled depression 0
+   F189 2.0 (2), the production cascade (no deposition, the per-cell sea; 26 s): 300 routed fields, 14 with a land cell without a receiver · per field median 0 max 49 · cell-fields (iii) 0 · (ii) the tie 213 · other 0 · of which in a filled depression 211
+   F189 2.0: 115 s

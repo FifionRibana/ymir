@@ -1,0 +1,13 @@
+   F189 V2 bis (the production's hillslope, the lakes filled by volume, no fluvial deposit; F189's routing):
+      fluvial step 160 kyr: 53 s · the land's max over its median, worst over the steps 2.92 (step 139) · at the end: max 3023 m, median 1237 m
+      fluvial step 40 kyr: 140 s · the land's max over its median, worst over the steps 2.80 (step 47) · at the end: max 2529 m, median 1097 m
+      fluvial step 10 kyr: 474 s · the land's max over its median, worst over the steps 2.82 (step 47) · at the end: max 2714 m, median 1052 m
+      density   160 / 40 / 10 kyr: 0.1494 / 0.1518 / 0.1533 · 160 vs 40 -1.537 · 40 vs 10 -0.993 · converged (under E3's noise floor)
+      λ         160 / 40 / 10 kyr: 9.9569 / 9.4533 / 9.4241 · 160 vs 40 +5.327 · 40 vs 10 +0.310 · converged (under E3's noise floor)
+      S10       160 / 40 / 10 kyr: 1.1348 / 1.1408 / 1.1428 · 160 vs 40 -0.527 · 40 vs 10 -0.177 · converged (under E3's noise floor)
+      plain     160 / 40 / 10 kyr: 0.1753 / 0.1823 / 0.1597 · 160 vs 40 -0.007 · 40 vs 10 +0.023 · converged (under E3's noise floor)
+      plateau   160 / 40 / 10 kyr: 0.0000 / 0.0000 / 0.0000 · 160 vs 40 +0.000 · 40 vs 10 +0.000 · converged (under E3's noise floor)
+      hill      160 / 40 / 10 kyr: 7.2326 / 7.4531 / 7.8351 · 160 vs 40 -0.220 · 40 vs 10 -0.382 · converged (under E3's noise floor)
+      mountain  160 / 40 / 10 kyr: 92.5920 / 92.3646 / 92.0052 · 160 vs 40 +0.227 · 40 vs 10 +0.359 · converged (under E3's noise floor)
+   F189 V2 bis: the 5 × criterion holds · PASSES
+   667 s

@@ -116,13 +116,22 @@ impl Compaction {
 /// (`sup`, thickness) and each receiver's inflows capped at its room. Returns the sub-steps and the stranded thickness.
 #[allow(clippy::too_many_arguments)]
 pub fn marine_step_live(z: &mut GridF32, src: &[f64], dt_yr: f64, m: &Marine, cell_m: f64, sup: &mut [f64], torus: bool, sea: f64) -> (usize, f64) {
-    marine_step_live_sea(z, src, dt_yr, m, cell_m, sup, torus, sea, None, None)
+    marine_step_live_sea(z, src, dt_yr, m, cell_m, sup, torus, sea, None, None, None)
 }
 
 /// ADR Finding 187-A1/A2 -- [`marine_step_live`] with the ocean by connectivity (`Some(torus origin)`): at each sub-step the
 /// domain is the largest 4-connected component of h < h_sea (relabelled only when a cell crossed the sea, so exactly the
 /// labelling of every sub-step), the sources fill only the ocean's cells, and an unconnected below-sea cell is a closed
 /// depression (a walk ending there strands its rest). `None` is [`marine_step_live`] exactly.
+///
+/// ADR Finding 189 2.3 -- with `exported_out`, **the walk circulates only in the sea, on a filled surface**: it moves on the
+/// traversable sea (the 4-connected component of h ≤ `sea` holding the marine domain, the cells filled to the sea included,
+/// fixed for the call: the step only raises cells and never above the sea), deposits on a marine-domain cell at most its room
+/// and goes on down the steepest descent; with no lower traversable neighbour it goes to the nearest marine-domain cell with
+/// room through the traversable cells (4-connected; the progradation over the filled cells). With no such cell the rest leaves
+/// the map (added to `*exported_out`, thickness: the open window). A source on a cell out of the traversable sea is stranded
+/// in place (none in the adopted profile: the cascade routes those by the fluvial pass first). `None` keeps
+/// F184's walk.
 #[allow(clippy::too_many_arguments)]
 pub fn marine_step_live_sea(
     z: &mut GridF32,
@@ -135,6 +144,7 @@ pub fn marine_step_live_sea(
     sea: f64,
     connected: Option<Option<[usize; 2]>>,
     mut strand_out: Option<&mut [f64]>,
+    mut exported_out: Option<&mut f64>,
 ) -> (usize, f64) {
     let (w, h) = (z.width, z.height);
     let n = w * h;
@@ -171,10 +181,95 @@ pub fn marine_step_live_sea(
             }
         }
     };
+    // F189 2.3: the traversable sea, and a stamp for the progradation's breadth-first search
+    let filled_walk = exported_out.is_some();
+    let mut trav: Vec<bool> = Vec::new();
+    let (mut stamp, mut epoch, mut bfs) = (vec![0u32; n], 0u32, std::collections::VecDeque::new());
+    if filled_walk {
+        refresh(&hz, &mut ocean, &mut below);
+        trav = sea_traversable(&hz, sea, if connected.is_some() { Some(&ocean) } else { None }, w, torus);
+    }
     for _ in 0..nsub {
         refresh(&hz, &mut ocean, &mut below);
-        // the sources: placed under the sea, walking seaward from a cell at or above it
-        for &k0 in &srcs {
+        if filled_walk {
+            let in_sea = |c: usize, hz: &[f64], ocean: &[bool]| hz[c] < sea && (connected.is_none() || ocean[c]);
+            for &k0 in &srcs {
+                let mut rem = src[k0] * thick / nsub as f64;
+                if !trav[k0] {
+                    hz[k0] += rem;
+                    sup[k0] += rem;
+                    stranded += rem;
+                    if let Some(so) = strand_out.as_deref_mut() {
+                        so[k0] += rem;
+                    }
+                    continue;
+                }
+                let mut c = k0;
+                for _ in 0..8 * n {
+                    if in_sea(c, &hz, &ocean) {
+                        let room = sea - hz[c];
+                        if rem < room {
+                            hz[c] += rem;
+                            sup[c] += rem;
+                            rem = 0.0;
+                            break;
+                        }
+                        hz[c] = sea;
+                        sup[c] += room;
+                        rem -= room;
+                        if rem <= 0.0 {
+                            break;
+                        }
+                    }
+                    // the steepest descent among the traversable neighbours
+                    let mut best: Option<(usize, f64)> = None;
+                    for d in 0..8 {
+                        let j = at(c, D8_DX[d], D8_DY[d]);
+                        if j == usize::MAX || !trav[j] {
+                            continue;
+                        }
+                        let s = (hz[c] - hz[j]) / D8_DIST[d] as f64;
+                        if s > 0.0 && best.is_none_or(|b| s > b.1) {
+                            best = Some((j, s));
+                        }
+                    }
+                    if let Some((j, _)) = best {
+                        c = j;
+                        continue;
+                    }
+                    // the progradation: the nearest marine cell with room through the traversable cells
+                    epoch += 1;
+                    bfs.clear();
+                    bfs.push_back(c);
+                    stamp[c] = epoch;
+                    let mut found = None;
+                    while let Some(q) = bfs.pop_front() {
+                        if in_sea(q, &hz, &ocean) {
+                            found = Some(q);
+                            break;
+                        }
+                        for &j in &nb4[q] {
+                            if j != usize::MAX && trav[j] && stamp[j] != epoch {
+                                stamp[j] = epoch;
+                                bfs.push_back(j);
+                            }
+                        }
+                    }
+                    match found {
+                        Some(j) => c = j,
+                        None => break,
+                    }
+                }
+                if rem > 0.0 {
+                    // the ocean filled with no deeper cell left: out of the map
+                    if let Some(e) = exported_out.as_deref_mut() {
+                        *e += rem;
+                    }
+                }
+            }
+        }
+        // the sources: placed under the sea, walking seaward from a cell at or above it (F184's walk)
+        for &k0 in srcs.iter().filter(|_| !filled_walk) {
             let mut rem = src[k0] * thick / nsub as f64;
             let mut c = k0;
             for _ in 0..n {
@@ -290,6 +385,40 @@ pub fn marine_step_live_sea(
         z.data[k] = hz[k] as f32;
     }
     (nsub, stranded)
+}
+
+/// ADR Finding 189 2.3 -- the traversable sea: the cells at or below `sea` 4-connected to the marine domain (`ocean`, the
+/// connected ocean; `None`: every cell at or below the sea), the cells filled up to the sea included.
+pub fn sea_traversable(hz: &[f64], sea: f64, ocean: Option<&[bool]>, w: usize, torus: bool) -> Vec<bool> {
+    let n = hz.len();
+    let h = n / w;
+    let at = |k: usize, dx: i32, dy: i32| -> usize {
+        let (x, y) = ((k % w) as i32 + dx, (k / w) as i32 + dy);
+        if torus {
+            y.rem_euclid(h as i32) as usize * w + x.rem_euclid(w as i32) as usize
+        } else if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
+            usize::MAX
+        } else {
+            y as usize * w + x as usize
+        }
+    };
+    let nb4: Vec<[usize; 4]> = (0..n).map(|k| [at(k, 1, 0), at(k, -1, 0), at(k, 0, 1), at(k, 0, -1)]).collect();
+    match ocean {
+        None => hz.iter().map(|&v| v <= sea).collect(),
+        Some(o) => {
+            let mut t = o.to_vec();
+            let mut st: Vec<usize> = (0..n).filter(|&k| o[k]).collect();
+            while let Some(k) = st.pop() {
+                for &j in &nb4[k] {
+                    if j != usize::MAX && !t[j] && hz[j] <= sea {
+                        t[j] = true;
+                        st.push(j);
+                    }
+                }
+            }
+            t
+        }
+    }
 }
 
 /// ADR Finding 186 (the author's fallback) -- **the live marine step on 2 × 2 blocks**:
@@ -934,6 +1063,11 @@ pub struct SedRecord {
     pub thickness_m: Vec<f32>,
     /// ADR Finding 188-B2 -- Σ of the marine walk's stranded thickness per cell (m; empty unless the live marine step ran).
     pub marine_stranded_m: Vec<f32>,
+    /// ADR Finding 189 2.3 -- Σ of what left the map because the ocean was filled with no deeper cell (solid, norm × cells).
+    pub marine_exported: f64,
+    /// ADR Finding 189 2.3 -- Σ of the marine sources out of the traversable sea, routed by the fluvial pass (solid, norm ×
+    /// cells; none in the adopted profile).
+    pub marine_rerouted: f64,
     /// Σ over the level of the fluvial deposits, the lake fills and the marine thickness change (m per cell).
     pub fluvial_m: Vec<f32>,
     pub lake_m: Vec<f32>,

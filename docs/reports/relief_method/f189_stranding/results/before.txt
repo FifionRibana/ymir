@@ -1,0 +1,9 @@
+   F189 before (88c089f): the adopted profile, intermediate
+   seed 8: all the lakes 3147 km² (large 6 / 2393 km²) · stranded: fluvial 3956.64 km³, marine 4817.59 km³ (solid) · exported — · circumnavigable true · (v) true · the sea 50.0 % · the mass 1.8e-14 / 2.6e-11 · 81.2 s wall / 87.6 s CPU
+#N 8 3146.97265625 3956.6408263397925 4817.590495022793 NaN 1 1 81.1736125
+   seed 18: all the lakes 1406 km² (large 2 / 710 km²) · stranded: fluvial 2731.41 km³, marine 3893.26 km³ (solid) · exported — · circumnavigable true · (v) true · the sea 54.4 % · the mass 1.7e-14 / 3.2e-11 · 99.4 s wall / 104.2 s CPU
+#N 18 1406.25 2731.4072877563694 3893.263624203902 NaN 1 1 99.4184739
+   seed 19: all the lakes 842 km² (large 1 / 349 km²) · stranded: fluvial 2049.46 km³, marine 2866.77 km³ (solid) · exported — · circumnavigable true · (v) true · the sea 55.1 % · the mass 1.7e-14 / 5.4e-11 · 91.3 s wall / 97.2 s CPU
+#N 19 842.28515625 2049.461599840421 2866.7687927135867 NaN 1 1 91.3114027
+   seed 23: all the lakes 6565 km² (large 7 / 5706 km²) · stranded: fluvial 3706.43 km³, marine 8366.69 km³ (solid) · exported — · circumnavigable false · (v) true · the sea 34.6 % · the mass 8.2e-14 / 1.4e-11 · 108.1 s wall / 113.5 s CPU
+#N 23 6564.94140625 3706.4285126306468 8366.694855740288 NaN 0 1 108.1055034

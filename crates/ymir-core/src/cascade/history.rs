@@ -1697,6 +1697,45 @@ age_calkaBP	SeaLev_shortPC1	SeaLev_longPC1
         assert!(marine0 > 0.0, "without the flag the basin is the sea's marine domain");
     }
 
+    /// ADR Finding 189 2.4 (permanent) -- no stranding: on F187's control world with its interior basin below the sea, the
+    /// adopted profile with the ocean by connectivity strands nothing (the pass's `stranded`, the budget's stranded term and
+    /// the marine walk's stranded thickness are all 0), the mass holds at 10⁻⁹ with the « exported » term, and the walk routed
+    /// no land source.
+    #[test]
+    fn the_f189_no_stranding() {
+        use crate::cascade::{Sea, deposition::Deposition};
+        let nc = 64;
+        let base = CascadeConfig { roughness_m: 20.0, seed: 5, sea: Sea { connected: true }, torus: Some([0, 0]), ..CascadeConfig::declared(4000.0) };
+        let n2m = base.norm_to_m();
+        let snaps: Vec<GridF32> = (0..=10)
+            .map(|j| {
+                let mut gd = GridF32::new(nc, nc, 0.0);
+                for k in 0..nc * nc {
+                    let (x, y) = (k % nc, k / nc);
+                    // a deep, wide sea (24 rows at 3 km) so the ocean outlives the run's deposits
+                    gd.data[k] = if y < 24 {
+                        base.sea_level - 3000.0 / n2m
+                    } else {
+                        base.sea_level + (5.0 + 2.0 * (y as f32 - 24.0).min(63.0 - y as f32 + 24.0)) / n2m + j as f32 * 2.0e-4 * 4.0e5 / n2m
+                    };
+                    if (30..34).contains(&x) && (42..46).contains(&y) {
+                        gd.data[k] = base.sea_level - 300.0 / n2m;
+                    }
+                }
+                gd
+            })
+            .collect();
+        let run = HistoryRun { t_years: 4.0e6, steps: 40, rebound: Some(Rebound::declared()), timing: Timing::History, age_years: None, sea_low: None };
+        let l = physics_history_dep(&snaps, 128, &base, &run, None, None, Some(Deposition::continent_default()), None, &mut |_| {}, &|| false).unwrap();
+        let r = l.rec.sed.as_ref().unwrap();
+        assert!(r.max_rel_residual < 1e-9 && r.max_stock_residual < 1e-9, "the mass: {} {}", r.max_rel_residual, r.max_stock_residual);
+        assert_eq!(r.budget[4], 0.0, "the pass stranded {} (norm × cells)", r.budget[4]);
+        assert_eq!(r.marine_stranded, 0.0, "the marine walk stranded {}", r.marine_stranded);
+        assert!(r.marine_stranded_m.iter().all(|&v| v == 0.0), "a cell holds a marine stranding");
+        assert_eq!(r.marine_rerouted, 0.0, "a marine source lay on land");
+        assert!(r.marine_m.iter().any(|&v| v > 0.0), "the walk deposited nothing");
+    }
+
     /// ADR Finding 186 A4 (permanent): the K_eff closure's controls -- G = 0 through the closure is the deposition with G = 0 (the
     /// same field); with G = 1.55 both mass controls hold at 10⁻⁹ and the pass deposits nothing fluvial.
     #[test]

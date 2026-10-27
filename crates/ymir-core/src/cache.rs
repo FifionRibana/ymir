@@ -56,11 +56,11 @@ pub const ALGO_TECTONICS: u32 = 1;
 /// phantom-craters. Bumping gives old entries a different digest so they are never
 /// read by the new bundle codec (chosen over a tolerant legacy read, which would
 /// outlive its usefulness).
-pub const ALGO_UPSCALE_EROSION: u32 = 4; // Finding 83: relief-v3 ships the BASE-LEVEL bound (0.5 m)
+pub const ALGO_UPSCALE_EROSION: u32 = 5; // Finding 189: the routing links the ocean through sides only, the flats drain to their low edge (4: Finding 83, the base-level bound)
 
 /// Version of the drainage build (`c1_drainage`). ⚠️ BUMP on ANY code change to
 /// that step (see above).
-pub const ALGO_DRAINAGE: u32 = 9; // Finding 124-3: own-end reach values; a junction cell is never stolen
+pub const ALGO_DRAINAGE: u32 = 10; // Finding 189: the routing (flow.rs) changed (9: Finding 124-3, own-end reach values)
 
 /// Version of the climate build (`c1_climate_placed` / `c1_climate_windowed`).
 /// ⚠️ BUMP on ANY code change to that step (see above).
@@ -69,7 +69,7 @@ pub const ALGO_CLIMATE: u32 = 1;
 /// Version of the relief-v3 BREACH conditioning (`breach_monotone` applied to the eroded
 /// field with the pre-breach lakes). ⚠️ BUMP on ANY code change to `breach_monotone` — a
 /// stale conditioned field would carry the OLD breach into every downstream layer.
-pub const ALGO_BREACH: u32 = 1;
+pub const ALGO_BREACH: u32 = 2; // Finding 189: the routing (flow.rs) changed
 
 /// Version of the HD relief-v3 drainage BUNDLE (final drainage after the below-sea
 /// water-balance merge + river clip + spillway append + geographic-scale, plus the
@@ -87,7 +87,7 @@ pub const ALGO_BREACH: u32 = 1;
 /// evaporative equilibrium (level + footprint), draining the exposed floor from `lake_map` —
 /// the GEOMETRY half of the same discard H-1 fixed for the classification. Lake outlines,
 /// river clipping, wetlands and biomes all move.
-pub const ALGO_HD_DRAINAGE: u32 = 12; // Finding 149-K: a segment tagged with its lake (its spillway) is the lake's outlet
+pub const ALGO_HD_DRAINAGE: u32 = 13; // Finding 189: the routing (flow.rs) changed (12: Finding 149-K, a lake-tagged segment is its outlet)
 
 // ── Cache key ──────────────────────────────────────────────────────────────
 

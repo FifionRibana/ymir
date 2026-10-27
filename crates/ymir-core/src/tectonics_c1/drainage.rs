@@ -3546,8 +3546,18 @@ mod tests {
         let (w, h, hm) = enclosed_basin_geometry();
         // Cool humid catchment (generates inflow) feeding a HOT evaporating floor (closes the basin
         // well below the col): PE_floor(30 °C) ≈ 2600 mm/yr ≫ precip 800 mm/yr ⟹ net_evap > 0.
+        // ADR Finding 189 2.2: the cool catchment is the pit's one-cell rim only (16 cells), the rest hot
+        // (no runoff). Before F189 the flat land at 0.51 kept whole rows without a receiver (the
+        // Garbrecht-Martz tie), so their runoff never reached the pit and the endorheic verdict leaned on
+        // that lost water; routed, the whole flat drains to the pit and outruns the 9-cell floor's
+        // evaporation. With the rim alone the inflow (≤ 16 × 800 mm) stays below it (9 × ~1 800 mm).
         let precip = GridF32::new(w, h, 800.0 / crate::climate::precipitation::PRECIP_MM_PER_UNIT);
-        let mut temp = GridF32::new(w, h, 5.0); // cool catchment → runoff = 800 − PE(5) > 0
+        let mut temp = GridF32::new(w, h, 30.0); // hot land → PE ≫ precip, no runoff
+        for x in 10..=14 {
+            for y in 10..=14 {
+                temp.set(x, y, 5.0); // the cool rim → runoff = 800 − PE(5) > 0
+            }
+        }
         for x in 11..=13 {
             for y in 11..=13 {
                 temp.set(x, y, 30.0); // hot pit surface → high PE, evaporates the inflow

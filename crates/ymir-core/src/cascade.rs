@@ -905,7 +905,7 @@ fn run_loop(
                 }
             }
             let hill = hill.max(0.0);
-            let [fl, lk, mut st, ts] = ps.sums();
+            let [fl, mut lk, mut st, ts] = ps.sums();
             // ADR Finding 184-A2: a river's outflow on a cell the later fluvial sub-steps raised above the sea; without the live
             // domain it stays there (stranded), with it the marine step walks it seaward
             if !dp.marine_live && dp.marine.is_some() {
@@ -924,11 +924,41 @@ fn run_loop(
                 Some(m) => {
                     let w = deposition::coast_weights(&z, &land, tor.is_some());
                     let ws: f64 = w.iter().sum();
-                    let src: Vec<f64> = (0..cells)
+                    let mut src: Vec<f64> = (0..cells)
                         .map(|k| if land[k] { if dp.marine_live { ps.to_sea[k] } else { 0.0 } } else { ps.to_sea[k] + if ws > 0.0 { hill * w[k] / ws } else { 0.0 } })
                         .collect();
                     // a sea with no coast takes the loss nowhere: exported
                     let lost = if ws > 0.0 { 0.0 } else { hill };
+                    // ADR Finding 189 2.3: a source out of the traversable sea (on land) is routed by the fluvial pass -- the lakes
+                    // filled by volume, then the sea -- never by the marine walk
+                    if dp.marine_live && !dp.marine_blocks {
+                        let oc: Vec<bool> = if conn { amplify::ocean_connected(&z, sea, tor) } else { z.data.iter().map(|&v| v <= sea).collect() };
+                        let hz64: Vec<f64> = z.data.iter().map(|&v| v as f64).collect();
+                        let trav = deposition::sea_traversable(&hz64, sea as f64, conn.then_some(&oc[..]), n, tor.is_some());
+                        let e_land: Vec<f64> = (0..cells).map(|k| if trav[k] { 0.0 } else { src[k] }).collect();
+                        if e_land.iter().any(|&v| v > 0.0) {
+                            let rr = deposition::pass_routed(&z, &e_land, sea, Some(&oc), conn, 0.0, dp.lakes, tor.is_some(), p_dep);
+                            for k in 0..cells {
+                                if e_land[k] > 0.0 {
+                                    src[k] = 0.0;
+                                }
+                                src[k] += rr.to_sea[k];
+                                let d = rr.lake[k] + rr.stranded[k];
+                                if d > 0.0 {
+                                    let th = d / (1.0 - p_dep);
+                                    z.data[k] = (z.data[k] as f64 + th) as f32;
+                                    sed64[k] += th;
+                                    solid64[k] += d;
+                                    rec.lake_m[k] += (rr.lake[k] * n2m64) as f32;
+                                    rec.fluvial_m[k] += (rr.stranded[k] * n2m64) as f32;
+                                }
+                            }
+                            let [_, l2, s2, _] = rr.sums();
+                            lk += l2;
+                            st += s2;
+                            rec.marine_rerouted += e_land.iter().sum::<f64>();
+                        }
+                    }
                     let marine: Vec<bool> = land.iter().map(|&l| !l).collect();
                     let t = Instant::now();
                     let dt_step = solver.dt as f64;
@@ -940,13 +970,16 @@ fn run_loop(
                         let sup0 = sup.clone();
                         let sed0: f64 = (0..cells).filter(|&k| marine[k]).map(|k| sup[k]).sum();
                         // F186: the author's fallback, the live step on 2 × 2 blocks
+                        let mut expd = 0f64;
                         let (ns, strd) = if dp.marine_blocks {
                             deposition::marine_step_live_blocks(&mut z, &src, dt_step, &m, cell_m as f64, &mut sup, tor.is_some(), sea as f64)
                         } else {
-                            deposition::marine_step_live_sea(&mut z, &src, dt_step, &m, cell_m as f64, &mut sup, tor.is_some(), sea as f64, conn.then_some(tor), Some(&mut strand_cells))
+                            deposition::marine_step_live_sea(&mut z, &src, dt_step, &m, cell_m as f64, &mut sup, tor.is_some(), sea as f64, conn.then_some(tor), Some(&mut strand_cells), Some(&mut expd))
                         };
                         rec.marine_substeps += ns;
                         rec.marine_stranded += strd * wm;
+                        // F189 2.3: what left the map (the ocean filled with no deeper cell), in the budget's « exported »
+                        rec.marine_exported += expd * wm;
                         rec.steps.push((dt_step, ns, src.iter().sum(), marine.iter().filter(|&&b| b).count(), ps.eroded, sed0));
                         let mut ds = 0f64;
                         for k in 0..cells {
@@ -958,7 +991,7 @@ fn run_loop(
                                 ds += dt * wm;
                             }
                         }
-                        (ds, lost)
+                        (ds, lost + expd * wm)
                     } else if ctab.is_none() {
                         // F182: the supply is the cover's thickness
                         let sed0: f64 = (0..cells).filter(|&k| marine[k]).map(|k| sed64[k]).sum();
@@ -1357,8 +1390,10 @@ mod tests {
         assert_eq!(hs[0].0, PIN_DECLARED, "declared");
         assert_eq!(hs[1].0, PIN_F164, "F164");
     }
-    const PIN_DECLARED: u64 = 24_136_383_200_914_448;
-    const PIN_F164: u64 = 13_558_304_175_709_348_739;
+    // ADR Finding 189 -- re-pinned: the routing's corrections (2.1, the ocean linked through sides only; 2.2, the flats' exit)
+    // move the field; before F189 24_136_383_200_914_448 and 13_558_304_175_709_348_739
+    const PIN_DECLARED: u64 = 14_185_709_162_317_947_710;
+    const PIN_F164: u64 = 18_337_522_520_800_106_759;
 
     /// The bicubic keeps the coarse values on the even pixels and reproduces a cubic exactly (Catmull-Rom is exact on
     /// polynomials up to degree 2 at the midpoint; checked on a periodic sine within its error bound).

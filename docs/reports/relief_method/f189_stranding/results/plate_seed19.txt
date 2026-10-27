@@ -1,0 +1,3 @@
+   seed 19: all the lakes 303 km² (large 0 / 0 km²) · stranded: fluvial 0.00 km³, marine 0.00 km³ (solid) · exported 0.000 km³ · circumnavigable true · (v) true · the sea 57.5 % · the mass 1.7e-14 / 4.3e-11 · 111.1 s wall / 116.6 s CPU
+#N 19 302.734375 0 0 0 1 1 111.1339776
+      the registration check (amended): 100.00 % on land, 58 / 58 mouths pass -> PASSES
